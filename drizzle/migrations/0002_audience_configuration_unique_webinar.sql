@@ -1,0 +1,1 @@
+create unique index if not exists audience_configuration_webinar_id_key on public.audience_configuration (webinar_id);

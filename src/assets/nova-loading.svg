@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="260 260 740 740" fill="none" role="img" aria-label="A carregar">
+  <defs>
+    <linearGradient id="left" x1="475" y1="636" x2="344" y2="914" gradientUnits="userSpaceOnUse"><stop stop-color="#76000c"/><stop offset=".48" stop-color="#e90013"/><stop offset="1" stop-color="#ff4823"/></linearGradient>
+    <linearGradient id="right" x1="686" y1="333" x2="911" y2="802" gradientUnits="userSpaceOnUse"><stop stop-color="#ff682c"/><stop offset=".46" stop-color="#ff3020"/><stop offset="1" stop-color="#ff001d"/></linearGradient>
+    <linearGradient id="front" x1="357" y1="591" x2="661" y2="319" gradientUnits="userSpaceOnUse"><stop stop-color="#ff4927"/><stop offset=".4" stop-color="#ff1020"/><stop offset=".74" stop-color="#cb0015"/><stop offset="1" stop-color="#79000d"/></linearGradient>
+    <g id="icon">
+      <path fill="url(#left)" d="M316 790C336 688 401 619 460 624C480 623 501 632 513 643V826C513 881 470 925 415 925C361 925 316 882 316 829Z"/>
+      <path fill="url(#right)" d="M679 540V383C679 334 729 306 773 334L906 428C929 445 941 468 941 492V829C941 840 939 849 936 860Z"/>
+      <path fill="url(#front)" d="M316 790V428C316 375 355 331 406 325C437 320 460 331 485 354L898 765C925 794 940 820 938 847C929 893 884 930 830 924C800 922 778 909 755 886L527 657C502 631 480 622 458 624C397 624 335 691 316 790Z"/>
+    </g>
+    <clipPath id="left-region"><path d="M0 0H515V1280H0Z"/></clipPath>
+    <clipPath id="diagonal-region"><path d="M514 373L1000 859V1280H514Z"/></clipPath>
+    <clipPath id="right-region"><path d="M679 0H1100V961L679 540Z"/></clipPath>
+    <clipPath id="left-reveal"><rect x="0" y="930" width="1280" height="1280"><animate attributeName="y" values="930;930;300;300" keyTimes="0;.051;.265;1" dur="2.722s" repeatCount="1" fill="freeze" calcMode="spline" keySplines="0 0 1 1;.42 0 .58 1;0 0 1 1"/></rect></clipPath>
+    <clipPath id="diagonal-reveal"><path d="M0 0H885L0 885Z"><animate attributeName="d" values="M0 0H885L0 885Z;M0 0H885L0 885Z;M0 0H1895L0 1895Z;M0 0H1895L0 1895Z" keyTimes="0;.245;.541;1" dur="2.722s" repeatCount="1" fill="freeze" calcMode="spline" keySplines="0 0 1 1;.42 0 .58 1;0 0 1 1"/></path></clipPath>
+    <clipPath id="right-reveal"><rect x="0" y="960" width="1280" height="1280"><animate attributeName="y" values="960;960;300;300" keyTimes="0;.51;.725;1" dur="2.722s" repeatCount="1" fill="freeze" calcMode="spline" keySplines="0 0 1 1;.42 0 .58 1;0 0 1 1"/></rect></clipPath>
+  </defs>
+  <g clip-path="url(#left-region)"><g clip-path="url(#left-reveal)"><use href="#icon"/></g></g>
+  <g clip-path="url(#diagonal-region)"><g clip-path="url(#diagonal-reveal)"><use href="#icon"/></g></g>
+  <g clip-path="url(#right-region)"><g clip-path="url(#right-reveal)"><use href="#icon"/></g></g>
+</svg>

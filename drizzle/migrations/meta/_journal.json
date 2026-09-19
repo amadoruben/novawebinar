@@ -1,0 +1,300 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1789299544666,
+      "tag": "0000_novawebinar_phase_one_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789299658008,
+      "tag": "0001_provision_new_novawebinar_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789300505130,
+      "tag": "0002_audience_configuration_unique_webinar",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789308013630,
+      "tag": "0003_public_room_registration",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789310014320,
+      "tag": "0004_registration_cover_and_triggers",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789310141401,
+      "tag": "0005_webinar_covers_storage_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789311519761,
+      "tag": "0006_add_public_base_url_to_organizations",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789312967659,
+      "tag": "0007_avatars_storage_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789313303031,
+      "tag": "0008_add_room_theme_to_webinars",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789313780204,
+      "tag": "0009_add_cta_color_to_webinars",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789314026186,
+      "tag": "0010_add_cta_prices",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789314821680,
+      "tag": "0011_add_cta_image_and_countdown",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789320383783,
+      "tag": "0012_social_proof_and_comment_avatars",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789322850174,
+      "tag": "0013_add_notification_color_to_social_proof",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789327081160,
+      "tag": "0014_webinar_schedule_options",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1789328872408,
+      "tag": "0015_add_session_end_time_to_webinars",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789364286902,
+      "tag": "0016_revoke_execute_trigger_function",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789366431415,
+      "tag": "0017_add_subdomain_to_organizations",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789374352446,
+      "tag": "0018_add_whatsapp_share_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789375711166,
+      "tag": "0019_add_webhook_integration_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789476143755,
+      "tag": "0020_engagement_intelligence",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789490699622,
+      "tag": "0021_webinar_analysis_prompts",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789900000000,
+      "tag": "0022_human_audience_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789498801190,
+      "tag": "0023_webinar_videos_storage_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789500169242,
+      "tag": "0024_create_webinar_transcripts",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789500348936,
+      "tag": "0025_create_webinar_transcripts_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789512849736,
+      "tag": "0026_add_prelive_countdown",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1789512990969,
+      "tag": "0027_add_prelive_countdown_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1789554414661,
+      "tag": "0028_create_background_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1789554630160,
+      "tag": "0029_create_background_jobs_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1789555817390,
+      "tag": "0030_participants_device_and_region",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789555959022,
+      "tag": "0031_participants_device_region_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1789557313667,
+      "tag": "0032_webinars_pitch_seconds",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789560945938,
+      "tag": "0033_webinar_transcript_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1789561574722,
+      "tag": "0034_comment_causality_and_media_offset",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1789568084410,
+      "tag": "0035_prelive_countdown_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1789568176678,
+      "tag": "0036_prelive_countdown_templates_retry",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1789575140913,
+      "tag": "0037_ai_agent_module",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1789575713432,
+      "tag": "0038_ai_agent_module_retry",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1789575753175,
+      "tag": "0039_ai_agents_table_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1789841301509,
+      "tag": "0040_webinar_host_and_chat_pin",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1789845579072,
+      "tag": "0041_add_offer_chat_pin",
+      "breakpoints": true
+    }
+  ]
+}

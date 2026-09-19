@@ -1,0 +1,2032 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
+  public: {
+    Tables: {
+      ai_agent_faqs: {
+        Row: {
+          agent_id: string
+          answer: string
+          approved: boolean
+          created_at: string
+          id: string
+          organization_id: string
+          position: number
+          question: string
+          source: string
+          updated_at: string
+          visibility: string
+        }
+        Insert: {
+          agent_id: string
+          answer?: string
+          approved?: boolean
+          created_at?: string
+          id?: string
+          organization_id: string
+          position?: number
+          question: string
+          source?: string
+          updated_at?: string
+          visibility?: string
+        }
+        Update: {
+          agent_id?: string
+          answer?: string
+          approved?: boolean
+          created_at?: string
+          id?: string
+          organization_id?: string
+          position?: number
+          question?: string
+          source?: string
+          updated_at?: string
+          visibility?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_agent_faqs_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "ai_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_agent_faqs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_agent_knowledge: {
+        Row: {
+          agent_id: string
+          approved: boolean
+          created_at: string
+          field: string
+          id: string
+          label: string
+          organization_id: string
+          position: number
+          presented_after_ms: number | null
+          section: string
+          source: string
+          updated_at: string
+          value: string
+          visibility: string
+        }
+        Insert: {
+          agent_id: string
+          approved?: boolean
+          created_at?: string
+          field: string
+          id?: string
+          label: string
+          organization_id: string
+          position?: number
+          presented_after_ms?: number | null
+          section: string
+          source?: string
+          updated_at?: string
+          value?: string
+          visibility?: string
+        }
+        Update: {
+          agent_id?: string
+          approved?: boolean
+          created_at?: string
+          field?: string
+          id?: string
+          label?: string
+          organization_id?: string
+          position?: number
+          presented_after_ms?: number | null
+          section?: string
+          source?: string
+          updated_at?: string
+          value?: string
+          visibility?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_agent_knowledge_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "ai_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_agent_knowledge_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_agent_messages: {
+        Row: {
+          agent_id: string | null
+          answer: string
+          classification: string
+          confidence: number
+          conversation_id: string | null
+          created_at: string
+          decision: string
+          escalation_reason: string | null
+          feedback: string | null
+          final_answer: string | null
+          human_edit: string | null
+          id: string
+          inbound_text: string
+          is_simulation: boolean
+          latency_ms: number
+          model: string
+          organization_id: string
+          participant_id: string | null
+          reason: string
+          session_ms: number
+          sources: Json
+          status: string
+          updated_at: string
+          webinar_id: string
+        }
+        Insert: {
+          agent_id?: string | null
+          answer?: string
+          classification?: string
+          confidence?: number
+          conversation_id?: string | null
+          created_at?: string
+          decision?: string
+          escalation_reason?: string | null
+          feedback?: string | null
+          final_answer?: string | null
+          human_edit?: string | null
+          id?: string
+          inbound_text?: string
+          is_simulation?: boolean
+          latency_ms?: number
+          model?: string
+          organization_id: string
+          participant_id?: string | null
+          reason?: string
+          session_ms?: number
+          sources?: Json
+          status?: string
+          updated_at?: string
+          webinar_id: string
+        }
+        Update: {
+          agent_id?: string | null
+          answer?: string
+          classification?: string
+          confidence?: number
+          conversation_id?: string | null
+          created_at?: string
+          decision?: string
+          escalation_reason?: string | null
+          feedback?: string | null
+          final_answer?: string | null
+          human_edit?: string | null
+          id?: string
+          inbound_text?: string
+          is_simulation?: boolean
+          latency_ms?: number
+          model?: string
+          organization_id?: string
+          participant_id?: string | null
+          reason?: string
+          session_ms?: number
+          sources?: Json
+          status?: string
+          updated_at?: string
+          webinar_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_agent_messages_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "ai_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_agent_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "private_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_agent_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_agent_messages_participant_id_fkey"
+            columns: ["participant_id"]
+            isOneToOne: false
+            referencedRelation: "participants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_agent_messages_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_agent_objections: {
+        Row: {
+          agent_id: string
+          allowed_cta: string
+          approved: boolean
+          created_at: string
+          escalate_when: string
+          id: string
+          key_points: string
+          never_say: string
+          objection: string
+          organization_id: string
+          position: number
+          response: string
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          agent_id: string
+          allowed_cta?: string
+          approved?: boolean
+          created_at?: string
+          escalate_when?: string
+          id?: string
+          key_points?: string
+          never_say?: string
+          objection: string
+          organization_id: string
+          position?: number
+          response?: string
+          source?: string
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          allowed_cta?: string
+          approved?: boolean
+          created_at?: string
+          escalate_when?: string
+          id?: string
+          key_points?: string
+          never_say?: string
+          objection?: string
+          organization_id?: string
+          position?: number
+          response?: string
+          source?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_agent_objections_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "ai_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_agent_objections_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_agents: {
+        Row: {
+          agent_name: string
+          avatar_url: string | null
+          confidence_threshold: number
+          created_at: string
+          enabled: boolean
+          escalation: Json
+          id: string
+          intro: string
+          mode: string
+          never_say: string
+          organization_id: string
+          permissions: Json
+          personality: Json
+          response_speed: string
+          show_typing: boolean
+          updated_at: string
+          use_webinar_transcript: boolean
+          webinar_id: string
+        }
+        Insert: {
+          agent_name?: string
+          avatar_url?: string | null
+          confidence_threshold?: number
+          created_at?: string
+          enabled?: boolean
+          escalation?: Json
+          id?: string
+          intro?: string
+          mode?: string
+          never_say?: string
+          organization_id: string
+          permissions?: Json
+          personality?: Json
+          response_speed?: string
+          show_typing?: boolean
+          updated_at?: string
+          use_webinar_transcript?: boolean
+          webinar_id: string
+        }
+        Update: {
+          agent_name?: string
+          avatar_url?: string | null
+          confidence_threshold?: number
+          created_at?: string
+          enabled?: boolean
+          escalation?: Json
+          id?: string
+          intro?: string
+          mode?: string
+          never_say?: string
+          organization_id?: string
+          permissions?: Json
+          personality?: Json
+          response_speed?: string
+          show_typing?: boolean
+          updated_at?: string
+          use_webinar_transcript?: boolean
+          webinar_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_agents_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_agents_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: true
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      analytics_events: {
+        Row: {
+          event_name: string
+          id: number
+          is_real: boolean
+          occurred_at: string
+          organization_id: string
+          participant_id: string | null
+          properties: Json
+          video_second: number | null
+          webinar_id: string
+        }
+        Insert: {
+          event_name: string
+          id?: never
+          is_real?: boolean
+          occurred_at?: string
+          organization_id: string
+          participant_id?: string | null
+          properties?: Json
+          video_second?: number | null
+          webinar_id: string
+        }
+        Update: {
+          event_name?: string
+          id?: never
+          is_real?: boolean
+          occurred_at?: string
+          organization_id?: string
+          participant_id?: string | null
+          properties?: Json
+          video_second?: number | null
+          webinar_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analytics_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "analytics_events_participant_id_fkey"
+            columns: ["participant_id"]
+            isOneToOne: false
+            referencedRelation: "participants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "analytics_events_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audience_configuration: {
+        Row: {
+          created_at: string
+          curve: Json
+          id: string
+          mode: string
+          organization_id: string
+          updated_at: string
+          webinar_id: string
+        }
+        Insert: {
+          created_at?: string
+          curve?: Json
+          id?: string
+          mode?: string
+          organization_id: string
+          updated_at?: string
+          webinar_id: string
+        }
+        Update: {
+          created_at?: string
+          curve?: Json
+          id?: string
+          mode?: string
+          organization_id?: string
+          updated_at?: string
+          webinar_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audience_configuration_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audience_configuration_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: true
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      background_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          created_by: string
+          error: string
+          id: string
+          kind: string
+          locked_until: string | null
+          note: string
+          organization_id: string
+          payload: Json
+          progress: number
+          result: Json | null
+          stage: number
+          state: Json
+          status: string
+          updated_at: string
+          webinar_id: string
+          webinar_title: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          created_by: string
+          error?: string
+          id?: string
+          kind: string
+          locked_until?: string | null
+          note?: string
+          organization_id: string
+          payload?: Json
+          progress?: number
+          result?: Json | null
+          stage?: number
+          state?: Json
+          status?: string
+          updated_at?: string
+          webinar_id: string
+          webinar_title?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          created_by?: string
+          error?: string
+          id?: string
+          kind?: string
+          locked_until?: string | null
+          note?: string
+          organization_id?: string
+          payload?: Json
+          progress?: number
+          result?: Json | null
+          stage?: number
+          state?: Json
+          status?: string
+          updated_at?: string
+          webinar_id?: string
+          webinar_title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "background_jobs_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cta_events: {
+        Row: {
+          event_type: string
+          id: string
+          occurred_at: string
+          organization_id: string
+          participant_id: string | null
+          webinar_id: string
+        }
+        Insert: {
+          event_type: string
+          id?: string
+          occurred_at?: string
+          organization_id: string
+          participant_id?: string | null
+          webinar_id: string
+        }
+        Update: {
+          event_type?: string
+          id?: string
+          occurred_at?: string
+          organization_id?: string
+          participant_id?: string | null
+          webinar_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cta_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cta_events_participant_id_fkey"
+            columns: ["participant_id"]
+            isOneToOne: false
+            referencedRelation: "participants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cta_events_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_runner_config: {
+        Row: {
+          id: boolean
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          id?: boolean
+          token: string
+          updated_at?: string
+        }
+        Update: {
+          id?: boolean
+          token?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      organization_members: {
+        Row: {
+          created_at: string
+          id: string
+          organization_id: string
+          role: Database["public"]["Enums"]["workspace_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organization_id: string
+          role?: Database["public"]["Enums"]["workspace_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organization_id?: string
+          role?: Database["public"]["Enums"]["workspace_role"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_members_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organizations: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+          plan: string
+          public_base_url: string | null
+          slug: string
+          subdomain: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          name: string
+          plan?: string
+          public_base_url?: string | null
+          slug: string
+          subdomain?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          name?: string
+          plan?: string
+          public_base_url?: string | null
+          slug?: string
+          subdomain?: string | null
+        }
+        Relationships: []
+      }
+      participants: {
+        Row: {
+          city: string | null
+          country: string | null
+          country_code: string | null
+          cta_clicked: boolean
+          device: string | null
+          email: string | null
+          id: string
+          joined_at: string
+          name: string
+          organization_id: string
+          participant_token_hash: string | null
+          phone: string | null
+          status: string
+          viewing_mode: string
+          watched_seconds: number
+          webinar_id: string
+        }
+        Insert: {
+          city?: string | null
+          country?: string | null
+          country_code?: string | null
+          cta_clicked?: boolean
+          device?: string | null
+          email?: string | null
+          id?: string
+          joined_at?: string
+          name: string
+          organization_id: string
+          participant_token_hash?: string | null
+          phone?: string | null
+          status?: string
+          viewing_mode?: string
+          watched_seconds?: number
+          webinar_id: string
+        }
+        Update: {
+          city?: string | null
+          country?: string | null
+          country_code?: string | null
+          cta_clicked?: boolean
+          device?: string | null
+          email?: string | null
+          id?: string
+          joined_at?: string
+          name?: string
+          organization_id?: string
+          participant_token_hash?: string | null
+          phone?: string | null
+          status?: string
+          viewing_mode?: string
+          watched_seconds?: number
+          webinar_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "participants_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "participants_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      private_conversations: {
+        Row: {
+          ai_paused: boolean
+          assigned_to: string | null
+          created_at: string
+          escalation_reason: string | null
+          id: string
+          last_message_at: string
+          needs_human: boolean
+          organization_id: string
+          participant_id: string
+          status: Database["public"]["Enums"]["conversation_status"]
+          webinar_id: string
+        }
+        Insert: {
+          ai_paused?: boolean
+          assigned_to?: string | null
+          created_at?: string
+          escalation_reason?: string | null
+          id?: string
+          last_message_at?: string
+          needs_human?: boolean
+          organization_id: string
+          participant_id: string
+          status?: Database["public"]["Enums"]["conversation_status"]
+          webinar_id: string
+        }
+        Update: {
+          ai_paused?: boolean
+          assigned_to?: string | null
+          created_at?: string
+          escalation_reason?: string | null
+          id?: string
+          last_message_at?: string
+          needs_human?: boolean
+          organization_id?: string
+          participant_id?: string
+          status?: Database["public"]["Enums"]["conversation_status"]
+          webinar_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "private_conversations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "private_conversations_participant_id_fkey"
+            columns: ["participant_id"]
+            isOneToOne: false
+            referencedRelation: "participants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "private_conversations_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      private_messages: {
+        Row: {
+          agent_message_id: string | null
+          body: string
+          conversation_id: string
+          created_at: string
+          id: string
+          organization_id: string
+          participant_id: string | null
+          sender_kind: string
+          sender_user_id: string | null
+        }
+        Insert: {
+          agent_message_id?: string | null
+          body: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          participant_id?: string | null
+          sender_kind: string
+          sender_user_id?: string | null
+        }
+        Update: {
+          agent_message_id?: string | null
+          body?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          participant_id?: string | null
+          sender_kind?: string
+          sender_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "private_messages_agent_message_id_fkey"
+            columns: ["agent_message_id"]
+            isOneToOne: false
+            referencedRelation: "ai_agent_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "private_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "private_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "private_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "private_messages_participant_id_fkey"
+            columns: ["participant_id"]
+            isOneToOne: false
+            referencedRelation: "participants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          full_name: string
+          id: string
+          locale: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          full_name?: string
+          id: string
+          locale?: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          full_name?: string
+          id?: string
+          locale?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      real_purchase_events: {
+        Row: {
+          amount: string
+          buyer_name: string
+          created_at: string
+          id: string
+          organization_id: string
+          product_name: string
+          source: string
+          webinar_id: string
+        }
+        Insert: {
+          amount?: string
+          buyer_name: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          product_name?: string
+          source?: string
+          webinar_id: string
+        }
+        Update: {
+          amount?: string
+          buyer_name?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          product_name?: string
+          source?: string
+          webinar_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "real_purchase_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "real_purchase_events_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduled_comments: {
+        Row: {
+          ai_intent: string | null
+          ai_persona: string | null
+          ai_thread: string | null
+          author_name: string
+          avatar_url: string | null
+          causality_confidence: number | null
+          comment_type: string
+          created_at: string
+          generation_reason: string | null
+          id: string
+          message: string
+          offset_ms: number | null
+          offset_seconds: number
+          organization_id: string
+          reaction_latency_ms: number | null
+          temporal_relation: string | null
+          transcript_version_id: string | null
+          trigger_end_ms: number | null
+          trigger_id: string | null
+          trigger_start_ms: number | null
+          trigger_type: string | null
+          validation_action: string | null
+          validation_rule: string | null
+          webinar_id: string
+        }
+        Insert: {
+          ai_intent?: string | null
+          ai_persona?: string | null
+          ai_thread?: string | null
+          author_name: string
+          avatar_url?: string | null
+          causality_confidence?: number | null
+          comment_type?: string
+          created_at?: string
+          generation_reason?: string | null
+          id?: string
+          message: string
+          offset_ms?: number | null
+          offset_seconds: number
+          organization_id: string
+          reaction_latency_ms?: number | null
+          temporal_relation?: string | null
+          transcript_version_id?: string | null
+          trigger_end_ms?: number | null
+          trigger_id?: string | null
+          trigger_start_ms?: number | null
+          trigger_type?: string | null
+          validation_action?: string | null
+          validation_rule?: string | null
+          webinar_id: string
+        }
+        Update: {
+          ai_intent?: string | null
+          ai_persona?: string | null
+          ai_thread?: string | null
+          author_name?: string
+          avatar_url?: string | null
+          causality_confidence?: number | null
+          comment_type?: string
+          created_at?: string
+          generation_reason?: string | null
+          id?: string
+          message?: string
+          offset_ms?: number | null
+          offset_seconds?: number
+          organization_id?: string
+          reaction_latency_ms?: number | null
+          temporal_relation?: string | null
+          transcript_version_id?: string | null
+          trigger_end_ms?: number | null
+          trigger_id?: string | null
+          trigger_start_ms?: number | null
+          trigger_type?: string | null
+          validation_action?: string | null
+          validation_rule?: string | null
+          webinar_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_comments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_comments_transcript_version_id_fkey"
+            columns: ["transcript_version_id"]
+            isOneToOne: false
+            referencedRelation: "webinar_transcript_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_comments_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      simulated_purchase_events: {
+        Row: {
+          buyer_name: string
+          created_at: string
+          id: string
+          message: string
+          offset_seconds: number
+          organization_id: string
+          product_name: string
+          webinar_id: string
+        }
+        Insert: {
+          buyer_name: string
+          created_at?: string
+          id?: string
+          message?: string
+          offset_seconds?: number
+          organization_id: string
+          product_name?: string
+          webinar_id: string
+        }
+        Update: {
+          buyer_name?: string
+          created_at?: string
+          id?: string
+          message?: string
+          offset_seconds?: number
+          organization_id?: string
+          product_name?: string
+          webinar_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "simulated_purchase_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "simulated_purchase_events_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_proof_settings: {
+        Row: {
+          animation: string
+          created_at: string
+          display_seconds: number
+          enabled: boolean
+          end_seconds: number | null
+          max_interval_seconds: number
+          min_interval_seconds: number
+          notification_color: string
+          organization_id: string
+          position: string
+          product_name: string
+          sound_enabled: boolean
+          start_delay_seconds: number
+          start_mode: string
+          start_seconds: number | null
+          templates: Json
+          updated_at: string
+          webhook_secret: string
+          webinar_id: string
+        }
+        Insert: {
+          animation?: string
+          created_at?: string
+          display_seconds?: number
+          enabled?: boolean
+          end_seconds?: number | null
+          max_interval_seconds?: number
+          min_interval_seconds?: number
+          notification_color?: string
+          organization_id: string
+          position?: string
+          product_name?: string
+          sound_enabled?: boolean
+          start_delay_seconds?: number
+          start_mode?: string
+          start_seconds?: number | null
+          templates?: Json
+          updated_at?: string
+          webhook_secret?: string
+          webinar_id: string
+        }
+        Update: {
+          animation?: string
+          created_at?: string
+          display_seconds?: number
+          enabled?: boolean
+          end_seconds?: number | null
+          max_interval_seconds?: number
+          min_interval_seconds?: number
+          notification_color?: string
+          organization_id?: string
+          position?: string
+          product_name?: string
+          sound_enabled?: boolean
+          start_delay_seconds?: number
+          start_mode?: string
+          start_seconds?: number | null
+          templates?: Json
+          updated_at?: string
+          webhook_secret?: string
+          webinar_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_proof_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_proof_settings_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: true
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      video_sources: {
+        Row: {
+          created_at: string
+          duration_seconds: number
+          id: string
+          name: string
+          organization_id: string
+          provider: Database["public"]["Enums"]["video_provider"]
+          source_url: string | null
+          status: string
+          storage_path: string | null
+          thumbnail_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          duration_seconds?: number
+          id?: string
+          name: string
+          organization_id: string
+          provider: Database["public"]["Enums"]["video_provider"]
+          source_url?: string | null
+          status?: string
+          storage_path?: string | null
+          thumbnail_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          duration_seconds?: number
+          id?: string
+          name?: string
+          organization_id?: string
+          provider?: Database["public"]["Enums"]["video_provider"]
+          source_url?: string | null
+          status?: string
+          storage_path?: string | null
+          thumbnail_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "video_sources_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      viewer_sessions: {
+        Row: {
+          ended_at: string | null
+          id: string
+          is_real: boolean
+          mode: string
+          organization_id: string
+          participant_id: string | null
+          started_at: string
+          watched_seconds: number
+          webinar_id: string
+          webinar_session_id: string | null
+        }
+        Insert: {
+          ended_at?: string | null
+          id?: string
+          is_real?: boolean
+          mode?: string
+          organization_id: string
+          participant_id?: string | null
+          started_at?: string
+          watched_seconds?: number
+          webinar_id: string
+          webinar_session_id?: string | null
+        }
+        Update: {
+          ended_at?: string | null
+          id?: string
+          is_real?: boolean
+          mode?: string
+          organization_id?: string
+          participant_id?: string | null
+          started_at?: string
+          watched_seconds?: number
+          webinar_id?: string
+          webinar_session_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "viewer_sessions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "viewer_sessions_participant_id_fkey"
+            columns: ["participant_id"]
+            isOneToOne: false
+            referencedRelation: "participants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "viewer_sessions_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "viewer_sessions_webinar_session_id_fkey"
+            columns: ["webinar_session_id"]
+            isOneToOne: false
+            referencedRelation: "webinar_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webinar_analysis: {
+        Row: {
+          audience_state: Json
+          created_at: string
+          duration_seconds: number
+          insights: Json
+          moments: Json
+          objective: string
+          organization_id: string
+          personas: Json
+          prompts: Json
+          rescue: Json
+          score: Json
+          segments: Json
+          updated_at: string
+          version: number
+          webinar_id: string
+        }
+        Insert: {
+          audience_state?: Json
+          created_at?: string
+          duration_seconds?: number
+          insights?: Json
+          moments?: Json
+          objective?: string
+          organization_id: string
+          personas?: Json
+          prompts?: Json
+          rescue?: Json
+          score?: Json
+          segments?: Json
+          updated_at?: string
+          version?: number
+          webinar_id: string
+        }
+        Update: {
+          audience_state?: Json
+          created_at?: string
+          duration_seconds?: number
+          insights?: Json
+          moments?: Json
+          objective?: string
+          organization_id?: string
+          personas?: Json
+          prompts?: Json
+          rescue?: Json
+          score?: Json
+          segments?: Json
+          updated_at?: string
+          version?: number
+          webinar_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webinar_analysis_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webinar_analysis_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: true
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webinar_prediction_snapshots: {
+        Row: {
+          created_at: string
+          id: string
+          observed: Json
+          organization_id: string
+          predicted: Json
+          webinar_id: string
+          webinar_session_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          observed?: Json
+          organization_id: string
+          predicted?: Json
+          webinar_id: string
+          webinar_session_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          observed?: Json
+          organization_id?: string
+          predicted?: Json
+          webinar_id?: string
+          webinar_session_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webinar_prediction_snapshots_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webinar_prediction_snapshots_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webinar_prediction_snapshots_webinar_session_id_fkey"
+            columns: ["webinar_session_id"]
+            isOneToOne: false
+            referencedRelation: "webinar_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webinar_sessions: {
+        Row: {
+          created_at: string
+          ends_at: string | null
+          id: string
+          organization_id: string
+          starts_at: string
+          state: Database["public"]["Enums"]["webinar_status"]
+          webinar_id: string
+        }
+        Insert: {
+          created_at?: string
+          ends_at?: string | null
+          id?: string
+          organization_id: string
+          starts_at: string
+          state?: Database["public"]["Enums"]["webinar_status"]
+          webinar_id: string
+        }
+        Update: {
+          created_at?: string
+          ends_at?: string | null
+          id?: string
+          organization_id?: string
+          starts_at?: string
+          state?: Database["public"]["Enums"]["webinar_status"]
+          webinar_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webinar_sessions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webinar_sessions_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webinar_transcript_versions: {
+        Row: {
+          created_at: string
+          duration_seconds: number
+          error: string | null
+          events: Json
+          id: string
+          media_source: string | null
+          media_time_offset_ms: number
+          moments: Json
+          organization_id: string
+          provider: string
+          provider_job_id: string | null
+          provider_model: string
+          raw_text: string
+          report: Json | null
+          sentences: Json
+          status: string
+          timestamp_precision: string
+          updated_at: string
+          video_fingerprint: string
+          video_source_id: string | null
+          webinar_id: string
+          words: Json
+        }
+        Insert: {
+          created_at?: string
+          duration_seconds?: number
+          error?: string | null
+          events?: Json
+          id?: string
+          media_source?: string | null
+          media_time_offset_ms?: number
+          moments?: Json
+          organization_id: string
+          provider: string
+          provider_job_id?: string | null
+          provider_model?: string
+          raw_text?: string
+          report?: Json | null
+          sentences?: Json
+          status?: string
+          timestamp_precision: string
+          updated_at?: string
+          video_fingerprint?: string
+          video_source_id?: string | null
+          webinar_id: string
+          words?: Json
+        }
+        Update: {
+          created_at?: string
+          duration_seconds?: number
+          error?: string | null
+          events?: Json
+          id?: string
+          media_source?: string | null
+          media_time_offset_ms?: number
+          moments?: Json
+          organization_id?: string
+          provider?: string
+          provider_job_id?: string | null
+          provider_model?: string
+          raw_text?: string
+          report?: Json | null
+          sentences?: Json
+          status?: string
+          timestamp_precision?: string
+          updated_at?: string
+          video_fingerprint?: string
+          video_source_id?: string | null
+          webinar_id?: string
+          words?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webinar_transcript_versions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webinar_transcript_versions_video_source_id_fkey"
+            columns: ["video_source_id"]
+            isOneToOne: false
+            referencedRelation: "video_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webinar_transcript_versions_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webinar_transcripts: {
+        Row: {
+          created_at: string
+          duration_seconds: number
+          organization_id: string
+          segments: Json
+          updated_at: string
+          video_fingerprint: string
+          video_source_id: string | null
+          webinar_id: string
+        }
+        Insert: {
+          created_at?: string
+          duration_seconds?: number
+          organization_id: string
+          segments?: Json
+          updated_at?: string
+          video_fingerprint?: string
+          video_source_id?: string | null
+          webinar_id: string
+        }
+        Update: {
+          created_at?: string
+          duration_seconds?: number
+          organization_id?: string
+          segments?: Json
+          updated_at?: string
+          video_fingerprint?: string
+          video_source_id?: string | null
+          webinar_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webinar_transcripts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webinar_transcripts_video_source_id_fkey"
+            columns: ["video_source_id"]
+            isOneToOne: false
+            referencedRelation: "video_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webinar_transcripts_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: true
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webinars: {
+        Row: {
+          chat_pin_message: string
+          chat_pin_title: string
+          cover_url: string | null
+          created_at: string
+          created_by: string
+          cta_color: string
+          cta_countdown: Json
+          cta_countdown_seconds: number
+          cta_end_seconds: number | null
+          cta_image_url: string
+          cta_price_now: string
+          cta_price_original: string
+          cta_start_seconds: number | null
+          cta_text: string | null
+          cta_url: string | null
+          description: string
+          duration_seconds: number
+          easy_access: boolean
+          host_avatar_url: string
+          host_name: string
+          host_role: string
+          id: string
+          internal_name: string
+          jit_interval_minutes: number
+          language: string
+          offer_pin_message: string
+          offer_pin_title: string
+          organization_id: string
+          pitch_seconds: number | null
+          prelive_appearance: Json
+          prelive_enabled: boolean
+          prelive_message: string
+          prelive_seconds: number
+          prelive_sound: boolean
+          prelive_template: string
+          public_title: string
+          recurrence_enabled: boolean
+          recurrence_end_time: string
+          recurrence_pattern: string
+          recurrence_start_time: string
+          recurrence_weekday: number
+          registration_badge_text: string
+          registration_button_text: string
+          registration_collect_phone: boolean
+          registration_cover_url: string | null
+          registration_headline: string
+          registration_progress_enabled: boolean
+          registration_progress_value: number
+          registration_require_phone: boolean
+          registration_scarcity_note: string
+          registration_subtitle: string
+          replay_enabled: boolean
+          room_theme: string
+          schedule_mode: string
+          scheduled_at: string | null
+          session_end_time: string | null
+          share_description: string
+          share_image_url: string | null
+          share_title: string
+          slug: string
+          status: Database["public"]["Enums"]["webinar_status"]
+          sync_video_with_start: boolean
+          timezone: string
+          updated_at: string
+          video_source_id: string | null
+          waiting_room_enabled: boolean
+          webhook_enabled: boolean
+          webhook_url: string
+        }
+        Insert: {
+          chat_pin_message?: string
+          chat_pin_title?: string
+          cover_url?: string | null
+          created_at?: string
+          created_by: string
+          cta_color?: string
+          cta_countdown?: Json
+          cta_countdown_seconds?: number
+          cta_end_seconds?: number | null
+          cta_image_url?: string
+          cta_price_now?: string
+          cta_price_original?: string
+          cta_start_seconds?: number | null
+          cta_text?: string | null
+          cta_url?: string | null
+          description?: string
+          duration_seconds?: number
+          easy_access?: boolean
+          host_avatar_url?: string
+          host_name?: string
+          host_role?: string
+          id?: string
+          internal_name: string
+          jit_interval_minutes?: number
+          language?: string
+          offer_pin_message?: string
+          offer_pin_title?: string
+          organization_id: string
+          pitch_seconds?: number | null
+          prelive_appearance?: Json
+          prelive_enabled?: boolean
+          prelive_message?: string
+          prelive_seconds?: number
+          prelive_sound?: boolean
+          prelive_template?: string
+          public_title: string
+          recurrence_enabled?: boolean
+          recurrence_end_time?: string
+          recurrence_pattern?: string
+          recurrence_start_time?: string
+          recurrence_weekday?: number
+          registration_badge_text?: string
+          registration_button_text?: string
+          registration_collect_phone?: boolean
+          registration_cover_url?: string | null
+          registration_headline?: string
+          registration_progress_enabled?: boolean
+          registration_progress_value?: number
+          registration_require_phone?: boolean
+          registration_scarcity_note?: string
+          registration_subtitle?: string
+          replay_enabled?: boolean
+          room_theme?: string
+          schedule_mode?: string
+          scheduled_at?: string | null
+          session_end_time?: string | null
+          share_description?: string
+          share_image_url?: string | null
+          share_title?: string
+          slug: string
+          status?: Database["public"]["Enums"]["webinar_status"]
+          sync_video_with_start?: boolean
+          timezone?: string
+          updated_at?: string
+          video_source_id?: string | null
+          waiting_room_enabled?: boolean
+          webhook_enabled?: boolean
+          webhook_url?: string
+        }
+        Update: {
+          chat_pin_message?: string
+          chat_pin_title?: string
+          cover_url?: string | null
+          created_at?: string
+          created_by?: string
+          cta_color?: string
+          cta_countdown?: Json
+          cta_countdown_seconds?: number
+          cta_end_seconds?: number | null
+          cta_image_url?: string
+          cta_price_now?: string
+          cta_price_original?: string
+          cta_start_seconds?: number | null
+          cta_text?: string | null
+          cta_url?: string | null
+          description?: string
+          duration_seconds?: number
+          easy_access?: boolean
+          host_avatar_url?: string
+          host_name?: string
+          host_role?: string
+          id?: string
+          internal_name?: string
+          jit_interval_minutes?: number
+          language?: string
+          offer_pin_message?: string
+          offer_pin_title?: string
+          organization_id?: string
+          pitch_seconds?: number | null
+          prelive_appearance?: Json
+          prelive_enabled?: boolean
+          prelive_message?: string
+          prelive_seconds?: number
+          prelive_sound?: boolean
+          prelive_template?: string
+          public_title?: string
+          recurrence_enabled?: boolean
+          recurrence_end_time?: string
+          recurrence_pattern?: string
+          recurrence_start_time?: string
+          recurrence_weekday?: number
+          registration_badge_text?: string
+          registration_button_text?: string
+          registration_collect_phone?: boolean
+          registration_cover_url?: string | null
+          registration_headline?: string
+          registration_progress_enabled?: boolean
+          registration_progress_value?: number
+          registration_require_phone?: boolean
+          registration_scarcity_note?: string
+          registration_subtitle?: string
+          replay_enabled?: boolean
+          room_theme?: string
+          schedule_mode?: string
+          scheduled_at?: string | null
+          session_end_time?: string | null
+          share_description?: string
+          share_image_url?: string | null
+          share_title?: string
+          slug?: string
+          status?: Database["public"]["Enums"]["webinar_status"]
+          sync_video_with_start?: boolean
+          timezone?: string
+          updated_at?: string
+          video_source_id?: string | null
+          waiting_room_enabled?: boolean
+          webhook_enabled?: boolean
+          webhook_url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webinars_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webinars_video_source_id_fkey"
+            columns: ["video_source_id"]
+            isOneToOne: false
+            referencedRelation: "video_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      has_organization_role: {
+        Args: {
+          _organization_id: string
+          _roles: Database["public"]["Enums"]["workspace_role"][]
+          _user_id?: string
+        }
+        Returns: boolean
+      }
+      is_organization_member: {
+        Args: { _organization_id: string; _user_id?: string }
+        Returns: boolean
+      }
+    }
+    Enums: {
+      conversation_status: "waiting" | "active" | "resolved"
+      video_provider: "upload" | "bunny" | "panda" | "vimeo" | "hls"
+      webinar_status: "draft" | "scheduled" | "live" | "replay" | "finished"
+      workspace_role: "owner" | "admin" | "member" | "support"
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never) = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never) = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      conversation_status: ["waiting", "active", "resolved"],
+      video_provider: ["upload", "bunny", "panda", "vimeo", "hls"],
+      webinar_status: ["draft", "scheduled", "live", "replay", "finished"],
+      workspace_role: ["owner", "admin", "member", "support"],
+    },
+  },
+} as const

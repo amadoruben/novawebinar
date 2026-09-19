@@ -1,0 +1,1 @@
+ALTER TABLE public.webinars ADD COLUMN IF NOT EXISTS pitch_seconds integer;

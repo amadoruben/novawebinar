@@ -1,0 +1,1 @@
+ALTER TABLE public.organizations ADD COLUMN public_base_url TEXT;
