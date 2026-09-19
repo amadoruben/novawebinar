@@ -4,6 +4,7 @@
  * Os trabalhos vivem na base de dados; aqui apenas os lemos de tempos a tempos
  * para mostrar o progresso no passo Chat, no sino e no painel inicial.
  */
+import { supabase } from "@/integrations/supabase/client";
 import { kickBackgroundJobs, listBackgroundJobs } from "@/lib/background-jobs.functions";
 
 export type JobRow = {
