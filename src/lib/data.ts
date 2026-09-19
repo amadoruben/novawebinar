@@ -282,35 +282,49 @@ export function formatDateTime(value: string | null) {
   });
 }
 
-/** Domínio público das salas, usado em todos os endereços partilháveis. */
-const PUBLIC_APP_URL = "https://globalstream.live";
-const ADMIN_HOST = "admin.novawebinar.com";
+/**
+ * Domínio público das salas. Por omissão usa o domínio onde a aplicação está
+ * a correr; pode ser fixado com VITE_PUBLIC_APP_URL (domínio próprio).
+ */
+const CONFIGURED_PUBLIC_APP_URL = (import.meta.env['VITE_PUBLIC_APP_URL'] as string | undefined)?.trim() ?? "";
+/** Subdomínio de administração opcional (VITE_ADMIN_HOST). Vazio = desligado. */
+const ADMIN_HOST = (import.meta.env['VITE_ADMIN_HOST'] as string | undefined)?.trim() ?? "";
+/** Domínios públicos que devem redirecionar para o admin (VITE_PUBLIC_HOSTS, separados por vírgula). */
+const PUBLIC_HOSTS = ((import.meta.env['VITE_PUBLIC_HOSTS'] as string | undefined) ?? "")
+  .split(",")
+  .map((host) => host.trim().toLowerCase())
+  .filter(Boolean);
 
-/** Devolve a origem pública fixa; o nome da sala é o slug do webinar. */
+/** Devolve a origem pública; o nome da sala é o slug do webinar. */
 export function publicOrigin(): string {
-  return PUBLIC_APP_URL;
+  if (CONFIGURED_PUBLIC_APP_URL) return CONFIGURED_PUBLIC_APP_URL.replace(/\/+$/, "");
+  if (typeof window !== "undefined") return window.location.origin;
+  return "";
 }
 
 /**
  * Redireciona o painel/login para o subdomínio admin quando aberto num domínio
  * público. As salas (`/w/...`) continuam sempre no domínio das salas.
+ * Só está ativo quando VITE_ADMIN_HOST e VITE_PUBLIC_HOSTS estão definidos.
  */
 export function useAdminHostRedirect() {
   useEffect(() => {
-    const host = window.location.hostname;
+    if (!ADMIN_HOST || PUBLIC_HOSTS.length === 0) return;
+    const host = window.location.hostname.toLowerCase();
     const path = window.location.pathname;
     const isRoomPath = path.startsWith("/w/");
     const isLanding = path === "/";
     if (isLanding) return;
-    const onMainDomain = host === "novawebinar.com" || host === "www.novawebinar.com";
-    const onRoomsDomain = host === "globalstream.live" || host === "www.globalstream.live";
-    if (onMainDomain || (onRoomsDomain && !isRoomPath)) {
+    if (host === ADMIN_HOST.toLowerCase()) return;
+    const onPublicHost = PUBLIC_HOSTS.includes(host) || PUBLIC_HOSTS.includes(host.replace(/^www\./, ""));
+    if (onPublicHost && !isRoomPath) {
       window.location.replace(
         `https://${ADMIN_HOST}${path}${window.location.search}${window.location.hash}`,
       );
     }
   }, []);
 }
+
 
 export function formatDuration(seconds: number) {
   if (!seconds) return "—";
