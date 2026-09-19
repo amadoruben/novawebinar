@@ -39,6 +39,9 @@ export function notifyJobRows(rows: JobRow[]) {
 /** Vai buscar o estado atual dos trabalhos ao servidor. */
 export async function refreshJobs() {
   if (typeof window === "undefined" || loading) return;
+  // Sem sessão iniciada não vale a pena chamar o servidor: falharia sempre.
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData?.session) return;
   loading = true;
   try {
     const { jobs } = await listBackgroundJobs();
