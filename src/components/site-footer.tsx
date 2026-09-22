@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import wordmarkAsset from "@/assets/nova-logo-full.png.asset.json";
+import wordmarkAsset from "@/assets/local/nova-logo-full.png";
 import { landingFeatures } from "@/lib/landing-features";
 
 export function SiteFooter() {
@@ -7,7 +7,7 @@ export function SiteFooter() {
     <footer className="lp-footer">
       <div className="lp-wide lp-footer-grid">
         <div className="lp-footer-brand">
-          <img src={wordmarkAsset.url} alt="NovaWebinar" />
+          <img src={wordmarkAsset} alt="NovaWebinar" />
           <p>Webinars automatizados: agende, prepare o chat e apresente a oferta no momento certo.</p>
         </div>
         <nav aria-label="Funcionalidades">

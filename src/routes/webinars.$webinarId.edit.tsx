@@ -121,10 +121,10 @@ import {
   type WebinarStatus,
 } from "@/lib/data";
 import type { Database } from "@/integrations/supabase/types";
-import whatsappIconAsset from "@/assets/whatsapp-icon.webp.asset.json";
+import whatsappIconAsset from "@/assets/local/whatsapp-icon.webp";
 
 function WhatsAppIcon({ className }: { className?: string }) {
-  return <img src={whatsappIconAsset.url} alt="WhatsApp" className={className} />;
+  return <img src={whatsappIconAsset} alt="WhatsApp" className={className} />;
 }
 
 type Provider = Database["public"]["Enums"]["video_provider"];
@@ -847,6 +847,8 @@ function EditWebinar() {
       toast.error("Indique o link do vídeo, começado por https://");
       return;
     }
+    // Duração real do vídeo quando o navegador a consegue ler; senão, os minutos indicados.
+    const detected = await readDurationFromSrc(url);
     const { data, error } = await supabase
       .from("video_sources")
       .insert({
@@ -854,7 +856,7 @@ function EditWebinar() {
         name: newVideo.name.trim(),
         provider: newVideo.provider,
         source_url: url,
-        duration_seconds: Math.round((Number(newVideo.minutes) || 0) * 60),
+        duration_seconds: detected || Math.round((Number(newVideo.minutes) || 0) * 60),
       })
       .select("id")
       .single();
@@ -870,23 +872,36 @@ function EditWebinar() {
     toast.success("Vídeo adicionado e selecionado. Guarde as alterações.");
   };
 
-  /** Lê a duração do ficheiro antes do envio, para a biblioteca ficar completa. */
-  const readDuration = (file: File) =>
+  /** Lê a duração real a partir de um endereço (ficheiro local ou URL). Devolve 0 se não for possível. */
+  const readDurationFromSrc = (src: string, timeoutMs = 10000) =>
     new Promise<number>((resolve) => {
       const el = document.createElement("video");
-      const objectUrl = URL.createObjectURL(file);
       el.preload = "metadata";
-      el.onloadedmetadata = () => {
-        const seconds = Number.isFinite(el.duration) ? Math.round(el.duration) : 0;
-        URL.revokeObjectURL(objectUrl);
+      let done = false;
+      const finish = (seconds: number) => {
+        if (done) return;
+        done = true;
+        window.clearTimeout(timer);
+        el.removeAttribute("src");
+        el.load();
         resolve(seconds);
       };
-      el.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
-        resolve(0);
-      };
-      el.src = objectUrl;
+      const timer = window.setTimeout(() => finish(0), timeoutMs);
+      el.onloadedmetadata = () =>
+        finish(Number.isFinite(el.duration) && el.duration > 0 ? Math.round(el.duration) : 0);
+      el.onerror = () => finish(0);
+      el.src = src;
     });
+
+  /** Lê a duração do ficheiro antes do envio, para a biblioteca ficar completa. */
+  const readDuration = async (file: File) => {
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      return await readDurationFromSrc(objectUrl);
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  };
 
   const uploadVideoFile = async (file: File) => {
     if (!workspace) return;
@@ -943,9 +958,11 @@ function EditWebinar() {
       toast.error("Indique o link do vídeo, começado por https://");
       return;
     }
+    // Ao guardar o link, corrige a duração para a real sempre que for legível.
+    const detected = await readDurationFromSrc(url);
     const { error } = await supabase
       .from("video_sources")
-      .update({ source_url: url })
+      .update(detected ? { source_url: url, duration_seconds: detected } : { source_url: url })
       .eq("id", selectedVideo.id);
     if (error) {
       toast.error(friendlyError(error));

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
-import markAsset from "@/assets/nova-icon.png.asset.json";
+import markAsset from "@/assets/local/nova-icon.png";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,7 +45,7 @@ function LoginScreen() {
     <AuthUI>
       <div className="flex w-full flex-col gap-7">
         <div>
-          <img src={markAsset.url} alt="NovaWebinar" className="mb-10 h-11 w-auto" />
+          <img src={markAsset} alt="NovaWebinar" className="mb-10 h-11 w-auto" />
           <h1 className="auth-heading">Bem-vindo de volta</h1>
           <p className="auth-sub">Entre para preparar, apresentar e acompanhar os seus webinars.</p>
         </div>
@@ -175,7 +175,7 @@ export function AuthScreen({ mode }: { mode: "login" | "register" | "reset" }) {
           Voltar
         </Link>
       )}
-      <img src={markAsset.url} alt="NovaWebinar" className="mb-10 h-11 w-auto" />
+      <img src={markAsset} alt="NovaWebinar" className="mb-10 h-11 w-auto" />
       <div className="mb-8">
         <h1 className="auth-heading">{title}</h1>
         <p className="auth-sub">

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, Clapperboard, MousePointerClick, Radio, TrendingUp } from "lucide-react";
-import dashboardBanner from "@/assets/nova-dashboard-banner-desktop-v5.jpg.asset.json";
+import dashboardBanner from "@/assets/local/nova-dashboard-banner-desktop-v5.jpg";
 import { AiJobsOverview, SyncJobsOverview } from "@/components/ai-job-banner";
 import { AppShell } from "@/components/app-shell";
 import { AudienceInsights } from "@/components/audience-insights";
@@ -85,7 +85,7 @@ function Dashboard() {
       {!isLoading && (
         <section className="relative mb-6 min-h-44 overflow-hidden rounded-lg bg-foreground px-5 py-6 text-background sm:min-h-52 sm:px-7 sm:py-8">
           <img
-            src={dashboardBanner.url}
+            src={dashboardBanner}
             alt=""
             className="pointer-events-none absolute inset-y-0 right-0 h-full w-auto max-w-none object-cover opacity-90"
             aria-hidden="true"

@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ctaButtonClass } from "@/lib/cta-colors";
-import whatsappIcon from "@/assets/whatsapp-icon.webp.asset.json";
+import whatsappIcon from "@/assets/local/whatsapp-icon.webp";
 
 export function PreviewShell({
   label,
@@ -554,7 +554,7 @@ export function RegistrationPreview({
           {collectPhone && (
             <div className="grid gap-1.5">
               <p className="flex items-center gap-1.5 text-sm font-medium">
-                <img src={whatsappIcon.url} alt="" className="size-4" />
+                <img src={whatsappIcon} alt="" className="size-4" />
                 WhatsApp
                 {requirePhone && <span className="ml-0.5 text-primary">*</span>}
               </p>

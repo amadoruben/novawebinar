@@ -8,13 +8,13 @@ import {
   type PreliveAppearance,
   type PreliveTemplateId,
 } from "@/lib/prelive-templates";
-import trackOne from "@/assets/Event_Countdown.mp3.asset.json";
-import trackTwo from "@/assets/Countdown_to_Impact.mp3.asset.json";
-import trackThree from "@/assets/Countdown_to_Impact-2.mp3.asset.json";
-import trackFour from "@/assets/Countdown_Impact.mp3.asset.json";
+import trackOne from "@/assets/local/Event_Countdown.mp3";
+import trackTwo from "@/assets/local/Countdown_to_Impact.mp3";
+import trackThree from "@/assets/local/Countdown_to_Impact-2.mp3";
+import trackFour from "@/assets/local/Countdown_Impact.mp3";
 
 /** As quatro faixas tocam por ordem e recomeçam se a contagem for mais longa. */
-const PLAYLIST = [trackOne.url, trackTwo.url, trackThree.url, trackFour.url];
+const PLAYLIST = [trackOne, trackTwo, trackThree, trackFour];
 
 /** Seis segundos inteiros de descida, terminando em silêncio antes da mudança de imagem. */
 const FADE_TRIGGER_SECONDS = 6;

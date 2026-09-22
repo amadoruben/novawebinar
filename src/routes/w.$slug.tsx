@@ -18,7 +18,7 @@ import {
 } from "@/lib/phone-countries";
 import { WebinarRoom } from "@/components/webinar-room";
 import { RoomSkeleton, getCachedRoomTheme, cacheRoomTheme } from "@/components/room-skeleton";
-import whatsappIcon from "@/assets/whatsapp-icon.webp.asset.json";
+import whatsappIcon from "@/assets/local/whatsapp-icon.webp";
 import {
   getPublicRoom,
   joinPublicRoom,
@@ -255,8 +255,9 @@ export function PublicRoom({
     })();
   }, [data, shouldAutoJoin, viewer, join, roomMode, slug, testMode, audienceMeta]);
 
+  const lastSentPeakRef = useRef(0);
   const onProgress = useCallback(
-    (seconds: number, peakSeconds?: number) => {
+    (seconds: number, peakSeconds?: number, options?: { final?: boolean }) => {
       positionRef.current = seconds;
       const peak = Math.max(peakSeconds ?? seconds, peakPositionRef.current);
       peakPositionRef.current = peak;
@@ -280,8 +281,15 @@ export function PublicRoom({
         }
       }
       if (!viewer) return;
-      void trackProgress({
-        data: { participantId: viewer.participantId, watchedSeconds: peak },
+      // Só grava quando o pico avançou, para não repetir pedidos iguais.
+      if (peak <= lastSentPeakRef.current) return;
+      const previous = lastSentPeakRef.current;
+      lastSentPeakRef.current = peak;
+      const data = { participantId: viewer.participantId, watchedSeconds: peak };
+      // Ao esconder ou fechar a página, keepalive deixa o pedido terminar sem bloquear.
+      const keepalive: typeof fetch = (input, init) => fetch(input, { ...init, keepalive: true });
+      void trackProgress(options?.final ? { data, fetch: keepalive } : { data }).catch(() => {
+        if (lastSentPeakRef.current === peak) lastSentPeakRef.current = previous;
       });
     },
     [trackProgress, viewer, slug],
@@ -501,7 +509,7 @@ export function PublicRoom({
               {webinar.registration_collect_phone && (
                 <div className="grid gap-1.5">
                   <Label className="flex items-center gap-1.5 text-sm font-medium">
-                    <img src={whatsappIcon.url} alt="" className="size-4" />
+                    <img src={whatsappIcon} alt="" className="size-4" />
                     WhatsApp{" "}
                     {webinar.registration_require_phone ? (
                       <span className="text-primary">*</span>

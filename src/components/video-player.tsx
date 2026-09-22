@@ -9,6 +9,8 @@ type Props = {
   onTime: (seconds: number) => void;
   /** Chamado quando o vídeo chega ao fim. */
   onEnded?: () => void;
+  /** Chamado quando a reprodução pausa (antes de qualquer retoma automática). */
+  onPause?: () => void;
   /** Confirma que a reprodução começou de facto. */
   onPlaying?: () => void;
   /** Dá ao ecrã da sala acesso ao leitor para autorizar o áudio no toque inicial. */
@@ -89,6 +91,7 @@ export function VideoPlayer({
   controls,
   onTime,
   onEnded,
+  onPause,
   onPlaying,
   mediaRef,
   className,
@@ -406,6 +409,7 @@ export function VideoPlayer({
         if (video.paused) void video.play().catch(() => undefined);
       }}
       onPause={(e) => {
+        onPause?.();
         if (controls || !autoPlay) return;
         void e.currentTarget.play().catch(() => undefined);
       }}

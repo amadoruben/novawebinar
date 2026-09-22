@@ -16,7 +16,7 @@ import {
   Sparkles,
   Video,
 } from "lucide-react";
-import presenterAsset from "@/assets/nova-presenter.jpg.asset.json";
+import presenterAsset from "@/assets/local/nova-presenter.jpg";
 
 export function ScheduleVisual() {
   return (
@@ -42,7 +42,7 @@ export function RoomVisual({ sales = false }: { sales?: boolean }) {
   return (
     <div className="lp-room-ui" aria-label={sales ? "Sala ao vivo com notificações de venda" : "Sala ao vivo do NovaWebinar"}>
       <div className="lp-room-player">
-        <img src={presenterAsset.url} alt="Pessoa a fazer uma apresentação num ambiente profissional" />
+        <img src={presenterAsset} alt="Pessoa a fazer uma apresentação num ambiente profissional" />
         <div className="lp-room-top">
           <span className="lp-live-group"><b className="lp-live-tag"><Radio /> Ao Vivo</b><b className="lp-live-count"><Eye /> 1 284</b></span>
         </div>
@@ -77,7 +77,7 @@ export function ReplayVisual() {
   return (
     <div className="lp-room-ui" aria-label="Sala em modo replay do NovaWebinar">
       <div className="lp-room-player">
-        <img src={presenterAsset.url} alt="Pessoa a fazer uma apresentação num ambiente profissional" />
+        <img src={presenterAsset} alt="Pessoa a fazer uma apresentação num ambiente profissional" />
         <div className="lp-room-top">
           <span className="lp-live-group"><b className="lp-replay-tag"><Video /> Replay</b><b className="lp-live-count"><Eye /> 312</b></span>
         </div>
@@ -135,7 +135,7 @@ export function OfferVisual() {
   return (
     <div className="lp-room-ui is-offer" aria-label="Oferta apresentada durante a sessão ao vivo">
       <div className="lp-room-player">
-        <img src={presenterAsset.url} alt="Pessoa a fazer uma apresentação num ambiente profissional" />
+        <img src={presenterAsset} alt="Pessoa a fazer uma apresentação num ambiente profissional" />
         <div className="lp-room-top">
           <span className="lp-live-group"><b className="lp-live-tag"><Radio /> Ao Vivo</b><b className="lp-live-count"><Eye /> 1 284</b></span>
         </div>

@@ -16,8 +16,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import brandAsset from "@/assets/nova-logo-full.png.asset.json";
-import iconAsset from "@/assets/nova-icon.png.asset.json";
+import brandAsset from "@/assets/local/nova-logo-full.png";
+import iconAsset from "@/assets/local/nova-icon.png";
 import { Button } from "@/components/ui/button";
 
 type NavItem = { to: string; title: string; icon: React.ElementType; exact?: boolean };
@@ -96,7 +96,7 @@ export function SidebarNav({
       <div className="flex h-24 shrink-0 items-center gap-2 px-5">
         <Link to="/dashboard" className="flex min-w-0 flex-1 items-center" onClick={onClose}>
           <img
-            src={collapsed ? iconAsset.url : brandAsset.url}
+            src={collapsed ? iconAsset : brandAsset}
             alt="NovaWebinar"
             className={`select-none object-contain ${collapsed ? "h-9 w-9" : "h-10 w-full max-w-[184px]"}`}
             draggable={false}

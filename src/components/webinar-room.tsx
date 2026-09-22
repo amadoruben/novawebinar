@@ -225,7 +225,7 @@ export function WebinarRoom({
   supportMessages?: { id: string; body: string; sender_kind: string; created_at: string }[];
   onCtaView?: () => void;
   onCtaClick?: () => void;
-  onProgress?: (seconds: number, peakSeconds?: number) => void;
+  onProgress?: (seconds: number, peakSeconds?: number, options?: { final?: boolean }) => void;
 }) {
   const [seconds, setSeconds] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -476,14 +476,33 @@ export function WebinarRoom({
   // O progresso guardado e o assistente seguem a posição real do vídeo.
   const onProgressRef = useRef(onProgress);
   onProgressRef.current = onProgress;
+  const contentSecondsRef = useRef(contentSeconds);
+  contentSecondsRef.current = contentSeconds;
+  const flushProgress = useCallback((options?: { final?: boolean }) => {
+    onProgressRef.current?.(
+      Math.round(contentSecondsRef.current),
+      Math.round(contentPeakRef.current),
+      options,
+    );
+  }, []);
+  // Batimento fixo de 15 s (não reinicia com o tempo do vídeo), mais uma
+  // gravação ao esconder ou fechar a página e ao sair da sala.
   useEffect(() => {
     if (!onProgress) return;
-    const timer = window.setInterval(
-      () => onProgressRef.current?.(Math.round(contentSeconds), Math.round(contentPeakRef.current)),
-      15000,
-    );
-    return () => window.clearInterval(timer);
-  }, [onProgress, contentSeconds]);
+    const timer = window.setInterval(() => flushProgress(), 15000);
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") flushProgress({ final: true });
+    };
+    const onPageHide = () => flushProgress({ final: true });
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onHidden);
+      window.removeEventListener("pagehide", onPageHide);
+      flushProgress({ final: true });
+    };
+  }, [onProgress, flushProgress]);
 
   const ctaStart = webinar.cta_start_seconds ?? 0;
   // Sem hora de fim definida (ou com um fim anterior ao início, por engano),
@@ -745,7 +764,11 @@ export function WebinarRoom({
       liveTargetSeconds={scheduled && syncWithStart && !waiting && !finished ? timeline : null}
       theme={theme}
 
-      onEnded={() => setVideoEnded(true)}
+      onEnded={() => {
+        setVideoEnded(true);
+        flushProgress({ final: true });
+      }}
+      onPause={() => flushProgress()}
       onPlaying={() => {
         if (!preliveEnding || preliveReveal || revealTimerRef.current !== null) return;
         if (playbackFallbackRef.current !== null) {
