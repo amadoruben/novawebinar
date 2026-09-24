@@ -24,6 +24,14 @@ import {
   type Opportunity,
 } from "@/lib/temporal/opportunities";
 import { pickTimestamp } from "@/lib/temporal/windows";
+import {
+  applyAuditFixes,
+  moveTo,
+  placeInTimeline,
+  syncOffsets,
+  type PlacementReport,
+} from "@/lib/temporal/placement";
+import { AIError, chatJson } from "@/lib/ai/provider";
 
 
 /**
@@ -759,14 +767,21 @@ const existingSchema = z
   // Nunca rejeitamos por excesso: ficamos com os mais recentes.
   .transform((list) => (list.length > 1500 ? list.slice(-1500) : list));
 const boundsSchema = z.object({ start: z.number().int().min(0), end: z.number().int().min(0) });
-const fullCommentSchema = z.object({
-  at: z.number(),
-  author: z.string(),
-  message: z.string(),
-  moment: z.string().default("geral"),
-  kind: z.enum(["provoca", "reage", "responde", "espontaneo"]).catch("espontaneo"),
-  anchor: z.number().int().nullable().catch(null),
-});
+// A revisão só mexe no instante: todos os outros campos entram e saem intactos.
+const fullCommentSchema = z
+  .object({
+    at: z.number(),
+    atMs: z.number().optional(),
+    author: z.string(),
+    message: z.string(),
+    moment: z.string().default("geral"),
+    kind: z.enum(["provoca", "reage", "responde", "espontaneo"]).catch("espontaneo"),
+    anchor: z.number().int().nullable().catch(null),
+    reason: z.string().optional(),
+    slot: z.string().nullable().optional(),
+    persona: z.string().optional(),
+  })
+  .passthrough();
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 async function loadWebinar(supabase: any, webinarId: string): Promise<WebinarInfo> {
@@ -792,22 +807,32 @@ async function loadWebinar(supabase: any, webinarId: string): Promise<WebinarInf
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-/** A duração real pode vir do vídeo, do webinar ou, em último caso, do último momento transcrito. */
-function computeDuration(webinar: WebinarInfo, transcript: TranscriptSegment[]): number {
+/**
+ * Duração do vídeo, que limita todos os instantes gerados.
+ *
+ * A duração real (do ficheiro ou do webinar) manda. A transcrição só a
+ * corrige para cima quando termina depois dela, o que indica metadados
+ * errados. Só sem qualquer duração real se estima pela transcrição, com
+ * margem, e em último caso pelos 30 minutos.
+ */
+export function computeDuration(webinar: WebinarInfo, transcript: TranscriptSegment[]): number {
   const transcriptEnd = transcript.reduce((max, s) => Math.max(max, s.at), 0);
-  const known = Math.max(
-    webinar.sourceDuration,
-    webinar.duration_seconds || 0,
-    transcriptEnd > 0 ? transcriptEnd + 60 : 0,
-  );
-  // Só usamos os 30 minutos quando não sabemos mesmo nada sobre o vídeo.
-  return known > 0 ? known : 1800;
+  const real = Math.max(webinar.sourceDuration || 0, webinar.duration_seconds || 0);
+  if (real > 0) return Math.max(real, transcriptEnd);
+  if (transcriptEnd > 0) return transcriptEnd + 60;
+  return 1800;
 }
 
+/** Limites de geração: nunca depois do fim do vídeo. */
 function computeBounds(range: { start: number; end: number } | undefined, duration: number) {
-  const start = range?.start ?? 0;
-  const end = Math.max(start + 30, range?.end ?? duration);
+  const start = Math.max(0, Math.min(range?.start ?? 0, duration));
+  const end = Math.max(start, Math.min(duration, Math.max(start + 30, range?.end ?? duration)));
   return { start, end };
+}
+
+/** Fim efectivo de uma janela: o pedido pelo cliente, mas nunca depois do vídeo. */
+function boundedEnd(bounds: { start: number; end: number }, duration: number) {
+  return Math.max(bounds.start, Math.min(bounds.end, duration));
 }
 
 function perMinuteOf(settings: Settings): number {
@@ -1378,27 +1403,15 @@ async function askWindow(
     .filter(Boolean)
     .join("\n");
 
-  const response = await fetch(`${GATEWAY}/chat/completions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey()}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: CHAT_MODEL,
-      messages: [
-        {
-          role: "system",
-          content:
-            "És um argumentista de conversas de chat ao vivo. Escreves mensagens curtas e humanas de espectadores reais. Devolves sempre JSON válido.",
-        },
-        { role: "user", content: prompt },
-      ],
-      response_format: { type: "json_object" },
-    }),
+  const result = await chatJson({
+    system:
+      "És um argumentista de conversas de chat ao vivo. Escreves mensagens curtas e humanas de espectadores reais. Devolves sempre JSON válido.",
+    user: prompt,
   });
 
-  if (!response.ok) throw new Error(await gatewayError(response));
+  if (!result.ok) throw new AIError(result);
 
-  const payload = (await response.json()) as { choices?: { message?: { content?: string } }[] };
-  const parsed = parseJson(payload.choices?.[0]?.message?.content ?? "") as {
+  const parsed = result.json as {
     comments?: {
       at?: unknown;
       author?: unknown;
@@ -1480,12 +1493,22 @@ async function askWindow(
  * IA declarou: o que provoca a fala fica antes dela, o que reage fica depois,
  * e ninguém fala da oferta antes de ela ser apresentada.
  */
-function fixCausality(ctx: GenContext, input: Comment[]) {
+export function fixCausality(
+  ctx: GenContext,
+  input: Comment[],
+  report: PlacementReport<Comment> = { dropped: [] },
+) {
   const ctaStart = ctx.webinar.cta_start_seconds ?? null;
+  const bounds = { start: ctx.start, end: ctx.end };
   // Primeiro tira tudo o que antecipa uma causa que ainda não aconteceu.
-  const list = stripAnticipations(ctx, input);
-  for (const comment of list) {
+  const list: Comment[] = [];
+  for (const comment of stripAnticipations(ctx, input)) {
+    // `at` e `atMs` passam a dizer o mesmo antes de qualquer ajuste.
+    syncOffsets(comment);
     const anchor = comment.anchor;
+    // Quando a causa só permite um instante depois do fim do vídeo, o
+    // comentário não tem lugar válido: fica registado como descartado.
+    let requiredAt: number | null = null;
     if (anchor !== null) {
       if (comment.kind === "provoca") {
         // "Provoca" só é válida como pretexto real: quando o apresentador lê
@@ -1497,32 +1520,39 @@ function fixCausality(ctx: GenContext, input: Comment[]) {
           comment.kind = "espontaneo";
           comment.anchor = null;
         } else if (comment.at >= anchor - 3) {
-          comment.at = Math.max(ctx.start, anchor - 8);
+          moveTo(comment, Math.max(ctx.start, anchor - 8));
         }
       } else if (comment.kind === "reage") {
         // Ninguém reage enquanto a ideia ainda está a ser dita: conta-se a
         // partir do momento em que a frase fecha.
         const floor = ideaEndsAt(ctx, anchor) + 3;
-        if (comment.at < floor) comment.at = Math.min(ctx.end, floor);
-
+        if (comment.at < floor) requiredAt = floor;
       } else if (comment.kind === "responde" && comment.at <= anchor + 1) {
         // Resposta a uma chamada direta: nunca antes da pergunta.
-        comment.at = Math.min(ctx.end, anchor + 3);
+        requiredAt = anchor + 3;
       }
     }
     if (ctaStart !== null && comment.moment === "oferta" && comment.at < ctaStart) {
-      comment.at = Math.min(ctx.end, ctaStart + 6);
+      requiredAt = Math.max(requiredAt ?? 0, ctaStart + 6);
     }
+    if (requiredAt !== null) {
+      if (requiredAt > ctx.end) {
+        report.dropped.push({
+          comment,
+          reason: "causa_depois_do_fim",
+          detail: `só podia aparecer aos ${requiredAt}s, depois do fim do vídeo (${ctx.end}s)`,
+        });
+        continue;
+      }
+      moveTo(comment, requiredAt);
+    }
+    list.push(comment);
   }
-  list.sort((a, b) => a.at - b.at);
+  list.sort((a, b) => a.atMs! - b.atMs!);
   const spread = enforceIntentDiversity(dropPraiseClusters(list));
-  // Sem dois comentários no mesmo segundo, para a cascata respirar.
-  let previous = -1;
-  for (const comment of spread) {
-    if (comment.at <= previous) comment.at = previous + 2;
-    previous = comment.at;
-  }
-  return spread;
+  // Sem dois comentários no mesmo segundo, para a cascata respirar, mas
+  // nunca depois do fim do vídeo: quem não cabe é descartado e reportado.
+  return placeInTimeline(spread, bounds, 2, report);
 }
 
 /** Elogios genéricos tipo "muito bom 🔥": no máximo um por momento. */
@@ -1613,7 +1643,11 @@ function enforceIntentDiversity(list: Comment[]): Comment[] {
 
 
 /** Segunda leitura da timeline pela IA, à procura de inconsistências temporais. */
-async function auditTimeline(ctx: GenContext, list: Comment[]) {
+async function auditTimeline(
+  ctx: GenContext,
+  list: Comment[],
+  report: PlacementReport<Comment> = { dropped: [] },
+) {
   if (list.length === 0) return list;
   const transcript = condenseTranscript(
     ctx.transcript.filter((s) => s.at >= ctx.start - 60 && s.at <= ctx.end + 60),
@@ -1653,40 +1687,23 @@ async function auditTimeline(ctx: GenContext, list: Comment[]) {
     .join("\n");
 
   try {
-    const response = await fetch(`${GATEWAY}/chat/completions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey()}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: CHAT_MODEL,
-        messages: [
-          {
-            role: "system",
-            content:
-              "És revisor de cronologia de chats de webinars. Verificas se cada mensagem está antes ou depois da fala certa. Devolves sempre JSON válido.",
-          },
-          { role: "user", content: review },
-        ],
-        response_format: { type: "json_object" },
-      }),
+    const result = await chatJson({
+      system:
+        "És revisor de cronologia de chats de webinars. Verificas se cada mensagem está antes ou depois da fala certa. Devolves sempre JSON válido.",
+      user: review,
     });
-    if (response.ok) {
-      const payload = (await response.json()) as { choices?: { message?: { content?: string } }[] };
-      const parsed = parseJson(payload.choices?.[0]?.message?.content ?? "") as {
+    if (result.ok) {
+      const parsed = result.json as {
         fixes?: { index?: unknown; at?: unknown }[];
       };
-      for (const fix of parsed.fixes ?? []) {
-        const index = Number(fix.index);
-        const at = Number(fix.at);
-        const target = list[index];
-        if (!target || !Number.isFinite(at)) continue;
-        target.at = Math.max(ctx.start, Math.min(ctx.end, Math.round(at)));
-      }
+      // Só o instante muda; `at` e `atMs` seguem juntos e dentro do vídeo.
+      applyAuditFixes(list, parsed.fixes ?? [], { start: ctx.start, end: ctx.end });
     }
   } catch {
     // Uma revisão falhada não pode deitar fora o chat inteiro.
   }
 
-  return fixCausality(ctx, list);
+  return fixCausality(ctx, list, report);
 }
 
 /* ------------------------------------------------------------------ *
@@ -1799,27 +1816,15 @@ async function scanAudiencePrompts(
     ].join("\n");
 
     try {
-      const response = await fetch(`${GATEWAY}/chat/completions`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey()}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: CHAT_MODEL,
-          messages: [
-            {
-              role: "system",
-              content:
-                "Detetas pedidos diretos de interação em transcrições de webinars e devolves sempre JSON válido.",
-            },
-            { role: "user", content: prompt },
-          ],
-          response_format: { type: "json_object" },
-        }),
+      const result = await chatJson({
+        system:
+          "Detetas pedidos diretos de interação em transcrições de webinars e devolves sempre JSON válido.",
+        user: prompt,
       });
-      if (!response.ok) continue;
-      const payload = (await response.json()) as { choices?: { message?: { content?: string } }[] };
+      if (!result.ok) continue;
       const parsed = z
         .object({ prompts: z.array(audiencePromptSchema).max(40).default([]) })
-        .safeParse(parseJson(payload.choices?.[0]?.message?.content ?? ""));
+        .safeParse(result.json);
       if (parsed.success) found.push(...parsed.data.prompts);
     } catch {
       // Um bloco que falhe não estraga a varredura dos restantes.
@@ -2032,28 +2037,16 @@ export async function analyseWebinarStructureImpl(supabase: any, data: any) {
       .filter(Boolean)
       .join("\n");
 
-    const response = await fetch(`${GATEWAY}/chat/completions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey()}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: CHAT_MODEL,
-        messages: [
-          {
-            role: "system",
-            content:
-              "És diretor de engajamento de webinars. Analisas o percurso da apresentação, antecipas onde se perde atenção e preparas a estratégia de interação. Devolves sempre JSON válido.",
-          },
-          { role: "user", content: prompt },
-        ],
-        response_format: { type: "json_object" },
-      }),
+    const result = await chatJson({
+      system:
+        "És diretor de engajamento de webinars. Analisas o percurso da apresentação, antecipas onde se perde atenção e preparas a estratégia de interação. Devolves sempre JSON válido.",
+      user: prompt,
     });
 
-    if (!response.ok) throw new Error(await gatewayError(response));
+    if (!result.ok) throw new AIError(result);
 
-    const payload = (await response.json()) as { choices?: { message?: { content?: string } }[] };
     const parsed = analysisPayloadSchema.parse({
-      ...(parseJson(payload.choices?.[0]?.message?.content ?? "") as object),
+      ...(result.json as object),
       objective: data.objective,
       durationSeconds: duration,
     });
@@ -2243,7 +2236,7 @@ export async function generateCommentsWindowImpl(supabase: any, data: any) {
       transcript: data.transcript,
       duration,
       start: data.bounds.start,
-      end: data.bounds.end,
+      end: boundedEnd(data.bounds, duration),
       intel,
     };
     // Oportunidades a partir dos tempos reais por palavra: sem elas, as
@@ -2321,7 +2314,7 @@ export async function auditCommentsTimelineImpl(supabase: any, data: any) {
       transcript: data.transcript,
       duration,
       start: data.bounds.start,
-      end: data.bounds.end,
+      end: boundedEnd(data.bounds, duration),
       intel: saved
         ? {
             objective: (saved.objective as EngagementObjective) ?? "balanced",
@@ -2333,13 +2326,17 @@ export async function auditCommentsTimelineImpl(supabase: any, data: any) {
            }
         : undefined,
     };
-    const finalList = await auditTimeline(ctx, data.comments as Comment[]);
+    const report: PlacementReport<Comment> = { dropped: [] };
+    const finalList = await auditTimeline(ctx, data.comments as Comment[], report);
+    // Devolve os comentários inteiros: a revisão só mexeu no instante.
     return {
-      comments: finalList.map(({ at, author, message, moment }) => ({
-        at,
-        author,
-        message,
-        moment,
+      comments: finalList,
+      dropped: report.dropped.map(({ comment, reason, detail }) => ({
+        at: comment.at,
+        author: comment.author,
+        message: comment.message,
+        reason,
+        detail,
       })),
     };
   }
@@ -2382,15 +2379,9 @@ export async function generateEngagementCommentsImpl(supabase: any, data: any) {
     const comments = await askWindow(ctx, start, end, howMany, data.existing);
     if (comments.length === 0) throw new Error("A IA não conseguiu criar comentários desta vez.");
 
-    const finalList = fixCausality(ctx, comments);
-    return {
-      comments: finalList.map(({ at, author, message, moment }) => ({
-        at,
-        author,
-        message,
-        moment,
-      })),
-    };
+    const report: PlacementReport<Comment> = { dropped: [] };
+    const finalList = fixCausality(ctx, comments, report);
+    return { comments: finalList, dropped: report.dropped.length };
   }
 
 export const generateEngagementComments = createServerFn({ method: "POST" })

@@ -104,6 +104,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
+import { toStorageOffsets } from "@/lib/temporal/placement";
+import {
+  MAX_VIDEO_BYTES,
+  VIDEO_BUCKET,
+  createVideoUpload,
+  formatBytes,
+  safeObjectName,
+  type VideoUploadHandle,
+  type VideoUploadProgress,
+} from "@/lib/video-upload";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import {
@@ -404,7 +414,14 @@ function EditWebinar() {
   const [linkDraft, setLinkDraft] = useState("");
   const [showNewVideo, setShowNewVideo] = useState(false);
   const [newVideoMode, setNewVideoMode] = useState<"menu" | "upload" | "tools">("menu");
-  const [uploading, setUploading] = useState(false);
+  // Envio TUS em curso: progresso real, pausa, retoma e cancelamento.
+  const [videoUpload, setVideoUpload] = useState<{
+    file: File;
+    progress: VideoUploadProgress;
+  } | null>(null);
+  const videoUploadRef = useRef<VideoUploadHandle | null>(null);
+  const uploading =
+    videoUpload?.progress.status === "uploading" || videoUpload?.progress.status === "paused";
   const fileInputRef = useRef<HTMLInputElement>(null);
 
 
@@ -776,17 +793,29 @@ function EditWebinar() {
         .eq("webinar_id", webinarId);
       if (error) throw error;
     }
+    // Última barreira antes da base: nada é gravado depois do fim do vídeo,
+    // e `offset_seconds` deriva sempre de `offset_ms`.
+    const source = videoSources.find((v) => v.id === form.video_source_id);
+    const videoDuration = source?.duration_seconds || webinar?.duration_seconds || 0;
+    const placed = drafts.map((draft) => ({ draft, ...toStorageOffsets(draft) }));
+    const valid = placed.filter(
+      ({ offset_seconds }) => videoDuration <= 0 || offset_seconds <= videoDuration,
+    );
+    const rejected = placed.length - valid.length;
+    if (valid.length === 0) {
+      throw new Error("Nenhum comentário cabe dentro da duração do vídeo.");
+    }
     const { error } = await supabase.from("scheduled_comments").insert(
-      drafts.map((draft) => ({
+      valid.map(({ draft, offset_seconds, offset_ms }) => ({
         webinar_id: webinarId,
         organization_id: workspace.organizationId,
         author_name: draft.author,
         message: draft.message,
-        offset_seconds: Math.max(0, Math.round(draft.at)),
+        offset_seconds,
         comment_type: draft.moment || "geral",
         ai_intent: draft.kind ?? null,
         ai_persona: draft.persona ?? null,
-        offset_ms: Math.max(0, Math.round(draft.atMs ?? draft.at * 1000)),
+        offset_ms,
         trigger_type: draft.causality?.triggerType ?? null,
         trigger_id: draft.causality?.triggerId ?? null,
         trigger_start_ms: draft.causality?.triggerStartMs ?? null,
@@ -802,7 +831,11 @@ function EditWebinar() {
     );
     if (error) throw error;
     invalidate(["scheduled-comments"]);
-    toast.success(`${drafts.length} comentários adicionados à timeline.`);
+    toast.success(
+      rejected > 0
+        ? `${valid.length} comentários adicionados à timeline. ${rejected} ficaram de fora por estarem depois do fim do vídeo.`
+        : `${valid.length} comentários adicionados à timeline.`,
+    );
   };
 
   const regenerateComment = async (comment: { id: string; offset_seconds: number }) => {
@@ -903,51 +936,106 @@ function EditWebinar() {
     }
   };
 
+  /** Depois do ficheiro estar no bucket: regista a fonte com `storage_path` e um link assinado. */
+  const registerUploadedVideo = async (file: File, path: string, duration: number) => {
+    if (!workspace) return;
+    // O link assinado continua a ser guardado para os ecrãs que já o usam
+    // (pré-visualização, transcrição). A sala pública passa a assinar a partir
+    // de `storage_path` na altura da reprodução.
+    const signed = await supabase.storage
+      .from(VIDEO_BUCKET)
+      .createSignedUrl(path, 60 * 60 * 24 * 365 * 5);
+    if (signed.error || !signed.data?.signedUrl) {
+      toast.error(friendlyError(signed.error ?? "Não foi possível preparar o link do vídeo."));
+      return;
+    }
+    const { data, error } = await supabase
+      .from("video_sources")
+      .insert({
+        organization_id: workspace.organizationId,
+        name: file.name.replace(/\.[^.]+$/, ""),
+        provider: "upload",
+        source_url: signed.data.signedUrl,
+        storage_path: path,
+        duration_seconds: duration,
+      })
+      .select("id")
+      .single();
+    if (error) {
+      toast.error(friendlyError(error));
+      return;
+    }
+    setForm((f) => ({ ...f, video_source_id: data.id }));
+    setShowNewVideo(false);
+    setNewVideoMode("menu");
+    setVideoUpload(null);
+    videoUploadRef.current = null;
+    invalidate(["video-sources"]);
+    toast.success(`Vídeo enviado (${formatBytes(file.size)}) e selecionado. Guarde as alterações.`);
+  };
+
   const uploadVideoFile = async (file: File) => {
     if (!workspace) return;
-    setUploading(true);
-    try {
-      const duration = await readDuration(file);
-      const safeName = file.name.replace(/[^\w.-]+/g, "-");
-      const path = `${workspace.organizationId}/${crypto.randomUUID()}-${safeName}`;
-      const upload = await supabase.storage
-        .from("webinar-videos")
-        .upload(path, file, { contentType: file.type || "video/mp4", upsert: false });
-      if (upload.error) {
-        toast.error(friendlyError(upload.error));
-        return;
-      }
-      const signed = await supabase.storage
-        .from("webinar-videos")
-        .createSignedUrl(path, 60 * 60 * 24 * 365 * 5);
-      if (signed.error || !signed.data?.signedUrl) {
-        toast.error(friendlyError(signed.error ?? "Não foi possível preparar o link do vídeo."));
-        return;
-      }
-      const { data, error } = await supabase
-        .from("video_sources")
-        .insert({
-          organization_id: workspace.organizationId,
-          name: file.name.replace(/\.[^.]+$/, ""),
-          provider: "upload",
-          source_url: signed.data.signedUrl,
-          duration_seconds: duration,
-        })
-        .select("id")
-        .single();
-      if (error) {
-        toast.error(friendlyError(error));
-        return;
-      }
-      setForm((f) => ({ ...f, video_source_id: data.id }));
-      setShowNewVideo(false);
-      setNewVideoMode("menu");
-      invalidate(["video-sources"]);
-      toast.success("Vídeo enviado e selecionado. Guarde as alterações.");
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    const active = videoUploadRef.current;
+    if (active && uploading) {
+      const sameFile =
+        active.file.name === file.name &&
+        active.file.size === file.size &&
+        active.file.lastModified === file.lastModified;
+      toast.error(
+        sameFile
+          ? "Este vídeo já está a ser enviado."
+          : "Já há um envio em curso. Espere que termine ou cancele-o primeiro.",
+      );
+      return;
     }
+    if (file.size > MAX_VIDEO_BYTES) {
+      toast.error(
+        `O ficheiro tem ${formatBytes(file.size)} e ultrapassa o limite de 5 GB por vídeo. Comprima-o ou use um link externo.`,
+      );
+      return;
+    }
+    if (file.size === 0) {
+      toast.error("O ficheiro está vazio.");
+      return;
+    }
+    const duration = await readDuration(file);
+    const path = `${workspace.organizationId}/${crypto.randomUUID()}-${safeObjectName(file.name)}`;
+    const handle = createVideoUpload({
+      file,
+      path,
+      onProgress: (progress) => {
+        setVideoUpload({ file, progress });
+        if (progress.status === "error" && progress.error) toast.error(progress.error);
+      },
+      onSuccess: (finalPath) => {
+        void registerUploadedVideo(file, finalPath, duration);
+      },
+    });
+    videoUploadRef.current = handle;
+    setVideoUpload({
+      file,
+      progress: {
+        status: "uploading",
+        bytesSent: 0,
+        bytesTotal: file.size,
+        percent: 0,
+        error: null,
+        recoverable: false,
+        resumedFromBytes: null,
+      },
+    });
+    await handle.start();
+  };
+
+  const pauseVideoUpload = () => void videoUploadRef.current?.pause();
+  const resumeVideoUpload = () => videoUploadRef.current?.resume();
+  const cancelVideoUpload = async () => {
+    await videoUploadRef.current?.cancel();
+    videoUploadRef.current = null;
+    setVideoUpload(null);
+    toast("Envio cancelado.");
   };
 
   const saveVideoLink = async () => {
@@ -2012,6 +2100,71 @@ function EditWebinar() {
                             if (file) void uploadVideoFile(file);
                           }}
                         />
+                        {videoUpload && videoUpload.progress.status !== "done" ? (
+                          <div className="space-y-3 rounded-2xl border p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold">{videoUpload.file.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {formatBytes(videoUpload.progress.bytesSent)} de{" "}
+                                  {formatBytes(videoUpload.progress.bytesTotal)}
+                                  {videoUpload.progress.resumedFromBytes != null
+                                    ? " · envio retomado"
+                                    : ""}
+                                </p>
+                              </div>
+                              <span className="shrink-0 text-sm font-bold tabular-nums">
+                                {videoUpload.progress.percent}%
+                              </span>
+                            </div>
+                            <Progress value={videoUpload.progress.percent} />
+                            <p className="text-xs text-muted-foreground">
+                              {videoUpload.progress.status === "uploading" && "A enviar vídeo…"}
+                              {videoUpload.progress.status === "paused" &&
+                                "Envio em pausa. Pode retomar quando quiser."}
+                              {videoUpload.progress.status === "error" &&
+                                (videoUpload.progress.error ?? "O envio falhou.")}
+                              {videoUpload.progress.status === "cancelled" && "Envio cancelado."}
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {videoUpload.progress.status === "uploading" && (
+                                <Button type="button" variant="outline" size="sm" onClick={pauseVideoUpload}>
+                                  Pausar
+                                </Button>
+                              )}
+                              {videoUpload.progress.status === "paused" && (
+                                <Button type="button" size="sm" onClick={resumeVideoUpload}>
+                                  Retomar
+                                </Button>
+                              )}
+                              {videoUpload.progress.status === "error" && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={
+                                    videoUpload.progress.recoverable
+                                      ? resumeVideoUpload
+                                      : () => void uploadVideoFile(videoUpload.file)
+                                  }
+                                >
+                                  <RefreshCw />
+                                  {videoUpload.progress.recoverable ? "Tentar de novo" : "Recomeçar"}
+                                </Button>
+                              )}
+                              {videoUpload.progress.status !== "cancelled" && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-destructive hover:text-destructive"
+                                  onClick={() => void cancelVideoUpload()}
+                                >
+                                  Cancelar
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ) : null}
                         <button
                           type="button"
                           disabled={uploading}
@@ -2025,7 +2178,7 @@ function EditWebinar() {
                           )}
                           {uploading ? "A enviar vídeo…" : "Escolher ficheiro de vídeo"}
                           <span className="text-[11px] font-medium normal-case tracking-normal">
-                            MP4, MOV ou WebM até 2 GB
+                            MP4, MOV ou WebM até 5 GB · envio com retoma automática
                           </span>
                         </button>
                       </div>

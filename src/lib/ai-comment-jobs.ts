@@ -48,6 +48,8 @@ export type WindowComment = {
   moment: string;
   kind: "provoca" | "reage" | "responde" | "espontaneo";
   anchor: number | null;
+  reason?: string;
+  slot?: string | null;
 };
 
 /** O que já foi feito, para que uma nova tentativa continue em vez de repetir. */
@@ -449,6 +451,8 @@ export function startAiJob(input: {
         const pending = plan.windows.filter((w) => !doneWindows.has(windowKey(w)));
 
         let failedWindows = 0;
+        // Última razão real de falha de um trecho, para não esconder o erro.
+        let lastWindowError = "";
 
         // Vários trechos ao mesmo tempo: a geração fica bastante mais rápida
         // do que trecho a trecho, sem sobrecarregar os pedidos à IA.
@@ -489,7 +493,8 @@ export function startAiJob(input: {
                     },
                   });
                   return result.comments as WindowComment[];
-                } catch {
+                } catch (error) {
+                  lastWindowError = friendlyError(error, "");
                   await new Promise((resolve) => setTimeout(resolve, 3000));
                 }
               }
@@ -517,7 +522,11 @@ export function startAiJob(input: {
 
 
         if (collected.length === 0) {
-          throw new Error("A IA não conseguiu criar comentários desta vez.");
+          throw new Error(
+            lastWindowError
+              ? `A IA não conseguiu criar comentários desta vez. ${lastWindowError}`
+              : "A IA não conseguiu criar comentários desta vez.",
+          );
         }
 
         patch(webinarId, { stage: 3, note: "A rever a cronologia" });
@@ -529,13 +538,18 @@ export function startAiJob(input: {
           message: string;
           moment: string;
           kind?: "provoca" | "reage" | "responde" | "espontaneo";
+          anchor?: number | null;
+          reason?: string;
         }): DraftComment => {
           const origin = collected.find(
             (c) => c.author === comment.author && c.message === comment.message,
           );
           const kind = comment.kind ?? origin?.kind;
-          // O tempo exato (ms) vem da fala que provocou a mensagem.
+          // O tempo exato (ms) vem da fala que provocou a mensagem. A revisão
+          // devolve-o já em sintonia com `at`; o original é só a reserva.
           const atMs = comment.atMs ?? origin?.atMs ?? null;
+          const anchor = comment.anchor ?? origin?.anchor ?? null;
+          const reason = comment.reason ?? origin?.reason ?? "";
           return {
             at: comment.at,
             ...(atMs != null ? { atMs } : {}),
@@ -543,11 +557,15 @@ export function startAiJob(input: {
             message: comment.message,
             moment: comment.moment,
             ...(kind ? { kind } : {}),
+            anchor,
+            ...(reason ? { reason } : {}),
             ...(personaNames.has(comment.author) ? { persona: comment.author } : {}),
           };
         };
 
         let finalComments: DraftComment[] = collected.map(decorate);
+        // Comentários sem lugar válido até ao fim do vídeo, descartados pela revisão.
+        let droppedByAudit = 0;
         try {
           const audited = await auditCommentsTimeline({
             data: {
@@ -558,17 +576,24 @@ export function startAiJob(input: {
             },
           });
           finalComments = audited.comments.map(decorate);
+          droppedByAudit = audited.dropped.length;
         } catch {
           // A revisão final é um extra: se falhar, entregamos os comentários
           // gerados por ordem, em vez de perder tudo.
           finalComments.sort((a, b) => a.at - b.at);
         }
+        const notes = [
+          failedWindows > 0 ? `${failedWindows} trecho(s) ficaram por gerar.` : "",
+          droppedByAudit > 0
+            ? `${droppedByAudit} comentário(s) ficaram de fora por não haver espaço até ao fim do vídeo.`
+            : "",
+        ].filter(Boolean);
         patch(webinarId, {
           stage: 4,
           status: "ready",
           drafts: finalComments,
           partial: null,
-          note: failedWindows > 0 ? `${failedWindows} trecho(s) ficaram por gerar.` : "",
+          note: notes.join(" "),
         });
       }
 

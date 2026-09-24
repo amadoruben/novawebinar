@@ -56,7 +56,7 @@ export const getPublicRoom = createServerFn({ method: "GET" })
     const { data: webinar } = await supabaseAdmin
       .from("webinars")
       .select(
-        "id, organization_id, public_title, description, status, room_theme, host_name, host_role, host_avatar_url, chat_pin_title, chat_pin_message, offer_pin_title, offer_pin_message, scheduled_at, session_end_time, schedule_mode, recurrence_enabled, recurrence_pattern, recurrence_weekday, recurrence_start_time, recurrence_end_time, jit_interval_minutes, timezone, duration_seconds, replay_enabled, waiting_room_enabled, prelive_enabled, prelive_seconds, prelive_sound, prelive_message, prelive_template, prelive_appearance, easy_access, sync_video_with_start, cta_text, cta_url, cta_color, cta_price_original, cta_price_now, cta_image_url, cta_countdown_seconds, cta_start_seconds, cta_end_seconds, registration_headline, registration_subtitle, registration_button_text, registration_collect_phone, registration_require_phone, registration_cover_url, registration_badge_text, registration_progress_enabled, registration_progress_value, registration_scarcity_note, share_title, share_description, share_image_url, video_sources(source_url, provider, duration_seconds)",
+        "id, organization_id, public_title, description, status, room_theme, host_name, host_role, host_avatar_url, chat_pin_title, chat_pin_message, offer_pin_title, offer_pin_message, scheduled_at, session_end_time, schedule_mode, recurrence_enabled, recurrence_pattern, recurrence_weekday, recurrence_start_time, recurrence_end_time, jit_interval_minutes, timezone, duration_seconds, replay_enabled, waiting_room_enabled, prelive_enabled, prelive_seconds, prelive_sound, prelive_message, prelive_template, prelive_appearance, easy_access, sync_video_with_start, cta_text, cta_url, cta_color, cta_price_original, cta_price_now, cta_image_url, cta_countdown_seconds, cta_start_seconds, cta_end_seconds, registration_headline, registration_subtitle, registration_button_text, registration_collect_phone, registration_require_phone, registration_cover_url, registration_badge_text, registration_progress_enabled, registration_progress_value, registration_scarcity_note, share_title, share_description, share_image_url, video_sources(source_url, provider, duration_seconds, storage_path)",
       )
       .eq("slug", data.slug)
       .maybeSingle();
@@ -92,6 +92,16 @@ export const getPublicRoom = createServerFn({ method: "GET" })
     const source = webinar.video_sources;
     const duration = source?.duration_seconds || webinar.duration_seconds;
     const session = sessionWindow({ ...webinar, duration_seconds: duration });
+
+    // Vídeo guardado no bucket privado: URL assinado só para esta reprodução.
+    // Vídeos externos (ou enviados antes de existir `storage_path`) mantêm o link guardado.
+    let videoUrl: string | null = source?.source_url ?? null;
+    if (source?.storage_path) {
+      const { data: signed } = await supabaseAdmin.storage
+        .from("webinar-videos")
+        .createSignedUrl(source.storage_path, 60 * 60 * 24);
+      if (signed?.signedUrl) videoUrl = signed.signedUrl;
+    }
 
     return {
       webinar: {
@@ -149,7 +159,7 @@ export const getPublicRoom = createServerFn({ method: "GET" })
         share_title: webinar.share_title,
         share_description: webinar.share_description,
         share_image_url: webinar.share_image_url,
-        video_url: source?.source_url ?? null,
+        video_url: videoUrl,
         video_provider: source?.provider ?? null,
       },
       comments: comments ?? [],
