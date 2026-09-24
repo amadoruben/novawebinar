@@ -1,15 +1,57 @@
-// @lovable.dev/vite-tanstack-config already includes the following — do NOT add them manually
-// or the app will break with duplicate plugins:
-//   - TanStack devtools (dev-only, first), tanstackStart, viteReact, tailwindcss, tsConfigPaths,
-//     nitro (build-only using cloudflare as a default target), VITE_* env injection, @ path alias,
-//     React/TanStack dedupe, error logger plugins, and sandbox detection (port/host/strictPort).
-// You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
-import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+// Configuração Vite própria do ConvertWebinar (sem @lovable.dev/vite-tanstack-config).
+// Reproduz o que o wrapper compunha fora do sandbox da Lovable:
+// Tailwind, tsconfig paths, TanStack Start (entrada SSR em src/server.ts),
+// Nitro só no build, React, alias "@", VITE_* como constantes e dev server na porta 8080.
+import tailwindcss from "@tailwindcss/vite";
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import viteReact from "@vitejs/plugin-react";
+import { nitro } from "nitro/vite";
+import { defineConfig, loadEnv } from "vite";
+import tsConfigPaths from "vite-tsconfig-paths";
 
-export default defineConfig({
-  tanstackStart: {
-    // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
-    // nitro/vite builds from this
-    server: { entry: "server" },
-  },
+export default defineConfig(({ command, mode }) => {
+  // VITE_* do .env como constantes de compilação, no cliente e no servidor.
+  const define = Object.fromEntries(
+    Object.entries(loadEnv(mode, process.cwd(), "VITE_")).map(([key, value]) => [
+      `import.meta.env.${key}`,
+      JSON.stringify(value),
+    ]),
+  );
+
+  return {
+    define,
+    css: { transformer: "lightningcss" },
+    resolve: {
+      alias: { "@": `${process.cwd()}/src` },
+      dedupe: [
+        "react",
+        "react-dom",
+        "react/jsx-runtime",
+        "react/jsx-dev-runtime",
+        "@tanstack/react-query",
+        "@tanstack/query-core",
+      ],
+    },
+    optimizeDeps: {
+      include: ["react", "react-dom", "react-dom/client", "react/jsx-runtime", "react/jsx-dev-runtime"],
+      ignoreOutdatedRequests: true,
+    },
+    server: { host: "::", port: 8080 },
+    plugins: [
+      tailwindcss(),
+      tsConfigPaths({ projects: ["./tsconfig.json"] }),
+      tanstackStart({
+        importProtection: {
+          behavior: "error",
+          client: { files: ["**/server/**"], specifiers: ["server-only"] },
+        },
+        // Entrada SSR própria (src/server.ts) que embrulha os erros catastróficos.
+        server: { entry: "server" },
+      }),
+      // Nitro só no build, como antes: em dev o TanStack Start serve directamente.
+      // Preset explícito e neutro; muda-se aqui quando o alvo de deploy for decidido.
+      ...(command === "build" ? [nitro({ preset: "node-server" })] : []),
+      viteReact(),
+    ],
+  };
 });
