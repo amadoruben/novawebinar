@@ -63,6 +63,33 @@ export type ChatJsonFailure = {
 
 export type ChatJsonResult = ChatJsonSuccess | ChatJsonFailure;
 
+export type ImageInput = {
+  prompt: string;
+  /** Com streaming, o resultado traz eventos SSE com fotogramas parciais; sem, um JSON final. */
+  stream?: boolean;
+  /** Modelo de imagem; sem valor, o fornecedor usa `AI_IMAGE_MODEL` ou o seu modelo por omissão. */
+  model?: string;
+  /** Tempo máximo à espera do fornecedor (cabeçalhos no streaming; corpo completo sem streaming). */
+  timeoutMs?: number;
+};
+
+/**
+ * Corpo do fornecedor pronto a reencaminhar para o browser, no formato que o
+ * editor já lê: `text/event-stream` com eventos `{ type, b64_json }` cujo tipo
+ * final acaba em `.completed`, ou `application/json` com `{ data: [{ b64_json }] }`.
+ */
+export type ImageSuccess = {
+  ok: true;
+  body: ReadableStream<Uint8Array>;
+  contentType: "text/event-stream" | "application/json";
+  provider: string;
+  model: string;
+};
+
+export type ImageFailure = ChatJsonFailure;
+
+export type ImageResult = ImageSuccess | ImageFailure;
+
 export interface AIProvider {
   readonly id: string;
   /** Há chave e configuração suficientes para fazer pedidos? */
@@ -71,6 +98,8 @@ export interface AIProvider {
   defaultModel(): string;
   /** Pede uma resposta JSON. Nunca lança: devolve sempre um resultado tipado. */
   chatJson(input: ChatJsonInput): Promise<ChatJsonResult>;
+  /** Gera uma imagem. Opcional: nem todos os fornecedores têm imagens. Nunca lança. */
+  generateImage?(input: ImageInput): Promise<ImageResult>;
 }
 
 /** Tempo limite por omissão. Os prompts de análise são longos, por isso é generoso. */
@@ -210,4 +239,23 @@ export async function chatJson(input: ChatJsonInput): Promise<ChatJsonResult> {
     };
   }
   return provider.chatJson(input);
+}
+
+/** Ponto único de entrada para imagens. Nunca lança. */
+export async function generateImage(input: ImageInput): Promise<ImageResult> {
+  const id = activeProviderId();
+  const provider = providerFor(id);
+  const notConfigured = (detail: string): ImageFailure => ({
+    ok: false,
+    code: "not_configured",
+    status: null,
+    reason: describeFailure("not_configured", null),
+    detail,
+    provider: provider?.id ?? id,
+    model: input.model ?? "",
+  });
+  if (!provider) return notConfigured(`fornecedor desconhecido: ${id}`);
+  if (!provider.isConfigured()) return notConfigured("chave em falta");
+  if (!provider.generateImage) return notConfigured(`o fornecedor ${provider.id} não gera imagens`);
+  return provider.generateImage(input);
 }

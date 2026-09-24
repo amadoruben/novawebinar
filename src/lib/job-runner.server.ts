@@ -1,10 +1,11 @@
 /**
  * Motor dos trabalhos em segundo plano.
  *
- * A geração do chat e a sincronização dos comentários deixaram de depender do
- * separador aberto: o pedido fica guardado na base de dados e este motor
- * avança-o etapa a etapa. Uma tarefa agendada chama-o ao minuto, por isso o
- * trabalho continua mesmo com o computador desligado.
+ * A geração do chat e a sincronização dos comentários não dependem de uma
+ * única chamada longa: o pedido fica guardado na base de dados e este motor
+ * avança-o etapa a etapa. O browser empurra-o enquanto o separador está
+ * aberto; uma chamada agendada a /api/public/run-jobs (autenticada com
+ * x-job-runner-token) fá-lo continuar com o computador desligado.
  */
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {

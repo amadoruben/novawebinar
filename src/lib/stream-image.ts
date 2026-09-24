@@ -1,3 +1,12 @@
+import { supabase } from "@/integrations/supabase/client";
+
+/** A rota exige sessão: o mesmo Bearer que as server functions já enviam. */
+async function authHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  return { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+}
+
 /**
  * Lê a geração de imagem em streaming e entrega cada fotograma ao editor.
  * O último fotograma vem marcado como final para tirar o desfoque.
@@ -8,7 +17,7 @@ export async function streamImage(
 ): Promise<void> {
   const response = await fetch("/api/generate-image", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await authHeaders(),
     body: JSON.stringify({ prompt }),
   });
 
@@ -79,7 +88,7 @@ export async function streamImage(
     // Sem qualquer acontecimento: repete uma única vez sem streaming.
     const replay = await fetch("/api/generate-image", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await authHeaders(),
       body: JSON.stringify({ prompt, stream: false }),
     });
     if (!replay.ok)

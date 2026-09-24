@@ -20,10 +20,16 @@ import {
   type ChatJsonFailure,
   type ChatJsonInput,
   type ChatJsonResult,
+  type ImageInput,
+  type ImageResult,
 } from "../provider";
 
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_MODEL = "gpt-5.6-luna";
+/** Modelo de imagem por omissão; `AI_IMAGE_MODEL` substitui-o. */
+const DEFAULT_IMAGE_MODEL = "gpt-image-1";
+/** Fotogramas parciais pedidos no streaming (o editor mostra-os desfocados até ao final). */
+const PARTIAL_IMAGES = 2;
 
 type ChatCompletion = {
   choices?: { message?: { content?: string | null }; finish_reason?: string | null }[];
@@ -41,6 +47,10 @@ function baseUrl(): string {
 
 function model(): string {
   return process.env["AI_CHAT_MODEL"]?.trim() || DEFAULT_MODEL;
+}
+
+function imageModel(): string {
+  return process.env["AI_IMAGE_MODEL"]?.trim() || DEFAULT_IMAGE_MODEL;
 }
 
 /** Nunca deixa a chave, nem fragmentos dela, passar para logs ou mensagens. */
@@ -147,5 +157,80 @@ export const openAiProvider: AIProvider = {
     }
 
     return { ok: true, json, text, provider: "openai", model: used };
+  },
+
+  /**
+   * Imagens pelo endpoint `/images/generations`. Com `stream`, a OpenAI emite
+   * SSE `data: { type: "image_generation.partial_image" | "image_generation.completed", b64_json }`,
+   * exactamente o que `stream-image.ts` lê; sem `stream`, devolve `{ data: [{ b64_json }] }`.
+   * O corpo é reencaminhado tal e qual: nada é descodificado no servidor.
+   */
+  async generateImage(input: ImageInput): Promise<ImageResult> {
+    const used = input.model?.trim() || imageModel();
+    const key = apiKey();
+    if (!key) return failure("not_configured", null, "chave em falta", used);
+    const stream = input.stream !== false;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+
+    let response: Response;
+    try {
+      response = await fetch(`${baseUrl()}/images/generations`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: used,
+          prompt: input.prompt,
+          ...(stream ? { stream: true, partial_images: PARTIAL_IMAGES } : {}),
+        }),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      clearTimeout(timer);
+      const aborted = (error as Error)?.name === "AbortError";
+      return failure(
+        aborted ? "timeout" : "unavailable",
+        null,
+        aborted ? "sem resposta dentro do tempo limite" : String((error as Error)?.message ?? error),
+        used,
+      );
+    }
+
+    if (!response.ok || !response.body) {
+      const raw = await response.text().catch(() => "");
+      clearTimeout(timer);
+      let detail = raw.slice(0, 300) || response.statusText;
+      try {
+        const parsed = JSON.parse(raw) as { error?: { message?: string } };
+        if (parsed.error?.message) detail = parsed.error.message;
+      } catch {
+        /* corpo não é JSON: fica o texto */
+      }
+      return failure(codeFromStatus(response.status), response.status, detail, used);
+    }
+
+    if (stream) {
+      // Os cabeçalhos chegaram: o resto flui para o browser sem limite de tempo aqui.
+      clearTimeout(timer);
+      return { ok: true, body: response.body, contentType: "text/event-stream", provider: "openai", model: used };
+    }
+
+    let raw = "";
+    try {
+      raw = await response.text();
+    } catch (error) {
+      clearTimeout(timer);
+      const aborted = (error as Error)?.name === "AbortError";
+      return failure(aborted ? "timeout" : "unavailable", response.status, null, used);
+    }
+    clearTimeout(timer);
+    return {
+      ok: true,
+      body: new Blob([raw]).stream() as ReadableStream<Uint8Array>,
+      contentType: "application/json",
+      provider: "openai",
+      model: used,
+    };
   },
 };
