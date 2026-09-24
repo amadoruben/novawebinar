@@ -1,5 +1,4 @@
-// Configuração Vite própria do ConvertWebinar (sem @lovable.dev/vite-tanstack-config).
-// Reproduz o que o wrapper compunha fora do sandbox da Lovable:
+// Configuração Vite própria do ConvertWebinar:
 // Tailwind, tsconfig paths, TanStack Start (entrada SSR em src/server.ts),
 // Nitro só no build, React, alias "@", VITE_* como constantes e dev server na porta 8080.
 import tailwindcss from "@tailwindcss/vite";

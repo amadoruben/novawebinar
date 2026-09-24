@@ -2775,23 +2775,23 @@ Não crie landing page.
 
 Comece pelo produto autenticado.
 
-This project was built with [Lovable](https://lovable.dev).
+## ConvertWebinar
 
-## Build with Lovable
+Plataforma de webinars evergreen e ao vivo, independente de qualquer editor externo.
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/f15ddfc2-836a-45f9-a46c-f9bce2b9acde).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+Stack: TanStack Start + React 19 + Vite, Supabase (auth, base de dados, storage com upload TUS, realtime), AssemblyAI (transcrição com tempos por palavra), OpenAI através da camada própria `src/lib/ai` (geração do chat, agente, imagens).
 
 ## Development
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Requer Node.js e npm.
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
 npm i
-npm run dev
+cp .env.example .env   # preencher as chaves; o .env nunca é versionado
+npm run dev            # http://localhost:8080
+npm run build          # produção (Nitro, preset node-server → .output/)
+npx tsc --noEmit
+npx vitest run
 ```
+
+O esquema da base de dados vive em `drizzle/migrations` (histórico) e nas migrations aplicadas ao projecto Supabase indicado em `supabase/config.toml`.
