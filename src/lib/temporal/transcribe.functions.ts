@@ -44,8 +44,8 @@ export const startWordTranscription = createServerFn({ method: "POST" })
     }
 
     const provider = engine.pickProvider();
-    if (provider.id === "chunked-gateway") {
-      return { status: "unavailable" as const, reason: "Motor por palavra indisponível." };
+    if (!provider) {
+      return { status: "unavailable" as const, reason: engine.NO_PROVIDER_REASON };
     }
 
     const probe = await probeWebinarVideoImpl(context.supabase, { webinarId: data.webinarId });

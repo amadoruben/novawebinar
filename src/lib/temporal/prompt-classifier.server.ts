@@ -6,24 +6,23 @@
  * "quem é de Lisboa", "me diz aí quanto tempo", "levanta a mão quem já".
  * Nunca inventa frases: só classifica as que existem na transcrição.
  */
+import { AIError, chatJson, isConfigured } from "@/lib/ai/provider";
+
 import type { ClassifiedPrompt } from "./events";
 import type { NormalizedSentence } from "./types";
 
-const GATEWAY = "https://ai.gateway.lovable.dev/v1";
-const MODEL = "google/gemini-3.8-flash";
 const BATCH = 60;
 
 export async function classifyAudiencePrompts(
   candidates: NormalizedSentence[],
 ): Promise<ClassifiedPrompt[]> {
-  const key = process.env["LOVABLE_API_KEY"];
-  if (!key || candidates.length === 0) return [];
+  if (!isConfigured() || candidates.length === 0) return [];
 
   const out: ClassifiedPrompt[] = [];
   for (let index = 0; index < candidates.length; index += BATCH) {
     const chunk = candidates.slice(index, index + BATCH);
     try {
-      out.push(...(await askBatch(key, chunk)));
+      out.push(...(await askBatch(chunk)));
     } catch {
       /* a camada de regras continua a valer */
     }
@@ -31,7 +30,7 @@ export async function classifyAudiencePrompts(
   return out;
 }
 
-async function askBatch(key: string, chunk: NormalizedSentence[]): Promise<ClassifiedPrompt[]> {
+async function askBatch(chunk: NormalizedSentence[]): Promise<ClassifiedPrompt[]> {
   const lines = chunk.map((sentence) => `${sentence.id}: ${sentence.text}`).join("\n");
   const prompt = [
     "És um analista de webinars. Recebes frases ditas pelo apresentador e dizes, para cada uma, se é um PEDIDO DE PARTICIPAÇÃO à audiência (algo a que faz sentido as pessoas responderem no chat).",
@@ -47,26 +46,13 @@ async function askBatch(key: string, chunk: NormalizedSentence[]): Promise<Class
     'Responde só com JSON: {"prompts":[{"id":"<id da frase>","isAudiencePrompt":true|false,"promptType":"<tipo>","expectedResponseType":"<resposta>","confidence":<0 a 1>}]} — inclui todas as frases.',
   ].join("\n");
 
-  const response = await fetch(`${GATEWAY}/chat/completions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [
-        {
-          role: "system",
-          content: "Classificas frases de apresentadores. Devolves sempre JSON válido.",
-        },
-        { role: "user", content: prompt },
-      ],
-      response_format: { type: "json_object" },
-    }),
+  const result = await chatJson({
+    system: "Classificas frases de apresentadores. Devolves sempre JSON válido.",
+    user: prompt,
   });
-  if (!response.ok) throw new Error(`gateway ${response.status}`);
+  if (!result.ok) throw new AIError(result);
 
-  const payload = (await response.json()) as { choices?: { message?: { content?: string } }[] };
-  const raw = payload.choices?.[0]?.message?.content ?? "";
-  const parsed = JSON.parse(raw.replace(/^```json\s*|```$/g, "").trim()) as {
+  const parsed = result.json as {
     prompts?: {
       id?: unknown;
       isAudiencePrompt?: unknown;

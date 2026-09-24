@@ -1,10 +1,10 @@
 /**
  * Escolha do motor de transcrição e armazenamento das versões.
  *
- * Prioridade:
- *   1. AssemblyAI        → precisão "word"     (principal)
- *   2. chunked-gateway   → precisão "block"    (alternativa)
- *   3. legado            → precisão "estimated" (não gera Chat Inteligente)
+ * Motor único: AssemblyAI → precisão "word". Sem chave configurada não há
+ * transcrição — o erro é explícito, nunca se cai noutro motor em silêncio.
+ * Versões antigas podem ter precisão "block" ou "estimated"; lêem-se, mas
+ * não se criam novas.
  *
  * Nunca se substitui uma versão válida por outra de precisão inferior e
  * nunca se misturam tempos de fornecedores diferentes na mesma versão.
@@ -14,7 +14,6 @@ import { loadVideoRef, videoFingerprint } from "@/lib/ai-comments.functions";
 
 import type { TranscriptionProvider } from "./provider";
 import { assemblyAiProvider } from "./providers/assemblyai.server";
-import { chunkedGatewayProvider } from "./providers/chunked-gateway.server";
 import { buildSentences } from "./sentences";
 import type {
   NormalizedSentence,
@@ -27,7 +26,7 @@ import type {
 const db = supabaseAdmin as any;
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const PROVIDERS: TranscriptionProvider[] = [assemblyAiProvider, chunkedGatewayProvider];
+const PROVIDERS: TranscriptionProvider[] = [assemblyAiProvider];
 
 const PRECISION_RANK: Record<TimestampPrecision, number> = { word: 3, block: 2, estimated: 1 };
 
@@ -35,13 +34,17 @@ export function providerById(id: string): TranscriptionProvider | null {
   return PROVIDERS.find((provider) => provider.id === id) ?? null;
 }
 
-/** Motor principal disponível; `exclude` permite cair para a alternativa. */
-export function pickProvider(exclude: string[] = []): TranscriptionProvider {
+/** Motor disponível, ou null quando nenhum está configurado: quem chama decide o erro. */
+export function pickProvider(exclude: string[] = []): TranscriptionProvider | null {
   const available = PROVIDERS.filter(
     (provider) => provider.isAvailable() && !exclude.includes(provider.id),
   );
-  return available[0] ?? chunkedGatewayProvider;
+  return available[0] ?? null;
 }
+
+/** Razão para o utilizador quando não há motor de transcrição configurado. */
+export const NO_PROVIDER_REASON =
+  "A transcrição não está configurada: falta a chave AssemblyAI no servidor.";
 
 /** Frases derivadas: das palavras quando existem, senão dos blocos. */
 export function sentencesFrom(result: NormalizedTranscription): NormalizedSentence[] {

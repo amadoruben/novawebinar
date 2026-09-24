@@ -9,7 +9,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   analyseWebinarStructureImpl,
-  analyseWebinarVideoImpl,
   auditCommentsTimelineImpl,
   generateCommentsWindowImpl,
   generateEngagementCommentsImpl,
@@ -25,6 +24,7 @@ import {
   failVersion,
   latestReadyVersion,
   loadVersion,
+  NO_PROVIDER_REASON,
   pickProvider,
   providerById,
   resolveMedia,
@@ -61,8 +61,6 @@ type Job = {
   state: any;
   attempts: number;
 };
-
-const TRANSCRIBE_STEP = 600;
 
 async function save(id: string, changes: Record<string, unknown>) {
   await supabaseAdmin
@@ -106,7 +104,8 @@ async function stepChat(job: Job): Promise<boolean> {
     const duration = probe.duration ?? 0;
 
     const provider = pickProvider();
-    if (provider.id !== "chunked-gateway") {
+    let startFailure = "";
+    if (provider) {
       try {
         const media = await resolveMedia(job.webinar_id);
         const rawUrl = media.url ?? "";
@@ -138,8 +137,8 @@ async function stepChat(job: Job): Promise<boolean> {
           });
           return true;
         }
-      } catch {
-        /* cai para a transcrição por blocos */
+      } catch (error) {
+        startFailure = String((error as Error)?.message ?? error);
       }
     }
 
@@ -152,20 +151,17 @@ async function stepChat(job: Job): Promise<boolean> {
       return true;
     }
 
+    // Sem motor por palavra não há outra transcrição: o erro é explícito.
     await save(job.id, {
-      stage: 1,
-      note: "A medir o vídeo antes de transcrever",
-      state: {
-        ...state,
-        phase: "transcribe",
-        precision: "block",
-        duration,
-        pass: 0,
-        transcript: [],
-        failures: [],
-      },
+      status: "error",
+      note: "",
+      error: !provider
+        ? NO_PROVIDER_REASON
+        : startFailure
+          ? `Não foi possível iniciar a transcrição: ${startFailure}`
+          : "Vídeo do webinar não encontrado.",
     });
-    return true;
+    return false;
   }
 
   if (phase === "transcribe-word") {
@@ -205,21 +201,13 @@ async function stepChat(job: Job): Promise<boolean> {
         return true;
       }
       if (state.versionId) await failVersion(state.versionId, progress.reason);
-      // Alternativa: transcrição por blocos, com margem de segurança maior.
+      // Sem alternativa silenciosa: a falha da transcrição pára o trabalho com a razão.
       await save(job.id, {
-        stage: 1,
-        note: "A transcrever o webinar por blocos de áudio...",
-        state: {
-          ...state,
-          phase: "transcribe",
-          precision: "block",
-          versionId: null,
-          pass: 0,
-          transcript: [],
-          failures: [],
-        },
+        status: "error",
+        note: "",
+        error: `A transcrição falhou: ${progress.reason}`,
       });
-      return true;
+      return false;
     }
 
     const result = progress.result;
@@ -272,54 +260,13 @@ async function stepChat(job: Job): Promise<boolean> {
   }
 
   if (phase === "transcribe") {
-    const total: number = state.duration ?? 0;
-    const pass: number = state.pass ?? 0;
-    const passes = total > 0 ? Math.ceil(total / TRANSCRIBE_STEP) : 1;
-    const from = pass * TRANSCRIBE_STEP;
-    const to = total > 0 ? Math.min(total, from + TRANSCRIBE_STEP) : 0;
-
-    const result = await analyseWebinarVideoImpl(
-      sb,
-      total > 0 ? { webinarId: job.webinar_id, from, to } : { webinarId: job.webinar_id },
-    );
-    const transcript = [...(state.transcript ?? []), ...(result.ok ? result.segments : [])];
-    const failures = result.ok ? state.failures ?? [] : [...(state.failures ?? []), result.reason];
-    const next = pass + 1;
-
-    if (next < passes) {
-      await save(job.id, {
-        stage: 1,
-        note:
-          total > 0
-            ? `A transcrever o webinar: minuto ${Math.round(to / 60)} de ${Math.round(total / 60)}`
-            : "A transcrever o webinar completo",
-        state: { ...state, transcript, failures, pass: next },
-      });
-      return true;
-    }
-
-    if (transcript.length === 0) {
-      await save(job.id, {
-        status: "error",
-        error:
-          "Não foi possível transcrever o vídeo. Sem transcrição não geramos comentários — verifique o vídeo do webinar.",
-        note: "",
-      });
-      return false;
-    }
-
-    transcript.sort((a: any, b: any) => a.at - b.at);
-    try {
-      await saveWebinarTranscriptImpl(sb, { webinarId: job.webinar_id, transcript });
-    } catch {
-      /* guardar a transcrição é um extra */
-    }
+    // Fase da transcrição por blocos (motor removido): um trabalho antigo parado aqui termina com erro claro.
     await save(job.id, {
-      stage: 2,
-      note: `Transcrição completa: ${transcript.length} momentos com tempo real.`,
-      state: { ...state, phase: "structure", transcript },
+      status: "error",
+      note: "",
+      error: "A transcrição por blocos deixou de existir. Inicie a geração de novo.",
     });
-    return true;
+    return false;
   }
 
   if (phase === "structure") {

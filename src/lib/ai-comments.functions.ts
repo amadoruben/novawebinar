@@ -38,26 +38,16 @@ import { AIError, chatJson } from "@/lib/ai/provider";
  * Geração de comentários de engajamento com IA.
  *
  * O fluxo tem duas etapas separadas para que o editor possa mostrar o progresso:
- * 1. `analyseWebinarVideo` — vai buscar o vídeo, transcreve-o e devolve a
- *    transcrição fatiada em momentos com tempo aproximado.
+ * 1. A transcrição com tempos por palavra vive em `src/lib/temporal`
+ *    (motor AssemblyAI); aqui só se mede o vídeo (`probeWebinarVideo`).
  * 2. `generateEngagementComments` — usa esses momentos (ou o contexto do
  *    webinar, quando não há transcrição possível) para escrever a conversa.
  *
- * Nada é publicado aqui: as duas funções apenas devolvem dados para revisão.
+ * Nada é publicado aqui: as funções apenas devolvem dados para revisão.
  */
-
-const GATEWAY = "https://ai.gateway.lovable.dev/v1";
-const TRANSCRIBE_MODEL = "openai/gpt-4o-transcribe";
-const MAX_AUDIO_BYTES = 24 * 1024 * 1024;
 
 export type TranscriptSegment = { at: number; text: string };
 
-const analyseSchema = z.object({
-  webinarId: z.string().uuid(),
-  /** Trecho do vídeo a transcrever, em segundos. Sem trecho, transcreve tudo. */
-  from: z.number().int().min(0).optional(),
-  to: z.number().int().min(0).optional(),
-});
 const probeSchema = z.object({ webinarId: z.string().uuid() });
 
 const settingsSchema = z.object({
@@ -97,52 +87,6 @@ const generateSchema = z.object({
   count: z.number().int().min(1).max(120).optional(),
 });
 
-function apiKey() {
-  const key = process.env["LOVABLE_API_KEY"];
-  if (!key) throw new Error("A ligação à IA não está configurada.");
-  return key;
-}
-
-async function gatewayError(response: Response) {
-  const body = await response.text().catch(() => "");
-  if (response.status === 429)
-    return "A IA está com muitos pedidos. Tente novamente daqui a pouco.";
-  if (response.status === 402) return "Os créditos de IA do espaço de trabalho acabaram.";
-  if (response.status === 403) return "A IA está indisponível para este espaço de trabalho.";
-  return `A IA falhou (${response.status}). ${body.slice(0, 200)}`;
-}
-
-/** Corta a transcrição em momentos, distribuindo o tempo pelo tamanho do texto. */
-function toSegments(text: string, durationSeconds: number): TranscriptSegment[] {
-  const parts = text
-    .split(/(?<=[.!?…])\s+|\n+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (parts.length === 0) return [];
-
-  const total = parts.reduce((sum, part) => sum + part.length, 0);
-  const duration = durationSeconds > 0 ? durationSeconds : 60 * parts.length;
-
-  const segments: TranscriptSegment[] = [];
-  let used = 0;
-  let buffer = "";
-  let bufferStart = 0;
-
-  for (const part of parts) {
-    if (!buffer) bufferStart = Math.round((used / total) * duration);
-    buffer = buffer ? `${buffer} ${part}` : part;
-    used += part.length;
-    if (buffer.length >= 320) {
-      segments.push({ at: bufferStart, text: buffer });
-      buffer = "";
-    }
-  }
-  if (buffer) segments.push({ at: bufferStart, text: buffer });
-
-  // Nada é cortado: a transcrição tem de cobrir o vídeo do início ao fim.
-  return segments;
-}
-
 /**
  * Junta momentos vizinhos até caber no pedido, em vez de deitar fora falas.
  *
@@ -173,26 +117,13 @@ function condenseTranscript(
 }
 
 /* ------------------------------------------------------------------ *
- * Recolha de áudio
+ * Resolução da fonte de vídeo
  *
  * Muitas fontes (Bunny Stream, Panda Video, Vimeo) não servem um MP4
  * direto: servem uma página de player ou um manifesto HLS. Aqui seguimos
- * essa cadeia — página → manifesto → faixa de áudio → segmentos — e
- * juntamos os segmentos em blocos transcritíveis com o tempo real de
- * início de cada bloco.
+ * essa cadeia — página → manifesto → segmentos — para medir a duração
+ * real do vídeo (`measureDuration`).
  * ------------------------------------------------------------------ */
-
-type AudioChunk = {
-  bytes: Uint8Array;
-  mime: string;
-  name: string;
-  startAt: number;
-  duration: number;
-};
-
-const MAX_CHUNK_BYTES = 12 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 400 * 1024 * 1024;
-const FALLBACK_TRANSCRIBE_MODEL = "google/gemini-3.5-transcribe";
 
 const BROWSERISH = {
   "User-Agent":
@@ -281,215 +212,6 @@ function parsePlaylist(url: string, text: string) {
   }
 
   return { init, parts };
-}
-
-async function fetchBytes(url: string): Promise<Uint8Array> {
-  const response = await fetch(url, { headers: withReferer(url) });
-  if (!response.ok) throw new Error(`A fonte respondeu ${response.status} ao descarregar o vídeo.`);
-  return new Uint8Array(await response.arrayBuffer());
-}
-
-function join(pieces: Uint8Array[]): Uint8Array {
-  const total = pieces.reduce((sum, piece) => sum + piece.byteLength, 0);
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const piece of pieces) {
-    out.set(piece, offset);
-    offset += piece.byteLength;
-  }
-  return out;
-}
-
-/**
- * Extrai a faixa de áudio AAC (ADTS) de um segmento MPEG-TS.
- *
- * Os serviços de transcrição não aceitam `.ts`, por isso fazemos aqui a
- * separação do áudio — sem ferramentas externas, que não existem neste
- * ambiente — e enviamos só o som.
- */
-function tsToAdts(buf: Uint8Array): Uint8Array {
-  const pieces: Uint8Array[] = [];
-  let pmtPid = -1;
-  let audioPid = -1;
-
-  for (let i = 0; i + 188 <= buf.length; i += 188) {
-    if (buf[i] !== 0x47) continue;
-    const pid = ((buf[i + 1]! & 0x1f) << 8) | buf[i + 2]!;
-    const adaptation = (buf[i + 3]! >> 4) & 3;
-    const unitStart = (buf[i + 1]! & 0x40) !== 0;
-    if (adaptation === 2) continue;
-
-    let p = i + 4;
-    if (adaptation === 3) p += 1 + buf[p]!;
-    if (p >= i + 188) continue;
-
-    if (pid === 0 && pmtPid < 0) {
-      const q = p + (unitStart ? 1 + buf[p]! : 0);
-      pmtPid = ((buf[q + 10]! & 0x1f) << 8) | buf[q + 11]!;
-    } else if (pid === pmtPid && audioPid < 0) {
-      const q = p + (unitStart ? 1 + buf[p]! : 0);
-      const sectionLength = ((buf[q + 1]! & 0x0f) << 8) | buf[q + 2]!;
-      const programInfo = ((buf[q + 10]! & 0x0f) << 8) | buf[q + 11]!;
-      let s = q + 12 + programInfo;
-      const end = q + 3 + sectionLength - 4;
-      while (s + 5 <= end) {
-        const streamType = buf[s]!;
-        const streamPid = ((buf[s + 1]! & 0x1f) << 8) | buf[s + 2]!;
-        const infoLength = ((buf[s + 3]! & 0x0f) << 8) | buf[s + 4]!;
-        if (streamType === 0x0f || streamType === 0x11) {
-          audioPid = streamPid;
-          break;
-        }
-        s += 5 + infoLength;
-      }
-    } else if (audioPid >= 0 && pid === audioPid) {
-      let q = p;
-      if (unitStart && buf[q] === 0 && buf[q + 1] === 0 && buf[q + 2] === 1)
-        q = q + 9 + buf[q + 8]!;
-      if (q < i + 188) pieces.push(buf.subarray(q, i + 188));
-    }
-  }
-
-  return join(pieces);
-}
-
-type Range = { from: number; to: number };
-
-async function chunksFromPlaylist(
-  playlistUrl: string,
-  playlist: string,
-  range?: Range,
-): Promise<AudioChunk[]> {
-  const picked = await pickMediaPlaylist(playlistUrl, playlist);
-  const { init, parts } = parsePlaylist(picked.url, picked.text);
-  if (parts.length === 0) throw new Error("O manifesto de vídeo não tem segmentos.");
-
-  const fragmented = Boolean(init) || /\.(m4s|mp4)(\?|$)/i.test(parts[0]!.url);
-  const mime = fragmented ? "audio/mp4" : "audio/aac";
-  const extension = fragmented ? "mp4" : "aac";
-  const header = fragmented && init ? await fetchBytes(init) : null;
-
-  const chunks: AudioChunk[] = [];
-  let buffer: Uint8Array[] = header ? [header] : [];
-  let bufferBytes = header?.byteLength ?? 0;
-  let bufferDuration = 0;
-  let startAt = 0;
-  let elapsed = 0;
-  let downloaded = 0;
-
-  const flush = () => {
-    if (bufferDuration <= 0) return;
-    chunks.push({
-      bytes: join(buffer),
-      mime,
-      name: `parte-${chunks.length + 1}.${extension}`,
-      startAt: Math.round(startAt),
-      duration: Math.round(bufferDuration),
-    });
-    buffer = header ? [header] : [];
-    bufferBytes = header?.byteLength ?? 0;
-    bufferDuration = 0;
-  };
-
-  for (const part of parts) {
-    if (downloaded >= MAX_TOTAL_BYTES) break;
-    // Só descarregamos os segmentos do trecho pedido: assim um vídeo longo
-    // é transcrito em várias passagens curtas, sem nunca ficar por acabar.
-    if (range) {
-      const partStart = elapsed;
-      const partEnd = elapsed + part.duration;
-      if (partEnd <= range.from || partStart >= range.to) {
-        elapsed = partEnd;
-        continue;
-      }
-    }
-    const raw = await fetchBytes(part.url);
-    downloaded += raw.byteLength;
-    const bytes = fragmented ? raw : tsToAdts(raw);
-    if (bytes.byteLength === 0) {
-      elapsed += part.duration;
-      continue;
-    }
-
-    if (bufferBytes + bytes.byteLength > MAX_CHUNK_BYTES && bufferDuration > 0) {
-      flush();
-      startAt = elapsed;
-    }
-    if (bufferDuration === 0) startAt = elapsed;
-
-    buffer.push(bytes);
-    bufferBytes += bytes.byteLength;
-    bufferDuration += part.duration;
-    elapsed += part.duration;
-  }
-  flush();
-
-  return chunks;
-}
-
-/** Devolve o áudio pronto a transcrever, seja MP4 direto, HLS ou página de player. */
-async function collectAudioChunks(url: string, range?: Range): Promise<AudioChunk[]> {
-  if (/\.m3u8(\?|$)/i.test(url)) {
-    return chunksFromPlaylist(url, await fetchText(url), range);
-  }
-
-  const response = await fetch(url, { headers: withReferer(url) });
-  if (!response.ok) throw new Error(`A fonte respondeu ${response.status} ao abrir o vídeo.`);
-  const type = (response.headers.get("content-type") ?? "").toLowerCase();
-
-  if (type.includes("mpegurl") || type.includes("x-mpegURL".toLowerCase())) {
-    return chunksFromPlaylist(response.url || url, await response.text(), range);
-  }
-
-  if (type.includes("text/html")) {
-    const media = findMediaInHtml(await response.text(), response.url || url);
-    if (!media) {
-      throw new Error(
-        "Esta fonte abre um player protegido e não expõe o vídeo. Use o endereço HLS (.m3u8) ou o MP4 do vídeo.",
-      );
-    }
-    return collectAudioChunks(media, range);
-  }
-
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.byteLength > MAX_AUDIO_BYTES) {
-    throw new Error("O ficheiro de vídeo é demasiado grande para transcrição automática.");
-  }
-  const name = (() => {
-    const path = new URL(url).pathname.split("/").pop() ?? "video.mp4";
-    return path.includes(".") ? path.split("?")[0]! : "video.mp4";
-  })();
-  return [{ bytes, mime: type || "video/mp4", name, startAt: 0, duration: 0 }];
-}
-
-async function transcribeOnce(chunk: AudioChunk, model: string): Promise<Response> {
-  const body = new FormData();
-  body.append("model", model);
-  body.append(
-    "file",
-    new Blob([chunk.bytes as unknown as BlobPart], { type: chunk.mime }),
-    chunk.name,
-  );
-  return fetch(`${GATEWAY}/audio/transcriptions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey()}` },
-    body,
-  });
-}
-
-async function transcribeChunk(chunk: AudioChunk): Promise<string> {
-  // O áudio extraído de HLS sai em AAC, que só o modelo Gemini aceita.
-  const aac = chunk.name.endsWith(".aac");
-  const first = aac ? FALLBACK_TRANSCRIBE_MODEL : TRANSCRIBE_MODEL;
-  const second = aac ? TRANSCRIBE_MODEL : FALLBACK_TRANSCRIBE_MODEL;
-
-  let response = await transcribeOnce(chunk, first);
-  if (!response.ok && (response.status === 400 || response.status >= 500)) {
-    response = await transcribeOnce(chunk, second);
-  }
-  if (!response.ok) throw new Error(await gatewayError(response));
-  const result = (await response.json()) as { text?: string };
-  return (result.text ?? "").trim();
 }
 
 type VideoRef = {
@@ -585,84 +307,6 @@ export const probeWebinarVideo = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => probeSchema.parse(data))
   .handler(async ({ data, context }) => probeWebinarVideoImpl(context.supabase, data));
-
-export async function analyseWebinarVideoImpl(supabase: any, data: any) {
-    const { url, duration } = await loadVideoRef(supabase, data.webinarId);
-
-    if (!url) {
-      return {
-        ok: false as const,
-        reason: "Este webinar ainda não tem vídeo associado.",
-        segments: [],
-        duration,
-        covered: 0,
-      };
-    }
-
-    const range =
-      data.to && data.to > (data.from ?? 0) ? { from: data.from ?? 0, to: data.to } : undefined;
-
-    try {
-      const chunks = await collectAudioChunks(url, range);
-      if (chunks.length === 0) {
-        return {
-          ok: false as const,
-          reason: "Não foi possível obter o áudio desta fonte para transcrever.",
-          segments: [],
-          duration,
-          covered: range?.to ?? 0,
-        };
-      }
-
-      const segments: TranscriptSegment[] = [];
-      let transcribedDuration = 0;
-
-      for (const chunk of chunks) {
-        const text = await transcribeChunk(chunk);
-        if (!text) continue;
-        const span = chunk.duration > 0 ? chunk.duration : Math.max(duration - chunk.startAt, 60);
-        for (const segment of toSegments(text, span)) {
-          segments.push({ at: Math.round(chunk.startAt + segment.at), text: segment.text });
-        }
-        transcribedDuration = Math.max(transcribedDuration, chunk.startAt + span);
-      }
-
-      if (segments.length === 0) {
-        return {
-          ok: false as const,
-          reason: "Não foi possível perceber a fala deste trecho do vídeo.",
-          segments: [],
-          duration,
-          covered: range?.to ?? Math.round(transcribedDuration),
-        };
-      }
-
-      // A transcrição é entregue completa. Se for muito longa, juntamos
-      // momentos vizinhos — nenhuma fala é deitada fora.
-      const complete = condenseTranscript(segments, 1600, 700);
-
-      return {
-        ok: true as const,
-        reason: "",
-        segments: complete,
-        duration: duration || Math.round(transcribedDuration),
-        covered: range?.to ?? Math.round(transcribedDuration),
-      };
-    } catch (error) {
-      return {
-        ok: false as const,
-        reason: error instanceof Error ? error.message : "Não foi possível transcrever este vídeo.",
-        segments: [],
-        duration,
-        covered: 0,
-      };
-    }
-  }
-
-export const analyseWebinarVideo = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) => analyseSchema.parse(data))
-  .handler(async ({ data, context }) => analyseWebinarVideoImpl(context.supabase, data));
 
 const levelPerMinute: Record<string, number> = {
   low: 1.2,
