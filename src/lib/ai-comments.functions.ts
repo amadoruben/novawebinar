@@ -47,7 +47,6 @@ import { AIError, chatJson } from "@/lib/ai/provider";
  */
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1";
-const CHAT_MODEL = "google/gemini-3.8-flash";
 const TRANSCRIBE_MODEL = "openai/gpt-4o-transcribe";
 const MAX_AUDIO_BYTES = 24 * 1024 * 1024;
 
@@ -690,22 +689,6 @@ const emojiLabel: Record<string, string> = {
   normal: "moderados, em cerca de 1 de cada 3 mensagens",
   high: "frequentes, mas nunca em todas as mensagens",
 };
-
-function parseJson(raw: string): unknown {
-  const trimmed = raw
-    .trim()
-    .replace(/^```(?:json)?/i, "")
-    .replace(/```$/, "")
-    .trim();
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const start = trimmed.indexOf("{");
-    const end = trimmed.lastIndexOf("}");
-    if (start >= 0 && end > start) return JSON.parse(trimmed.slice(start, end + 1));
-    throw new Error("A IA devolveu uma resposta inesperada.");
-  }
-}
 
 /* ------------------------------------------------------------------ *
  * A geração de uma live inteira não cabe numa única chamada ao servidor
@@ -2532,26 +2515,14 @@ async function syncBatch(
     'Responda apenas com JSON: {"comments":[{"id":"<id>","at":<segundo inteiro>}]}',
   ].join("\n");
 
-  const response = await fetch(`${GATEWAY}/chat/completions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey()}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: CHAT_MODEL,
-      messages: [
-        {
-          role: "system",
-          content:
-            "És um editor de timing de chat ao vivo. Alinhas mensagens com a fala do apresentador. Devolves sempre JSON válido.",
-        },
-        { role: "user", content: prompt },
-      ],
-      response_format: { type: "json_object" },
-    }),
+  const result = await chatJson({
+    system:
+      "És um editor de timing de chat ao vivo. Alinhas mensagens com a fala do apresentador. Devolves sempre JSON válido.",
+    user: prompt,
   });
-  if (!response.ok) throw new Error(await gatewayError(response));
+  if (!result.ok) throw new AIError(result);
 
-  const payload = (await response.json()) as { choices?: { message?: { content?: string } }[] };
-  const parsed = parseJson(payload.choices?.[0]?.message?.content ?? "") as {
+  const parsed = result.json as {
     comments?: { id?: unknown; at?: unknown }[];
   };
 
