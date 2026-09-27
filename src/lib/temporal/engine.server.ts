@@ -179,6 +179,17 @@ export async function saveVersionAnalysis(
     .eq("id", versionId);
 }
 
+/** A versão é deste webinar? Os ids chegam do cliente e da fila de trabalhos. */
+export async function versionBelongsTo(versionId: string, webinarId: string) {
+  const { data } = await db
+    .from("webinar_transcript_versions")
+    .select("id")
+    .eq("id", versionId)
+    .eq("webinar_id", webinarId)
+    .maybeSingle();
+  return Boolean(data);
+}
+
 /** Uma versão concreta da transcrição, para causalidade e inspeção. */
 export async function loadVersion(versionId: string): Promise<TranscriptVersion | null> {
   const { data } = await db

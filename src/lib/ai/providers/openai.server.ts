@@ -34,6 +34,7 @@ const PARTIAL_IMAGES = 2;
 type ChatCompletion = {
   choices?: { message?: { content?: string | null }; finish_reason?: string | null }[];
   error?: { message?: string; type?: string; code?: string | null } | null;
+  usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
 };
 
 function apiKey(): string {
@@ -156,7 +157,21 @@ export const openAiProvider: AIProvider = {
       return failure("invalid_json", response.status, cut ?? "texto sem JSON válido", used);
     }
 
-    return { ok: true, json, text, provider: "openai", model: used };
+    return {
+      ok: true,
+      json,
+      text,
+      provider: "openai",
+      model: used,
+      ...(payload.usage
+        ? {
+            usage: {
+              inputTokens: payload.usage.prompt_tokens ?? 0,
+              outputTokens: payload.usage.completion_tokens ?? 0,
+            },
+          }
+        : {}),
+    };
   },
 
   /**

@@ -115,7 +115,7 @@ import {
   type VideoUploadProgress,
 } from "@/lib/video-upload";
 import { supabase } from "@/integrations/supabase/client";
-import { cn } from "@/lib/utils";
+import { cn, offerUrl } from "@/lib/utils";
 import {
   providerLabels,
   publicOrigin,
@@ -578,6 +578,8 @@ function EditWebinar() {
         !form.scheduled_at
       ) {
         pendingWarning = "Escolha a data e a hora da sessão.";
+      } else if (form.cta_url.trim() && !offerUrl(form.cta_url)) {
+        pendingWarning = "O link da oferta tem de começar por https://.";
       }
     }
     setSaving(true);
@@ -619,7 +621,7 @@ function EditWebinar() {
           easy_access: form.easy_access,
           sync_video_with_start: form.sync_video_with_start,
           cta_text: form.cta_text.trim() || null,
-          cta_url: form.cta_url.trim() || null,
+          cta_url: offerUrl(form.cta_url),
           cta_color: form.cta_color,
           cta_price_original: form.cta_price_original.trim(),
           cta_price_now: form.cta_price_now.trim(),

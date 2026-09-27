@@ -32,6 +32,7 @@ import {
   saveVersionAnalysis,
   saveVersionReport,
   sentencesFrom,
+  versionBelongsTo,
 } from "@/lib/temporal/engine.server";
 import { attachCausality } from "@/lib/temporal/causality";
 import { validateTimeline } from "@/lib/temporal/validator";
@@ -53,6 +54,7 @@ type Job = {
   id: string;
   kind: "chat" | "sync";
   webinar_id: string;
+  created_by: string;
   webinar_title: string;
   status: string;
   stage: number;
@@ -68,6 +70,29 @@ async function save(id: string, changes: Record<string, unknown>) {
     .from("background_jobs")
     .update({ ...changes, updated_at: new Date().toISOString() } as never)
     .eq("id", id);
+}
+
+/**
+ * O motor corre com a chave de serviço, por isso não confia na linha: quem
+ * criou o trabalho tem de pertencer à organização do webinar, e a versão da
+ * transcrição guardada no estado tem de ser desse webinar.
+ */
+async function jobAllowed(job: Job): Promise<boolean> {
+  const { data: webinar } = await supabaseAdmin
+    .from("webinars")
+    .select("organization_id")
+    .eq("id", job.webinar_id)
+    .maybeSingle();
+  if (!webinar) return false;
+  const { data: members } = await supabaseAdmin
+    .from("organization_members")
+    .select("id")
+    .eq("organization_id", webinar.organization_id)
+    .eq("user_id", job.created_by)
+    .limit(1);
+  if (!members?.length) return false;
+  const versionId = job.state?.versionId;
+  return !versionId || versionBelongsTo(String(versionId), job.webinar_id);
 }
 
 /** Avança um trabalho de geração de chat exatamente uma etapa. */
@@ -677,7 +702,8 @@ async function stepSync(job: Job): Promise<boolean> {
     const { error } = await supabaseAdmin
       .from("scheduled_comments")
       .update({ offset_seconds: Math.max(0, update.at) } as never)
-      .eq("id", update.id);
+      .eq("id", update.id)
+      .eq("webinar_id", job.webinar_id);
     if (error) throw new Error(error.message);
     moved += 1;
   }
@@ -715,9 +741,30 @@ export async function runPendingJobs(budgetMs = 45000) {
     const job = (rows?.[0] as unknown as Job) ?? null;
     if (!job) break;
 
-    // Reserva o trabalho para que dois pedidos não avancem a mesma etapa.
+    // Reserva o trabalho numa só escrita condicional: se outro separador ou a
+    // chamada agendada o reservou entretanto, nenhuma linha muda e passa-se à frente.
     const lockUntil = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-    await save(job.id, { status: "running", locked_until: lockUntil });
+    const { data: claimed, error: claimError } = await supabaseAdmin
+      .from("background_jobs")
+      .update({
+        status: "running",
+        locked_until: lockUntil,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq("id", job.id)
+      .or(`locked_until.is.null,locked_until.lt.${nowIso}`)
+      .select("id");
+    if (claimError) break;
+    if (!claimed?.length) continue;
+
+    if (!(await jobAllowed(job))) {
+      await save(job.id, {
+        status: "error",
+        error: "Sem acesso a este webinar.",
+        locked_until: null,
+      });
+      continue;
+    }
 
     try {
       const again = job.kind === "chat" ? await stepChat(job) : await stepSync(job);

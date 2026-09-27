@@ -572,8 +572,219 @@ export type Database = {
           },
         ]
       }
+      billing_events: {
+        Row: {
+          buyer_email: string | null
+          event_type: string
+          external_order_id: string | null
+          external_product_id: string | null
+          id: string
+          organization_id: string | null
+          provider: string
+          reason: string
+          received_at: string
+          status: string
+        }
+        Insert: {
+          buyer_email?: string | null
+          event_type?: string
+          external_order_id?: string | null
+          external_product_id?: string | null
+          id?: string
+          organization_id?: string | null
+          provider: string
+          reason?: string
+          received_at?: string
+          status: string
+        }
+        Update: {
+          buyer_email?: string | null
+          event_type?: string
+          external_order_id?: string | null
+          external_product_id?: string | null
+          id?: string
+          organization_id?: string | null
+          provider?: string
+          reason?: string
+          received_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
+      billing_products: {
+        Row: {
+          active: boolean
+          checkout_url: string
+          created_at: string
+          external_product_id: string
+          id: string
+          label: string
+          provider: string
+          usd_amount: number
+        }
+        Insert: {
+          active?: boolean
+          checkout_url: string
+          created_at?: string
+          external_product_id: string
+          id?: string
+          label: string
+          provider?: string
+          usd_amount: number
+        }
+        Update: {
+          active?: boolean
+          checkout_url?: string
+          created_at?: string
+          external_product_id?: string
+          id?: string
+          label?: string
+          provider?: string
+          usd_amount?: number
+        }
+        Relationships: []
+      }
+      contact_list_members: {
+        Row: {
+          added_at: string
+          contact_id: string
+          list_id: string
+          organization_id: string
+        }
+        Insert: {
+          added_at?: string
+          contact_id: string
+          list_id: string
+          organization_id: string
+        }
+        Update: {
+          added_at?: string
+          contact_id?: string
+          list_id?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_list_members_contact_id_organization_id_fkey"
+            columns: ["contact_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "contact_list_members_list_id_organization_id_fkey"
+            columns: ["list_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "contact_lists"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      contact_lists: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          organization_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          organization_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          organization_id?: string
+        }
+        Relationships: []
+      }
+      contacts: {
+        Row: {
+          first_campaign: string | null
+          first_source: string | null
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          organization_id: string
+          phone: string | null
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          first_campaign?: string | null
+          first_source?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          organization_id: string
+          phone?: string | null
+          source?: string
+          updated_at?: string
+        }
+        Update: {
+          first_campaign?: string | null
+          first_source?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          phone?: string | null
+          source?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      credit_ledger: {
+        Row: {
+          action: string
+          amount_micros: number
+          created_at: string
+          description: string
+          id: string
+          kind: string
+          meta: Json
+          organization_id: string
+          period: string | null
+          ref: string | null
+          units: number | null
+        }
+        Insert: {
+          action?: string
+          amount_micros: number
+          created_at?: string
+          description?: string
+          id?: string
+          kind: string
+          meta?: Json
+          organization_id: string
+          period?: string | null
+          ref?: string | null
+          units?: number | null
+        }
+        Update: {
+          action?: string
+          amount_micros?: number
+          created_at?: string
+          description?: string
+          id?: string
+          kind?: string
+          meta?: Json
+          organization_id?: string
+          period?: string | null
+          ref?: string | null
+          units?: number | null
+        }
+        Relationships: []
+      }
       cta_events: {
         Row: {
+          video_second: number | null
           event_type: string
           id: string
           occurred_at: string
@@ -582,6 +793,7 @@ export type Database = {
           webinar_id: string
         }
         Insert: {
+          video_second?: number | null
           event_type: string
           id?: string
           occurred_at?: string
@@ -590,6 +802,7 @@ export type Database = {
           webinar_id: string
         }
         Update: {
+          video_second?: number | null
           event_type?: string
           id?: string
           occurred_at?: string
@@ -620,6 +833,94 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      integration_events: {
+        Row: {
+          amount_value: number | null
+          buyer_email: string | null
+          currency: string | null
+          event_type: string
+          id: string
+          integration_id: string | null
+          organization_id: string
+          product_name: string | null
+          provider: string
+          purchase_id: string | null
+          reason: string
+          received_at: string
+          status: string
+        }
+        Insert: {
+          amount_value?: number | null
+          buyer_email?: string | null
+          currency?: string | null
+          event_type?: string
+          id?: string
+          integration_id?: string | null
+          organization_id: string
+          product_name?: string | null
+          provider: string
+          purchase_id?: string | null
+          reason?: string
+          received_at?: string
+          status: string
+        }
+        Update: {
+          amount_value?: number | null
+          buyer_email?: string | null
+          currency?: string | null
+          event_type?: string
+          id?: string
+          integration_id?: string | null
+          organization_id?: string
+          product_name?: string | null
+          provider?: string
+          purchase_id?: string | null
+          reason?: string
+          received_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
+      integrations: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          endpoint_key: string
+          has_secret: boolean
+          id: string
+          last_event_at: string | null
+          organization_id: string
+          provider: string
+          secret: string
+          settings: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          endpoint_key?: string
+          id?: string
+          last_event_at?: string | null
+          organization_id: string
+          provider: string
+          secret?: string
+          settings?: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          endpoint_key?: string
+          id?: string
+          last_event_at?: string | null
+          organization_id?: string
+          provider?: string
+          secret?: string
+          settings?: Json
+          updated_at?: string
+        }
+        Relationships: []
       }
       job_runner_config: {
         Row: {
@@ -673,6 +974,7 @@ export type Database = {
       }
       organizations: {
         Row: {
+          ai_monthly_cap_micros: number | null
           created_at: string
           created_by: string
           id: string
@@ -683,6 +985,7 @@ export type Database = {
           subdomain: string | null
         }
         Insert: {
+          ai_monthly_cap_micros?: number | null
           created_at?: string
           created_by: string
           id?: string
@@ -693,6 +996,7 @@ export type Database = {
           subdomain?: string | null
         }
         Update: {
+          ai_monthly_cap_micros?: number | null
           created_at?: string
           created_by?: string
           id?: string
@@ -706,7 +1010,13 @@ export type Database = {
       }
       participants: {
         Row: {
+          referrer: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
           city: string | null
+          contact_id: string | null
           country: string | null
           country_code: string | null
           cta_clicked: boolean
@@ -724,7 +1034,13 @@ export type Database = {
           webinar_id: string
         }
         Insert: {
+          referrer?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
           city?: string | null
+          contact_id?: string | null
           country?: string | null
           country_code?: string | null
           cta_clicked?: boolean
@@ -742,7 +1058,13 @@ export type Database = {
           webinar_id: string
         }
         Update: {
+          referrer?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
           city?: string | null
+          contact_id?: string | null
           country?: string | null
           country_code?: string | null
           cta_clicked?: boolean
@@ -760,6 +1082,13 @@ export type Database = {
           webinar_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "participants_contact_fk"
+            columns: ["contact_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id", "organization_id"]
+          },
           {
             foreignKeyName: "participants_organization_id_fkey"
             columns: ["organization_id"]
@@ -842,6 +1171,7 @@ export type Database = {
       }
       private_messages: {
         Row: {
+          video_second: number | null
           agent_message_id: string | null
           body: string
           conversation_id: string
@@ -853,6 +1183,7 @@ export type Database = {
           sender_user_id: string | null
         }
         Insert: {
+          video_second?: number | null
           agent_message_id?: string | null
           body: string
           conversation_id: string
@@ -864,6 +1195,7 @@ export type Database = {
           sender_user_id?: string | null
         }
         Update: {
+          video_second?: number | null
           agent_message_id?: string | null
           body?: string
           conversation_id?: string
@@ -935,33 +1267,54 @@ export type Database = {
       real_purchase_events: {
         Row: {
           amount: string
+          amount_value: number | null
+          buyer_email: string | null
           buyer_name: string
+          contact_id: string | null
           created_at: string
+          currency: string | null
+          external_id: string | null
           id: string
           organization_id: string
           product_name: string
+          provider: string
           source: string
-          webinar_id: string
+          status: string
+          webinar_id: string | null
         }
         Insert: {
           amount?: string
+          amount_value?: number | null
+          buyer_email?: string | null
           buyer_name: string
+          contact_id?: string | null
           created_at?: string
+          currency?: string | null
+          external_id?: string | null
           id?: string
           organization_id: string
           product_name?: string
+          provider?: string
           source?: string
-          webinar_id: string
+          status?: string
+          webinar_id?: string | null
         }
         Update: {
           amount?: string
+          amount_value?: number | null
+          buyer_email?: string | null
           buyer_name?: string
+          contact_id?: string | null
           created_at?: string
+          currency?: string | null
+          external_id?: string | null
           id?: string
           organization_id?: string
           product_name?: string
+          provider?: string
           source?: string
-          webinar_id?: string
+          status?: string
+          webinar_id?: string | null
         }
         Relationships: [
           {
@@ -1875,9 +2228,80 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      contact_summaries: {
+        Row: {
+          clicked_offer: boolean | null
+          created_at: string | null
+          email: string | null
+          events_attended: number | null
+          events_registered: number | null
+          first_campaign: string | null
+          first_seen_at: string | null
+          first_source: string | null
+          id: string | null
+          last_seen_at: string | null
+          list_ids: string[] | null
+          messages: number | null
+          name: string | null
+          organization_id: string | null
+          phone: string | null
+          purchases: number | null
+          reached_offer: boolean | null
+          source: string | null
+          stage: string | null
+          watched_seconds: number | null
+          webinar_ids: string[] | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      credit_state: {
+        Args: { _organization_id: string }
+        Returns: Json
+      }
+      apply_credit_topup: {
+        Args: { _amount_micros: number; _description: string; _meta: Json; _organization_id: string; _ref: string }
+        Returns: boolean
+      }
+      organization_for_billing_email: {
+        Args: { _email: string }
+        Returns: string
+      }
+      record_credit_usage: {
+        Args: {
+          _action: string
+          _amount_micros: number
+          _description: string
+          _meta: Json
+          _organization_id: string
+          _ref: string | null
+          _units: number
+        }
+        Returns: number
+      }
+      contact_source_breakdown: {
+        Args: { _list_id?: string; _organization_id: string; _webinar_id?: string }
+        Returns: Json
+      }
+      contact_stage_counts: {
+        Args: { _list_id?: string; _organization_id: string; _webinar_id?: string }
+        Returns: Json
+      }
+      import_contacts: {
+        Args: { _list_id: string | null; _organization_id: string; _rows: Json }
+        Returns: number
+      }
+      upsert_contact: {
+        Args: {
+          _email: string
+          _name: string
+          _organization_id: string
+          _phone: string
+          _source: string
+        }
+        Returns: string
+      }
       has_organization_role: {
         Args: {
           _organization_id: string

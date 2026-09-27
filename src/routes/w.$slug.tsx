@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { detectDevice, lookupPlace, type GeoPlace } from "@/lib/live-presence";
+import { leadSource } from "@/lib/contacts";
+import { loadPixels, trackPixels } from "@/lib/pixels";
 import {
   DEFAULT_PHONE_COUNTRY,
   PHONE_COUNTRIES,
@@ -34,6 +36,14 @@ export const Route = createFileRoute("/w/$slug")({
     // Sala de teste: qualquer pessoa com o link entra de imediato, mesmo com a
     // sessão inativa ou fora do horário. Serve para rever a sala antes de abrir.
     teste: ["1", "true"].includes(String(search["teste"])) ? true : undefined,
+    // Origem do lead: fica no endereço até à inscrição.
+    ...Object.fromEntries(
+      ["utm_source", "utm_medium", "utm_campaign", "utm_content", "fbclid", "gclid"]
+        .filter((key) => typeof search[key] === "string" && search[key])
+        .map((key) => [key, String(search[key]).slice(0, 200)]),
+    ) as Partial<
+      Record<"utm_source" | "utm_medium" | "utm_campaign" | "utm_content" | "fbclid" | "gclid", string>
+    >,
   }),
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData({
@@ -68,8 +78,8 @@ export const Route = createFileRoute("/w/$slug")({
 
 function PublicRoomRoute() {
   const { slug } = Route.useParams();
-  const { replay, teste } = Route.useSearch();
-  return <PublicRoom slug={slug} replay={replay} teste={teste} />;
+  const { replay, teste, ...source } = Route.useSearch();
+  return <PublicRoom slug={slug} replay={replay} teste={teste} source={source} />;
 }
 
 type Viewer = {
@@ -89,10 +99,13 @@ export function PublicRoom({
   slug,
   replay,
   teste,
+  source = {},
 }: {
   slug: string;
   replay?: boolean | undefined;
   teste?: boolean | undefined;
+  /** Parâmetros de origem do endereço (utm_*, fbclid, gclid). */
+  source?: Partial<Record<string, string>>;
 }) {
   const testMode = Boolean(teste);
   const roomMode: "live" | "replay" = replay ? "replay" : "live";
@@ -134,8 +147,13 @@ export function PublicRoom({
       city: placeRef.current?.city ?? undefined,
       country: placeRef.current?.country ?? undefined,
       countryCode: placeRef.current?.countryCode ?? undefined,
+      ...leadSource({
+        ...source,
+        referrer: document.referrer,
+        ownHost: window.location.hostname,
+      }),
     }),
-    [],
+    [source],
   );
 
   const { data, isLoading } = useQuery({
@@ -146,6 +164,12 @@ export function PublicRoom({
     // com a contagem para a próxima sessão.
     refetchInterval: viewer ? false : 60_000,
   });
+
+  // Pixels de anúncios da organização; a sala de teste nunca os dispara.
+  const pixels = data?.pixels;
+  useEffect(() => {
+    if (pixels && !testMode) loadPixels(pixels);
+  }, [pixels, testMode]);
 
   // Guardamos o tema da sala para o esqueleto seguir o mesmo aspeto. O tema
   // memorizado só é lido depois da hidratação: lê-lo durante a renderização
@@ -422,6 +446,7 @@ export function PublicRoom({
         });
         const next = { participantId: result.participantId, name: result.name };
         window.localStorage.setItem(storageKey(slug), JSON.stringify(next));
+        if (!testMode) trackPixels("lead");
         setViewer(next);
       } catch {
         setError("Não foi possível entrar agora. Tente novamente.");
@@ -629,11 +654,24 @@ export function PublicRoom({
       supportMessages={privateThread?.messages ?? []}
       onProgress={onProgress}
       onCtaView={() =>
-        void trackCta({ data: { participantId: viewer.participantId, eventType: "view" } })
+        void trackCta({
+          data: {
+            participantId: viewer.participantId,
+            eventType: "view",
+            videoSecond: Math.max(0, Math.round(positionRef.current)),
+          },
+        })
       }
-      onCtaClick={() =>
-        void trackCta({ data: { participantId: viewer.participantId, eventType: "click" } })
-      }
+      onCtaClick={() => {
+        if (!testMode) trackPixels("checkout");
+        void trackCta({
+          data: {
+            participantId: viewer.participantId,
+            eventType: "click",
+            videoSecond: Math.max(0, Math.round(positionRef.current)),
+          },
+        });
+      }}
       webinar={{
         id: webinar.id,
         public_title: webinar.public_title,

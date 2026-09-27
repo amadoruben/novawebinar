@@ -8,7 +8,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { assertWebinarAccess, requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { runBilled } from "@/lib/ai/billing.server";
 
 export type SaleNotificationSuggestion = {
   buyerName: string;
@@ -61,11 +62,12 @@ export const generateSaleNotifications = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }): Promise<GeneratedSaleNotifications> => {
     const supabase = context.supabase as never as any;
+    const organizationId = await assertWebinarAccess(context.supabase, data.webinarId);
     const model = await import("@/lib/ai-agent/model.server");
 
     const { data: webinar } = await supabase
       .from("webinars")
-      .select("title, description")
+      .select("public_title, description")
       .eq("id", data.webinarId)
       .maybeSingle();
 
@@ -78,10 +80,10 @@ export const generateSaleNotifications = createServerFn({ method: "POST" })
       transcript = "";
     }
 
-    const product = data.productName.trim() || webinar?.title || "o programa";
+    const product = data.productName.trim() || webinar?.public_title || "o programa";
 
     const sources = [
-      webinar?.title ? `Webinar: ${webinar.title}` : "",
+      webinar?.public_title ? `Webinar: ${webinar.public_title}` : "",
       webinar?.description ? `Descrição: ${webinar.description}` : "",
       transcript ? `Excerto da transcrição:\n${transcript}` : "",
     ]
@@ -89,11 +91,13 @@ export const generateSaleNotifications = createServerFn({ method: "POST" })
       .join("\n\n");
 
     let names: string[] = [];
-    const result = await model.askModelJson({
+    const result = await runBilled({ organizationId, action: "sale_notifications" }, () =>
+      model.askModelJson({
       system:
         'Devolve apenas JSON válido no formato {"names":["",""]}. Nomes próprios portugueses reais e variados (só o primeiro nome, sem apelido), adequados à audiência do webinar. Nada mais.',
       user: `${sources}\n\nGera ${data.count} nomes diferentes de pessoas que poderiam comprar "${product}".`,
-    });
+    }),
+    );
     if (result.ok) {
       const parsed = model.parseJsonObject<{ names?: unknown }>(result.text);
       const list = Array.isArray(parsed?.names) ? parsed?.names : [];

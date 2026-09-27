@@ -1,8 +1,25 @@
 // Middleware de server functions: exige Bearer JWT do Supabase e expõe um cliente com RLS.
 import { createMiddleware } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from './types'
+
+/**
+ * Antes de usar a chave de serviço com um webinarId vindo do cliente: o RLS de
+ * `webinars` só deixa ver webinars da organização de quem pede.
+ */
+export async function assertWebinarAccess(
+  supabase: SupabaseClient<Database>,
+  webinarId: string,
+): Promise<string> {
+  const { data } = await supabase
+    .from('webinars')
+    .select('organization_id')
+    .eq('id', webinarId)
+    .maybeSingle();
+  if (!data) throw new Error('Webinar não encontrado.');
+  return data.organization_id;
+}
 
 
 

@@ -5,7 +5,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { assertWebinarAccess, requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { runBilled } from "@/lib/ai/billing.server";
 import { defaultPermissions, KNOWLEDGE_FIELDS, type AgentSource } from "./defaults";
 
 type Row = Record<string, any>;
@@ -235,20 +236,23 @@ export const simulateAgentReply = createServerFn({ method: "POST" })
     z
       .object({
         webinarId: uuid,
-        question: z.string().min(1),
+        question: z.string().min(1).max(1000),
         sessionSeconds: z.number().int().nonnegative(),
       })
       .parse(data),
   )
-  .handler(async ({ data }): Promise<SimulationResult> => {
+  .handler(async ({ data, context }): Promise<SimulationResult> => {
+    const organizationId = await assertWebinarAccess(context.supabase, data.webinarId);
     const { decideAgentReply } = await import("./respond.server");
-    const result = await decideAgentReply({
-      webinarId: data.webinarId,
-      question: data.question,
-      sessionMs: data.sessionSeconds * 1000,
-      history: [],
-      participantName: "Participante de teste",
-    });
+    const result = await runBilled({ organizationId, action: "agent_reply" }, () =>
+      decideAgentReply({
+        webinarId: data.webinarId,
+        question: data.question,
+        sessionMs: data.sessionSeconds * 1000,
+        history: [],
+        participantName: "Participante de teste",
+      }),
+    );
     if (!result.ok) {
       return {
         ok: false,
@@ -287,7 +291,8 @@ export type LearnSuggestions = {
 export const learnFromWebinar = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => z.object({ webinarId: uuid }).parse(data))
-  .handler(async ({ data }): Promise<LearnSuggestions> => {
+  .handler(async ({ data, context }): Promise<LearnSuggestions> => {
+    const organizationId = await assertWebinarAccess(context.supabase, data.webinarId);
     const [{ latestReadyVersion }, { askModelJson, parseJsonObject }] = await Promise.all([
       import("@/lib/temporal/engine.server"),
       import("./model.server"),
@@ -297,11 +302,11 @@ export const learnFromWebinar = createServerFn({ method: "POST" })
       return { ok: false, error: "Ainda não há transcrição deste webinar.", faqs: [], objections: [] };
     }
     const text = version.rawText.slice(0, 24000);
-    const result = await askModelJson({
+    const result = await runBilled({ organizationId, action: "agent_content" }, () => askModelJson({
       system:
         "És um assistente que prepara conhecimento de apoio a vendas a partir da transcrição de um webinar. Responde apenas com JSON válido: {\"faqs\":[{\"question\":\"\",\"answer\":\"\"}],\"objections\":[{\"objection\":\"\",\"response\":\"\"}]}. Português de Portugal. Nunca inventes preços, garantias ou bónus que não apareçam no texto.",
       user: `Transcrição do webinar:\n${text}\n\nSugere até 12 perguntas frequentes e até 8 objeções com resposta, apenas com base no que foi dito.`,
-    });
+    }));
     if (!result.ok) return { ok: false, error: result.reason, faqs: [], objections: [] };
     const parsed = parseJsonObject<LearnSuggestions>(result.text);
     if (!parsed) return { ok: false, error: "Sugestões incompletas.", faqs: [], objections: [] };
@@ -405,10 +410,13 @@ export const generateAgentContent = createServerFn({ method: "POST" })
       };
     }
 
-    const result = await model.askModelJson({
+    const result = await runBilled(
+      { organizationId: String(agent["organization_id"]), action: "agent_content" },
+      () => model.askModelJson({
       system: `És um assistente que prepara conhecimento de apoio a vendas para um webinar. Responde apenas com JSON válido no formato ${shape}. Português de Portugal. Nunca inventes preços, descontos, garantias, bónus ou resultados que não apareçam nas fontes.`,
       user: `${sources}\n\n${ask}`,
-    });
+    }),
+    );
     if (!result.ok) return { ok: false, error: result.reason, usedTranscript, ...EMPTY_CONTENT };
 
     const parsed = model.parseJsonObject<GeneratedContent>(result.text);

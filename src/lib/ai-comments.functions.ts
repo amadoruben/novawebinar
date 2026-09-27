@@ -1,7 +1,20 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { assertWebinarAccess, requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { runBilled } from "@/lib/ai/billing.server";
+import type { BilledAction } from "@/lib/credits";
+
+/** Acção paga deste webinar: confirma o acesso e cobra o custo real à organização. */
+async function billed<T>(
+  supabase: any,
+  webinarId: string,
+  action: BilledAction,
+  run: () => Promise<T>,
+): Promise<T> {
+  const organizationId = await assertWebinarAccess(supabase, webinarId);
+  return runBilled({ organizationId, action }, run);
+}
 import {
   answersForPrompt,
   audienceStateAt,
@@ -1745,7 +1758,9 @@ export const analyseWebinarStructure = createServerFn({ method: "POST" })
       })
       .parse(data),
   )
-  .handler(async ({ data, context }) => analyseWebinarStructureImpl(context.supabase, data));
+  .handler(async ({ data, context }) =>
+    billed(context.supabase, data.webinarId, "webinar_analysis", () => analyseWebinarStructureImpl(context.supabase, data)),
+  );
 
 const intelSchema = z
   .object({
@@ -1923,7 +1938,9 @@ export const generateCommentsWindow = createServerFn({ method: "POST" })
       })
       .parse(data),
   )
-  .handler(async ({ data, context }) => generateCommentsWindowImpl(context.supabase, data));
+  .handler(async ({ data, context }) =>
+    billed(context.supabase, data.webinarId, "chat_generation", () => generateCommentsWindowImpl(context.supabase, data)),
+  );
 
 /** Fase 3 — revisão final da cronologia da timeline completa. */
 export async function auditCommentsTimelineImpl(supabase: any, data: any) {
@@ -1980,7 +1997,9 @@ export const auditCommentsTimeline = createServerFn({ method: "POST" })
       })
       .parse(data),
   )
-  .handler(async ({ data, context }) => auditCommentsTimelineImpl(context.supabase, data));
+  .handler(async ({ data, context }) =>
+    billed(context.supabase, data.webinarId, "chat_generation", () => auditCommentsTimelineImpl(context.supabase, data)),
+  );
 
 /**
  * Geração pontual (regerar um comentário, gerar mais num trecho): uma única
@@ -2014,7 +2033,9 @@ export async function generateEngagementCommentsImpl(supabase: any, data: any) {
 export const generateEngagementComments = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => generateSchema.parse(data))
-  .handler(async ({ data, context }) => generateEngagementCommentsImpl(context.supabase, data));
+  .handler(async ({ data, context }) =>
+    billed(context.supabase, data.webinarId, "chat_generation", () => generateEngagementCommentsImpl(context.supabase, data)),
+  );
 
 /** Lê o mapa guardado do webinar, para o editor mostrar heatmap, insights e score. */
 export const getWebinarAnalysis = createServerFn({ method: "POST" })
@@ -2249,4 +2270,6 @@ export async function syncCommentsWithSpeechImpl(supabase: any, data: any) {
 export const syncCommentsWithSpeech = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => syncCommentsSchema.parse(data))
-  .handler(async ({ data, context }) => syncCommentsWithSpeechImpl(context.supabase, data));
+  .handler(async ({ data, context }) =>
+    billed(context.supabase, data.webinarId, "chat_generation", () => syncCommentsWithSpeechImpl(context.supabase, data)),
+  );

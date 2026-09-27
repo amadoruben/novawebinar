@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { VideoPlayer } from "@/components/video-player";
 import { ctaButtonClass } from "@/lib/cta-colors";
 import { useAudienceCount } from "@/components/audience-counter";
-import { cn } from "@/lib/utils";
+import { cn, isHttpUrl } from "@/lib/utils";
 import { PreliveCountdown, unlockPreliveAudio } from "@/components/prelive-countdown";
 
 type Mode = "live" | "replay";
@@ -678,10 +678,13 @@ export function WebinarRoom({
     node.scrollTop = node.scrollHeight;
   }, [visibleComments.length, sent.length, supportMessages.length, tab]);
 
+  // O link vem da base de dados: só http(s) chega ao browser do participante.
+  const ctaUrl = isHttpUrl(webinar.cta_url) ? webinar.cta_url : null;
+
   const clickCta = () => {
     setCheckout(true);
     onCtaClick?.();
-    if (webinar.cta_url) window.open(webinar.cta_url, "_blank", "noopener");
+    if (ctaUrl) window.open(ctaUrl, "_blank", "noopener");
   };
 
   const sendMessage = async (event: React.FormEvent) => {
@@ -1256,14 +1259,14 @@ export function WebinarRoom({
             <p className="truncate text-sm font-semibold text-room-text">
               {webinar.offer_pin_title?.trim() || "Vagas abertas :"}
             </p>
-            {webinar.cta_url ? (
+            {ctaUrl ? (
               <a
-                href={webinar.cta_url}
+                href={ctaUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="truncate text-[13px] font-medium text-primary underline underline-offset-2 hover:text-primary/80"
               >
-                {webinar.offer_pin_message?.trim() || webinar.cta_url}
+                {webinar.offer_pin_message?.trim() || ctaUrl}
               </a>
             ) : null}
           </div>

@@ -8,8 +8,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { assertWebinarAccess, requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { probeWebinarVideoImpl, saveWebinarTranscriptImpl } from "@/lib/ai-comments.functions";
+import { creditState, meterTranscription, runBilled } from "@/lib/ai/billing.server";
+import { blockedReason } from "@/lib/credits";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const handleSchema = z.object({
@@ -24,6 +26,7 @@ export const startWordTranscription = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => z.object({ webinarId: z.string().uuid() }).parse(data))
   .handler(async ({ data, context }) => {
+    const organizationId = await assertWebinarAccess(context.supabase, data.webinarId);
     const engine = await import("@/lib/temporal/engine.server");
     const { mediaForTranscription } = await import("@/lib/temporal/media");
 
@@ -47,6 +50,8 @@ export const startWordTranscription = createServerFn({ method: "POST" })
     if (!provider) {
       return { status: "unavailable" as const, reason: engine.NO_PROVIDER_REASON };
     }
+    const blocked = blockedReason(await creditState(organizationId));
+    if (blocked) return { status: "unavailable" as const, reason: blocked };
 
     const probe = await probeWebinarVideoImpl(context.supabase, { webinarId: data.webinarId });
     const duration = probe.duration ?? 0;
@@ -84,15 +89,20 @@ export const pollWordTranscription = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data, context }) => {
+    const organizationId = await assertWebinarAccess(context.supabase, data.webinarId);
     const engine = await import("@/lib/temporal/engine.server");
-    const { detectPresenterEvents, mergeClassifiedPrompts, promptCandidates } = await import(
-      "@/lib/temporal/events"
-    );
+    // O versionId também vem do cliente: tem de ser uma versão deste webinar.
+    if (data.versionId && !(await engine.versionBelongsTo(data.versionId, data.webinarId))) {
+      throw new Error("Versão da transcrição não encontrada.");
+    }
+    const { detectPresenterEvents, mergeClassifiedPrompts, promptCandidates } =
+      await import("@/lib/temporal/events");
     const { classifyAudiencePrompts } = await import("@/lib/temporal/prompt-classifier.server");
     const { effectivePrecision } = await import("@/lib/temporal/integrity");
 
     const provider = engine.providerById(data.handle.provider);
-    if (!provider) return { status: "failed" as const, reason: "Motor de transcrição indisponível." };
+    if (!provider)
+      return { status: "failed" as const, reason: "Motor de transcrição indisponível." };
 
     const input = {
       mediaUrl: "",
@@ -123,49 +133,62 @@ export const pollWordTranscription = createServerFn({ method: "POST" })
       return { status: "failed" as const, reason: progress.reason };
     }
 
-    const result = progress.result;
-    const sentences = engine.sentencesFrom(result);
-    let events = detectPresenterEvents(sentences);
-    try {
-      const classified = await classifyAudiencePrompts(promptCandidates(sentences, events));
-      events = mergeClassifiedPrompts(events, classified, sentences);
-    } catch {
-      /* a camada de regras continua a valer */
-    }
+    const done = progress;
+    return runBilled(
+      {
+        organizationId,
+        action: "transcription",
+        alreadyIncurred: true,
+        ...(data.versionId ? { ref: `transcription:${data.versionId}` } : {}),
+      },
+      async () => {
+        await meterTranscription(data.duration);
+        const result = done.result;
+        const sentences = engine.sentencesFrom(result);
+        let events = detectPresenterEvents(sentences);
+        try {
+          const classified = await classifyAudiencePrompts(promptCandidates(sentences, events));
+          events = mergeClassifiedPrompts(events, classified, sentences);
+        } catch {
+          /* a camada de regras continua a valer */
+        }
 
-    const { precision, integrity } = effectivePrecision(result.precision, result.words);
-    if (data.versionId) {
-      await engine.completeVersion(data.versionId, result, sentences, precision);
-      await engine.saveVersionAnalysis(data.versionId, { events });
-      if (integrity) await engine.saveVersionReport(data.versionId, { wordIntegrity: integrity });
-    }
-    if (result.precision === "word" && precision !== "word") {
-      return {
-        status: "failed" as const,
-        reason:
-          "Os tempos por palavra desta transcrição não são fiáveis" +
-          (integrity?.reason ? `: ${integrity.reason}` : "."),
-      };
-    }
+        const { precision, integrity } = effectivePrecision(result.precision, result.words);
+        if (data.versionId) {
+          await engine.completeVersion(data.versionId, result, sentences, precision);
+          await engine.saveVersionAnalysis(data.versionId, { events });
+          if (integrity)
+            await engine.saveVersionReport(data.versionId, { wordIntegrity: integrity });
+        }
+        if (result.precision === "word" && precision !== "word") {
+          return {
+            status: "failed" as const,
+            reason:
+              "Os tempos por palavra desta transcrição não são fiáveis" +
+              (integrity?.reason ? `: ${integrity.reason}` : "."),
+          };
+        }
 
-    const segments = sentences.map((sentence) => ({
-      at: Math.round(sentence.startMs / 1000),
-      text: sentence.text,
-    }));
-    try {
-      await saveWebinarTranscriptImpl(context.supabase, {
-        webinarId: data.webinarId,
-        transcript: segments,
-      });
-    } catch {
-      /* guardar a transcrição é um extra */
-    }
+        const segments = sentences.map((sentence) => ({
+          at: Math.round(sentence.startMs / 1000),
+          text: sentence.text,
+        }));
+        try {
+          await saveWebinarTranscriptImpl(context.supabase, {
+            webinarId: data.webinarId,
+            transcript: segments,
+          });
+        } catch {
+          /* guardar a transcrição é um extra */
+        }
 
-    return {
-      status: "done" as const,
-      precision,
-      versionId: data.versionId,
-      segments,
-    };
+        return {
+          status: "done" as const,
+          precision,
+          versionId: data.versionId,
+          segments,
+        };
+      },
+    );
   });
 /* eslint-enable @typescript-eslint/no-explicit-any */

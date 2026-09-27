@@ -9,9 +9,11 @@ import {
   LayoutDashboard,
   LogOut,
   MonitorPlay,
+  Plug,
   Radio,
   Settings2,
   Users,
+  Wallet,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -36,8 +38,15 @@ const groups: { heading?: string; items: NavItem[] }[] = [
     heading: "Conteúdo",
     items: [
       { to: "/library", title: "Biblioteca", icon: MonitorPlay },
-      { to: "/participants", title: "Participantes", icon: Users },
+      { to: "/contacts", title: "Contactos", icon: Users },
       { to: "/analytics", title: "Analytics", icon: ChartColumn },
+    ],
+  },
+  {
+    heading: "Conta",
+    items: [
+      { to: "/integrations", title: "Integrações", icon: Plug },
+      { to: "/credits", title: "Saldo de IA", icon: Wallet },
     ],
   },
 ];

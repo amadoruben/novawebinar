@@ -25,6 +25,12 @@ const joinSchema = z.object({
   city: z.string().trim().max(120).optional(),
   country: z.string().trim().max(120).optional(),
   countryCode: z.string().trim().max(8).optional(),
+  // Origem do lead (UTM, anúncios ou página de onde veio), calculada no browser.
+  utmSource: z.string().trim().toLowerCase().max(120).optional(),
+  utmMedium: z.string().trim().toLowerCase().max(120).optional(),
+  utmCampaign: z.string().trim().max(120).optional(),
+  utmContent: z.string().trim().max(120).optional(),
+  referrer: z.string().trim().max(200).optional(),
 });
 
 const messageSchema = z.object({
@@ -37,6 +43,13 @@ const messageSchema = z.object({
 const ctaSchema = z.object({
   participantId: z.string().uuid(),
   eventType: z.enum(["view", "click"]),
+  /** Segundo do vídeo em que a pessoa viu ou clicou na oferta. */
+  videoSecond: z
+    .number()
+    .int()
+    .min(0)
+    .max(60 * 60 * 24)
+    .optional(),
 });
 
 const watchedSchema = z.object({
@@ -63,8 +76,13 @@ export const getPublicRoom = createServerFn({ method: "GET" })
 
     if (!webinar) return null;
 
-    const [{ data: comments }, { data: audience }, { data: socialProof }, { data: simulated }] =
-      await Promise.all([
+    const [
+      { data: comments },
+      { data: audience },
+      { data: socialProof },
+      { data: simulated },
+      { data: adIntegrations },
+    ] = await Promise.all([
         supabaseAdmin
           .from("scheduled_comments")
           .select("id, author_name, avatar_url, message, offset_seconds, created_at")
@@ -87,7 +105,22 @@ export const getPublicRoom = createServerFn({ method: "GET" })
           .select("id, buyer_name, product_name, message, offset_seconds")
           .eq("webinar_id", webinar.id)
           .order("offset_seconds", { ascending: true }),
+        supabaseAdmin
+          .from("integrations")
+          .select("provider, settings")
+          .eq("organization_id", webinar.organization_id)
+          .eq("enabled", true)
+          .in("provider", ["meta_pixel", "tiktok_pixel", "google_tag"]),
       ]);
+
+    // Os ids vão parar a endereços de scripts: validam-se outra vez aqui.
+    const { PROVIDERS } = await import("@/lib/integrations");
+    const pixels: Partial<Record<"meta_pixel" | "tiktok_pixel" | "google_tag", string>> = {};
+    for (const row of adIntegrations ?? []) {
+      const info = PROVIDERS.find((p) => p.id === row.provider);
+      const id = String((row.settings as Record<string, unknown> | null)?.[info?.setting?.key ?? ""] ?? "");
+      if (info?.setting?.pattern.test(id)) pixels[row.provider as keyof typeof pixels] = id;
+    }
 
     const source = webinar.video_sources;
     const duration = source?.duration_seconds || webinar.duration_seconds;
@@ -104,6 +137,7 @@ export const getPublicRoom = createServerFn({ method: "GET" })
     }
 
     return {
+      pixels,
       webinar: {
         id: webinar.id,
         organization_id: webinar.organization_id,
@@ -259,6 +293,11 @@ export const joinPublicRoom = createServerFn({ method: "POST" })
         city: data.city ?? fallback.city,
         country: data.country ?? fallback.country,
         country_code: data.countryCode ?? fallback.countryCode,
+        utm_source: data.utmSource ?? null,
+        utm_medium: data.utmMedium ?? null,
+        utm_campaign: data.utmCampaign ?? null,
+        utm_content: data.utmContent ?? null,
+        referrer: data.referrer ?? null,
       })
       .select("id, name")
       .single();
@@ -275,6 +314,19 @@ export const joinPublicRoom = createServerFn({ method: "POST" })
       phone: data.phone ?? null,
       mode: data.mode,
     });
+    if (!data.teste && !data.email.endsWith("@sala.local")) {
+      const { notifyOutgoing } = await import("@/lib/integrations.server");
+      await notifyOutgoing(webinar.organization_id, "contact.registered", {
+        webinar_id: webinar.id,
+        webinar: webinar.public_title,
+        name: data.name,
+        email: data.email,
+        phone: data.phone ?? null,
+        mode: data.mode,
+        utm_source: data.utmSource ?? null,
+        utm_campaign: data.utmCampaign ?? null,
+      });
+    }
 
     return { participantId: participant.id, name: participant.name };
   });
@@ -318,6 +370,7 @@ export const sendPublicRoomMessage = createServerFn({ method: "POST" })
       participant_id: participant.id,
       sender_kind: "participant",
       body: data.body,
+      video_second: data.sessionSeconds ?? null,
     });
     if (messageError) throw new Error("Não foi possível enviar a mensagem.");
 
@@ -366,6 +419,7 @@ export const trackPublicRoomCta = createServerFn({ method: "POST" })
       webinar_id: participant.webinar_id,
       participant_id: participant.id,
       event_type: data.eventType,
+      video_second: data.videoSecond ?? null,
     });
 
     if (data.eventType === "click") {
@@ -388,6 +442,16 @@ export const trackPublicRoomCta = createServerFn({ method: "POST" })
         name: participant.name,
         email: participant.email,
       });
+      if (participant.email && !participant.email.endsWith("@sala.local")) {
+        const { notifyOutgoing } = await import("@/lib/integrations.server");
+        await notifyOutgoing(participant.organization_id, "offer.clicked", {
+          webinar_id: participant.webinar_id,
+          webinar: webinar?.public_title ?? null,
+          name: participant.name,
+          email: participant.email,
+          video_second: data.videoSecond ?? null,
+        });
+      }
     }
 
 
@@ -398,10 +462,12 @@ export const trackPublicRoomProgress = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => watchedSchema.parse(data))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // Só avança: um envio atrasado ou fora de ordem nunca apaga progresso.
     await supabaseAdmin
       .from("participants")
       .update({ watched_seconds: data.watchedSeconds })
-      .eq("id", data.participantId);
+      .eq("id", data.participantId)
+      .lt("watched_seconds", data.watchedSeconds);
     return { ok: true };
   });
 

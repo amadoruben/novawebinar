@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import { cn } from "@/lib/utils";
+import { cn, isHttpUrl } from "@/lib/utils";
 
 type Props = {
   url: string | null;
@@ -33,17 +33,6 @@ type Props = {
   /** Tema visual do leitor. */
   theme?: "dark" | "light";
 };
-
-
-function isHttpUrl(value: string | null): value is string {
-  if (!value) return false;
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
 
 function embedUrl(url: string, provider?: string | null): string | null {
   const lower = url.toLowerCase();

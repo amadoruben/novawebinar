@@ -9,6 +9,7 @@
  *  - o agente nunca se faz passar por pessoa real.
  */
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { NoCreditsError, runBilled } from "@/lib/ai/billing.server";
 import { latestReadyVersion } from "@/lib/temporal/engine.server";
 import { askModelJson, parseJsonObject } from "./model.server";
 import { immediateContext, searchWebinarKnowledge, type WebinarPassage } from "./retrieval.server";
@@ -312,21 +313,34 @@ export async function handleParticipantMessage(input: {
     .order("created_at", { ascending: true })
     .limit(20);
 
-  const decision = await decideAgentReply({
-    webinarId: input.webinarId,
-    question: input.text,
-    sessionMs: input.sessionMs,
-    participantName: input.participantName,
-    history: ((history ?? []) as Row[]).map((row) => ({
-      from:
-        row["sender_kind"] === "participant"
-          ? ("participant" as const)
-          : row["sender_kind"] === "ai_agent"
-            ? ("agent" as const)
-            : ("team" as const),
-    body: String(row["body"] ?? ""),
-    })),
-  });
+  let decision: Awaited<ReturnType<typeof decideAgentReply>>;
+  try {
+    decision = await runBilled({ organizationId: input.organizationId, action: "agent_reply" }, () =>
+      decideAgentReply({
+        webinarId: input.webinarId,
+        question: input.text,
+        sessionMs: input.sessionMs,
+        participantName: input.participantName,
+        history: ((history ?? []) as Row[]).map((row) => ({
+          from:
+            row["sender_kind"] === "participant"
+              ? ("participant" as const)
+              : row["sender_kind"] === "ai_agent"
+                ? ("agent" as const)
+                : ("team" as const),
+          body: String(row["body"] ?? ""),
+        })),
+      }),
+    );
+  } catch (error) {
+    // Modo protegido: sem saldo, o agente cala-se e a conversa passa para a equipa.
+    if (!(error instanceof NoCreditsError)) throw error;
+    await db
+      .from("private_conversations")
+      .update({ needs_human: true, escalation_reason: error.message, status: "waiting" })
+      .eq("id", input.conversationId);
+    return null;
+  }
 
   const escalate = async (reason: string) => {
     await db

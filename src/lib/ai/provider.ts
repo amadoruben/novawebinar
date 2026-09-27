@@ -9,6 +9,7 @@
  *
  * Só corre no servidor: a chave nunca chega ao browser.
  */
+import { meterImage, meterTokens } from "./billing.server";
 import { openAiProvider } from "./providers/openai.server";
 
 export type AIErrorCode =
@@ -46,6 +47,8 @@ export type ChatJsonSuccess = {
   text: string;
   provider: string;
   model: string;
+  /** Tokens contados pelo fornecedor, para cobrar o custo real. */
+  usage?: { inputTokens: number; outputTokens: number };
 };
 
 export type ChatJsonFailure = {
@@ -238,7 +241,16 @@ export async function chatJson(input: ChatJsonInput): Promise<ChatJsonResult> {
       model: input.model ?? provider.defaultModel(),
     };
   }
-  return provider.chatJson(input);
+  const result = await provider.chatJson(input);
+  if (result.ok) {
+    // Sem contagem do fornecedor, estima-se ~4 caracteres por token.
+    const usage = result.usage ?? {
+      inputTokens: Math.ceil((input.system.length + input.user.length) / 4),
+      outputTokens: Math.ceil(result.text.length / 4),
+    };
+    await meterTokens(usage.inputTokens, usage.outputTokens);
+  }
+  return result;
 }
 
 /** Ponto único de entrada para imagens. Nunca lança. */
@@ -257,5 +269,7 @@ export async function generateImage(input: ImageInput): Promise<ImageResult> {
   if (!provider) return notConfigured(`fornecedor desconhecido: ${id}`);
   if (!provider.isConfigured()) return notConfigured("chave em falta");
   if (!provider.generateImage) return notConfigured(`o fornecedor ${provider.id} não gera imagens`);
-  return provider.generateImage(input);
+  const result = await provider.generateImage(input);
+  if (result.ok) await meterImage();
+  return result;
 }

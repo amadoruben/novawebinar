@@ -13,7 +13,10 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as ChatRouteImport } from './routes/chat'
+import { Route as ContactsRouteImport } from './routes/contacts'
+import { Route as CreditsRouteImport } from './routes/credits'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as IntegrationsRouteImport } from './routes/integrations'
 import { Route as LibraryRouteImport } from './routes/library'
 import { Route as LiveViewRouteImport } from './routes/live-view'
 import { Route as ParticipantsRouteImport } from './routes/participants'
@@ -37,6 +40,7 @@ import { Route as ApiPublicPurchaseWebhookRouteImport } from './routes/api/publi
 import { Route as ApiPublicRunJobsRouteImport } from './routes/api/public/run-jobs'
 import { Route as WebinarsWebinarIdEditRouteImport } from './routes/webinars.$webinarId.edit'
 import { Route as WebinarsWebinarIdMetricsRouteImport } from './routes/webinars.$webinarId.metrics'
+import { Route as ApiPublicHooksKeyRouteImport } from './routes/api/public/hooks.$key'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -58,9 +62,24 @@ const ChatRoute = ChatRouteImport.update({
   path: '/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ContactsRoute = ContactsRouteImport.update({
+  id: '/contacts',
+  path: '/contacts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CreditsRoute = CreditsRouteImport.update({
+  id: '/credits',
+  path: '/credits',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IntegrationsRoute = IntegrationsRouteImport.update({
+  id: '/integrations',
+  path: '/integrations',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LibraryRoute = LibraryRouteImport.update({
@@ -180,13 +199,21 @@ const WebinarsWebinarIdMetricsRoute =
     path: '/webinars/$webinarId/metrics',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksKeyRoute = ApiPublicHooksKeyRouteImport.update({
+  id: '/api/public/hooks/$key',
+  path: '/api/public/hooks/$key',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/calendar': typeof CalendarRoute
   '/chat': typeof ChatRoute
+  '/contacts': typeof ContactsRoute
+  '/credits': typeof CreditsRoute
   '/dashboard': typeof DashboardRoute
+  '/integrations': typeof IntegrationsRoute
   '/library': typeof LibraryRoute
   '/live-view': typeof LiveViewRoute
   '/participants': typeof ParticipantsRoute
@@ -210,13 +237,17 @@ export interface FileRoutesByFullPath {
   '/api/public/run-jobs': typeof ApiPublicRunJobsRoute
   '/webinars/$webinarId/edit': typeof WebinarsWebinarIdEditRoute
   '/webinars/$webinarId/metrics': typeof WebinarsWebinarIdMetricsRoute
+  '/api/public/hooks/$key': typeof ApiPublicHooksKeyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/calendar': typeof CalendarRoute
   '/chat': typeof ChatRoute
+  '/contacts': typeof ContactsRoute
+  '/credits': typeof CreditsRoute
   '/dashboard': typeof DashboardRoute
+  '/integrations': typeof IntegrationsRoute
   '/library': typeof LibraryRoute
   '/live-view': typeof LiveViewRoute
   '/participants': typeof ParticipantsRoute
@@ -240,6 +271,7 @@ export interface FileRoutesByTo {
   '/api/public/run-jobs': typeof ApiPublicRunJobsRoute
   '/webinars/$webinarId/edit': typeof WebinarsWebinarIdEditRoute
   '/webinars/$webinarId/metrics': typeof WebinarsWebinarIdMetricsRoute
+  '/api/public/hooks/$key': typeof ApiPublicHooksKeyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -247,7 +279,10 @@ export interface FileRoutesById {
   '/analytics': typeof AnalyticsRoute
   '/calendar': typeof CalendarRoute
   '/chat': typeof ChatRoute
+  '/contacts': typeof ContactsRoute
+  '/credits': typeof CreditsRoute
   '/dashboard': typeof DashboardRoute
+  '/integrations': typeof IntegrationsRoute
   '/library': typeof LibraryRoute
   '/live-view': typeof LiveViewRoute
   '/participants': typeof ParticipantsRoute
@@ -271,6 +306,7 @@ export interface FileRoutesById {
   '/api/public/run-jobs': typeof ApiPublicRunJobsRoute
   '/webinars/$webinarId/edit': typeof WebinarsWebinarIdEditRoute
   '/webinars/$webinarId/metrics': typeof WebinarsWebinarIdMetricsRoute
+  '/api/public/hooks/$key': typeof ApiPublicHooksKeyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -279,7 +315,10 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/calendar'
     | '/chat'
+    | '/contacts'
+    | '/credits'
     | '/dashboard'
+    | '/integrations'
     | '/library'
     | '/live-view'
     | '/participants'
@@ -303,13 +342,17 @@ export interface FileRouteTypes {
     | '/api/public/run-jobs'
     | '/webinars/$webinarId/edit'
     | '/webinars/$webinarId/metrics'
+    | '/api/public/hooks/$key'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/analytics'
     | '/calendar'
     | '/chat'
+    | '/contacts'
+    | '/credits'
     | '/dashboard'
+    | '/integrations'
     | '/library'
     | '/live-view'
     | '/participants'
@@ -333,13 +376,17 @@ export interface FileRouteTypes {
     | '/api/public/run-jobs'
     | '/webinars/$webinarId/edit'
     | '/webinars/$webinarId/metrics'
+    | '/api/public/hooks/$key'
   id:
     | '__root__'
     | '/'
     | '/analytics'
     | '/calendar'
     | '/chat'
+    | '/contacts'
+    | '/credits'
     | '/dashboard'
+    | '/integrations'
     | '/library'
     | '/live-view'
     | '/participants'
@@ -363,6 +410,7 @@ export interface FileRouteTypes {
     | '/api/public/run-jobs'
     | '/webinars/$webinarId/edit'
     | '/webinars/$webinarId/metrics'
+    | '/api/public/hooks/$key'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -370,7 +418,10 @@ export interface RootRouteChildren {
   AnalyticsRoute: typeof AnalyticsRoute
   CalendarRoute: typeof CalendarRoute
   ChatRoute: typeof ChatRoute
+  ContactsRoute: typeof ContactsRoute
+  CreditsRoute: typeof CreditsRoute
   DashboardRoute: typeof DashboardRoute
+  IntegrationsRoute: typeof IntegrationsRoute
   LibraryRoute: typeof LibraryRoute
   LiveViewRoute: typeof LiveViewRoute
   ParticipantsRoute: typeof ParticipantsRoute
@@ -394,6 +445,7 @@ export interface RootRouteChildren {
   ApiPublicRunJobsRoute: typeof ApiPublicRunJobsRoute
   WebinarsWebinarIdEditRoute: typeof WebinarsWebinarIdEditRoute
   WebinarsWebinarIdMetricsRoute: typeof WebinarsWebinarIdMetricsRoute
+  ApiPublicHooksKeyRoute: typeof ApiPublicHooksKeyRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -426,11 +478,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/contacts': {
+      id: '/contacts'
+      path: '/contacts'
+      fullPath: '/contacts'
+      preLoaderRoute: typeof ContactsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/credits': {
+      id: '/credits'
+      path: '/credits'
+      fullPath: '/credits'
+      preLoaderRoute: typeof CreditsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard': {
       id: '/dashboard'
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/integrations': {
+      id: '/integrations'
+      path: '/integrations'
+      fullPath: '/integrations'
+      preLoaderRoute: typeof IntegrationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/library': {
@@ -594,6 +667,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WebinarsWebinarIdMetricsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/$key': {
+      id: '/api/public/hooks/$key'
+      path: '/api/public/hooks/$key'
+      fullPath: '/api/public/hooks/$key'
+      preLoaderRoute: typeof ApiPublicHooksKeyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -602,7 +682,10 @@ const rootRouteChildren: RootRouteChildren = {
   AnalyticsRoute: AnalyticsRoute,
   CalendarRoute: CalendarRoute,
   ChatRoute: ChatRoute,
+  ContactsRoute: ContactsRoute,
+  CreditsRoute: CreditsRoute,
   DashboardRoute: DashboardRoute,
+  IntegrationsRoute: IntegrationsRoute,
   LibraryRoute: LibraryRoute,
   LiveViewRoute: LiveViewRoute,
   ParticipantsRoute: ParticipantsRoute,
@@ -626,6 +709,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicRunJobsRoute: ApiPublicRunJobsRoute,
   WebinarsWebinarIdEditRoute: WebinarsWebinarIdEditRoute,
   WebinarsWebinarIdMetricsRoute: WebinarsWebinarIdMetricsRoute,
+  ApiPublicHooksKeyRoute: ApiPublicHooksKeyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

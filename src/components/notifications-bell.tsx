@@ -165,7 +165,7 @@ function useNotices() {
         icon: "trend",
         title: "O seu webinar está a crescer",
         body: `${recent.length} participantes entraram nas últimas 24 horas. Continue a partilhar o link.`,
-        to: "/participants",
+        to: "/contacts",
       });
     }
 

@@ -6,12 +6,6 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-const commentSchema = z.object({
-  at: z.number(),
-  author: z.string(),
-  message: z.string(),
-});
-
 const enqueueSchema = z.object({
   webinarId: z.string().uuid(),
   webinarTitle: z.string().default(""),
@@ -54,7 +48,10 @@ export const enqueueBackgroundJob = createServerFn({ method: "POST" })
       .eq("webinar_id", data.webinarId)
       .eq("kind", data.kind);
 
-    const { data: row, error } = await context.supabase
+    // Só o servidor cria trabalhos: o RLS acima já confirmou o acesso ao webinar
+    // e a organização vem dele, nunca do cliente.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: row, error } = await supabaseAdmin
       .from("background_jobs")
       .insert({
         webinar_id: data.webinarId,
@@ -69,35 +66,6 @@ export const enqueueBackgroundJob = createServerFn({ method: "POST" })
       .single();
     if (error) throw new Error(error.message);
     return { id: row.id as string };
-  });
-
-/** Guarda os comentários revistos pelo utilizador antes da aprovação. */
-export const setBackgroundJobDrafts = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) =>
-    z
-      .object({
-        webinarId: z.string().uuid(),
-        drafts: z.array(commentSchema.passthrough()).max(4000),
-      })
-      .parse(data),
-  )
-  .handler(async ({ data, context }) => {
-    const { data: row } = await context.supabase
-      .from("background_jobs")
-      .select("id, result")
-      .eq("webinar_id", data.webinarId)
-      .eq("kind", "chat")
-      .maybeSingle();
-    if (!row) return { ok: false as const };
-    await context.supabase
-      .from("background_jobs")
-      .update({
-        result: { ...((row.result as Record<string, unknown>) ?? {}), drafts: data.drafts },
-        updated_at: new Date().toISOString(),
-      } as never)
-      .eq("id", row.id);
-    return { ok: true as const };
   });
 
 /** Remove um trabalho (aprovado, rejeitado ou descartado). */
