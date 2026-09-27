@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAll } from "@/lib/fetch-all";
 import type { Database } from "@/integrations/supabase/types";
 import {
   buildJourney,
@@ -26,7 +27,17 @@ export type Workspace = {
 
   plan: string;
   role: Database["public"]["Enums"]["workspace_role"];
+  /** Todos os espaços de trabalho a que a pessoa pertence (o próprio e os de equipas que a convidaram). */
+  organizations: { id: string; name: string; role: Database["public"]["Enums"]["workspace_role"] }[];
 };
+
+export const ACTIVE_ORGANIZATION_KEY = "cw:active-organization";
+
+/** Troca de espaço de trabalho; a página recarrega para nada do anterior ficar no ecrã. */
+export function switchWorkspace(organizationId: string) {
+  localStorage.setItem(ACTIVE_ORGANIZATION_KEY, organizationId);
+  window.location.assign("/dashboard");
+}
 
 export function useWorkspace() {
   return useQuery<Workspace | null>({
@@ -54,13 +65,16 @@ export function useWorkspace() {
         profile = inserted.data;
       }
 
-      let { data: membership } = await supabase
+      const { data: memberships, error: membershipsError } = await supabase
         .from("organization_members")
         .select("role, organizations(id, name, plan)")
         .eq("user_id", user.id)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
+        .order("created_at", { ascending: true });
+      // Uma leitura falhada não é "sem espaço de trabalho": não se cria outro.
+      if (membershipsError) throw membershipsError;
+      const preferred = localStorage.getItem(ACTIVE_ORGANIZATION_KEY);
+      let membership =
+        memberships?.find((m) => m.organizations?.id === preferred) ?? memberships?.[0] ?? null;
 
       if (!membership) {
         const workspaceName = profile?.full_name?.trim() || "Meu Workspace";
@@ -99,6 +113,9 @@ export function useWorkspace() {
 
         plan: org.plan,
         role,
+        organizations: (memberships?.length ? memberships : [membership!]).flatMap((m) =>
+          m.organizations ? [{ id: m.organizations.id, name: m.organizations.name, role: m.role }] : [],
+        ),
       };
     },
   });
@@ -174,15 +191,17 @@ export function useParticipants(organizationId?: string) {
 export function useScheduledComments(webinarId: string) {
   return useQuery({
     queryKey: ["scheduled-comments", webinarId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("scheduled_comments")
-        .select("*")
-        .eq("webinar_id", webinarId)
-        .order("offset_seconds", { ascending: true });
-      if (error) throw error;
-      return data ?? [];
-    },
+    // Um webinar longo passa dos 1000 comentários: lêem-se todos.
+    queryFn: () =>
+      fetchAll((from, to) =>
+        supabase
+          .from("scheduled_comments")
+          .select("*", { count: "exact" })
+          .eq("webinar_id", webinarId)
+          .order("offset_seconds", { ascending: true })
+          .order("id")
+          .range(from, to),
+      ),
   });
 }
 
@@ -415,14 +434,16 @@ export function useMonthRevenue(organizationId: string | undefined) {
       const start = new Date();
       start.setUTCDate(1);
       start.setUTCHours(0, 0, 0, 0);
-      const { data, error } = await supabase
-        .from("real_purchase_events")
-        .select("amount_value, currency, webinar_id")
-        .eq("organization_id", organizationId!)
-        .eq("status", "approved")
-        .gte("created_at", start.toISOString());
-      if (error) throw error;
-      return data ?? [];
+      return fetchAll((from, to) =>
+        supabase
+          .from("real_purchase_events")
+          .select("amount_value, currency, webinar_id", { count: "exact" })
+          .eq("organization_id", organizationId!)
+          .eq("status", "approved")
+          .gte("created_at", start.toISOString())
+          .order("id")
+          .range(from, to),
+      );
     },
   });
 }

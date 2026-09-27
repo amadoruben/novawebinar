@@ -8,6 +8,7 @@ import { Metric } from "@/components/page-primitives";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAll } from "@/lib/fetch-all";
 import { useWorkspace, watchLabel } from "@/lib/data";
 import { rangeKey, resolveRange, type RangePreset } from "@/lib/date-range";
 
@@ -17,9 +18,9 @@ export const Route = createFileRoute("/analytics")({
   }),
   head: () => ({
     meta: [
-      { title: "Analytics | NovaWebinar" },
+      { title: "Analytics | Convertewebinar" },
       { name: "description", content: "Métricas reais de audiência, retenção e conversão." },
-      { property: "og:title", content: "Analytics | NovaWebinar" },
+      { property: "og:title", content: "Analytics | Convertewebinar" },
       {
         property: "og:description",
         content: "Analise retenção, presença e conversão da audiência real.",
@@ -56,15 +57,19 @@ function AnalyticsPage() {
         q: T,
         column: string,
       ) => (range ? q.gte(column, range.from).lt(column, range.to) : q);
-      const [participants, ctaClicks, ctaViews] = await Promise.all([
-        period(
-          scope(
-            supabase
-              .from("participants")
-              .select("id, cta_clicked, watched_seconds, viewing_mode")
-              .eq("organization_id", organizationId),
-          ),
-          "joined_at",
+      const [people, ctaClicks, ctaViews] = await Promise.all([
+        fetchAll((from, to) =>
+          period(
+            scope(
+              supabase
+                .from("participants")
+                .select("id, cta_clicked, watched_seconds, viewing_mode", { count: "exact" })
+                .eq("organization_id", organizationId),
+            ),
+            "joined_at",
+          )
+            .order("id")
+            .range(from, to),
         ),
         period(
           scope(
@@ -88,7 +93,8 @@ function AnalyticsPage() {
         ),
       ]);
 
-      const people = participants.data ?? [];
+      if (ctaClicks.error) throw ctaClicks.error;
+      if (ctaViews.error) throw ctaViews.error;
       const watchers = people.filter((p) => (p.watched_seconds ?? 0) > 0);
       const watched = watchers.reduce((sum, p) => sum + (p.watched_seconds ?? 0), 0);
       const replayShare = people.length

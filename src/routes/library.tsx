@@ -29,9 +29,9 @@ import type { Database } from "@/integrations/supabase/types";
 export const Route = createFileRoute("/library")({
   head: () => ({
     meta: [
-      { title: "Biblioteca de vídeos | NovaWebinar" },
+      { title: "Biblioteca de vídeos | Convertewebinar" },
       { name: "description", content: "Vídeos reutilizáveis para live e replay." },
-      { property: "og:title", content: "Biblioteca | NovaWebinar" },
+      { property: "og:title", content: "Biblioteca | Convertewebinar" },
       { property: "og:description", content: "Organize os vídeos dos seus webinars." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

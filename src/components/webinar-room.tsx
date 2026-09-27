@@ -25,7 +25,7 @@ import { PreliveCountdown, unlockPreliveAudio } from "@/components/prelive-count
 
 type Mode = "live" | "replay";
 type Tab = "chat" | "support" | "offer";
-type SentMessage = { text: string; at: Date };
+type SentMessage = { text: string; at: Date; failed?: boolean };
 
 export type RoomWebinar = {
   id: string;
@@ -687,14 +687,38 @@ export function WebinarRoom({
     if (ctaUrl) window.open(ctaUrl, "_blank", "noopener");
   };
 
+  // Uma mensagem que não chegou ao servidor fica à vista, com a opção de repetir.
+  const deliver = async (message: SentMessage) => {
+    const mark = (failed: boolean) =>
+      setSent((prev) => prev.map((m) => (m.at === message.at ? { ...m, failed } : m)));
+    mark(false);
+    try {
+      await onSend(message.text);
+    } catch {
+      mark(true);
+    }
+  };
+
   const sendMessage = async (event: React.FormEvent) => {
     event.preventDefault();
     const body = text.trim();
     if (!body) return;
     setText("");
-    setSent((prev) => [...prev, { text: body, at: new Date() }]);
-    await onSend(body);
+    const message = { text: body, at: new Date() };
+    setSent((prev) => [...prev, message]);
+    await deliver(message);
   };
+
+  const retryNote = (message: SentMessage) =>
+    message.failed ? (
+      <button
+        type="button"
+        onClick={() => void deliver(message)}
+        className="text-[11px] font-semibold text-destructive underline underline-offset-2"
+      >
+        Não enviada. Tentar de novo
+      </button>
+    ) : null;
 
   // Durante a contagem a sala continua a encher: a audiência sobe a caminho do
   // arranque, em vez de ficar parada no mesmo número.
@@ -1009,12 +1033,14 @@ export function WebinarRoom({
       key: m.id,
       text: m.body,
       at: new Date(m.created_at),
-      fromTeam: m.sender_kind === "team",
+      // Equipa e assistente IA respondem do mesmo lado; só o participante é "eu".
+      fromTeam: m.sender_kind !== "participant",
+      source: undefined as SentMessage | undefined,
     }));
     const known = new Set(stored.filter((m) => !m.fromTeam).map((m) => m.text));
     const pending = sent
       .filter((m) => !known.has(m.text))
-      .map((m, index) => ({ key: `pending-${index}`, text: m.text, at: m.at, fromTeam: false }));
+      .map((m, index) => ({ key: `pending-${index}`, text: m.text, at: m.at, fromTeam: false, source: m }));
     return [...stored, ...pending].sort((a, b) => a.at.getTime() - b.at.getTime());
   }, [supportMessages, sent]);
 
@@ -1036,6 +1062,7 @@ export function WebinarRoom({
           at: purchaseArrivalRef.current[key]!,
           mine: false,
           purchase: true,
+          source: undefined as SentMessage | undefined,
         };
       });
   }, [proofSchedule, socialProof?.enabled, activePurchase, waiting]);
@@ -1051,6 +1078,7 @@ export function WebinarRoom({
         at: commentArrival[c.id] ?? new Date(c.created_at ?? Date.now()),
         mine: false,
         purchase: false,
+        source: undefined as SentMessage | undefined,
       })),
       ...purchaseFeed,
       ...sent.map((m, index) => ({
@@ -1061,6 +1089,7 @@ export function WebinarRoom({
         at: m.at,
         mine: true,
         purchase: false,
+        source: m,
       })),
     ];
     return items.sort((a, b) => a.at.getTime() - b.at.getTime());
@@ -1108,6 +1137,7 @@ export function WebinarRoom({
                     <p className="mt-0.5 break-words text-sm leading-relaxed text-room-text">
                       {item.message}
                     </p>
+                    {item.source ? retryNote(item.source) : null}
                   </div>
                 </div>
               ) : (
@@ -1169,6 +1199,7 @@ export function WebinarRoom({
                 <span className="px-1 text-[10px] tabular-nums text-room-subtle">
                   {formatMessageTime(message.at)}
                 </span>
+                {message.source ? retryNote(message.source) : null}
               </div>
             ),
           )}

@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import wordmarkAsset from "@/assets/local/nova-logo-full.png";
+import wordmarkAsset from "@/assets/brand/convertewebinar-logo.svg";
 import { landingFeatures } from "@/lib/landing-features";
 
 export function SiteFooter() {
@@ -7,7 +7,7 @@ export function SiteFooter() {
     <footer className="lp-footer">
       <div className="lp-wide lp-footer-grid">
         <div className="lp-footer-brand">
-          <img src={wordmarkAsset} alt="NovaWebinar" />
+          <img src={wordmarkAsset} alt="Convertewebinar" />
           <p>Webinars automatizados: agende, prepare o chat e apresente a oferta no momento certo.</p>
         </div>
         <nav aria-label="Funcionalidades">
@@ -31,7 +31,7 @@ export function SiteFooter() {
         </nav>
       </div>
       <div className="lp-wide lp-footer-base">
-        <p>© {new Date().getFullYear()} NovaWebinar</p>
+        <p>© {new Date().getFullYear()} Convertewebinar</p>
       </div>
     </footer>
   );

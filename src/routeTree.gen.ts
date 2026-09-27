@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as CalendarRouteImport } from './routes/calendar'
+import { Route as CasesRouteImport } from './routes/cases'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as ContactsRouteImport } from './routes/contacts'
 import { Route as CreditsRouteImport } from './routes/credits'
@@ -22,10 +23,12 @@ import { Route as LiveViewRouteImport } from './routes/live-view'
 import { Route as ParticipantsRouteImport } from './routes/participants'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SupportRouteImport } from './routes/support'
+import { Route as TeamRouteImport } from './routes/team'
 import { Route as ApiGenerateImageRouteImport } from './routes/api/generate-image'
 import { Route as AuthLoginRouteImport } from './routes/auth.login'
 import { Route as AuthRegisterRouteImport } from './routes/auth.register'
 import { Route as AuthResetRouteImport } from './routes/auth.reset'
+import { Route as AuthWelcomeRouteImport } from './routes/auth.welcome'
 import { Route as FuncionalidadesIndexRouteImport } from './routes/funcionalidades.index'
 import { Route as FuncionalidadesSlugRouteImport } from './routes/funcionalidades.$slug'
 import { Route as LegalCookiesRouteImport } from './routes/legal.cookies'
@@ -55,6 +58,11 @@ const AnalyticsRoute = AnalyticsRouteImport.update({
 const CalendarRoute = CalendarRouteImport.update({
   id: '/calendar',
   path: '/calendar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CasesRoute = CasesRouteImport.update({
+  id: '/cases',
+  path: '/cases',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatRoute = ChatRouteImport.update({
@@ -107,6 +115,11 @@ const SupportRoute = SupportRouteImport.update({
   path: '/support',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TeamRoute = TeamRouteImport.update({
+  id: '/team',
+  path: '/team',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiGenerateImageRoute = ApiGenerateImageRouteImport.update({
   id: '/api/generate-image',
   path: '/api/generate-image',
@@ -125,6 +138,11 @@ const AuthRegisterRoute = AuthRegisterRouteImport.update({
 const AuthResetRoute = AuthResetRouteImport.update({
   id: '/auth/reset',
   path: '/auth/reset',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthWelcomeRoute = AuthWelcomeRouteImport.update({
+  id: '/auth/welcome',
+  path: '/auth/welcome',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FuncionalidadesIndexRoute = FuncionalidadesIndexRouteImport.update({
@@ -209,6 +227,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/calendar': typeof CalendarRoute
+  '/cases': typeof CasesRoute
   '/chat': typeof ChatRoute
   '/contacts': typeof ContactsRoute
   '/credits': typeof CreditsRoute
@@ -219,10 +238,12 @@ export interface FileRoutesByFullPath {
   '/participants': typeof ParticipantsRoute
   '/settings': typeof SettingsRoute
   '/support': typeof SupportRoute
+  '/team': typeof TeamRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/register': typeof AuthRegisterRoute
   '/auth/reset': typeof AuthResetRoute
+  '/auth/welcome': typeof AuthWelcomeRoute
   '/funcionalidades/$slug': typeof FuncionalidadesSlugRoute
   '/legal/cookies': typeof LegalCookiesRoute
   '/legal/privacidade': typeof LegalPrivacidadeRoute
@@ -243,6 +264,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/calendar': typeof CalendarRoute
+  '/cases': typeof CasesRoute
   '/chat': typeof ChatRoute
   '/contacts': typeof ContactsRoute
   '/credits': typeof CreditsRoute
@@ -253,10 +275,12 @@ export interface FileRoutesByTo {
   '/participants': typeof ParticipantsRoute
   '/settings': typeof SettingsRoute
   '/support': typeof SupportRoute
+  '/team': typeof TeamRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/register': typeof AuthRegisterRoute
   '/auth/reset': typeof AuthResetRoute
+  '/auth/welcome': typeof AuthWelcomeRoute
   '/funcionalidades/$slug': typeof FuncionalidadesSlugRoute
   '/legal/cookies': typeof LegalCookiesRoute
   '/legal/privacidade': typeof LegalPrivacidadeRoute
@@ -278,6 +302,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/calendar': typeof CalendarRoute
+  '/cases': typeof CasesRoute
   '/chat': typeof ChatRoute
   '/contacts': typeof ContactsRoute
   '/credits': typeof CreditsRoute
@@ -288,10 +313,12 @@ export interface FileRoutesById {
   '/participants': typeof ParticipantsRoute
   '/settings': typeof SettingsRoute
   '/support': typeof SupportRoute
+  '/team': typeof TeamRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/register': typeof AuthRegisterRoute
   '/auth/reset': typeof AuthResetRoute
+  '/auth/welcome': typeof AuthWelcomeRoute
   '/funcionalidades/$slug': typeof FuncionalidadesSlugRoute
   '/legal/cookies': typeof LegalCookiesRoute
   '/legal/privacidade': typeof LegalPrivacidadeRoute
@@ -314,6 +341,7 @@ export interface FileRouteTypes {
     | '/'
     | '/analytics'
     | '/calendar'
+    | '/cases'
     | '/chat'
     | '/contacts'
     | '/credits'
@@ -324,10 +352,12 @@ export interface FileRouteTypes {
     | '/participants'
     | '/settings'
     | '/support'
+    | '/team'
     | '/api/generate-image'
     | '/auth/login'
     | '/auth/register'
     | '/auth/reset'
+    | '/auth/welcome'
     | '/funcionalidades/$slug'
     | '/legal/cookies'
     | '/legal/privacidade'
@@ -348,6 +378,7 @@ export interface FileRouteTypes {
     | '/'
     | '/analytics'
     | '/calendar'
+    | '/cases'
     | '/chat'
     | '/contacts'
     | '/credits'
@@ -358,10 +389,12 @@ export interface FileRouteTypes {
     | '/participants'
     | '/settings'
     | '/support'
+    | '/team'
     | '/api/generate-image'
     | '/auth/login'
     | '/auth/register'
     | '/auth/reset'
+    | '/auth/welcome'
     | '/funcionalidades/$slug'
     | '/legal/cookies'
     | '/legal/privacidade'
@@ -382,6 +415,7 @@ export interface FileRouteTypes {
     | '/'
     | '/analytics'
     | '/calendar'
+    | '/cases'
     | '/chat'
     | '/contacts'
     | '/credits'
@@ -392,10 +426,12 @@ export interface FileRouteTypes {
     | '/participants'
     | '/settings'
     | '/support'
+    | '/team'
     | '/api/generate-image'
     | '/auth/login'
     | '/auth/register'
     | '/auth/reset'
+    | '/auth/welcome'
     | '/funcionalidades/$slug'
     | '/legal/cookies'
     | '/legal/privacidade'
@@ -417,6 +453,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AnalyticsRoute: typeof AnalyticsRoute
   CalendarRoute: typeof CalendarRoute
+  CasesRoute: typeof CasesRoute
   ChatRoute: typeof ChatRoute
   ContactsRoute: typeof ContactsRoute
   CreditsRoute: typeof CreditsRoute
@@ -427,10 +464,12 @@ export interface RootRouteChildren {
   ParticipantsRoute: typeof ParticipantsRoute
   SettingsRoute: typeof SettingsRoute
   SupportRoute: typeof SupportRoute
+  TeamRoute: typeof TeamRoute
   ApiGenerateImageRoute: typeof ApiGenerateImageRoute
   AuthLoginRoute: typeof AuthLoginRoute
   AuthRegisterRoute: typeof AuthRegisterRoute
   AuthResetRoute: typeof AuthResetRoute
+  AuthWelcomeRoute: typeof AuthWelcomeRoute
   FuncionalidadesSlugRoute: typeof FuncionalidadesSlugRoute
   LegalCookiesRoute: typeof LegalCookiesRoute
   LegalPrivacidadeRoute: typeof LegalPrivacidadeRoute
@@ -469,6 +508,13 @@ declare module '@tanstack/react-router' {
       path: '/calendar'
       fullPath: '/calendar'
       preLoaderRoute: typeof CalendarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cases': {
+      id: '/cases'
+      path: '/cases'
+      fullPath: '/cases'
+      preLoaderRoute: typeof CasesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/chat': {
@@ -541,6 +587,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SupportRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/team': {
+      id: '/team'
+      path: '/team'
+      fullPath: '/team'
+      preLoaderRoute: typeof TeamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/generate-image': {
       id: '/api/generate-image'
       path: '/api/generate-image'
@@ -567,6 +620,13 @@ declare module '@tanstack/react-router' {
       path: '/auth/reset'
       fullPath: '/auth/reset'
       preLoaderRoute: typeof AuthResetRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/welcome': {
+      id: '/auth/welcome'
+      path: '/auth/welcome'
+      fullPath: '/auth/welcome'
+      preLoaderRoute: typeof AuthWelcomeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/funcionalidades/': {
@@ -681,6 +741,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnalyticsRoute: AnalyticsRoute,
   CalendarRoute: CalendarRoute,
+  CasesRoute: CasesRoute,
   ChatRoute: ChatRoute,
   ContactsRoute: ContactsRoute,
   CreditsRoute: CreditsRoute,
@@ -691,10 +752,12 @@ const rootRouteChildren: RootRouteChildren = {
   ParticipantsRoute: ParticipantsRoute,
   SettingsRoute: SettingsRoute,
   SupportRoute: SupportRoute,
+  TeamRoute: TeamRoute,
   ApiGenerateImageRoute: ApiGenerateImageRoute,
   AuthLoginRoute: AuthLoginRoute,
   AuthRegisterRoute: AuthRegisterRoute,
   AuthResetRoute: AuthResetRoute,
+  AuthWelcomeRoute: AuthWelcomeRoute,
   FuncionalidadesSlugRoute: FuncionalidadesSlugRoute,
   LegalCookiesRoute: LegalCookiesRoute,
   LegalPrivacidadeRoute: LegalPrivacidadeRoute,

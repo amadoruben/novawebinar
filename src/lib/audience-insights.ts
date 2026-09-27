@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAll } from "@/lib/fetch-all";
 import { rangeKey, type DateRange } from "@/lib/date-range";
 
 /**
@@ -41,31 +42,38 @@ export function useAudienceInsights(
         column: string,
       ) => (range ? q.gte(column, range.from).lt(column, range.to) : q);
 
-      const [participantsRes, ctaViewsRes, purchasesRes, webinarsRes, sessionsRes] =
+      const [people, ctaViews, purchasesRes, webinarsRes, sessionsRes] =
         await Promise.all([
-          period(
-            scope(
-              supabase
-                .from("participants")
-                .select(
-                  "id, webinar_id, joined_at, watched_seconds, cta_clicked, device, country, city",
-                )
-                .eq("organization_id", organizationId!)
-                .order("joined_at", { ascending: false })
-                .limit(5000),
-            ),
-            "joined_at",
+          fetchAll((from, to) =>
+            period(
+              scope(
+                supabase
+                  .from("participants")
+                  .select(
+                    "id, webinar_id, joined_at, watched_seconds, cta_clicked, device, country, city",
+                    { count: "exact" },
+                  )
+                  .eq("organization_id", organizationId!),
+              ),
+              "joined_at",
+            )
+              .order("joined_at", { ascending: false })
+              .order("id")
+              .range(from, to),
           ),
-          period(
-            scope(
-              supabase
-                .from("cta_events")
-                .select("participant_id")
-                .eq("organization_id", organizationId!)
-                .eq("event_type", "view")
-                .limit(5000),
-            ),
-            "occurred_at",
+          fetchAll((from, to) =>
+            period(
+              scope(
+                supabase
+                  .from("cta_events")
+                  .select("participant_id", { count: "exact" })
+                  .eq("organization_id", organizationId!)
+                  .eq("event_type", "view"),
+              ),
+              "occurred_at",
+            )
+              .order("id")
+              .range(from, to),
           ),
           period(
             scope(
@@ -87,11 +95,11 @@ export function useAudienceInsights(
             .limit(2000),
         ]);
 
-      const people = participantsRes.data ?? [];
+      if (purchasesRes.error) throw purchasesRes.error;
       const visits = people.length;
       const watched = people.filter((p) => (p.watched_seconds ?? 0) > 0).length;
       const sawOffer = new Set(
-        (ctaViewsRes.data ?? []).map((row) => row.participant_id).filter(Boolean),
+        ctaViews.map((row) => row.participant_id).filter(Boolean),
       ).size;
       const clicked = people.filter((p) => p.cta_clicked).length;
       const pitchByWebinar = new Map<string, number>();

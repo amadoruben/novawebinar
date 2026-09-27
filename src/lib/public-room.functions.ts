@@ -1,8 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { sessionWindow } from "@/lib/schedule";
-
 /**
  * Funções públicas da sala. São chamadas por visitantes sem sessão, por isso
  * validam sempre a entrada e devolvem apenas os campos que o público precisa.
@@ -61,169 +59,14 @@ const watchedSchema = z.object({
     .max(60 * 60 * 24),
 });
 
+const UNAVAILABLE = "Serviço temporariamente indisponível. Tente novamente.";
+
 export const getPublicRoom = createServerFn({ method: "GET" })
   .inputValidator((data: unknown) => slugSchema.parse(data))
   .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
-    const { data: webinar } = await supabaseAdmin
-      .from("webinars")
-      .select(
-        "id, organization_id, public_title, description, status, room_theme, host_name, host_role, host_avatar_url, chat_pin_title, chat_pin_message, offer_pin_title, offer_pin_message, scheduled_at, session_end_time, schedule_mode, recurrence_enabled, recurrence_pattern, recurrence_weekday, recurrence_start_time, recurrence_end_time, jit_interval_minutes, timezone, duration_seconds, replay_enabled, waiting_room_enabled, prelive_enabled, prelive_seconds, prelive_sound, prelive_message, prelive_template, prelive_appearance, easy_access, sync_video_with_start, cta_text, cta_url, cta_color, cta_price_original, cta_price_now, cta_image_url, cta_countdown_seconds, cta_start_seconds, cta_end_seconds, registration_headline, registration_subtitle, registration_button_text, registration_collect_phone, registration_require_phone, registration_cover_url, registration_badge_text, registration_progress_enabled, registration_progress_value, registration_scarcity_note, share_title, share_description, share_image_url, video_sources(source_url, provider, duration_seconds, storage_path)",
-      )
-      .eq("slug", data.slug)
-      .maybeSingle();
-
-    if (!webinar) return null;
-
-    const [
-      { data: comments },
-      { data: audience },
-      { data: socialProof },
-      { data: simulated },
-      { data: adIntegrations },
-    ] = await Promise.all([
-        supabaseAdmin
-          .from("scheduled_comments")
-          .select("id, author_name, avatar_url, message, offset_seconds, created_at")
-          .eq("webinar_id", webinar.id)
-          .order("offset_seconds", { ascending: true }),
-        supabaseAdmin
-          .from("audience_configuration")
-          .select("mode, curve")
-          .eq("webinar_id", webinar.id)
-          .maybeSingle(),
-        supabaseAdmin
-          .from("social_proof_settings")
-          .select(
-            "enabled, product_name, start_mode, start_delay_seconds, start_seconds, end_seconds, min_interval_seconds, max_interval_seconds, position, display_seconds, animation, sound_enabled, notification_color",
-          )
-          .eq("webinar_id", webinar.id)
-          .maybeSingle(),
-        supabaseAdmin
-          .from("simulated_purchase_events")
-          .select("id, buyer_name, product_name, message, offset_seconds")
-          .eq("webinar_id", webinar.id)
-          .order("offset_seconds", { ascending: true }),
-        supabaseAdmin
-          .from("integrations")
-          .select("provider, settings")
-          .eq("organization_id", webinar.organization_id)
-          .eq("enabled", true)
-          .in("provider", ["meta_pixel", "tiktok_pixel", "google_tag"]),
-      ]);
-
-    // Os ids vão parar a endereços de scripts: validam-se outra vez aqui.
-    const { PROVIDERS } = await import("@/lib/integrations");
-    const pixels: Partial<Record<"meta_pixel" | "tiktok_pixel" | "google_tag", string>> = {};
-    for (const row of adIntegrations ?? []) {
-      const info = PROVIDERS.find((p) => p.id === row.provider);
-      const id = String((row.settings as Record<string, unknown> | null)?.[info?.setting?.key ?? ""] ?? "");
-      if (info?.setting?.pattern.test(id)) pixels[row.provider as keyof typeof pixels] = id;
-    }
-
-    const source = webinar.video_sources;
-    const duration = source?.duration_seconds || webinar.duration_seconds;
-    const session = sessionWindow({ ...webinar, duration_seconds: duration });
-
-    // Vídeo guardado no bucket privado: URL assinado só para esta reprodução.
-    // Vídeos externos (ou enviados antes de existir `storage_path`) mantêm o link guardado.
-    let videoUrl: string | null = source?.source_url ?? null;
-    if (source?.storage_path) {
-      const { data: signed } = await supabaseAdmin.storage
-        .from("webinar-videos")
-        .createSignedUrl(source.storage_path, 60 * 60 * 24);
-      if (signed?.signedUrl) videoUrl = signed.signedUrl;
-    }
-
-    return {
-      pixels,
-      webinar: {
-        id: webinar.id,
-        organization_id: webinar.organization_id,
-        public_title: webinar.public_title,
-        description: webinar.description,
-        host_name: webinar.host_name ?? "",
-        host_role: webinar.host_role ?? "",
-        host_avatar_url: webinar.host_avatar_url ?? "",
-        chat_pin_title: webinar.chat_pin_title ?? "",
-        chat_pin_message: webinar.chat_pin_message ?? "",
-        offer_pin_title: webinar.offer_pin_title ?? "",
-        offer_pin_message: webinar.offer_pin_message ?? "",
-        status: webinar.status,
-        room_theme: webinar.room_theme === "light" ? "light" : "dark",
-        scheduled_at: webinar.scheduled_at,
-        session_start: session.startMs ? new Date(session.startMs).toISOString() : null,
-        session_end: session.endMs ? new Date(session.endMs).toISOString() : null,
-        session_ended: session.endedMs ? new Date(session.endedMs).toISOString() : null,
-        waiting_open: session.waitingOpen,
-        schedule_mode: webinar.schedule_mode,
-        recurrence_enabled: webinar.recurrence_enabled,
-        timezone: webinar.timezone,
-        duration_seconds: duration,
-        replay_enabled: webinar.replay_enabled,
-        waiting_room_enabled: webinar.waiting_room_enabled,
-        prelive_enabled: webinar.prelive_enabled,
-        prelive_seconds: webinar.prelive_seconds,
-        prelive_sound: webinar.prelive_sound,
-        prelive_message: webinar.prelive_message,
-        prelive_template: webinar.prelive_template,
-        prelive_appearance: webinar.prelive_appearance,
-        easy_access: webinar.easy_access,
-        sync_video_with_start: webinar.sync_video_with_start,
-        cta_text: webinar.cta_text,
-        cta_url: webinar.cta_url,
-        cta_color: webinar.cta_color,
-        cta_price_original: webinar.cta_price_original,
-        cta_price_now: webinar.cta_price_now,
-        cta_image_url: webinar.cta_image_url,
-        cta_countdown_seconds: webinar.cta_countdown_seconds,
-        cta_start_seconds: webinar.cta_start_seconds,
-        cta_end_seconds: webinar.cta_end_seconds,
-        registration_headline: webinar.registration_headline,
-        registration_subtitle: webinar.registration_subtitle,
-        registration_button_text: webinar.registration_button_text,
-        registration_collect_phone: webinar.registration_collect_phone,
-        registration_require_phone: webinar.registration_require_phone,
-        registration_cover_url: webinar.registration_cover_url,
-        registration_badge_text: webinar.registration_badge_text,
-        registration_progress_enabled: webinar.registration_progress_enabled,
-        registration_progress_value: webinar.registration_progress_value,
-        registration_scarcity_note: webinar.registration_scarcity_note,
-        share_title: webinar.share_title,
-        share_description: webinar.share_description,
-        share_image_url: webinar.share_image_url,
-        video_url: videoUrl,
-        video_provider: source?.provider ?? null,
-      },
-      comments: comments ?? [],
-      audience: { mode: audience?.mode ?? "simulated", curve: audience?.curve ?? [] },
-      socialProof: socialProof ?? null,
-      simulatedPurchases: simulated ?? [],
-    };
+    const { loadPublicRoom } = await import("@/lib/public-room.server");
+    return loadPublicRoom(data.slug);
   });
-
-/**
- * Envia o aviso para o endereço configurado na integração WebHook.
- * Falhas nunca interrompem a experiência do participante.
- */
-async function notifyWebhook(
-  url: string | null | undefined,
-  enabled: boolean | null | undefined,
-  payload: Record<string, unknown>,
-) {
-  const endpoint = (url ?? "").trim();
-  if (!enabled || !/^https?:\/\//i.test(endpoint)) return;
-  try {
-    await fetch(endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...payload, sent_at: new Date().toISOString() }),
-    });
-  } catch {
-    // ignorado de propósito
-  }
-}
 
 /** Deduz dispositivo e localização a partir do pedido quando o navegador não os envia. */
 async function requestAudienceMeta(): Promise<{
@@ -304,6 +147,7 @@ export const joinPublicRoom = createServerFn({ method: "POST" })
 
     if (error) throw new Error("Não foi possível entrar na sala.");
 
+    const { notifyWebhook } = await import("@/lib/public-room.server");
     await notifyWebhook(webinar.webhook_url, data.teste ? false : webinar.webhook_enabled, {
       event: "registration",
       webinar_id: webinar.id,
@@ -336,18 +180,21 @@ export const sendPublicRoomMessage = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: participant } = await supabaseAdmin
+    const { data: participant, error: participantError } = await supabaseAdmin
       .from("participants")
       .select("id, name, webinar_id, organization_id")
       .eq("id", data.participantId)
       .maybeSingle();
+    if (participantError) throw new Error(UNAVAILABLE);
     if (!participant) throw new Error("Participante desconhecido.");
 
-    const { data: existing } = await supabaseAdmin
+    const { data: existing, error: existingError } = await supabaseAdmin
       .from("private_conversations")
       .select("id")
       .eq("participant_id", participant.id)
       .maybeSingle();
+    // Sem saber se a conversa existe, não se abre outra.
+    if (existingError) throw new Error(UNAVAILABLE);
 
     let conversationId = existing?.id ?? null;
     if (!conversationId) {
@@ -362,6 +209,12 @@ export const sendPublicRoomMessage = createServerFn({ method: "POST" })
         .single();
       if (error) throw new Error("Não foi possível abrir a conversa.");
       conversationId = created.id;
+      await supabaseAdmin.rpc("support_log_conversation_event", {
+        _conversation_id: created.id,
+        _name: "conversation_created",
+        _actor_kind: "contact",
+        _data: { channel: "webinar_chat" },
+      });
     }
 
     const { error: messageError } = await supabaseAdmin.from("private_messages").insert({
@@ -380,7 +233,7 @@ export const sendPublicRoomMessage = createServerFn({ method: "POST" })
       .eq("id", conversationId);
 
     // Agente IA: usa o relógio real do participante (live ou replay). Uma
-    // falha aqui nunca pode perder a mensagem — fica para a equipa humana.
+    // falha aqui nunca pode perder a mensagem — vira caso para a equipa.
     try {
       const { handleParticipantMessage } = await import("@/lib/ai-agent/respond.server");
       await handleParticipantMessage({
@@ -393,10 +246,24 @@ export const sendPublicRoomMessage = createServerFn({ method: "POST" })
         sessionMs: Math.max(0, (data.sessionSeconds ?? 0) * 1000),
       });
     } catch {
-      await supabaseAdmin
-        .from("private_conversations")
-        .update({ needs_human: true, escalation_reason: "Problema técnico do assistente" })
-        .eq("id", conversationId);
+      try {
+        const { escalateToCase } = await import("@/lib/support/cases.server");
+        await escalateToCase({
+          organizationId: participant.organization_id,
+          conversationId: conversationId!,
+          participantId: participant.id,
+          webinarId: participant.webinar_id,
+          text: data.body,
+          actor: "system",
+          reason: "Problema técnico do assistente",
+        });
+      } catch {
+        // Último recurso: a conversa fica marcada para a equipa, mesmo sem caso.
+        await supabaseAdmin
+          .from("private_conversations")
+          .update({ needs_human: true, escalation_reason: "Problema técnico do assistente" })
+          .eq("id", conversationId);
+      }
     }
 
     return { ok: true };
@@ -405,57 +272,8 @@ export const sendPublicRoomMessage = createServerFn({ method: "POST" })
 export const trackPublicRoomCta = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => ctaSchema.parse(data))
   .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
-    const { data: participant } = await supabaseAdmin
-      .from("participants")
-      .select("id, name, email, webinar_id, organization_id")
-      .eq("id", data.participantId)
-      .maybeSingle();
-    if (!participant) return { ok: false };
-
-    await supabaseAdmin.from("cta_events").insert({
-      organization_id: participant.organization_id,
-      webinar_id: participant.webinar_id,
-      participant_id: participant.id,
-      event_type: data.eventType,
-      video_second: data.videoSecond ?? null,
-    });
-
-    if (data.eventType === "click") {
-      await supabaseAdmin
-        .from("participants")
-        .update({ cta_clicked: true })
-        .eq("id", participant.id);
-
-      const { data: webinar } = await supabaseAdmin
-        .from("webinars")
-        .select("public_title, webhook_url, webhook_enabled")
-        .eq("id", participant.webinar_id)
-        .maybeSingle();
-
-      await notifyWebhook(webinar?.webhook_url, webinar?.webhook_enabled, {
-        event: "cta_click",
-        webinar_id: participant.webinar_id,
-        webinar: webinar?.public_title ?? null,
-        participant_id: participant.id,
-        name: participant.name,
-        email: participant.email,
-      });
-      if (participant.email && !participant.email.endsWith("@sala.local")) {
-        const { notifyOutgoing } = await import("@/lib/integrations.server");
-        await notifyOutgoing(participant.organization_id, "offer.clicked", {
-          webinar_id: participant.webinar_id,
-          webinar: webinar?.public_title ?? null,
-          name: participant.name,
-          email: participant.email,
-          video_second: data.videoSecond ?? null,
-        });
-      }
-    }
-
-
-    return { ok: true };
+    const { recordCta } = await import("@/lib/public-room.server");
+    return recordCta(data);
   });
 
 export const trackPublicRoomProgress = createServerFn({ method: "POST" })
@@ -463,11 +281,13 @@ export const trackPublicRoomProgress = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     // Só avança: um envio atrasado ou fora de ordem nunca apaga progresso.
-    await supabaseAdmin
+    const { error } = await supabaseAdmin
       .from("participants")
       .update({ watched_seconds: data.watchedSeconds })
       .eq("id", data.participantId)
       .lt("watched_seconds", data.watchedSeconds);
+    // A sala volta a enviar este progresso no próximo avanço.
+    if (error) throw new Error(UNAVAILABLE);
     return { ok: true };
   });
 
@@ -475,14 +295,6 @@ export const trackPublicRoomProgress = createServerFn({ method: "POST" })
 export const getPublicRoomMessages = createServerFn({ method: "GET" })
   .inputValidator((data: unknown) => z.object({ participantId: z.string().uuid() }).parse(data))
   .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
-    const { data: messages } = await supabaseAdmin
-      .from("private_messages")
-      .select("id, body, sender_kind, created_at")
-      .eq("participant_id", data.participantId)
-      .order("created_at", { ascending: true })
-      .limit(200);
-
-    return { messages: messages ?? [] };
+    const { loadRoomMessages } = await import("@/lib/public-room.server");
+    return loadRoomMessages(data.participantId);
   });

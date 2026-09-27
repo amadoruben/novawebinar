@@ -26,3 +26,15 @@ export function offerUrl(raw: string): string | null {
   const withScheme = /^[a-z][a-z\d+.-]*:/i.test(value) ? value : `https://${value}`;
   return isHttpUrl(withScheme) ? withScheme : null;
 }
+
+/** Repete uma chamada que falhou por motivo passageiro, com espera crescente (0,8 s, 2,4 s…). */
+export async function retry<T>(run: () => Promise<T>, attempts = 3, waitMs = 800): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run();
+    } catch (error) {
+      if (attempt >= attempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, waitMs * 3 ** (attempt - 1)));
+    }
+  }
+}

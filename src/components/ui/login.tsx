@@ -51,7 +51,7 @@ const itemVariants = {
 
 export function AuthFormSplitScreen({
   logo,
-  eyebrow = "NovaWebinar",
+  eyebrow = "Convertewebinar",
   title,
   description,
   imageSrc,

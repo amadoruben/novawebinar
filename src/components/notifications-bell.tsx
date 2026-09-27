@@ -3,6 +3,7 @@ import {
   Bell,
   CalendarClock,
   Check,
+  Headset,
   Lightbulb,
   PartyPopper,
   Rocket,
@@ -10,6 +11,7 @@ import {
   Wand2,
   X,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -22,11 +24,14 @@ import { useParticipants, useWebinars, useWorkspace } from "@/lib/data";
 import { AI_JOB_STAGES, useAiJobs } from "@/lib/ai-comment-jobs";
 import { useSyncJobs } from "@/lib/sync-jobs";
 import { friendlyError } from "@/lib/friendly-error";
+import { supabase } from "@/integrations/supabase/client";
+import { useSupportSetup } from "@/lib/support/hooks";
+import { canAttend, slaState } from "@/lib/support/model";
 import { cn } from "@/lib/utils";
 
 type Notice = {
   id: string;
-  icon: "rocket" | "party" | "trend" | "ai" | "ai-done" | "calendar" | "tip";
+  icon: "rocket" | "party" | "trend" | "ai" | "ai-done" | "calendar" | "tip" | "case";
   title: string;
   body: string;
   to?: string;
@@ -41,6 +46,7 @@ const ICONS = {
   "ai-done": Check,
   calendar: CalendarClock,
   tip: Lightbulb,
+  case: Headset,
 } as const;
 
 const READ_KEY = "novawebinar:notices-read";
@@ -53,16 +59,95 @@ function readDismissed(): string[] {
   }
 }
 
+/** O que pede a atenção de quem atende: casos sem dono, prazos e o que lhe foi atribuído. */
+function useCaseNotices(organizationId: string | undefined, enabled: boolean): Notice[] {
+  const scope = enabled ? organizationId : undefined;
+  const { data: setup } = useSupportSetup(scope);
+  const { data: open } = useQuery({
+    queryKey: ["support", "cases", "bell", scope],
+    enabled: Boolean(scope),
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("support_cases")
+        .select(
+          "id, status, assigned_staff_id, sla_deadline, sla_minutes, first_response_at, sla_breached_at",
+        )
+        .eq("organization_id", scope!)
+        .not("status", "in", "(resolved,closed)")
+        .limit(500);
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  return useMemo(() => {
+    if (!open?.length) return [];
+    const count = (n: number, one: string, many: string) => (n === 1 ? one : `${n} ${many}`);
+    const notices: Notice[] = [];
+    const late = open.filter((c) => slaState(c).state === "breached" && !c.first_response_at).length;
+    const risk = open.filter((c) => slaState(c).state === "risk").length;
+    const unassigned = open.filter((c) => !c.assigned_staff_id).length;
+    const mine = open.filter(
+      (c) => c.assigned_staff_id === setup?.staffId && !c.first_response_at,
+    ).length;
+    if (late > 0) {
+      notices.push({
+        id: "cases-late",
+        icon: "case",
+        title: count(late, "Um caso passou o prazo de resposta", "casos passaram o prazo de resposta"),
+        body: "O cliente ainda está à espera da primeira resposta de uma pessoa.",
+        to: "/cases",
+        live: true,
+      });
+    }
+    if (risk > 0) {
+      notices.push({
+        id: "cases-risk",
+        icon: "case",
+        title: count(risk, "Um caso com o prazo quase a terminar", "casos com o prazo quase a terminar"),
+        body: "Responda antes de o prazo acabar.",
+        to: "/cases",
+        live: true,
+      });
+    }
+    if (setup?.staffId && mine > 0) {
+      notices.push({
+        id: "cases-mine",
+        icon: "case",
+        title: count(mine, "Tem um caso à sua espera", "casos à sua espera"),
+        body: "Foram-lhe atribuídos e ainda não tiveram resposta.",
+        to: "/cases",
+        live: true,
+      });
+    }
+    if (unassigned > 0) {
+      notices.push({
+        id: "cases-unassigned",
+        icon: "case",
+        title: count(unassigned, "Um caso sem responsável", "casos sem responsável"),
+        body: "Ninguém disponível tinha as competências pedidas. Atribua-os à mão.",
+        to: "/cases",
+        live: true,
+      });
+    }
+    return notices;
+  }, [open, setup?.staffId]);
+}
+
 function useNotices() {
   const { data: workspace } = useWorkspace();
   const { data: webinars } = useWebinars(workspace?.organizationId);
   const { data: participants } = useParticipants(workspace?.organizationId);
   const aiJobs = useAiJobs();
   const syncJobs = useSyncJobs();
+  const caseNotices = useCaseNotices(workspace?.organizationId, canAttend(workspace?.role));
 
   return useMemo<Notice[]>(() => {
-    if (!workspace || !webinars) return [];
-    const notices: Notice[] = [];
+    if (!workspace || !webinars) return caseNotices;
+    // Quem só atende não cria webinars: as dicas de configuração não são para si.
+    if (workspace.role === "support") return caseNotices;
+    const notices: Notice[] = [...caseNotices];
     const now = Date.now();
 
     // Trabalhos de IA em curso / concluídos
@@ -181,7 +266,7 @@ function useNotices() {
       });
     }
     return notices.slice(0, 8);
-  }, [workspace, webinars, participants, aiJobs, syncJobs]);
+  }, [workspace, webinars, participants, aiJobs, syncJobs, caseNotices]);
 }
 
 export function NotificationsBell() {

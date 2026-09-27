@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAll } from "@/lib/fetch-all";
 import type { DateRange } from "@/lib/date-range";
 
 export type MetricsParticipant = {
@@ -182,17 +183,22 @@ export async function fetchWebinarMetrics(
     column: string,
   ) => (range ? q.gte(column, range.from).lt(column, range.to) : q);
 
-  const [participantsRes, ctaClicksRes, ctaViewsRes, messagesRes] = await Promise.all([
-    period(
-      supabase
-        .from("participants")
-        .select(
-          "id, name, email, phone, joined_at, watched_seconds, viewing_mode, cta_clicked, status",
-        )
-        .eq("organization_id", organizationId)
-        .eq("webinar_id", webinarId)
-        .order("joined_at", { ascending: false }),
-      "joined_at",
+  const [participantRows, ctaClicksRes, ctaViewsRes, messageRows] = await Promise.all([
+    fetchAll((from, to) =>
+      period(
+        supabase
+          .from("participants")
+          .select(
+            "id, name, email, phone, joined_at, watched_seconds, viewing_mode, cta_clicked, status",
+            { count: "exact" },
+          )
+          .eq("organization_id", organizationId)
+          .eq("webinar_id", webinarId),
+        "joined_at",
+      )
+        .order("joined_at", { ascending: false })
+        .order("id")
+        .range(from, to),
     ),
     period(
       supabase
@@ -212,17 +218,25 @@ export async function fetchWebinarMetrics(
         .eq("event_type", "view"),
       "occurred_at",
     ),
-    supabase
-      .from("private_messages")
-      .select("id, participant_id, sender_kind")
-      .eq("organization_id", organizationId),
+    // Só as mensagens dos participantes deste webinar, não as da organização inteira.
+    fetchAll((from, to) =>
+      supabase
+        .from("private_messages")
+        .select("id, participant_id, sender_kind, participants!inner(webinar_id)", {
+          count: "exact",
+        })
+        .eq("organization_id", organizationId)
+        .eq("participants.webinar_id", webinarId)
+        .order("id")
+        .range(from, to),
+    ),
   ]);
+  if (ctaClicksRes.error) throw new Error(ctaClicksRes.error.message);
+  if (ctaViewsRes.error) throw new Error(ctaViewsRes.error.message);
 
-  const participants = (participantsRes.data ?? []) as MetricsParticipant[];
+  const participants = participantRows as MetricsParticipant[];
   const ids = new Set(participants.map((p) => p.id));
-  const messages = (messagesRes.data ?? []).filter(
-    (m) => m.participant_id && ids.has(m.participant_id),
-  );
+  const messages = messageRows.filter((m) => m.participant_id && ids.has(m.participant_id));
   const watched = participants.map((p) => p.watched_seconds ?? 0);
   // A duração configurada pode estar desatualizada: usa também o maior tempo assistido.
   const span = Math.max(durationSeconds, ...watched, 60);

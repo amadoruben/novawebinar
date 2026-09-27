@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { detectDevice, lookupPlace, type GeoPlace } from "@/lib/live-presence";
 import { leadSource } from "@/lib/contacts";
 import { loadPixels, trackPixels } from "@/lib/pixels";
+import { retry } from "@/lib/utils";
 import {
   DEFAULT_PHONE_COUNTRY,
   PHONE_COUNTRIES,
@@ -46,10 +47,13 @@ export const Route = createFileRoute("/w/$slug")({
     >,
   }),
   loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData({
-      queryKey: ["public-room", params.slug],
-      queryFn: () => getPublicRoom({ data: { slug: params.slug } }),
-    }),
+    context.queryClient
+      .ensureQueryData({
+        queryKey: ["public-room", params.slug],
+        queryFn: () => getPublicRoom({ data: { slug: params.slug } }),
+      })
+      // Falha passageira: a página abre na mesma e a sala volta a tentar sozinha.
+      .catch(() => undefined),
   head: ({ loaderData }) => {
     const webinar = loaderData?.webinar;
     const title = webinar?.share_title || webinar?.public_title || "Sala do webinar";
@@ -58,7 +62,7 @@ export const Route = createFileRoute("/w/$slug")({
     const image = webinar?.share_image_url || webinar?.registration_cover_url || null;
     return {
       meta: [
-        { title: `${title} | NovaWebinar` },
+        { title: `${title} | Convertewebinar` },
         { name: "description", content: description },
         { property: "og:title", content: title },
         { property: "og:description", content: description },
@@ -156,13 +160,15 @@ export function PublicRoom({
     [source],
   );
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["public-room", slug],
     queryFn: () => fetchRoom({ data: { slug } }),
     // Enquanto ninguém entrou na sala, revemos a sessão de minuto a minuto:
     // assim que a sessão do dia termina, a sala de espera volta a abrir
-    // com a contagem para a próxima sessão.
-    refetchInterval: viewer ? false : 60_000,
+    // com a contagem para a próxima sessão. Uma leitura falhada nunca tira a
+    // sala a quem a tem aberta: fica a que já estava e tenta-se outra vez.
+    refetchInterval: (query) =>
+      query.state.status === "error" ? 5000 : viewer ? false : 60_000,
   });
 
   // Pixels de anúncios da organização; a sala de teste nunca os dispara.
@@ -249,6 +255,24 @@ export function PublicRoom({
     [sendMessage, viewer, refetchThread],
   );
 
+  // Ver e clicar na oferta são os sinais comerciais da sala: uma falha passageira repete-se.
+  // ponytail: sem chave de idempotência, um pedido que chegou mas cuja resposta se perdeu fica
+  // repetido; com a fila de envio no browser entra um id gerado aqui.
+  const sendCta = useCallback(
+    (eventType: "view" | "click") => {
+      if (!viewer) return;
+      const data = {
+        participantId: viewer.participantId,
+        eventType,
+        videoSecond: Math.max(0, Math.round(positionRef.current)),
+      };
+      void retry(() => trackCta({ data })).catch((error: unknown) =>
+        console.error(`[oferta] ${eventType} não registado`, error),
+      );
+    },
+    [trackCta, viewer],
+  );
+
   // Acesso facilitado: entram logo na sala, sem formulário. A sala de teste
   // comporta-se exatamente como a real, por isso segue a configuração pública.
   const easyAccess = Boolean(data?.webinar.easy_access);
@@ -324,7 +348,9 @@ export function PublicRoom({
   if (!data)
     return (
       <main className="room-ambient flex min-h-dvh items-center justify-center px-6 text-center text-sm text-room-subtle">
-        Não encontrámos nenhuma sessão com este endereço.
+        {isError
+          ? "Não foi possível carregar a sessão. Estamos a tentar de novo…"
+          : "Não encontrámos nenhuma sessão com este endereço."}
       </main>
     );
 
@@ -653,24 +679,10 @@ export function PublicRoom({
       onSend={onSend}
       supportMessages={privateThread?.messages ?? []}
       onProgress={onProgress}
-      onCtaView={() =>
-        void trackCta({
-          data: {
-            participantId: viewer.participantId,
-            eventType: "view",
-            videoSecond: Math.max(0, Math.round(positionRef.current)),
-          },
-        })
-      }
+      onCtaView={() => sendCta("view")}
       onCtaClick={() => {
         if (!testMode) trackPixels("checkout");
-        void trackCta({
-          data: {
-            participantId: viewer.participantId,
-            eventType: "click",
-            videoSecond: Math.max(0, Math.round(positionRef.current)),
-          },
-        });
+        sendCta("click");
       }}
       webinar={{
         id: webinar.id,

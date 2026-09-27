@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, ChevronDown, Menu, X } from "lucide-react";
-import wordmarkAsset from "@/assets/local/nova-logo-full.png";
+import wordmarkAsset from "@/assets/brand/convertewebinar-logo.svg";
 import { Button } from "@/components/ui/button";
 import { landingFeatures } from "@/lib/landing-features";
 
@@ -29,7 +29,7 @@ export function SiteHeader() {
   return (
     <header className="lp-header">
       <div className="lp-nav-wrap">
-        <Link to="/" aria-label="NovaWebinar" className="lp-logo-link"><img src={wordmarkAsset} alt="NovaWebinar" /></Link>
+        <Link to="/" aria-label="Convertewebinar" className="lp-logo-link"><img src={wordmarkAsset} alt="Convertewebinar" /></Link>
 
         <nav className="lp-desktop-nav" aria-label="Navegação principal">
           <div className="lp-nav-menu" ref={featuresRef} onMouseLeave={() => setFeaturesOpen(false)}>

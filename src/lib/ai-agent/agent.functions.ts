@@ -504,7 +504,15 @@ export const sendAgentSuggestion = createServerFn({ method: "POST" })
     if (!row) throw new Error("Sugestão não encontrada.");
     const edited = data.finalAnswer.trim() !== String(row.answer ?? "").trim();
 
-    await supabase.from("private_messages").insert({
+    // A conversa tem de ser visível para quem aprova (RLS da equipa de atendimento).
+    const { data: conversation } = await supabase
+      .from("private_conversations")
+      .select("id")
+      .eq("id", row.conversation_id)
+      .maybeSingle();
+    if (!conversation) throw new Error("Conversa não encontrada.");
+
+    const { error: sendError } = await supabase.from("private_messages").insert({
       conversation_id: row.conversation_id,
       organization_id: row.organization_id,
       participant_id: row.participant_id,
@@ -512,15 +520,17 @@ export const sendAgentSuggestion = createServerFn({ method: "POST" })
       body: data.finalAnswer,
       agent_message_id: row.id,
     });
+    if (sendError) throw new Error("Não foi possível enviar a resposta.");
     await supabase
       .from("private_conversations")
-      .update({
-        last_message_at: new Date().toISOString(),
-        status: "active",
-        needs_human: false,
-        escalation_reason: null,
-      })
+      .update({ status: "active" })
       .eq("id", row.conversation_id);
+    const { logConversationEvent } = await import("@/lib/support/cases.server");
+    await logConversationEvent(row.conversation_id, "ai_response", "human", {
+      agent_message_id: row.id,
+      edited,
+      user_id: context.userId,
+    });
     await supabase
       .from("ai_agent_messages")
       .update({

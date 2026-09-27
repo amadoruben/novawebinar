@@ -1645,7 +1645,7 @@ lucide-react
 
 
 
-Quero criar um novo projeto SaaS chamado NovaWebinar.
+Quero criar um novo projeto SaaS chamado Convertewebinar.
 
 IMPORTANTE:
 
@@ -1665,13 +1665,13 @@ Primeiro construa uma base visual e funcional muito bem organizada para que poss
 
 ==================================================
 
-Nome: NovaWebinar
+Nome: Convertewebinar
 
 Slogan:
 
 TRANSFORME AUDIÊNCIA EM VENDAS
 
-A NovaWebinar é uma plataforma SaaS para criação e gestão de webinars automatizados.
+A Convertewebinar é uma plataforma SaaS para criação e gestão de webinars automatizados.
 
 O utilizador adiciona um vídeo previamente gravado, configura uma data e hora e cria uma experiência de webinar com:
 
@@ -1703,7 +1703,7 @@ O modo "AO VIVO" é baseado num vídeo previamente configurado e sincronizado co
 
 ==================================================
 
-Eu mesmo irei adicionar os ficheiros oficiais da marca NovaWebinar ao projeto.
+Eu mesmo irei adicionar os ficheiros oficiais da marca Convertewebinar ao projeto.
 
 Use esses assets como fonte principal da identidade.
 
@@ -1843,7 +1843,7 @@ Botão principal:
 
 "+ Criar Webinar"
 
-Adicionar área para um banner promocional da NovaWebinar.
+Adicionar área para um banner promocional da Convertewebinar.
 
 Eu posteriormente colocarei a imagem oficial do banner.
 
@@ -2371,7 +2371,7 @@ chat à direita
 
 Topo:
 
-logo NovaWebinar ou branding configurado
+logo Convertewebinar ou branding configurado
 
 badge AO VIVO / REPLAY
 
@@ -2769,13 +2769,13 @@ Não quero botões decorativos sem função quando a funcionalidade já estiver 
 
 Use componentes reutilizáveis.
 
-Não altere a identidade NovaWebinar.
+Não altere a identidade Convertewebinar.
 
 Não crie landing page.
 
 Comece pelo produto autenticado.
 
-## ConvertWebinar
+## Convertewebinar
 
 Plataforma de webinars evergreen e ao vivo, independente de qualquer editor externo.
 

@@ -29,13 +29,13 @@ export const Route = createFileRoute("/live-view")({
   }),
   head: () => ({
     meta: [
-      { title: "Vista ao vivo | NovaWebinar" },
+      { title: "Vista ao vivo | Convertewebinar" },
       {
         name: "description",
         content:
           "Veja em tempo real quem está nas suas salas, de onde assiste e quem está a comprar.",
       },
-      { property: "og:title", content: "Vista ao vivo | NovaWebinar" },
+      { property: "og:title", content: "Vista ao vivo | Convertewebinar" },
       {
         property: "og:description",
         content: "Audiência ao minuto, mapa de origem e compras em curso.",

@@ -1,0 +1,266 @@
+/**
+ * O que as funções públicas da sala fazem na base de dados. Vive à parte das
+ * funções de servidor para se poder testar sem um pedido verdadeiro.
+ *
+ * Regra destas leituras: uma falha da base de dados é sempre um erro para quem
+ * chama, nunca "não existe" nem uma lista vazia. É isso que deixa a sala aberta
+ * ficar como está e repetir o pedido.
+ */
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { fetchAll } from "@/lib/fetch-all";
+import { PROVIDERS } from "@/lib/integrations";
+import { notifyOutgoing } from "@/lib/integrations.server";
+import { sessionWindow } from "@/lib/schedule";
+
+const UNAVAILABLE = "Serviço temporariamente indisponível. Tente novamente.";
+
+/**
+ * Envia o aviso para o endereço configurado na integração WebHook.
+ * Falhas nunca interrompem a experiência do participante.
+ */
+export async function notifyWebhook(
+  url: string | null | undefined,
+  enabled: boolean | null | undefined,
+  payload: Record<string, unknown>,
+) {
+  const endpoint = (url ?? "").trim();
+  if (!enabled || !/^https?:\/\//i.test(endpoint)) return;
+  try {
+    await fetch(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...payload, sent_at: new Date().toISOString() }),
+    });
+  } catch {
+    // ignorado de propósito
+  }
+}
+
+export async function loadPublicRoom(slug: string) {
+  const { data: webinar, error: webinarError } = await supabaseAdmin
+    .from("webinars")
+    .select(
+      "id, organization_id, public_title, description, status, room_theme, host_name, host_role, host_avatar_url, chat_pin_title, chat_pin_message, offer_pin_title, offer_pin_message, scheduled_at, session_end_time, schedule_mode, recurrence_enabled, recurrence_pattern, recurrence_weekday, recurrence_start_time, recurrence_end_time, jit_interval_minutes, timezone, duration_seconds, replay_enabled, waiting_room_enabled, prelive_enabled, prelive_seconds, prelive_sound, prelive_message, prelive_template, prelive_appearance, easy_access, sync_video_with_start, cta_text, cta_url, cta_color, cta_price_original, cta_price_now, cta_image_url, cta_countdown_seconds, cta_start_seconds, cta_end_seconds, registration_headline, registration_subtitle, registration_button_text, registration_collect_phone, registration_require_phone, registration_cover_url, registration_badge_text, registration_progress_enabled, registration_progress_value, registration_scarcity_note, share_title, share_description, share_image_url, video_sources(source_url, provider, duration_seconds, storage_path)",
+    )
+    .eq("slug", slug)
+    .maybeSingle();
+
+  // Falha de leitura não é "não existe": quem chama mantém a sala que já tem.
+  if (webinarError) throw new Error(UNAVAILABLE);
+  if (!webinar) return null;
+
+  const parts = await Promise.all([
+    // Um webinar longo passa dos 1000 comentários; cortados, o chat calava-se a meio.
+    fetchAll((from, to) =>
+      supabaseAdmin
+        .from("scheduled_comments")
+        .select("id, author_name, avatar_url, message, offset_seconds, created_at", {
+          count: "exact",
+        })
+        .eq("webinar_id", webinar.id)
+        .order("offset_seconds", { ascending: true })
+        .order("id")
+        .range(from, to),
+    ).then(
+      (data) => ({ data, error: null }),
+      (error: unknown) => ({ data: null, error }),
+    ),
+    supabaseAdmin
+      .from("audience_configuration")
+      .select("mode, curve")
+      .eq("webinar_id", webinar.id)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("social_proof_settings")
+      .select(
+        "enabled, product_name, start_mode, start_delay_seconds, start_seconds, end_seconds, min_interval_seconds, max_interval_seconds, position, display_seconds, animation, sound_enabled, notification_color",
+      )
+      .eq("webinar_id", webinar.id)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("simulated_purchase_events")
+      .select("id, buyer_name, product_name, message, offset_seconds")
+      .eq("webinar_id", webinar.id)
+      .order("offset_seconds", { ascending: true }),
+    supabaseAdmin
+      .from("integrations")
+      .select("provider, settings")
+      .eq("organization_id", webinar.organization_id)
+      .eq("enabled", true)
+      .in("provider", ["meta_pixel", "tiktok_pixel", "google_tag"]),
+  ]);
+  // Uma sala sem comentários ou sem oferta por causa de uma leitura falhada
+  // substituiria a sala boa de quem já está a assistir.
+  if (parts.some((part) => part.error)) throw new Error(UNAVAILABLE);
+  const [
+    { data: comments },
+    { data: audience },
+    { data: socialProof },
+    { data: simulated },
+    { data: adIntegrations },
+  ] = parts;
+
+  // Os ids vão parar a endereços de scripts: validam-se outra vez aqui.
+  const pixels: Partial<Record<"meta_pixel" | "tiktok_pixel" | "google_tag", string>> = {};
+  for (const row of adIntegrations ?? []) {
+    const info = PROVIDERS.find((p) => p.id === row.provider);
+    const id = String(
+      (row.settings as Record<string, unknown> | null)?.[info?.setting?.key ?? ""] ?? "",
+    );
+    if (info?.setting?.pattern.test(id)) pixels[row.provider as keyof typeof pixels] = id;
+  }
+
+  const source = webinar.video_sources;
+  const duration = source?.duration_seconds || webinar.duration_seconds;
+  const session = sessionWindow({ ...webinar, duration_seconds: duration });
+
+  // Vídeo guardado no bucket privado: URL assinado só para esta reprodução.
+  // Vídeos externos (ou enviados antes de existir `storage_path`) mantêm o link guardado.
+  let videoUrl: string | null = source?.source_url ?? null;
+  if (source?.storage_path) {
+    const { data: signed } = await supabaseAdmin.storage
+      .from("webinar-videos")
+      .createSignedUrl(source.storage_path, 60 * 60 * 24);
+    if (signed?.signedUrl) videoUrl = signed.signedUrl;
+  }
+
+  return {
+    pixels,
+    webinar: {
+      id: webinar.id,
+      organization_id: webinar.organization_id,
+      public_title: webinar.public_title,
+      description: webinar.description,
+      host_name: webinar.host_name ?? "",
+      host_role: webinar.host_role ?? "",
+      host_avatar_url: webinar.host_avatar_url ?? "",
+      chat_pin_title: webinar.chat_pin_title ?? "",
+      chat_pin_message: webinar.chat_pin_message ?? "",
+      offer_pin_title: webinar.offer_pin_title ?? "",
+      offer_pin_message: webinar.offer_pin_message ?? "",
+      status: webinar.status,
+      room_theme: webinar.room_theme === "light" ? "light" : "dark",
+      scheduled_at: webinar.scheduled_at,
+      session_start: session.startMs ? new Date(session.startMs).toISOString() : null,
+      session_end: session.endMs ? new Date(session.endMs).toISOString() : null,
+      session_ended: session.endedMs ? new Date(session.endedMs).toISOString() : null,
+      waiting_open: session.waitingOpen,
+      schedule_mode: webinar.schedule_mode,
+      recurrence_enabled: webinar.recurrence_enabled,
+      timezone: webinar.timezone,
+      duration_seconds: duration,
+      replay_enabled: webinar.replay_enabled,
+      waiting_room_enabled: webinar.waiting_room_enabled,
+      prelive_enabled: webinar.prelive_enabled,
+      prelive_seconds: webinar.prelive_seconds,
+      prelive_sound: webinar.prelive_sound,
+      prelive_message: webinar.prelive_message,
+      prelive_template: webinar.prelive_template,
+      prelive_appearance: webinar.prelive_appearance,
+      easy_access: webinar.easy_access,
+      sync_video_with_start: webinar.sync_video_with_start,
+      cta_text: webinar.cta_text,
+      cta_url: webinar.cta_url,
+      cta_color: webinar.cta_color,
+      cta_price_original: webinar.cta_price_original,
+      cta_price_now: webinar.cta_price_now,
+      cta_image_url: webinar.cta_image_url,
+      cta_countdown_seconds: webinar.cta_countdown_seconds,
+      cta_start_seconds: webinar.cta_start_seconds,
+      cta_end_seconds: webinar.cta_end_seconds,
+      registration_headline: webinar.registration_headline,
+      registration_subtitle: webinar.registration_subtitle,
+      registration_button_text: webinar.registration_button_text,
+      registration_collect_phone: webinar.registration_collect_phone,
+      registration_require_phone: webinar.registration_require_phone,
+      registration_cover_url: webinar.registration_cover_url,
+      registration_badge_text: webinar.registration_badge_text,
+      registration_progress_enabled: webinar.registration_progress_enabled,
+      registration_progress_value: webinar.registration_progress_value,
+      registration_scarcity_note: webinar.registration_scarcity_note,
+      share_title: webinar.share_title,
+      share_description: webinar.share_description,
+      share_image_url: webinar.share_image_url,
+      video_url: videoUrl,
+      video_provider: source?.provider ?? null,
+    },
+    comments: comments ?? [],
+    audience: { mode: audience?.mode ?? "simulated", curve: audience?.curve ?? [] },
+    socialProof: socialProof ?? null,
+    simulatedPurchases: simulated ?? [],
+  };
+}
+
+export async function recordCta(data: {
+  participantId: string;
+  eventType: "view" | "click";
+  videoSecond?: number | undefined;
+}) {
+  const { data: participant, error: participantError } = await supabaseAdmin
+    .from("participants")
+    .select("id, name, email, webinar_id, organization_id")
+    .eq("id", data.participantId)
+    .maybeSingle();
+  // Quem falha avisa: a sala repete o envio em vez de perder o evento.
+  if (participantError) throw new Error(UNAVAILABLE);
+  if (!participant) return { ok: false };
+
+  const { error: eventError } = await supabaseAdmin.from("cta_events").insert({
+    organization_id: participant.organization_id,
+    webinar_id: participant.webinar_id,
+    participant_id: participant.id,
+    event_type: data.eventType,
+    video_second: data.videoSecond ?? null,
+  });
+  if (eventError) throw new Error(UNAVAILABLE);
+
+  if (data.eventType === "click") {
+    const { error: clickError } = await supabaseAdmin
+      .from("participants")
+      .update({ cta_clicked: true })
+      .eq("id", participant.id);
+    if (clickError)
+      console.error(
+        `[cta] participante ${participant.id} sem marca de clique: ${clickError.message}`,
+      );
+
+    const { data: webinar } = await supabaseAdmin
+      .from("webinars")
+      .select("public_title, webhook_url, webhook_enabled")
+      .eq("id", participant.webinar_id)
+      .maybeSingle();
+
+    await notifyWebhook(webinar?.webhook_url, webinar?.webhook_enabled, {
+      event: "cta_click",
+      webinar_id: participant.webinar_id,
+      webinar: webinar?.public_title ?? null,
+      participant_id: participant.id,
+      name: participant.name,
+      email: participant.email,
+    });
+    if (participant.email && !participant.email.endsWith("@sala.local")) {
+      await notifyOutgoing(participant.organization_id, "offer.clicked", {
+        webinar_id: participant.webinar_id,
+        webinar: webinar?.public_title ?? null,
+        name: participant.name,
+        email: participant.email,
+        video_second: data.videoSecond ?? null,
+      });
+    }
+  }
+
+  return { ok: true };
+}
+
+export async function loadRoomMessages(participantId: string) {
+  const { data: messages, error } = await supabaseAdmin
+    .from("private_messages")
+    .select("id, body, sender_kind, created_at")
+    .eq("participant_id", participantId)
+    .order("created_at", { ascending: true })
+    .limit(200);
+  // Com erro, a sala fica com a conversa que já tinha em vez de a esvaziar.
+  if (error) throw new Error(UNAVAILABLE);
+
+  return { messages: messages ?? [] };
+}

@@ -76,9 +76,8 @@ function stopPolling() {
 /**
  * Enquanto o separador está aberto, empurra a fila em cadeia: cada chamada
  * avança o trabalho durante quase um minuto e a seguinte começa logo a seguir,
- * sem esperar pela passagem automática. Com o separador fechado, a fila só
- * avança se existir uma chamada agendada a /api/public/run-jobs com o
- * cabeçalho x-job-runner-token (por configurar no alojamento).
+ * sem esperar pela passagem automática. Com o separador fechado, é o servidor
+ * que continua a fila (`job-ticker.server.ts`).
  */
 let pumping = false;
 

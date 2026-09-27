@@ -64,29 +64,50 @@ function verify(provider: ProviderId, secret: string, request: Request, raw: str
 
 const STATUS_RANK = { pending: 0, approved: 1, refunded: 2 } as const;
 
+/** Falha nossa: a plataforma guarda o evento e volta a enviar. */
+const retryLater = () =>
+  new Response("Temporarily unavailable", { status: 503, headers: { "retry-after": "60" } });
+
+/** O resultado de uma chamada à base de dados; um erro nunca passa por "não existe". */
+function must<T>(result: { data: T; error: { message: string } | null }, what: string): T {
+  if (result.error) throw new Error(`${what}: ${result.error.message}`);
+  return result.data;
+}
+
 export async function receiveIntegrationWebhook(key: string, request: Request): Promise<Response> {
-  const { data: integration } = await supabaseAdmin
+  const found = await supabaseAdmin
     .from("integrations")
     .select("id, organization_id, provider, enabled, secret")
     .eq("endpoint_key", key)
     .maybeSingle();
+  if (found.error) {
+    console.error(`[webhook] integração por ler: ${found.error.message}`);
+    return retryLater();
+  }
+  const integration = found.data;
   if (!integration) return new Response("Not found", { status: 404 });
 
   const provider = integration.provider as ProviderId;
   const raw = await request.text();
-  const log = (
+  // O pedido em bruto só se guarda depois de verificado: fica com o registo do
+  // evento, para a venda poder ser reprocessada.
+  let payload: string | null = null;
+  const log = async (
     status: "accepted" | "rejected" | "ignored",
     reason: string,
     extra: Record<string, unknown> = {},
-  ) =>
-    supabaseAdmin.from("integration_events").insert({
+  ) => {
+    const { error } = await supabaseAdmin.from("integration_events").insert({
       organization_id: integration.organization_id,
       integration_id: integration.id,
       provider,
       status,
       reason,
+      payload,
       ...extra,
     });
+    if (error) console.error(`[webhook] registo por guardar (${status}): ${error.message}`);
+  };
 
   if (raw.length > 256_000) {
     await log("rejected", "Pedido demasiado grande.");
@@ -97,6 +118,7 @@ export async function receiveIntegrationWebhook(key: string, request: Request): 
     await log("rejected", refused);
     return new Response("Unauthorized", { status: 401 });
   }
+  payload = raw;
   if (!integration.enabled) {
     await log("ignored", "A integração está desligada.");
     return Response.json({ ok: true });
@@ -128,120 +150,136 @@ export async function receiveIntegrationWebhook(key: string, request: Request): 
     return Response.json({ ok: false });
   }
 
-  const { data: existing } = event.externalId
-    ? await supabaseAdmin
-        .from("real_purchase_events")
-        .select("id, status, amount_value, currency, product_name, webinar_id")
-        .eq("organization_id", integration.organization_id)
-        .eq("provider", provider)
-        .eq("external_id", event.externalId)
-        .maybeSingle()
-    : { data: null };
+  try {
+    const existing = event.externalId
+      ? must(
+          await supabaseAdmin
+            .from("real_purchase_events")
+            .select("id, status, amount_value, currency, product_name, webinar_id")
+            .eq("organization_id", integration.organization_id)
+            .eq("provider", provider)
+            .eq("external_id", event.externalId)
+            .maybeSingle(),
+          "venda por ler",
+        )
+      : null;
 
-  if (existing) {
-    // O estado só avança (pendente → aprovada → reembolsada). Um reembolso muitas
-    // vezes não traz valor nem produto: muda o estado e preenche o que faltar,
-    // sem apagar o que a venda original trouxe nem mudar a atribuição.
-    const before = existing.status as keyof typeof STATUS_RANK;
-    if (STATUS_RANK[event.status] <= STATUS_RANK[before]) {
-      await log("ignored", "Esta venda já estava registada.", { ...summary, purchase_id: existing.id });
+    if (existing) {
+      // O estado só avança (pendente → aprovada → reembolsada). Um reembolso muitas
+      // vezes não traz valor nem produto: muda o estado e preenche o que faltar,
+      // sem apagar o que a venda original trouxe nem mudar a atribuição.
+      const before = existing.status as keyof typeof STATUS_RANK;
+      if (STATUS_RANK[event.status] <= STATUS_RANK[before]) {
+        await log("ignored", "Esta venda já estava registada.", { ...summary, purchase_id: existing.id });
+        return Response.json({ ok: true });
+      }
+      must(
+        await supabaseAdmin
+          .from("real_purchase_events")
+          .update({
+            status: event.status,
+            amount_value: existing.amount_value ?? event.amountValue,
+            currency: existing.currency ?? event.currency,
+            product_name: existing.product_name || event.product.slice(0, 120),
+          })
+          .eq("id", existing.id),
+        "venda por actualizar",
+      );
+      await log("accepted", "", { ...summary, purchase_id: existing.id });
+      await notifyOutgoing(integration.organization_id, `purchase.${event.status}`, {
+        email: event.email,
+        external_id: event.externalId,
+        provider,
+        webinar_id: existing.webinar_id,
+      });
       return Response.json({ ok: true });
     }
-    const { error } = await supabaseAdmin
-      .from("real_purchase_events")
-      .update({
-        status: event.status,
-        amount_value: existing.amount_value ?? event.amountValue,
-        currency: existing.currency ?? event.currency,
-        product_name: existing.product_name || event.product.slice(0, 120),
-      })
-      .eq("id", existing.id);
-    if (error) {
-      await log("rejected", "Não foi possível actualizar a venda.", summary);
-      return new Response("Error", { status: 500 });
+
+    // Sem contacto ou sem participações lidas, a venda ficaria solta e mal
+    // atribuída: antes disso, devolve-se o pedido à plataforma.
+    const contactId = must(
+      await supabaseAdmin.rpc("upsert_contact", {
+        _organization_id: integration.organization_id,
+        _name: event.name,
+        _email: event.email,
+        _phone: event.phone ?? "",
+        _source: "integration",
+      }),
+      "contacto por guardar",
+    );
+    // Atribuição, da mais exacta para a mais fraca: o webinar a que a pessoa
+    // assistiu cuja oferta aponta para este produto; senão o último que viu.
+    const seen = contactId
+      ? must(
+          await supabaseAdmin
+            .from("participants")
+            .select("webinar_id, webinars(cta_url)")
+            .eq("contact_id", contactId)
+            .order("joined_at", { ascending: false })
+            .limit(50),
+          "participações por ler",
+        )
+      : null;
+    const byOffer = event.productId
+      ? seen?.find((p) => p.webinars?.cta_url?.includes(event.productId!))
+      : undefined;
+    const last = byOffer ?? seen?.[0] ?? null;
+    const attribution = byOffer
+      ? "Atribuída ao webinar cuja oferta aponta para este produto."
+      : last
+        ? "Atribuída ao último webinar a que a pessoa assistiu."
+        : "Comprador sem participação em webinars.";
+
+    // Dois envios em simultâneo chocam no índice único; a plataforma repete e o
+    // segundo pedido cai no ramo "já existe" acima.
+    const saved = must(
+      await supabaseAdmin
+        .from("real_purchase_events")
+        .insert({
+          organization_id: integration.organization_id,
+          webinar_id: last?.webinar_id ?? null,
+          contact_id: contactId ?? null,
+          buyer_email: event.email,
+          buyer_name: (event.name || event.email).slice(0, 80),
+          product_name: event.product.slice(0, 120),
+          amount: event.amountValue === null ? "" : String(event.amountValue),
+          amount_value: event.amountValue,
+          currency: event.currency,
+          status: event.status,
+          provider,
+          source: provider,
+          external_id: event.externalId,
+        })
+        .select("id")
+        .single(),
+      "venda por guardar",
+    );
+
+    await Promise.all([
+      log("accepted", attribution, { ...summary, purchase_id: saved?.id ?? null }),
+      supabaseAdmin
+        .from("integrations")
+        .update({ last_event_at: new Date().toISOString() })
+        .eq("id", integration.id),
+    ]);
+    if (event.status !== "pending") {
+      await notifyOutgoing(integration.organization_id, `purchase.${event.status}`, {
+        email: event.email,
+        name: event.name,
+        product: event.product,
+        amount: event.amountValue,
+        currency: event.currency,
+        provider,
+        webinar_id: last?.webinar_id ?? null,
+      });
     }
-    await log("accepted", "", { ...summary, purchase_id: existing.id });
-    await notifyOutgoing(integration.organization_id, `purchase.${event.status}`, {
-      email: event.email,
-      external_id: event.externalId,
-      provider,
-      webinar_id: existing.webinar_id,
-    });
     return Response.json({ ok: true });
+  } catch (error) {
+    // Nada do que falhou aqui é culpa do pedido: fica o registo e a plataforma repete.
+    console.error("[webhook] falha a tratar a venda", error);
+    await log("rejected", "Falha temporária do nosso lado. A plataforma vai repetir o envio.", summary);
+    return retryLater();
   }
-
-  const { data: contactId } = await supabaseAdmin.rpc("upsert_contact", {
-    _organization_id: integration.organization_id,
-    _name: event.name,
-    _email: event.email,
-    _phone: event.phone ?? "",
-    _source: "integration",
-  });
-  // Atribuição, da mais exacta para a mais fraca: o webinar a que a pessoa
-  // assistiu cuja oferta aponta para este produto; senão o último que viu.
-  const { data: seen } = contactId
-    ? await supabaseAdmin
-        .from("participants")
-        .select("webinar_id, webinars(cta_url)")
-        .eq("contact_id", contactId)
-        .order("joined_at", { ascending: false })
-        .limit(50)
-    : { data: null };
-  const byOffer = event.productId
-    ? seen?.find((p) => p.webinars?.cta_url?.includes(event.productId!))
-    : undefined;
-  const last = byOffer ?? seen?.[0] ?? null;
-  const attribution = byOffer
-    ? "Atribuída ao webinar cuja oferta aponta para este produto."
-    : last
-      ? "Atribuída ao último webinar a que a pessoa assistiu."
-      : "Comprador sem participação em webinars.";
-
-  const row = {
-    organization_id: integration.organization_id,
-    webinar_id: last?.webinar_id ?? null,
-    contact_id: contactId ?? null,
-    buyer_email: event.email,
-    buyer_name: (event.name || event.email).slice(0, 80),
-    product_name: event.product.slice(0, 120),
-    amount: event.amountValue === null ? "" : String(event.amountValue),
-    amount_value: event.amountValue,
-    currency: event.currency,
-    status: event.status,
-    provider,
-    source: provider,
-    external_id: event.externalId,
-  };
-  // Dois envios em simultâneo chocam no índice único; a plataforma repete e o
-  // segundo pedido cai no ramo "já existe" acima.
-  const saved = await supabaseAdmin.from("real_purchase_events").insert(row).select("id").single();
-  if (saved.error) {
-    await log("rejected", "Não foi possível guardar a venda.", summary);
-    return new Response("Error", { status: 500 });
-  }
-
-  await Promise.all([
-    log("accepted", attribution, {
-      ...summary,
-      purchase_id: saved.data.id,
-    }),
-    supabaseAdmin
-      .from("integrations")
-      .update({ last_event_at: new Date().toISOString() })
-      .eq("id", integration.id),
-  ]);
-  if (event.status !== "pending") {
-    await notifyOutgoing(integration.organization_id, `purchase.${event.status}`, {
-      email: event.email,
-      name: event.name,
-      product: event.product,
-      amount: event.amountValue,
-      currency: event.currency,
-      provider,
-      webinar_id: last?.webinar_id ?? null,
-    });
-  }
-  return Response.json({ ok: true });
 }
 
 /** Endereços internos nunca recebem pedidos do servidor. */

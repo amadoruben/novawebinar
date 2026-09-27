@@ -16,9 +16,9 @@ import { PUBLIC_PRESENTATION_VIDEO_URL } from "@/lib/public-site-config";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "NovaWebinar — grave uma vez, apresente todos os dias" },
+      { title: "Convertewebinar — grave uma vez, apresente todos os dias" },
       { name: "description", content: "Crie webinars automatizados com sessões recorrentes, chat programado, oferta e análise de retenção." },
-      { property: "og:title", content: "NovaWebinar — grave uma vez, apresente todos os dias" },
+      { property: "og:title", content: "Convertewebinar — grave uma vez, apresente todos os dias" },
       { property: "og:description", content: "Crie webinars automatizados com sessões recorrentes, chat programado, oferta e análise de retenção." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

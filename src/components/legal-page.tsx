@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import wordmarkAsset from "@/assets/local/nova-logo-full.png";
+import wordmarkAsset from "@/assets/brand/convertewebinar-logo.svg";
 import { SiteFooter } from "@/components/site-footer";
 
 export function LegalPage({ title, updated, children }: { title: string; updated: string; children: ReactNode }) {
@@ -8,7 +8,7 @@ export function LegalPage({ title, updated, children }: { title: string; updated
     <div className="nova-landing">
       <header className="lp-header">
         <div className="lp-nav-wrap">
-          <Link to="/" aria-label="NovaWebinar" className="lp-logo-link"><img src={wordmarkAsset} alt="NovaWebinar" /></Link>
+          <Link to="/" aria-label="Convertewebinar" className="lp-logo-link"><img src={wordmarkAsset} alt="Convertewebinar" /></Link>
           <nav className="lp-desktop-nav" aria-label="Navegação principal"><Link to="/">Início</Link></nav>
           <div className="lp-desktop-actions"><Link to="/auth/login">Entrar</Link></div>
         </div>

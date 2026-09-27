@@ -54,7 +54,7 @@ import { downloadCsv, toCsv } from "@/lib/webinar-metrics";
 export const Route = createFileRoute("/contacts")({
   head: () => ({
     meta: [
-      { title: "Contactos | NovaWebinar" },
+      { title: "Contactos | Convertewebinar" },
       { name: "description", content: "Todas as pessoas e a jornada de cada uma." },
     ],
   }),

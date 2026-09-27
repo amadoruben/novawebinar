@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { ACTIVE_ORGANIZATION_KEY } from "@/lib/data";
 
 /** A rota exige sessão: o mesmo Bearer que as server functions já enviam. */
 async function authHeaders(): Promise<Record<string, string>> {
@@ -15,10 +16,12 @@ export async function streamImage(
   prompt: string,
   onFrame: (dataUrl: string, isFinal: boolean) => void,
 ): Promise<void> {
+  // A imagem é cobrada ao espaço de trabalho aberto; o servidor confirma que é de quem pede.
+  const organizationId = localStorage.getItem(ACTIVE_ORGANIZATION_KEY);
   const response = await fetch("/api/generate-image", {
     method: "POST",
     headers: await authHeaders(),
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ prompt, organizationId }),
   });
 
   if (!response.ok || !response.body) {
@@ -89,7 +92,7 @@ export async function streamImage(
     const replay = await fetch("/api/generate-image", {
       method: "POST",
       headers: await authHeaders(),
-      body: JSON.stringify({ prompt, stream: false }),
+      body: JSON.stringify({ prompt, organizationId, stream: false }),
     });
     if (!replay.ok)
       throw new Error(await replay.text().catch(() => "Não foi possível gerar a imagem."));

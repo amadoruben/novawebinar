@@ -440,7 +440,7 @@
   }
 }
 
-/* === Landing pública NovaWebinar: isolada do produto autenticado === */
+/* === Landing pública Convertewebinar: isolada do produto autenticado === */
 .nova-landing {
   --lp-bg: oklch(1 0 0);
   --lp-warm: oklch(0.972 0.008 75);

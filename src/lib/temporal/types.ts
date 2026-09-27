@@ -1,5 +1,5 @@
 /**
- * Formato temporal interno da NovaWebinar.
+ * Formato temporal interno da Convertewebinar.
  *
  * Tudo aqui é normalizado e independente do fornecedor de transcrição.
  * Nenhuma outra parte do sistema (frases, momentos, eventos, geração,

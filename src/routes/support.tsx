@@ -1,222 +1,474 @@
-import { friendlyError } from "@/lib/friendly-error";
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowUp, Headset, Radio, Users } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, Bot, CalendarClock, MessageCircle, Radio, Search, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { EmptySection } from "@/components/page-primitives";
+import { Avatar, hourLabel, PresenceDot } from "@/components/support/badges";
+import { ContactPanel } from "@/components/support/contact-panel";
+import { ConversationView } from "@/components/support/conversation-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  useConversations,
-  useInvalidate,
-  useMessages,
-  useWebinars,
-  useWorkspace,
-} from "@/lib/data";
+import { useWebinars, useWorkspace } from "@/lib/data";
+import { friendlyError } from "@/lib/friendly-error";
 import { useLiveViewers } from "@/lib/live-presence";
-import { useQuery } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
-import { Bot } from "lucide-react";
-import {
-  discardAgentSuggestion,
-  listAgentSuggestions,
-  sendAgentSuggestion,
-} from "@/lib/ai-agent/agent.functions";
-import { SourceList } from "@/components/ai-agent/agent-panel";
 import { sessionWindow } from "@/lib/schedule";
+import {
+  setMyStatus,
+  useCases,
+  useDepartments,
+  useSkills,
+  useStaff,
+  useSupportConversations,
+  useSupportInvalidate,
+  useSupportRealtime,
+  useSupportSetup,
+  type SupportConversation,
+} from "@/lib/support/hooks";
+import {
+  canAttend,
+  intentLabel,
+  isOpenStatus,
+  priorityRank,
+  slaState,
+  STAFF_STATUSES,
+  type CaseRow,
+  type StaffStatus,
+} from "@/lib/support/model";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/support")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    c: typeof search["c"] === "string" ? (search["c"] as string) : undefined,
+  }),
   head: () => ({
     meta: [
-      { title: "Suporte ao vivo | NovaWebinar" },
+      { title: "Atendimento | Convertewebinar" },
       {
         name: "description",
-        content: "Atenda em tempo real quem está agora dentro das suas sessões a decorrer.",
+        content: "A IA responde primeiro; o que precisa de uma pessoa chega à equipa certa, com o contexto todo.",
       },
-      { property: "og:title", content: "Suporte ao vivo | NovaWebinar" },
-      {
-        property: "og:description",
-        content: "Responda de imediato aos participantes das sessões em curso.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: SupportPage,
 });
 
-function hourLabel(value: string) {
-  return new Date(value).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" });
+type Tab = "all" | "human" | "mine" | "ai";
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "all", label: "Todas" },
+  { id: "human", label: "Precisam de pessoa" },
+  { id: "mine", label: "Minhas" },
+  { id: "ai", label: "Com a IA" },
+];
+
+/** O que a IA fez hoje: quantas conversas resolveu sozinha e quantas passou à equipa. */
+function useAiToday(organizationId: string | undefined) {
+  return useQuery({
+    queryKey: ["support", "events", "ai-today", organizationId],
+    enabled: Boolean(organizationId),
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const count = async (name: string) => {
+        const { count: total } = await supabase
+          .from("activity_events")
+          .select("id", { count: "exact", head: true })
+          .eq("organization_id", organizationId!)
+          .eq("name", name)
+          .gte("occurred_at", start.toISOString());
+        return total ?? 0;
+      };
+      const [resolved, escalated] = await Promise.all([count("ai_resolution"), count("ai_escalation")]);
+      return { resolved, escalated };
+    },
+  });
+}
+
+function useRegistrations(webinarIds: string[]) {
+  return useQuery({
+    queryKey: ["support", "registrations", webinarIds],
+    enabled: webinarIds.length > 0,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const rows = await Promise.all(
+        webinarIds.map(async (id) => {
+          const { count } = await supabase
+            .from("participants")
+            .select("id", { count: "exact", head: true })
+            .eq("webinar_id", id);
+          return [id, count ?? 0] as const;
+        }),
+      );
+      return Object.fromEntries(rows) as Record<string, number>;
+    },
+  });
 }
 
 function SupportPage() {
+  const { c: requested } = Route.useSearch();
+  const navigate = useNavigate();
   const { data: workspace } = useWorkspace();
   const organizationId = workspace?.organizationId;
-  const invalidate = useInvalidate();
-  const { data: webinars = [] } = useWebinars(organizationId);
-  const { data: conversations = [] } = useConversations(organizationId);
-  const viewers = useLiveViewers(organizationId);
-  const [activeWebinar, setActiveWebinar] = useState<string | undefined>();
-  const [activeId, setActiveId] = useState<string | undefined>();
-  const [mobileStep, setMobileStep] = useState<"sessions" | "conversations" | "messages">(
-    "sessions",
-  );
-  const [reply, setReply] = useState("");
-  const [tick, setTick] = useState(0);
-  const endRef = useRef<HTMLDivElement | null>(null);
+  const allowed = canAttend(workspace?.role);
+  const scope = allowed ? organizationId : undefined;
 
-  /** Recalcula de minuto a minuto quais as sessões que estão mesmo a decorrer. */
+  const { data: setup } = useSupportSetup(scope);
+  useSupportRealtime(scope);
+  const invalidate = useSupportInvalidate();
+  const { data: webinars = [] } = useWebinars(scope);
+  const { data: conversations = [], isLoading } = useSupportConversations(scope);
+  const { data: cases = [] } = useCases(scope);
+  const { data: staff = [] } = useStaff(scope);
+  const { data: departments = [] } = useDepartments(scope);
+  const { data: skills = [] } = useSkills(scope);
+  const { data: aiToday } = useAiToday(scope);
+  const viewers = useLiveViewers(scope);
+
+  const [tab, setTab] = useState<Tab>("all");
+  const [webinarId, setWebinarId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [step, setStep] = useState<"list" | "chat" | "contact">("list");
+  const [tick, setTick] = useState(0);
+
   useEffect(() => {
     const timer = window.setInterval(() => setTick((n) => n + 1), 30_000);
     return () => window.clearInterval(timer);
   }, []);
 
-  const liveWebinars = useMemo(() => {
-    void tick;
-    return webinars.filter((w) => {
-      if (w.status === "draft") return false;
-      const duration = w.video_sources?.duration_seconds || w.duration_seconds || 0;
-      return sessionWindow({ ...w, duration_seconds: duration }, Date.now()).live;
-    });
-  }, [webinars, tick]);
+  const myStaffId = setup?.staffId ?? null;
+  const me = staff.find((s) => s.id === myStaffId);
 
-  const selected = liveWebinars.find((w) => w.id === activeWebinar) ?? liveWebinars[0];
+  const openCases = useMemo(() => {
+    const map = new Map<string, CaseRow>();
+    for (const c of cases) if (c.conversation_id && isOpenStatus(c.status)) map.set(c.conversation_id, c);
+    return map;
+  }, [cases]);
 
-  const roomConversations = useMemo(
-    () => (selected ? conversations.filter((c) => c.webinar_id === selected.id) : []),
-    [conversations, selected],
+  const needsPerson = (c: SupportConversation) => openCases.has(c.id) || c.needs_human || c.ai_paused;
+
+  const counts = useMemo(
+    () => ({
+      all: conversations.length,
+      human: conversations.filter(needsPerson).length,
+      mine: conversations.filter((c) => myStaffId && openCases.get(c.id)?.assigned_staff_id === myStaffId).length,
+      ai: conversations.filter((c) => !needsPerson(c)).length,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [conversations, openCases, myStaffId],
   );
-  const active = roomConversations.find((c) => c.id === activeId) ?? roomConversations[0];
-  const { data: messages = [] } = useMessages(active?.id);
 
-  // Sugestões do Agente IA à espera de aprovação da equipa.
-  const fetchSuggestions = useServerFn(listAgentSuggestions);
-  const approveSuggestion = useServerFn(sendAgentSuggestion);
-  const dropSuggestion = useServerFn(discardAgentSuggestion);
-  const { data: suggestions = [], refetch: refetchSuggestions } = useQuery({
-    queryKey: ["agent-suggestions", selected?.id],
-    enabled: Boolean(selected?.id),
-    refetchInterval: 8000,
-    queryFn: () => fetchSuggestions({ data: { webinarId: selected!.id } }),
-  });
-  const suggestion = suggestions.find((item) => item.conversationId === active?.id) ?? null;
-  const [draftAnswer, setDraftAnswer] = useState("");
-  useEffect(() => {
-    setDraftAnswer(suggestion?.answer ?? "");
-  }, [suggestion?.id, suggestion?.answer]);
-
-  useEffect(() => {
-    if (!organizationId) return;
-    const channel = supabase
-      .channel("support-live")
-      .on("postgres_changes", { event: "*", schema: "public", table: "private_messages" }, () => {
-        invalidate(["messages", "conversations"]);
+  const visible = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return conversations
+      .filter((c) => !webinarId || c.webinar_id === webinarId)
+      .filter((c) => {
+        if (tab === "human") return needsPerson(c);
+        if (tab === "mine") return myStaffId !== null && openCases.get(c.id)?.assigned_staff_id === myStaffId;
+        if (tab === "ai") return !needsPerson(c);
+        return true;
       })
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "private_conversations" },
-        () => {
-          invalidate(["conversations"]);
-        },
+      .filter(
+        (c) =>
+          !term ||
+          [c.participants?.name, c.participants?.email, c.last_message_preview]
+            .filter(Boolean)
+            .some((value) => value!.toLowerCase().includes(term)),
       )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [organizationId, invalidate]);
+      .sort((a, b) => {
+        // Primeiro quem espera por uma pessoa, do mais urgente para o menos urgente.
+        const caseA = openCases.get(a.id);
+        const caseB = openCases.get(b.id);
+        if (Boolean(caseA) !== Boolean(caseB)) return caseA ? -1 : 1;
+        if (caseA && caseB) {
+          const rank = priorityRank(caseA.priority) - priorityRank(caseB.priority);
+          if (rank !== 0) return rank;
+        }
+        return b.last_message_at.localeCompare(a.last_message_at);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations, openCases, webinarId, tab, search, myStaffId]);
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, active?.id]);
+  const active =
+    conversations.find((c) => c.id === requested) ?? (requested ? undefined : visible[0]) ?? visible[0];
+  const activeCase = active ? (openCases.get(active.id) ?? null) : null;
 
-  const send = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!active || !workspace || !reply.trim()) return;
-    const body = reply.trim();
-    setReply("");
-    const { error } = await supabase.from("private_messages").insert({
-      conversation_id: active.id,
-      organization_id: workspace.organizationId,
-      participant_id: active.participant_id,
-      sender_kind: "team",
-      sender_user_id: workspace.userId,
-      body,
-    });
-    if (error) {
-      toast.error(friendlyError(error));
-      return;
-    }
-    await supabase
-      .from("private_conversations")
-      .update({
-        last_message_at: new Date().toISOString(),
-        status: "active",
-        assigned_to: workspace.userId,
-      })
-      .eq("id", active.id);
-    invalidate(["messages", "conversations"]);
+  const select = (id: string) => {
+    void navigate({ to: "/support", search: { c: id }, replace: true });
+    setStep("chat");
   };
 
-  const online = selected ? viewers.filter((v) => v.webinarId === selected.id).length : 0;
+  const strip = useMemo(() => {
+    void tick;
+    const now = Date.now();
+    return webinars
+      .filter((w) => w.status !== "draft")
+      .map((w) => {
+        const duration = w.video_sources?.duration_seconds || w.duration_seconds || 0;
+        const window = sessionWindow({ ...w, duration_seconds: duration }, now);
+        const state: "live" | "soon" | "replay" =
+          window.live && (window.endMs === null || window.endMs > now)
+            ? "live"
+            : window.startMs !== null && window.startMs > now
+              ? "soon"
+              : "replay";
+        const talks = conversations.filter((c) => c.webinar_id === w.id);
+        return {
+          id: w.id,
+          title: w.public_title,
+          cover: w.cover_url ?? w.registration_cover_url ?? null,
+          state,
+          startMs: window.startMs,
+          online: viewers.filter((v) => v.webinarId === w.id).length,
+          conversations: talks.length,
+          waiting: talks.filter(needsPerson).length,
+        };
+      })
+      .filter((w) => w.state !== "replay" || w.conversations > 0 || w.online > 0)
+      .sort(
+        (a, b) =>
+          Number(b.state === "live") - Number(a.state === "live") ||
+          b.waiting - a.waiting ||
+          (a.startMs ?? Infinity) - (b.startMs ?? Infinity),
+      )
+      .slice(0, 8);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [webinars, conversations, viewers, openCases, tick]);
+  const { data: registrations = {} } = useRegistrations(strip.map((w) => w.id));
+
+  if (workspace && !allowed) {
+    return (
+      <AppShell title="Atendimento" action={false}>
+        <EmptySection
+          title="Sem acesso ao atendimento"
+          description="As conversas com os participantes são vistas pelo proprietário, pelos administradores e pela equipa de suporte."
+        />
+      </AppShell>
+    );
+  }
+
+  const changeStatus = async (status: StaffStatus) => {
+    if (!organizationId) return;
+    try {
+      await setMyStatus(organizationId, status);
+      invalidate("staff");
+    } catch (error) {
+      toast.error(friendlyError(error, "Não foi possível mudar o estado."));
+    }
+  };
+
+  const total = (aiToday?.resolved ?? 0) + (aiToday?.escalated ?? 0);
 
   return (
     <AppShell
-      title="Suporte ao vivo"
-      description="Sessões a decorrer neste momento e as pessoas que precisam de resposta já."
-      action={false}
+      title="Atendimento"
+      description="A IA responde primeiro. O que precisa de uma pessoa chega à equipa certa, com o contexto todo."
+      action={
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-xs">
+            <Bot className="size-4 text-primary" aria-hidden />
+            <span className="text-muted-foreground">IA hoje</span>
+            <strong>{aiToday?.resolved ?? 0}</strong> resolvidas
+            <span className="text-muted-foreground">·</span>
+            <strong>{aiToday?.escalated ?? 0}</strong> passadas à equipa
+            {total > 0 && (
+              <Badge variant="success">{Math.round(((aiToday?.resolved ?? 0) / total) * 100)}%</Badge>
+            )}
+          </div>
+          {me && (
+            <Select value={me.status} onValueChange={(value) => void changeStatus(value as StaffStatus)}>
+              <SelectTrigger className="h-9 w-44" aria-label="O meu estado">
+                <span className="flex items-center gap-2">
+                  <PresenceDot status={me.presence} />
+                  <SelectValue />
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {STAFF_STATUSES.map((status) => (
+                  <SelectItem key={status.id} value={status.id}>
+                    {status.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      }
+      compact
     >
-      {liveWebinars.length === 0 ? (
+      {strip.length > 0 && (
+        <section className="mb-4" aria-label="Webinars activos">
+          <div className="flex gap-3 overflow-x-auto pb-1">
+            {strip.map((w) => (
+              <button
+                key={w.id}
+                type="button"
+                onClick={() => setWebinarId((current) => (current === w.id ? null : w.id))}
+                aria-pressed={webinarId === w.id}
+                className={cn(
+                  "flex w-72 shrink-0 items-center gap-3 rounded-lg border bg-card p-2.5 text-left transition-colors",
+                  webinarId === w.id ? "border-primary ring-1 ring-primary/30" : "hover:border-foreground/20",
+                )}
+              >
+                {w.cover ? (
+                  <img src={w.cover} alt="" className="size-14 shrink-0 rounded-md object-cover" />
+                ) : (
+                  <span className="flex size-14 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                    <Radio className="size-5" aria-hidden />
+                  </span>
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold">{w.title}</span>
+                  <span className="mt-0.5 flex items-center gap-1.5">
+                    {w.state === "live" ? (
+                      <Badge variant="destructive">Ao vivo</Badge>
+                    ) : w.state === "soon" ? (
+                      <Badge variant="warning">Em breve</Badge>
+                    ) : (
+                      <Badge variant="secondary">Replay</Badge>
+                    )}
+                    {w.state === "soon" && w.startMs && (
+                      <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <CalendarClock className="size-3" aria-hidden />
+                        {new Date(w.startMs).toLocaleString("pt-PT", {
+                          day: "2-digit",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    )}
+                  </span>
+                  <span className="mt-1 flex items-center gap-3 text-[11px] text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Users className="size-3" aria-hidden /> {registrations[w.id] ?? "…"} inscritos
+                    </span>
+                    <span>{w.online} online</span>
+                    {w.waiting > 0 && (
+                      <span className="font-medium text-destructive">{w.waiting} à espera</span>
+                    )}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {isLoading ? (
+        <div className="grid gap-4 lg:grid-cols-[21rem_1fr]">
+          <Skeleton className="h-[32rem]" />
+          <Skeleton className="h-[32rem]" />
+        </div>
+      ) : conversations.length === 0 ? (
         <EmptySection
-          title="Nenhuma sessão a decorrer"
-          description="Quando uma sessão entrar no ar, ela aparece aqui com as conversas a precisar de resposta."
+          title="Ainda não há conversas"
+          description="Quando um participante escrever numa sala, a conversa aparece aqui. A IA responde ao que sabe e passa à equipa o que precisa de uma pessoa."
         />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[18rem_20rem_1fr]">
+        <div className="grid min-h-0 gap-4 lg:h-[calc(100dvh-16.5rem)] lg:min-h-[34rem] lg:grid-cols-[21rem_minmax(0,1fr)] xl:grid-cols-[21rem_minmax(0,1fr)_23rem]">
           <aside
             className={cn(
-              "rounded-lg border bg-card p-3",
-              mobileStep !== "sessions" && "hidden lg:block",
+              "flex min-h-0 flex-col rounded-lg border bg-card",
+              step !== "list" && "hidden lg:flex",
             )}
           >
-            <p className="px-2 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              A decorrer
-            </p>
-            <ul className="space-y-1.5">
-              {liveWebinars.map((w) => {
-                const count = viewers.filter((v) => v.webinarId === w.id).length;
-                const pending = conversations.filter(
-                  (c) => c.webinar_id === w.id && c.status === "waiting",
-                ).length;
+            <div className="space-y-2.5 border-b p-3">
+              <div className="flex flex-wrap gap-1">
+                {TABS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setTab(item.id)}
+                    className={cn(
+                      "rounded-md px-2.5 py-1.5 text-xs font-medium",
+                      tab === item.id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted",
+                    )}
+                  >
+                    {item.label} <span className="tabular-nums opacity-70">{counts[item.id]}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" aria-hidden />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Nome, email ou mensagem"
+                  aria-label="Procurar conversas"
+                  className="h-9 pl-9"
+                />
+              </div>
+              {webinarId && (
+                <button
+                  type="button"
+                  onClick={() => setWebinarId(null)}
+                  className="text-xs text-primary hover:underline"
+                >
+                  Só {strip.find((w) => w.id === webinarId)?.title ?? "este webinar"} · ver todos
+                </button>
+              )}
+            </div>
+            <ul className="min-h-0 flex-1 overflow-y-auto">
+              {visible.length === 0 && (
+                <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa neste filtro.</li>
+              )}
+              {visible.map((c) => {
+                const open = openCases.get(c.id);
+                const unanswered = c.last_sender_kind === "participant";
+                const late = open ? ["risk", "breached"].includes(slaState(open).state) : false;
                 return (
-                  <li key={w.id}>
+                  <li key={c.id}>
                     <button
                       type="button"
-                      onClick={() => {
-                        setActiveWebinar(w.id);
-                        setActiveId(undefined);
-                        setMobileStep("conversations");
-                      }}
+                      onClick={() => select(c.id)}
                       className={cn(
-                        "w-full rounded-md px-3 py-2.5 text-left transition-colors",
-                        selected?.id === w.id ? "bg-primary/10 text-foreground" : "hover:bg-muted",
+                        "flex w-full gap-3 border-b border-l-2 px-3 py-3 text-left transition-colors",
+                        active?.id === c.id
+                          ? "border-l-primary bg-primary/5"
+                          : "border-l-transparent hover:bg-muted/60",
                       )}
                     >
-                      <span className="flex items-center gap-2 text-sm font-medium">
-                        <Radio className="size-4 text-success" />
-                        <span className="truncate">{w.public_title}</span>
-                      </span>
-                      <span className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <Users className="size-3.5" /> {count}
+                      <Avatar name={c.participants?.name} />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center justify-between gap-2">
+                          <span className={cn("truncate text-sm", unanswered ? "font-semibold" : "font-medium")}>
+                            {c.participants?.name ?? "Participante"}
+                          </span>
+                          <span className="shrink-0 text-[11px] text-muted-foreground">
+                            {hourLabel(c.last_message_at)}
+                          </span>
                         </span>
-                        {pending > 0 ? (
-                          <span className="text-warning-foreground">{pending} à espera</span>
-                        ) : null}
+                        <span
+                          className={cn(
+                            "mt-0.5 block truncate text-xs",
+                            unanswered ? "text-foreground" : "text-muted-foreground",
+                          )}
+                        >
+                          {c.last_sender_kind === "ai_agent" ? "IA: " : c.last_sender_kind === "team" ? "Equipa: " : ""}
+                          {c.last_message_preview || "Sem mensagens"}
+                        </span>
+                        <span className="mt-1.5 flex flex-wrap items-center gap-1">
+                          {open ? (
+                            <Badge variant={late ? "destructive" : "warning"}>{intentLabel(open.intent)}</Badge>
+                          ) : needsPerson(c) ? (
+                            <Badge variant="warning">À espera da equipa</Badge>
+                          ) : (
+                            <Badge variant="secondary" className="gap-1">
+                              <Bot className="size-3" aria-hidden /> IA
+                            </Badge>
+                          )}
+                          {open && !open.assigned_staff_id && <Badge variant="destructive">Sem responsável</Badge>}
+                          <span className="truncate text-[11px] text-muted-foreground">
+                            {c.webinars?.public_title}
+                          </span>
+                        </span>
                       </span>
                     </button>
                   </li>
@@ -225,222 +477,53 @@ function SupportPage() {
             </ul>
           </aside>
 
-          <aside
-            className={cn(
-              "rounded-lg border bg-card p-3",
-              mobileStep !== "conversations" && "hidden lg:block",
-            )}
-          >
-            <Button
-              variant="ghost"
-              size="sm"
-              className="mb-2 lg:hidden"
-              onClick={() => setMobileStep("sessions")}
-            >
-              <ArrowLeft /> Sessões
-            </Button>
-            <p className="flex items-center justify-between px-2 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Conversas
-              <span className="normal-case">{online} na sala</span>
-            </p>
-            {roomConversations.length === 0 ? (
-              <p className="px-2 py-6 text-sm text-muted-foreground">
-                Ninguém escreveu ainda nesta sessão. As mensagens privadas chegam aqui em tempo
-                real.
-              </p>
-            ) : (
-              <ul className="max-h-[32rem] space-y-1.5 overflow-y-auto">
-                {roomConversations.map((c) => (
-                  <li key={c.id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveId(c.id);
-                        setMobileStep("messages");
-                      }}
-                      className={cn(
-                        "w-full rounded-md px-3 py-2.5 text-left transition-colors",
-                        active?.id === c.id ? "bg-muted" : "hover:bg-muted/60",
-                      )}
-                    >
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-medium">
-                          {c.participants?.name ?? "Participante"}
-                        </span>
-                        {(c as { needs_human?: boolean }).needs_human ? (
-                          <Badge variant="destructive" className="shrink-0">
-                            precisa de humano
-                          </Badge>
-                        ) : c.status === "waiting" ? (
-                          <Badge variant="warning" className="shrink-0">
-                            à espera
-                          </Badge>
-                        ) : null}
-                      </span>
-                      {(c as { escalation_reason?: string | null }).escalation_reason ? (
-                        <span className="mt-0.5 block truncate text-xs text-destructive">
-                          {(c as { escalation_reason?: string | null }).escalation_reason}
-                        </span>
-                      ) : null}
-                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                        {hourLabel(c.last_message_at)} · {c.participants?.email ?? "sem email"}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </aside>
-
           <section
             className={cn(
-              "min-h-[34rem] flex-col rounded-lg border bg-card",
-              mobileStep === "messages" ? "flex" : "hidden lg:flex",
+              "min-h-[30rem] overflow-hidden rounded-lg border bg-card lg:min-h-0",
+              step === "chat" ? "block" : "hidden lg:block",
             )}
           >
-            <header className="flex items-center gap-2 border-b px-5 py-4">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="-ml-2 lg:hidden"
-                onClick={() => setMobileStep("conversations")}
-                aria-label="Voltar às conversas"
-              >
-                <ArrowLeft />
-              </Button>
-              <Headset className="size-4 text-primary" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">
-                  {active?.participants?.name ?? "Selecione uma conversa"}
-                </p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {selected?.public_title ?? ""}
-                </p>
-              </div>
-              {active ? (
-                <label className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                  <Bot className="size-4 text-primary" />
-                  Assistente IA
-                  <Switch
-                    checked={!active.ai_paused}
-                    onCheckedChange={async (checked) => {
-                      const { error } = await supabase
-                        .from("private_conversations")
-                        .update({ ai_paused: !checked })
-                        .eq("id", active.id);
-                      if (error) {
-                        toast.error(friendlyError(error));
-                        return;
-                      }
-                      toast.success(
-                        checked
-                          ? "Assistente IA ativo nesta conversa."
-                          : "Assistente IA em pausa nesta conversa.",
-                      );
-                      invalidate(["conversations"]);
-                    }}
-                    aria-label="Ativar ou pausar o assistente IA"
-                  />
-                </label>
-              ) : null}
-            </header>
-            <div className="flex-1 space-y-3 overflow-y-auto p-5">
-              {messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={cn(
-                    "flex",
-                    m.sender_kind === "participant" ? "justify-start" : "justify-end",
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "max-w-[82%] rounded-lg px-3.5 py-2.5 text-sm",
-                      m.sender_kind === "team"
-                        ? "bg-primary text-primary-foreground"
-                        : m.sender_kind === "ai_agent"
-                          ? "border border-primary/30 bg-primary/5"
-                          : "bg-muted",
-                    )}
-                  >
-                    {m.sender_kind === "ai_agent" ? (
-                      <span className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-primary">
-                        <Bot className="size-3.5" /> Assistente
-                      </span>
-                    ) : null}
-                    {m.body}
-                    <span className="mt-1 block text-[11px] opacity-70">
-                      {hourLabel(m.created_at)}
-                    </span>
-                  </div>
-                </div>
-              ))}
-              {messages.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Sem mensagens nesta conversa.</p>
-              ) : null}
-              <div ref={endRef} />
-            </div>
-
-            {suggestion ? (
-              <div className="space-y-3 border-t bg-primary/5 p-4">
-                <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-primary">
-                  <Bot className="size-4" /> Resposta do assistente ·{" "}
-                  {Math.round(suggestion.confidence * 100)}% de confiança
-                </p>
-                <Input value={draftAnswer} onChange={(e) => setDraftAnswer(e.target.value)} />
-                <SourceList sources={suggestion.sources} />
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={!draftAnswer.trim()}
-                    onClick={async () => {
-                      try {
-                        await approveSuggestion({
-                          data: { id: suggestion.id, finalAnswer: draftAnswer.trim() },
-                        });
-                        invalidate(["messages", "conversations"]);
-                        void refetchSuggestions();
-                      } catch (error) {
-                        toast.error(friendlyError(error));
-                      }
-                    }}
-                  >
-                    Enviar
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={async () => {
-                      await dropSuggestion({ data: { id: suggestion.id } });
-                      void refetchSuggestions();
-                      toast.success("Assumiu a conversa. A sugestão foi descartada.");
-                    }}
-                  >
-                    Assumir conversa
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-
-            <form onSubmit={send} className="flex items-center gap-2 border-t p-4">
-              <Input
-                value={reply}
-                onChange={(e) => setReply(e.target.value)}
-                placeholder="Escreva a resposta para o participante"
-                disabled={!active}
+            {active ? (
+              <ConversationView
+                conversation={active}
+                currentCase={activeCase}
+                webinar={webinars.find((w) => w.id === active.webinar_id)}
+                staff={staff}
+                departments={departments}
+                myStaffId={myStaffId}
+                onBack={() => setStep("list")}
+                onShowContact={() => setStep("contact")}
               />
-              <Button
-                type="submit"
-                size="icon"
-                disabled={!active || !reply.trim()}
-                aria-label="Enviar resposta"
-              >
-                <ArrowUp className="size-4" />
-              </Button>
-            </form>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-muted-foreground">
+                <MessageCircle className="size-8" aria-hidden />
+                <p className="text-sm">Escolha uma conversa.</p>
+              </div>
+            )}
           </section>
+
+          <aside
+            className={cn(
+              "min-h-[30rem] overflow-hidden rounded-lg border bg-card xl:block xl:min-h-0",
+              step === "contact" ? "block lg:col-span-2 xl:col-span-1" : "hidden",
+            )}
+          >
+            {step === "contact" && (
+              <Button variant="ghost" size="sm" className="m-2 xl:hidden" onClick={() => setStep("chat")}>
+                <ArrowLeft /> Conversa
+              </Button>
+            )}
+            {active && (
+              <ContactPanel
+                conversation={active}
+                currentCase={activeCase}
+                staff={staff}
+                departments={departments}
+                skills={skills}
+                myStaffId={myStaffId}
+              />
+            )}
+          </aside>
         </div>
       )}
     </AppShell>

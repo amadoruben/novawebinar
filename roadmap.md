@@ -7,7 +7,7 @@
 - [x] Base de dados própria com toda a estrutura aplicada e chaves de IA, transcrição e tarefas automáticas configuradas
 
 ## Por fazer
-- [ ] Definir o nome/marca do produto (o código mostra "NovaWebinar" em títulos, textos legais, entrada e barra lateral)
+- [x] Nome do produto definido: Convertewebinar (logótipos em `src/assets/brand/` ainda provisórios)
 - [ ] Ligar um domínio próprio e, se for usado, definir `VITE_PUBLIC_APP_URL` / `VITE_ADMIN_HOST` / `VITE_PUBLIC_HOSTS`
 - [ ] Primeiro conteúdo: criar organização, carregar vídeo e criar o primeiro webinar
 - [ ] Reações com gatilho demasiado distante (casos acima de 45 s): rever escolha da âncora/frase e a janela máxima de reação

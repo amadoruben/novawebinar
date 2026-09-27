@@ -30,12 +30,19 @@ export const Route = createFileRoute("/api/public/purchase-webhook")({
         if (!webinarId || !secret || !buyer)
           return new Response("Dados em falta.", { status: 400 });
 
-        const { data: settings } = await supabaseAdmin
+        const { data: settings, error: settingsError } = await supabaseAdmin
           .from("social_proof_settings")
           .select("webinar_id, organization_id, webhook_secret, product_name")
           .eq("webinar_id", webinarId)
           .maybeSingle();
 
+        // Falha nossa responde 5xx para quem envia repetir; 401 seria desistir da venda.
+        if (settingsError) {
+          return new Response("Temporariamente indisponível.", {
+            status: 503,
+            headers: { "retry-after": "60" },
+          });
+        }
         if (!settings || settings.webhook_secret !== secret) {
           return new Response("Não autorizado.", { status: 401 });
         }

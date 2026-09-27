@@ -14,6 +14,84 @@ export type Database = {
   }
   public: {
     Tables: {
+      activity_events: {
+        Row: {
+          actor_kind: string
+          actor_user_id: string | null
+          case_id: string | null
+          contact_id: string | null
+          conversation_id: string | null
+          data: Json
+          id: number
+          name: string
+          occurred_at: string
+          organization_id: string
+          webinar_id: string | null
+        }
+        Insert: {
+          actor_kind: string
+          actor_user_id?: string | null
+          case_id?: string | null
+          contact_id?: string | null
+          conversation_id?: string | null
+          data?: Json
+          id?: number
+          name: string
+          occurred_at?: string
+          organization_id: string
+          webinar_id?: string | null
+        }
+        Update: {
+          actor_kind?: string
+          actor_user_id?: string | null
+          case_id?: string | null
+          contact_id?: string | null
+          conversation_id?: string | null
+          data?: Json
+          id?: number
+          name?: string
+          occurred_at?: string
+          organization_id?: string
+          webinar_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_events_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "support_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_events_contact_fk"
+            columns: ["contact_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "activity_events_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "private_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_events_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_agent_faqs: {
         Row: {
           agent_id: string
@@ -843,6 +921,7 @@ export type Database = {
           id: string
           integration_id: string | null
           organization_id: string
+          payload: string | null
           product_name: string | null
           provider: string
           purchase_id: string | null
@@ -858,6 +937,7 @@ export type Database = {
           id?: string
           integration_id?: string | null
           organization_id: string
+          payload?: string | null
           product_name?: string | null
           provider: string
           purchase_id?: string | null
@@ -873,6 +953,7 @@ export type Database = {
           id?: string
           integration_id?: string | null
           organization_id?: string
+          payload?: string | null
           product_name?: string | null
           provider?: string
           purchase_id?: string | null
@@ -1108,6 +1189,9 @@ export type Database = {
       private_conversations: {
         Row: {
           ai_paused: boolean
+          channel: string
+          last_message_preview: string
+          last_sender_kind: string | null
           assigned_to: string | null
           created_at: string
           escalation_reason: string | null
@@ -1121,6 +1205,9 @@ export type Database = {
         }
         Insert: {
           ai_paused?: boolean
+          channel?: string
+          last_message_preview?: string
+          last_sender_kind?: string | null
           assigned_to?: string | null
           created_at?: string
           escalation_reason?: string | null
@@ -1134,6 +1221,9 @@ export type Database = {
         }
         Update: {
           ai_paused?: boolean
+          channel?: string
+          last_message_preview?: string
+          last_sender_kind?: string | null
           assigned_to?: string | null
           created_at?: string
           escalation_reason?: string | null
@@ -1480,6 +1570,388 @@ export type Database = {
             columns: ["webinar_id"]
             isOneToOne: false
             referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_cases: {
+        Row: {
+          assigned_staff_id: string | null
+          call_required: boolean
+          category: string
+          closed_at: string | null
+          confidence: number | null
+          contact_id: string | null
+          conversation_id: string | null
+          created_at: string
+          department_id: string | null
+          first_response_at: string | null
+          human_intervention_required: boolean
+          id: string
+          intent: string
+          last_activity_at: string
+          number: number
+          organization_id: string
+          participant_id: string | null
+          priority: string
+          purchase_intent: boolean
+          reason_for_escalation: string
+          recommended_action: string
+          required_skills: string[]
+          resolution: string
+          resolved_at: string | null
+          routing_reason: string
+          sentiment: string | null
+          sla_breached_at: string | null
+          sla_deadline: string | null
+          sla_minutes: number
+          sla_warned_at: string | null
+          source_channel: string
+          stalled_at: string | null
+          status: string
+          summary: string
+          updated_at: string
+          webinar_id: string | null
+        }
+        Insert: {
+          assigned_staff_id?: string | null
+          call_required?: boolean
+          category?: string
+          closed_at?: string | null
+          confidence?: number | null
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          department_id?: string | null
+          first_response_at?: string | null
+          human_intervention_required?: boolean
+          id?: string
+          intent?: string
+          last_activity_at?: string
+          number: number
+          organization_id: string
+          participant_id?: string | null
+          priority?: string
+          purchase_intent?: boolean
+          reason_for_escalation?: string
+          recommended_action?: string
+          required_skills?: string[]
+          resolution?: string
+          resolved_at?: string | null
+          routing_reason?: string
+          sentiment?: string | null
+          sla_breached_at?: string | null
+          sla_deadline?: string | null
+          sla_minutes?: number
+          sla_warned_at?: string | null
+          source_channel?: string
+          stalled_at?: string | null
+          status?: string
+          summary?: string
+          updated_at?: string
+          webinar_id?: string | null
+        }
+        Update: {
+          assigned_staff_id?: string | null
+          call_required?: boolean
+          category?: string
+          closed_at?: string | null
+          confidence?: number | null
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          department_id?: string | null
+          first_response_at?: string | null
+          human_intervention_required?: boolean
+          id?: string
+          intent?: string
+          last_activity_at?: string
+          number?: number
+          organization_id?: string
+          participant_id?: string | null
+          priority?: string
+          purchase_intent?: boolean
+          reason_for_escalation?: string
+          recommended_action?: string
+          required_skills?: string[]
+          resolution?: string
+          resolved_at?: string | null
+          routing_reason?: string
+          sentiment?: string | null
+          sla_breached_at?: string | null
+          sla_deadline?: string | null
+          sla_minutes?: number
+          sla_warned_at?: string | null
+          source_channel?: string
+          stalled_at?: string | null
+          status?: string
+          summary?: string
+          updated_at?: string
+          webinar_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_cases_contact_fk"
+            columns: ["contact_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "support_cases_contact_fk"
+            columns: ["contact_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "contact_summaries"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "support_cases_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "private_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_cases_department_fk"
+            columns: ["department_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "support_departments"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "support_cases_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_cases_participant_id_fkey"
+            columns: ["participant_id"]
+            isOneToOne: false
+            referencedRelation: "participants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_cases_staff_fk"
+            columns: ["assigned_staff_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "support_staff"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "support_cases_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_departments: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          is_fallback: boolean
+          name: string
+          organization_id: string
+          position: number
+          slug: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          is_fallback?: boolean
+          name: string
+          organization_id: string
+          position?: number
+          slug: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          is_fallback?: boolean
+          name?: string
+          organization_id?: string
+          position?: number
+          slug?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_departments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_routing_rules: {
+        Row: {
+          always_human: boolean
+          call_required: boolean
+          department_id: string | null
+          id: string
+          intent: string
+          organization_id: string
+          priority: string
+          required_skills: string[]
+          sla_minutes: number
+          updated_at: string
+        }
+        Insert: {
+          always_human?: boolean
+          call_required?: boolean
+          department_id?: string | null
+          id?: string
+          intent: string
+          organization_id: string
+          priority?: string
+          required_skills?: string[]
+          sla_minutes?: number
+          updated_at?: string
+        }
+        Update: {
+          always_human?: boolean
+          call_required?: boolean
+          department_id?: string | null
+          id?: string
+          intent?: string
+          organization_id?: string
+          priority?: string
+          required_skills?: string[]
+          sla_minutes?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_routing_rules_department_fk"
+            columns: ["department_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "support_departments"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "support_routing_rules_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_skills: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          organization_id: string
+          slug: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          organization_id: string
+          slug: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          organization_id?: string
+          slug?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_skills_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_staff: {
+        Row: {
+          active: boolean
+          capacity: number
+          channels: string[]
+          created_at: string
+          department_id: string | null
+          email: string
+          id: string
+          invited_at: string | null
+          is_supervisor: boolean
+          job_title: string
+          last_assigned_at: string | null
+          last_seen_at: string | null
+          name: string
+          organization_id: string
+          phone: string | null
+          skills: string[]
+          status: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          active?: boolean
+          capacity?: number
+          channels?: string[]
+          created_at?: string
+          department_id?: string | null
+          email: string
+          id?: string
+          invited_at?: string | null
+          is_supervisor?: boolean
+          job_title?: string
+          last_assigned_at?: string | null
+          last_seen_at?: string | null
+          name: string
+          organization_id: string
+          phone?: string | null
+          skills?: string[]
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          active?: boolean
+          capacity?: number
+          channels?: string[]
+          created_at?: string
+          department_id?: string | null
+          email?: string
+          id?: string
+          invited_at?: string | null
+          is_supervisor?: boolean
+          job_title?: string
+          last_assigned_at?: string | null
+          last_seen_at?: string | null
+          name?: string
+          organization_id?: string
+          phone?: string | null
+          skills?: string[]
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_staff_department_fk"
+            columns: ["department_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "support_departments"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "support_staff_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -2006,7 +2478,6 @@ export type Database = {
           created_at: string
           created_by: string
           cta_color: string
-          cta_countdown: Json
           cta_countdown_seconds: number
           cta_end_seconds: number | null
           cta_image_url: string
@@ -2076,7 +2547,6 @@ export type Database = {
           created_at?: string
           created_by: string
           cta_color?: string
-          cta_countdown?: Json
           cta_countdown_seconds?: number
           cta_end_seconds?: number | null
           cta_image_url?: string
@@ -2146,7 +2616,6 @@ export type Database = {
           created_at?: string
           created_by?: string
           cta_color?: string
-          cta_countdown?: Json
           cta_countdown_seconds?: number
           cta_end_seconds?: number | null
           cta_image_url?: string
@@ -2254,8 +2723,60 @@ export type Database = {
         }
         Relationships: []
       }
+      support_staff_load: {
+        Row: {
+          open_cases: number | null
+          organization_id: string | null
+          staff_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      auth_user_id_for_email: {
+        Args: { _email: string }
+        Returns: string
+      }
+      ensure_support_setup: {
+        Args: { _organization_id: string }
+        Returns: Json
+      }
+      is_support_only: {
+        Args: { _organization_id: string }
+        Returns: boolean
+      }
+      open_support_case: {
+        Args: { _p: Json }
+        Returns: Json
+      }
+      support_case_action: {
+        Args: { _action: string; _actor_user_id: string; _case_id: string; _payload?: Json }
+        Returns: Json
+      }
+      support_case_inbound: {
+        Args: { _conversation_id: string }
+        Returns: string
+      }
+      support_log_conversation_event: {
+        Args: { _actor_kind: string; _conversation_id: string; _data: Json; _name: string }
+        Returns: undefined
+      }
+      support_presence: {
+        Args: { _organization_id: string; _status?: string }
+        Returns: string
+      }
+      support_seed_defaults: {
+        Args: { _organization_id: string }
+        Returns: undefined
+      }
+      support_staff_for_user: {
+        Args: { _organization_id: string; _user_id: string }
+        Returns: Database["public"]["Tables"]["support_staff"]["Row"] | null
+      }
+      support_sla_sweep: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
       credit_state: {
         Args: { _organization_id: string }
         Returns: Json

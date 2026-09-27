@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
-import markAsset from "@/assets/local/nova-icon.png";
+import markAsset from "@/assets/brand/convertewebinar-icon.svg";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,7 +45,7 @@ function LoginScreen() {
     <AuthUI>
       <div className="flex w-full flex-col gap-7">
         <div>
-          <img src={markAsset} alt="NovaWebinar" className="mb-10 h-11 w-auto" />
+          <img src={markAsset} alt="Convertewebinar" className="mb-10 h-11 w-auto" />
           <h1 className="auth-heading">Bem-vindo de volta</h1>
           <p className="auth-sub">Entre para preparar, apresentar e acompanhar os seus webinars.</p>
         </div>
@@ -152,7 +152,8 @@ export function AuthScreen({ mode }: { mode: "login" | "register" | "reset" }) {
         setMessage("Conta criada. Consulte o seu email para confirmar o acesso.");
       } else {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/auth/login`,
+          // Onde a pessoa define a palavra-passe nova.
+          redirectTo: `${window.location.origin}/auth/welcome`,
         });
         if (error) throw error;
         setMessage("Enviámos as instruções de recuperação para o seu email.");
@@ -175,7 +176,7 @@ export function AuthScreen({ mode }: { mode: "login" | "register" | "reset" }) {
           Voltar
         </Link>
       )}
-      <img src={markAsset} alt="NovaWebinar" className="mb-10 h-11 w-auto" />
+      <img src={markAsset} alt="Convertewebinar" className="mb-10 h-11 w-auto" />
       <div className="mb-8">
         <h1 className="auth-heading">{title}</h1>
         <p className="auth-sub">

@@ -9,10 +9,10 @@ import { landingFeatures } from "@/lib/landing-features";
 export const Route = createFileRoute("/funcionalidades/")({
   head: () => ({
     meta: [
-      { title: "Funcionalidades — NovaWebinar" },
+      { title: "Funcionalidades — Convertewebinar" },
       { name: "description", content: "Sessões recorrentes, chat programado, oferta na sala, notificações de venda, replay, assistente no suporte e análise de retenção." },
-      { property: "og:title", content: "Funcionalidades — NovaWebinar" },
-      { property: "og:description", content: "Tudo o que o NovaWebinar faz: agenda, chat programado, oferta, vendas, replay, assistência e análise." },
+      { property: "og:title", content: "Funcionalidades — Convertewebinar" },
+      { property: "og:description", content: "Tudo o que o Convertewebinar faz: agenda, chat programado, oferta, vendas, replay, assistência e análise." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -38,7 +38,7 @@ function FeaturesIndex() {
           <div className="lp-feature-inner">
             <p className="lp-eyebrow">A PLATAFORMA, PARTE A PARTE</p>
             <h1>Tudo o que acontece antes, durante e depois da sessão.</h1>
-            <p className="lp-feature-intro">Cada funcionalidade tem uma página própria com a explicação e uma demonstração da interface real do NovaWebinar.</p>
+            <p className="lp-feature-intro">Cada funcionalidade tem uma página própria com a explicação e uma demonstração da interface real do Convertewebinar.</p>
             <div className="lp-hero-actions">
               <Button variant="dark" size="lg" asChild><Link to="/auth/register">Criar o meu webinar <ArrowRight /></Link></Button>
             </div>

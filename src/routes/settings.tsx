@@ -14,9 +14,9 @@ import { useInvalidate, useWorkspace } from "@/lib/data";
 export const Route = createFileRoute("/settings")({
   head: () => ({
     meta: [
-      { title: "Definições | NovaWebinar" },
+      { title: "Definições | Convertewebinar" },
       { name: "description", content: "Perfil e preferências da organização." },
-      { property: "og:title", content: "Definições | NovaWebinar" },
+      { property: "og:title", content: "Definições | Convertewebinar" },
       { property: "og:description", content: "Configure a sua conta e organização." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

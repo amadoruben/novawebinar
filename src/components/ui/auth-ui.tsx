@@ -15,7 +15,7 @@ export function AuthUI({ children }: { children: ReactNode }) {
         </p>
       </section>
 
-      <aside className="auth-aside" aria-label="Sobre o NovaWebinar">
+      <aside className="auth-aside" aria-label="Sobre o Convertewebinar">
         <div className="auth-aside-inner">
           <h2 className="auth-aside-title">
             Grave uma vez.

@@ -10,9 +10,9 @@ import { useWebinars, useWorkspace } from "@/lib/data";
 export const Route = createFileRoute("/calendar")({
   head: () => ({
     meta: [
-      { title: "Calendário | NovaWebinar" },
+      { title: "Calendário | Convertewebinar" },
       { name: "description", content: "Agenda de webinars e sessões." },
-      { property: "og:title", content: "Calendário | NovaWebinar" },
+      { property: "og:title", content: "Calendário | Convertewebinar" },
       { property: "og:description", content: "Organize a agenda de webinars." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

@@ -89,7 +89,16 @@ export const deleteBackgroundJob = createServerFn({ method: "POST" })
  */
 export const kickBackgroundJobs = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async () => {
+  .handler(async ({ context }) => {
+    // Cada pessoa só empurra os trabalhos das suas organizações.
+    const { data: memberships, error } = await context.supabase
+      .from("organization_members")
+      .select("organization_id")
+      .eq("user_id", context.userId);
+    if (error) throw new Error(error.message);
     const { runPendingJobs } = await import("@/lib/job-runner.server");
-    return runPendingJobs(55000);
+    return runPendingJobs(
+      55000,
+      memberships.map((m) => m.organization_id),
+    );
   });

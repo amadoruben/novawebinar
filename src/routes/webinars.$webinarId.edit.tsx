@@ -145,12 +145,12 @@ export const Route = createFileRoute("/webinars/$webinarId/edit")({
   ssr: false,
   head: () => ({
     meta: [
-      { title: "Editar webinar | NovaWebinar" },
+      { title: "Editar webinar | Convertewebinar" },
       {
         name: "description",
         content: "Edite vídeo, agendamento, comentários e oferta do webinar.",
       },
-      { property: "og:title", content: "Editar webinar | NovaWebinar" },
+      { property: "og:title", content: "Editar webinar | Convertewebinar" },
       { property: "og:description", content: "Configuração completa do webinar." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

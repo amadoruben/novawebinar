@@ -3,9 +3,11 @@
  *
  * A geração do chat e a sincronização dos comentários não dependem de uma
  * única chamada longa: o pedido fica guardado na base de dados e este motor
- * avança-o etapa a etapa. O browser empurra-o enquanto o separador está
- * aberto; uma chamada agendada a /api/public/run-jobs (autenticada com
- * x-job-runner-token) fá-lo continuar com o computador desligado.
+ * avança-o etapa a etapa. Quem o empurra é o próprio servidor, de 15 em 15
+ * segundos (`job-ticker.server.ts`), por isso o trabalho continua com o
+ * separador fechado. O browser dá só o arranque imediato. Em alojamento sem
+ * processo permanente, agenda-se uma chamada a /api/public/run-jobs
+ * (autenticada com x-job-runner-token).
  */
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
@@ -78,18 +80,21 @@ async function save(id: string, changes: Record<string, unknown>) {
  * transcrição guardada no estado tem de ser desse webinar.
  */
 async function jobAllowed(job: Job): Promise<boolean> {
-  const { data: webinar } = await supabaseAdmin
+  // Uma leitura falhada não é "sem acesso": o trabalho tenta outra vez em vez de morrer.
+  const { data: webinar, error: webinarError } = await supabaseAdmin
     .from("webinars")
     .select("organization_id")
     .eq("id", job.webinar_id)
     .maybeSingle();
+  if (webinarError) throw new Error(webinarError.message);
   if (!webinar) return false;
-  const { data: members } = await supabaseAdmin
+  const { data: members, error: membersError } = await supabaseAdmin
     .from("organization_members")
     .select("id")
     .eq("organization_id", webinar.organization_id)
     .eq("user_id", job.created_by)
     .limit(1);
+  if (membersError) throw new Error(membersError.message);
   if (!members?.length) return false;
   const versionId = job.state?.versionId;
   return !versionId || versionBelongsTo(String(versionId), job.webinar_id);
@@ -724,19 +729,24 @@ async function stepSync(job: Job): Promise<boolean> {
  * Avança a fila durante o tempo disponível do pedido. Cada etapa é guardada,
  * por isso o trabalho nunca depende de uma única chamada longa.
  */
-export async function runPendingJobs(budgetMs = 45000) {
+/**
+ * `organizationIds` limita a passagem às organizações de quem a pediu; sem
+ * ele (servidor e chamada agendada) avança a fila inteira.
+ */
+export async function runPendingJobs(budgetMs = 45000, organizationIds?: string[]) {
   const started = Date.now();
   let steps = 0;
+  if (organizationIds && organizationIds.length === 0) return { steps };
 
   while (Date.now() - started < budgetMs) {
     const nowIso = new Date().toISOString();
-    const { data: rows } = await supabaseAdmin
+    let pending = supabaseAdmin
       .from("background_jobs")
       .select("*")
       .in("status", ["queued", "running"])
-      .or(`locked_until.is.null,locked_until.lt.${nowIso}`)
-      .order("updated_at", { ascending: true })
-      .limit(1);
+      .or(`locked_until.is.null,locked_until.lt.${nowIso}`);
+    if (organizationIds) pending = pending.in("organization_id", organizationIds);
+    const { data: rows } = await pending.order("updated_at", { ascending: true }).limit(1);
 
     const job = (rows?.[0] as unknown as Job) ?? null;
     if (!job) break;
@@ -757,16 +767,15 @@ export async function runPendingJobs(budgetMs = 45000) {
     if (claimError) break;
     if (!claimed?.length) continue;
 
-    if (!(await jobAllowed(job))) {
-      await save(job.id, {
-        status: "error",
-        error: "Sem acesso a este webinar.",
-        locked_until: null,
-      });
-      continue;
-    }
-
     try {
+      if (!(await jobAllowed(job))) {
+        await save(job.id, {
+          status: "error",
+          error: "Sem acesso a este webinar.",
+          locked_until: null,
+        });
+        continue;
+      }
       const again = job.kind === "chat" ? await stepChat(job) : await stepSync(job);
       steps += 1;
       if (!again) await save(job.id, { locked_until: null });

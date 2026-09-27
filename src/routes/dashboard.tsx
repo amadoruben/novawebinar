@@ -9,17 +9,18 @@ import { Metric, WebinarTable } from "@/components/page-primitives";
 import { Button } from "@/components/ui/button";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAll } from "@/lib/fetch-all";
 import { formatDateTime, useWebinars, useWorkspace, watchLabel } from "@/lib/data";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
     meta: [
-      { title: "Dashboard | NovaWebinar" },
+      { title: "Dashboard | Convertewebinar" },
       { name: "description", content: "Visão geral dos seus webinars, audiência e conversões." },
-      { property: "og:title", content: "Dashboard | NovaWebinar" },
+      { property: "og:title", content: "Dashboard | Convertewebinar" },
       {
         property: "og:description",
-        content: "Acompanhe webinars, audiência e conversões na NovaWebinar.",
+        content: "Acompanhe webinars, audiência e conversões na Convertewebinar.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -39,18 +40,22 @@ function Dashboard() {
     queryFn: async () => {
       if (!organizationId)
         return { participantCount: 0, ctaClicks: 0, averageWatch: 0, conversion: 0 };
-      const [participants, ctaClicks] = await Promise.all([
-        supabase
-          .from("participants")
-          .select("id, watched_seconds")
-          .eq("organization_id", organizationId),
+      const [people, ctaClicks] = await Promise.all([
+        fetchAll((from, to) =>
+          supabase
+            .from("participants")
+            .select("id, watched_seconds", { count: "exact" })
+            .eq("organization_id", organizationId)
+            .order("id")
+            .range(from, to),
+        ),
         supabase
           .from("cta_events")
           .select("id", { count: "exact", head: true })
           .eq("organization_id", organizationId)
           .eq("event_type", "click"),
       ]);
-      const people = participants.data ?? [];
+      if (ctaClicks.error) throw ctaClicks.error;
       const watchers = people.filter((p) => (p.watched_seconds ?? 0) > 0);
       const watched = watchers.reduce((sum, p) => sum + (p.watched_seconds ?? 0), 0);
       const participantCount = people.length;
@@ -95,7 +100,7 @@ function Dashboard() {
             <div className="min-w-0 max-w-xl">
               <div className="flex items-center gap-2 text-xs font-medium text-background/60">
                 <Radio className="size-4 text-primary" />
-                Estúdio NovaWebinar
+                Estúdio Convertewebinar
               </div>
               <h2 className="mt-3 text-2xl font-semibold leading-tight sm:text-3xl">
                 Transforme audiência em vendas

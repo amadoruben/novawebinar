@@ -4,6 +4,7 @@ import {
   ChartColumn,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Headset,
   Clapperboard,
   LayoutDashboard,
@@ -13,16 +14,25 @@ import {
   Radio,
   Settings2,
   Users,
+  UsersRound,
   Wallet,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import brandAsset from "@/assets/local/nova-logo-full.png";
-import iconAsset from "@/assets/local/nova-icon.png";
+import brandAsset from "@/assets/brand/convertewebinar-logo.svg";
+import iconAsset from "@/assets/brand/convertewebinar-icon.svg";
 import { Button } from "@/components/ui/button";
+import { canAttend, canManageTeam, canOpenPath, type WorkspaceRole } from "@/lib/support/model";
 
-type NavItem = { to: string; title: string; icon: React.ElementType; exact?: boolean };
+type NavItem = {
+  to: string;
+  title: string;
+  icon: React.ElementType;
+  exact?: boolean;
+  /** Quem vê a entrada, além do que a função já pode abrir. */
+  show?: (role: WorkspaceRole | undefined) => boolean;
+};
 
 const groups: { heading?: string; items: NavItem[] }[] = [
   {
@@ -31,7 +41,14 @@ const groups: { heading?: string; items: NavItem[] }[] = [
       { to: "/webinars", title: "Webinars", icon: Clapperboard },
       { to: "/calendar", title: "Calendário", icon: CalendarDays },
       { to: "/live-view", title: "Vista ao vivo", icon: Radio },
-      { to: "/support", title: "Suporte", icon: Headset },
+    ],
+  },
+  {
+    heading: "Atendimento",
+    items: [
+      { to: "/support", title: "Atendimento", icon: Headset, show: canAttend },
+      { to: "/cases", title: "Casos", icon: ClipboardList, show: canAttend },
+      { to: "/team", title: "Equipas", icon: UsersRound, show: canManageTeam },
     ],
   },
   {
@@ -56,13 +73,19 @@ export function SidebarNav({
   collapsed = false,
   onToggleCollapse,
   onClose,
+  role,
 }: {
+  /** Função de quem está a ver: decide as entradas do menu. */
+  role?: WorkspaceRole | undefined;
   className?: string | undefined;
   collapsed?: boolean | undefined;
   onToggleCollapse?: (() => void) | undefined;
   onClose?: (() => void) | undefined;
 }) {
   const pathname = useRouterState({ select: (r) => r.location.pathname });
+
+  const visible = (item: NavItem) => canOpenPath(role, item.to) && (item.show?.(role) ?? true);
+  const home = role === "support" ? "/support" : "/dashboard";
 
   const isActive = (item: NavItem) =>
     item.exact ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`);
@@ -103,10 +126,10 @@ export function SidebarNav({
       } ${className}`}
     >
       <div className="flex h-24 shrink-0 items-center gap-2 px-5">
-        <Link to="/dashboard" className="flex min-w-0 flex-1 items-center" onClick={onClose}>
+        <Link to={home} className="flex min-w-0 flex-1 items-center" onClick={onClose}>
           <img
             src={collapsed ? iconAsset : brandAsset}
-            alt="NovaWebinar"
+            alt="Convertewebinar"
             className={`select-none object-contain ${collapsed ? "h-9 w-9" : "h-10 w-full max-w-[184px]"}`}
             draggable={false}
           />
@@ -144,16 +167,19 @@ export function SidebarNav({
       )}
 
       <div className="flex flex-1 flex-col gap-7 overflow-y-auto px-3 pt-7 pb-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {groups.map((group, idx) => (
-          <div key={idx} className="flex flex-col gap-0.5">
-            {group.heading && !collapsed && (
-              <span className="mb-1.5 px-3 text-xs font-semibold tracking-wider text-muted-foreground/60 uppercase">
-                {group.heading}
-              </span>
-            )}
-            {group.items.map(row)}
-          </div>
-        ))}
+        {groups
+          .map((group) => ({ ...group, items: group.items.filter(visible) }))
+          .filter((group) => group.items.length > 0)
+          .map((group) => (
+            <div key={group.heading ?? "main"} className="flex flex-col gap-0.5">
+              {group.heading && !collapsed && (
+                <span className="mb-1.5 px-3 text-xs font-semibold tracking-wider text-muted-foreground/60 uppercase">
+                  {group.heading}
+                </span>
+              )}
+              {group.items.map(row)}
+            </div>
+          ))}
       </div>
 
       <div className="flex flex-col gap-0.5 p-3">

@@ -41,7 +41,7 @@ import {
 export const Route = createFileRoute("/credits")({
   head: () => ({
     meta: [
-      { title: "Saldo de IA | NovaWebinar" },
+      { title: "Saldo de IA | Convertewebinar" },
       { name: "description", content: "Saldo em dólares, gasto real da IA e retorno." },
     ],
   }),

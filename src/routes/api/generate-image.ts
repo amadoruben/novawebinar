@@ -14,7 +14,7 @@ export const Route = createFileRoute("/api/generate-image")({
         const auth = await requireRouteUser(request);
         if (!auth.ok) return auth.response;
 
-        let body: { prompt?: unknown; stream?: unknown };
+        let body: { prompt?: unknown; stream?: unknown; organizationId?: unknown };
         try {
           body = (await request.json()) as typeof body;
         } catch {
@@ -24,15 +24,17 @@ export const Route = createFileRoute("/api/generate-image")({
         const stream = body.stream !== false;
         if (prompt.length < 3) return new Response("Descrição em falta.", { status: 400 });
 
-        // Quem paga: a organização de quem pede (dono ou membro).
+        // Quem paga: o espaço de trabalho em que a pessoa está, desde que lhe
+        // pertença; o pedido só escolhe entre as organizações de quem pede.
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { data: membership } = await supabaseAdmin
+        const { data: memberships, error: membershipError } = await supabaseAdmin
           .from("organization_members")
           .select("organization_id")
           .eq("user_id", auth.userId)
-          .order("created_at", { ascending: true })
-          .limit(1)
-          .maybeSingle();
+          .order("created_at", { ascending: true });
+        if (membershipError) return new Response("Temporariamente indisponível.", { status: 503 });
+        const membership =
+          memberships.find((m) => m.organization_id === body.organizationId) ?? memberships[0];
         if (!membership) return new Response("Sem organização.", { status: 403 });
 
         const { generateImage } = await import("@/lib/ai/provider");

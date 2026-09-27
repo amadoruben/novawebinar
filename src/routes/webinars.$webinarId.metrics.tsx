@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAll } from "@/lib/fetch-all";
 import { useWorkspace, watchLabel } from "@/lib/data";
 import { rangeKey, resolveRange, type RangePreset } from "@/lib/date-range";
 import {
@@ -55,12 +56,12 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/webinars/$webinarId/metrics")({
   head: () => ({
     meta: [
-      { title: "Métricas do webinar | NovaWebinar" },
+      { title: "Métricas do webinar | Convertewebinar" },
       {
         name: "description",
         content: "Funil, retenção por momento e exportações de participantes e conversas.",
       },
-      { property: "og:title", content: "Métricas do webinar | NovaWebinar" },
+      { property: "og:title", content: "Métricas do webinar | Convertewebinar" },
       {
         property: "og:description",
         content: "Veja quem entrou, até onde assistiu e quem clicou na oferta.",
@@ -212,17 +213,30 @@ function WebinarMetricsPage() {
       toast.error("Ainda não há conversas para exportar.");
       return;
     }
-    const { data: rows, error } = await supabase
-      .from("private_messages")
-      .select("body, sender_kind, created_at, participant_id")
-      .eq("organization_id", organizationId)
-      .in("participant_id", ids)
-      .order("created_at", { ascending: true });
-    if (error) {
+    // Filtra pelo webinar em vez de uma lista de ids, que não cabe no endereço
+    // quando há milhares de participantes.
+    const wanted = new Set(ids);
+    let rows;
+    try {
+      rows = (
+        await fetchAll((from, to) =>
+          supabase
+            .from("private_messages")
+            .select("body, sender_kind, created_at, participant_id, participants!inner(webinar_id)", {
+              count: "exact",
+            })
+            .eq("organization_id", organizationId)
+            .eq("participants.webinar_id", webinarId)
+            .order("created_at", { ascending: true })
+            .order("id")
+            .range(from, to),
+        )
+      ).filter((m) => m.participant_id && wanted.has(m.participant_id));
+    } catch {
       toast.error("Não foi possível obter as mensagens.");
       return;
     }
-    if (!rows?.length) {
+    if (!rows.length) {
       toast.error("Ainda não há mensagens neste webinar.");
       return;
     }

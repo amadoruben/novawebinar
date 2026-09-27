@@ -1,21 +1,34 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   CalendarDays,
+  ChevronsUpDown,
   Clapperboard,
+  ClipboardList,
+  Headset,
   LayoutDashboard,
   Menu,
   Plus,
   Search,
   Settings2,
+  Users,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { SidebarNav } from "@/components/ui/dashboard-sidebar";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { PageLoader, useInitialPageLoader } from "@/components/page-loader";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
-import { useAdminHostRedirect, useWorkspace } from "@/lib/data";
+import { switchWorkspace, useAdminHostRedirect, useWorkspace } from "@/lib/data";
+import { usePresence } from "@/lib/support/hooks";
+import { canAttend, canOpenPath } from "@/lib/support/model";
 
 export function AppShell({
   children,
@@ -55,6 +68,19 @@ export function AppShell({
   };
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const { data: workspace } = useWorkspace();
+  const role = workspace?.role;
+  const supportOnly = role === "support";
+
+  // Quem atende conta como presente com qualquer página do painel aberta, não
+  // só a do Atendimento; sem isto passava a offline e deixava de receber casos.
+  usePresence(workspace?.organizationId, canAttend(role));
+
+  // A função "suporte" só abre o atendimento. As permissões a sério estão na
+  // base de dados; isto evita mostrar-lhe páginas vazias.
+  const blocked = !canOpenPath(role, pathname);
+  useEffect(() => {
+    if (blocked) void navigate({ to: "/support", search: { c: undefined }, replace: true });
+  }, [blocked, navigate]);
 
   useEffect(() => {
     let active = true;
@@ -78,12 +104,19 @@ export function AppShell({
 
   const initial = (workspace?.fullName ?? "?").trim().charAt(0).toUpperCase() || "?";
 
-  const tabItems = [
-    { to: "/dashboard", title: "Painel", icon: LayoutDashboard, exact: true },
-    { to: "/webinars", title: "Webinars", icon: Clapperboard },
-    { to: "/calendar", title: "Calendário", icon: CalendarDays },
-    { to: "/settings", title: "Definições", icon: Settings2 },
-  ];
+  const tabItems = supportOnly
+    ? [
+        { to: "/support", title: "Atendimento", icon: Headset, exact: false },
+        { to: "/cases", title: "Casos", icon: ClipboardList, exact: false },
+        { to: "/contacts", title: "Contactos", icon: Users, exact: false },
+        { to: "/settings", title: "Definições", icon: Settings2, exact: false },
+      ]
+    : [
+        { to: "/dashboard", title: "Painel", icon: LayoutDashboard, exact: true },
+        { to: "/webinars", title: "Webinars", icon: Clapperboard, exact: false },
+        { to: "/calendar", title: "Calendário", icon: CalendarDays, exact: false },
+        { to: "/settings", title: "Definições", icon: Settings2, exact: false },
+      ];
 
   const roleLabels: Record<NonNullable<typeof workspace>["role"], string> = {
     owner: "Proprietário",
@@ -110,6 +143,7 @@ export function AppShell({
           collapsed={sidebarCollapsed}
           onToggleCollapse={toggleCollapsed}
           onClose={() => setMenuOpen(false)}
+          role={role}
         />
       </div>
       {menuOpen && (
@@ -134,7 +168,7 @@ export function AppShell({
               <Menu />
             </Button>
             <form
-              className="relative hidden w-72 items-center md:flex"
+              className={`relative hidden w-72 items-center ${supportOnly ? "" : "md:flex"}`}
               onSubmit={(event) => {
                 event.preventDefault();
                 navigate({ to: "/webinars", search: { q: query.trim() || undefined } });
@@ -151,6 +185,31 @@ export function AppShell({
             </form>
           </div>
           <div className="flex items-center gap-1">
+            {workspace && workspace.organizations.length > 1 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="mr-1 max-w-44 gap-1.5">
+                    <span className="truncate">{workspace.organizationName}</span>
+                    <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-56">
+                  <DropdownMenuLabel>Espaço de trabalho</DropdownMenuLabel>
+                  {workspace.organizations.map((org) => (
+                    <DropdownMenuItem
+                      key={org.id}
+                      disabled={org.id === workspace.organizationId}
+                      onSelect={() => switchWorkspace(org.id)}
+                    >
+                      <span className="truncate">{org.name}</span>
+                      <span className="ml-auto pl-3 text-xs text-muted-foreground">
+                        {roleLabels[org.role]}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <NotificationsBell />
             <Link to="/settings" className="ml-2 flex items-center gap-2.5">
               {workspace?.avatarUrl ? (
@@ -197,7 +256,8 @@ export function AppShell({
                 )}
               </div>
               {typeof action === "boolean"
-                ? action && (
+                ? action &&
+                  !supportOnly && (
                     <Button asChild>
                       <Link to="/webinars/new">
                         <Plus />
@@ -208,7 +268,7 @@ export function AppShell({
                 : action}
             </div>
           )}
-          {children}
+          {blocked ? null : children}
         </main>
       </div>
       <nav

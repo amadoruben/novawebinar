@@ -45,7 +45,7 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/integrations")({
   head: () => ({
     meta: [
-      { title: "Integrações | NovaWebinar" },
+      { title: "Integrações | Convertewebinar" },
       { name: "description", content: "Kambafy, plataformas de venda, pixels e webhooks." },
     ],
   }),
