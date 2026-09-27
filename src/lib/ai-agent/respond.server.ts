@@ -24,7 +24,8 @@ import { contextFacts } from "@/lib/support/context";
 import { loadContactContext } from "@/lib/support/context.server";
 import { INTENTS } from "@/lib/support/model";
 import { latestReadyVersion } from "@/lib/temporal/engine.server";
-import { askModelJson, parseJsonObject } from "./model.server";
+import { chatJson } from "@/lib/ai/gateway.server";
+import { s, schema } from "@/lib/ai/schema";
 import { immediateContext, searchWebinarKnowledge, type WebinarPassage } from "./retrieval.server";
 import { PERMISSIONS, type AgentSource } from "./defaults";
 
@@ -100,13 +101,40 @@ function permissionLines(permissions: Record<string, boolean>) {
   return { allowed, blocked };
 }
 
+const CLASSIFICATIONS = [
+  "QUESTION",
+  "OBJECTION",
+  "PURCHASE_INTENT",
+  "SUPPORT",
+  "COMMENT",
+  "PRAISE",
+  "SMALL_TALK",
+  "HUMAN_REQUEST",
+  "UNKNOWN",
+] as const;
+const DECISIONS = ["RESPOND", "IGNORE", "SUGGEST_TO_TEAM", "ESCALATE"] as const;
+
+export const AGENT_REPLY = schema("agent_reply", {
+  classification: s.string(CLASSIFICATIONS),
+  decision: s.string(DECISIONS),
+  answer: s.string(),
+  confidence: s.number(),
+  sourceIds: s.array(s.string()),
+  escalationReason: s.string(),
+  reason: s.string(),
+  intent: s.string(INTENTS.map((i) => i.id)),
+  sentiment: s.string(["positive", "neutral", "negative"]),
+  summary: s.string(),
+  recommendedAction: s.string(),
+});
+
 type ModelAnswer = {
   classification?: string;
   decision?: string;
   answer?: string;
   confidence?: number;
   sourceIds?: string[];
-  escalationReason?: string | null;
+  escalationReason?: string;
   reason?: string;
   intent?: string;
   sentiment?: string;
@@ -246,22 +274,15 @@ export async function decideAgentReply(input: {
     `Não podes: ${blocked.join("; ") || "nada"}.`,
     agent["never_say"] ? `Nunca digas: ${String(agent["never_say"])}` : "",
     "Se a informação não existir no conhecimento, decide ESCALATE em vez de responder.",
-    "Responde apenas com JSON válido, com as chaves: classification, decision, answer, confidence, sourceIds, escalationReason, reason, intent, sentiment, summary, recommendedAction.",
-    "classification ∈ QUESTION|OBJECTION|PURCHASE_INTENT|SUPPORT|COMMENT|PRAISE|SMALL_TALK|HUMAN_REQUEST|UNKNOWN.",
-    "decision ∈ RESPOND|IGNORE|SUGGEST_TO_TEAM|ESCALATE. confidence entre 0 e 1. sourceIds são os identificadores usados.",
-    `intent ∈ ${INTENTS.map((i) => i.id).join("|")}. sentiment ∈ positive|neutral|negative.`,
+    "confidence vai de 0 a 1. sourceIds são os identificadores do conhecimento que usaste. escalationReason fica vazio quando não passas a conversa à equipa.",
     "summary: uma ou duas frases para a equipa sobre o que a pessoa quer. recommendedAction: o que a equipa deve fazer a seguir.",
   ]
     .filter(Boolean)
     .join("\n");
 
+  // Do mais estável para o mais volátil: o conhecimento do webinar repete-se
+  // em cada mensagem e fica em cache; o instante da sessão muda sempre.
   const contextLines = [
-    `Instante atual da sessão: ${clock(context.sessionMs)}.`,
-    immediate?.recentTranscript
-      ? `O apresentador está agora a dizer: "${immediate.recentTranscript.slice(-700)}"`
-      : "",
-    immediate?.currentMoment ? `Assunto atual: ${immediate.currentMoment.topic}.` : "",
-    "",
     "CONHECIMENTO DISPONÍVEL:",
     catalogue.length > 0
       ? catalogue.map((item) => `[${item.id}] ${item.text}`).join("\n")
@@ -270,10 +291,20 @@ export async function decideAgentReply(input: {
     "CONTEXTO DO CONTACTO:",
     input.contactFacts?.length ? input.contactFacts.join("\n") : "(sem histórico)",
     "",
+    `Instante atual da sessão: ${clock(context.sessionMs)}.`,
+    immediate?.recentTranscript
+      ? `O apresentador está agora a dizer: "${immediate.recentTranscript.slice(-700)}"`
+      : "",
+    immediate?.currentMoment ? `Assunto atual: ${immediate.currentMoment.topic}.` : "",
+    "",
     "CONVERSA COM ESTE PARTICIPANTE:",
     input.history
       .slice(-8)
-      .map((m) => `${m.from === "participant" ? "Participante" : "Equipa"}: ${m.body}`)
+      .map((m) => {
+        // As respostas anteriores do próprio assistente não são de uma pessoa da equipa.
+        const who = m.from === "participant" ? "Participante" : m.from === "agent" ? "Assistente" : "Equipa";
+        return `${who}: ${m.body}`;
+      })
       .join("\n") || "(primeira mensagem)",
     "",
     `Mensagem nova de ${input.participantName ?? "participante"}: ${input.question}`,
@@ -281,11 +312,10 @@ export async function decideAgentReply(input: {
     .filter((line, index, lines) => line !== "" || lines[index - 1] !== "")
     .join("\n");
 
-  const result = await askModelJson({ system, user: contextLines });
+  const result = await chatJson({ task: "chat", system, user: contextLines, schema: AGENT_REPLY });
   if (!result.ok) return { ok: false, reason: result.reason };
 
-  const parsed = parseJsonObject<ModelAnswer>(result.text);
-  if (!parsed) return { ok: false, reason: "A resposta do serviço de IA veio incompleta." };
+  const parsed = result.json as ModelAnswer;
 
   const ids = new Set((parsed.sourceIds ?? []).map((id) => String(id).toUpperCase()));
   const sources = catalogue.filter((item) => ids.has(item.id)).map((item) => item.source);

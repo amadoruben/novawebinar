@@ -18,6 +18,7 @@ import {
   type CreditState,
   type Pricing,
 } from "@/lib/credits";
+import { modelPrice } from "./models";
 
 type Meter = {
   organizationId: string;
@@ -61,13 +62,40 @@ async function meter(kind: string): Promise<Meter | undefined> {
   return current;
 }
 
-export async function meterTokens(inputTokens: number, outputTokens: number) {
+/** Custo real do fornecedor, sem margem, pelo preço do modelo; `null` se o preço é desconhecido. */
+export function providerCostMicros(
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+): number | null {
+  const price = modelPrice(model);
+  if (!price) return null;
+  return tokenCostMicros(inputTokens, outputTokens, { ...pricing(), ...price, margin: 0 });
+}
+
+const warnedUnpriced = new Set<string>();
+
+export async function meterTokens(model: string, inputTokens: number, outputTokens: number) {
   const m = await meter("chamada de texto");
   if (!m) return;
   m.calls += 1;
   m.inputTokens += inputTokens;
   m.outputTokens += outputTokens;
-  m.costMicros += tokenCostMicros(inputTokens, outputTokens, pricing());
+  const price = modelPrice(model);
+  if (!price) {
+    // Sem preço não se cobra nada: os tokens ficam em ai_calls com o custo por saber.
+    if (!warnedUnpriced.has(model)) {
+      warnedUnpriced.add(model);
+      console.warn(`[billing] ${model} sem preço configurado (AI_MODEL_PRICES): não cobrado.`);
+    }
+    return;
+  }
+  m.costMicros += tokenCostMicros(inputTokens, outputTokens, { ...pricing(), ...price });
+}
+
+/** Organização da acção cobrada em curso, para o registo de chamadas. */
+export async function currentOrganizationId(): Promise<string | null> {
+  return (await store()).getStore()?.organizationId ?? null;
 }
 
 export async function meterImage() {

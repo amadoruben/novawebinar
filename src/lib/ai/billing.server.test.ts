@@ -22,9 +22,21 @@ const state = (over: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   rpc.mockReset();
   rpc.mockImplementation(async (name: string) => (name === "credit_state" ? state() : { data: 0, error: null }));
+  // O preço geral é o do modelo em AI_CHAT_MODEL.
+  process.env["AI_CHAT_MODEL"] = "m";
   process.env["AI_PRICE_INPUT_PER_MTOK"] = "0.4";
   process.env["AI_PRICE_OUTPUT_PER_MTOK"] = "1.6";
   process.env["AI_MARGIN"] = "0.5";
+});
+
+describe("modelo sem preço", () => {
+  it("não é cobrado: nem zero inventado nem movimento no livro", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    await runBilled({ organizationId: "org", action: "agent_reply" }, () =>
+      meterTokens("modelo-sem-preco", 5000, 500),
+    );
+    expect(usageCalls()).toHaveLength(0);
+  });
 });
 
 const usageCalls = () => rpc.mock.calls.filter(([name]) => name === "record_credit_usage");
@@ -32,8 +44,8 @@ const usageCalls = () => rpc.mock.calls.filter(([name]) => name === "record_cred
 describe("runBilled", () => {
   it("soma todas as chamadas da acção num único movimento, com a margem", async () => {
     const result = await runBilled({ organizationId: "org", action: "chat_generation" }, async () => {
-      await meterTokens(1000, 100); // (400 + 160) × 1,5 = 840 µ$
-      await meterTokens(2000, 0); // 800 × 1,5 = 1200 µ$
+      await meterTokens("m", 1000, 100); // (400 + 160) × 1,5 = 840 µ$
+      await meterTokens("m", 2000, 0); // 800 × 1,5 = 1200 µ$
       return "feito";
     });
     expect(result).toBe("feito");
@@ -49,7 +61,7 @@ describe("runBilled", () => {
   it("se a acção falhar, não cobra nada", async () => {
     await expect(
       runBilled({ organizationId: "org", action: "agent_reply" }, async () => {
-        await meterTokens(5000, 500);
+        await meterTokens("m", 5000, 500);
         throw new Error("falhou a meio");
       }),
     ).rejects.toThrow("falhou a meio");
@@ -58,8 +70,8 @@ describe("runBilled", () => {
 
   it("uma acção dentro de outra conta uma só vez", async () => {
     await runBilled({ organizationId: "org", action: "transcription" }, async () => {
-      await meterTokens(1000, 0);
-      await runBilled({ organizationId: "org", action: "agent_reply" }, () => meterTokens(1000, 0));
+      await meterTokens("m", 1000, 0);
+      await runBilled({ organizationId: "org", action: "agent_reply" }, () => meterTokens("m", 1000, 0));
     });
     expect(usageCalls()).toHaveLength(1);
     expect(usageCalls()[0]![1]).toMatchObject({ _action: "transcription", _amount_micros: 1200 });
@@ -79,7 +91,7 @@ describe("runBilled", () => {
       name === "credit_state" ? state({ balance_micros: 0 }) : { data: 0, error: null },
     );
     await runBilled({ organizationId: "org", action: "transcription", alreadyIncurred: true }, () =>
-      meterTokens(1000, 0),
+      meterTokens("m", 1000, 0),
     );
     expect(usageCalls()).toHaveLength(1);
   });

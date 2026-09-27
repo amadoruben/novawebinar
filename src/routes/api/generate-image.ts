@@ -37,7 +37,7 @@ export const Route = createFileRoute("/api/generate-image")({
           memberships.find((m) => m.organization_id === body.organizationId) ?? memberships[0];
         if (!membership) return new Response("Sem organização.", { status: 403 });
 
-        const { generateImage } = await import("@/lib/ai/provider");
+        const { generateImage } = await import("@/lib/ai/gateway.server");
         const { NoCreditsError, runBilled } = await import("@/lib/ai/billing.server");
         let result;
         try {

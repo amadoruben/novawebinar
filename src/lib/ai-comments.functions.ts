@@ -44,7 +44,8 @@ import {
   syncOffsets,
   type PlacementReport,
 } from "@/lib/temporal/placement";
-import { AIError, chatJson } from "@/lib/ai/provider";
+import { AIError, chatJson } from "@/lib/ai/gateway.server";
+import { s, schema } from "@/lib/ai/schema";
 
 
 /**
@@ -60,6 +61,126 @@ import { AIError, chatJson } from "@/lib/ai/provider";
  */
 
 export type TranscriptSegment = { at: number; text: string };
+
+/* Formas das respostas da IA. Sem valor: "" nos textos e -1 nos segundos. */
+const RISK = ["baixo", "moderado", "alto", "critico"] as const;
+const EXPECTS = [
+  "cidade",
+  "sim-nao",
+  "palavra-chave",
+  "experiencia",
+  "duvida",
+  "interesse",
+  "numero",
+  "livre",
+] as const;
+const AUDIENCE_PROMPT = s.object({
+  at: s.integer(),
+  ask: s.string(),
+  expects: s.string(EXPECTS),
+  keyword: s.string(),
+  intensity: s.integer(),
+});
+
+export const CHAT_COMMENTS = schema("chat_comments", {
+  comments: s.array(
+    s.object({
+      at: s.integer(),
+      author: s.string(),
+      message: s.string(),
+      moment: s.string(["chegada", "pergunta", "prova-social", "emocao", "explicacao", "oferta", "humor"]),
+      kind: s.string(["provoca", "reage", "responde", "espontaneo"]),
+      anchor: s.integer(),
+      slot: s.string(),
+      reason: s.string(),
+    }),
+  ),
+});
+
+export const TIMELINE_FIXES = schema("timeline_fixes", {
+  fixes: s.array(s.object({ index: s.integer(), at: s.integer() })),
+});
+
+export const AUDIENCE_PROMPTS = schema("audience_prompts", { prompts: s.array(AUDIENCE_PROMPT) });
+
+const SCORE = ["overall", "retention", "engagement", "clarity", "pace", "offer", "cta"] as const;
+export const WEBINAR_ANALYSIS = schema("webinar_analysis", {
+  segments: s.array(
+    s.object({
+      from: s.integer(),
+      to: s.integer(),
+      kind: s.string(),
+      summary: s.string(),
+      engagement: s.integer(),
+      dropRisk: s.string(RISK),
+      emotion: s.integer(),
+      density: s.integer(),
+      purchaseIntent: s.integer(),
+      objection: s.integer(),
+      readsChat: s.boolean(),
+      hostQuestion: s.string(),
+    }),
+  ),
+  personas: s.array(
+    s.object({
+      name: s.string(),
+      style: s.string(),
+      profile: s.string(),
+      emojis: s.string(["poucos", "alguns", "muitos"]),
+      knowledge: s.string(["iniciante", "intermedio", "experiente"]),
+      rhythm: s.string(["observadora", "moderada", "participativa"]),
+      arrivalAt: s.integer(),
+    }),
+  ),
+  prompts: s.array(AUDIENCE_PROMPT),
+  moments: s.array(
+    s.object({
+      from: s.integer(),
+      to: s.integer(),
+      topic: s.string(),
+      summary: s.string(),
+      novelty: s.integer(),
+      reactionUntil: s.integer(),
+    }),
+  ),
+  audienceState: s.array(
+    s.object({
+      at: s.integer(),
+      estimatedAttention: s.integer(),
+      estimatedConfusion: s.integer(),
+      estimatedExcitement: s.integer(),
+      estimatedTrust: s.integer(),
+      estimatedPurchaseIntent: s.integer(),
+      estimatedObjection: s.integer(),
+      chatEnergy: s.integer(),
+    }),
+  ),
+  insights: s.array(
+    s.object({
+      at: s.integer(),
+      level: s.string(["bom", "atencao", "risco"]),
+      title: s.string(),
+      note: s.string(),
+    }),
+  ),
+  rescue: s.array(
+    s.object({
+      from: s.integer(),
+      to: s.integer(),
+      risk: s.string(RISK),
+      reason: s.string(),
+      suggestions: s.array(s.string()),
+    }),
+  ),
+  score: s.object({
+    ...Object.fromEntries(SCORE.map((key) => [key, s.integer()])),
+    summary: s.string(),
+  }),
+});
+
+export const SPEECH_SYNC = schema("speech_sync", {
+  comments: s.array(s.object({ id: s.string(), at: s.integer() })),
+});
 
 const probeSchema = z.object({ webinarId: z.string().uuid() });
 
@@ -328,6 +449,13 @@ const levelPerMinute: Record<string, number> = {
   "very-high": 5.5,
 };
 
+/** Janelas de tempo do chat em relação à fala, iguais em todos os prompts. */
+const TIMING = {
+  readAloud: "entre 4 e 20 segundos antes",
+  answer: "entre 2 e 45 segundos depois",
+  react: "entre 3 e 30 segundos depois",
+};
+
 const variantLabel: Record<string, string> = {
   "pt-PT": "português de Portugal",
   "pt-BR": "português do Brasil",
@@ -581,7 +709,7 @@ function promptBrief(
 
   const lines: string[] = [
     "",
-    "CHAMADAS DIRETAS À AUDIÊNCIA (prioridade máxima — mais importante do que qualquer outra mensagem deste trecho):",
+    "Chamadas diretas à audiência neste trecho. Num chat real são o que mais gera mensagens, por isso, se o número de mensagens do trecho não chegar para tudo, as respostas a estas chamadas vêm primeiro:",
   ];
 
   for (const prompt of here) {
@@ -604,7 +732,7 @@ function promptBrief(
     lines.push(
       ...soon.map(
         (prompt) =>
-          `- ATENÇÃO: aos ${prompt.at}s (já a seguir a este trecho) o apresentador vai pedir: "${prompt.ask}". Guarde esse tipo de mensagem para depois: aqui no máximo uma ou duas pessoas podem adiantar-se; a maior parte das respostas pertence ao momento da pergunta.`,
+          `- Aos ${prompt.at}s (já a seguir a este trecho) o apresentador vai pedir: "${prompt.ask}". Guarde esse tipo de mensagem para depois: aqui no máximo uma ou duas pessoas podem adiantar-se; a maior parte das respostas pertence ao momento da pergunta.`,
       ),
     );
   }
@@ -634,7 +762,7 @@ type JourneyPhase =
 
 const PHASE_BEHAVIOUR: Record<JourneyPhase, string> = {
   chegada:
-    'CHEGADA. As pessoas acabaram de entrar e ainda ninguém explicou nada. Só cabem cumprimentos e sinais de presença curtos: "Boa noite 👋", "Cheguei", "Boraaa", "Já dá para ouvir?", "Presente 🙌". Nada de opiniões sobre o conteúdo, nada de perguntas técnicas, nada de dizer de onde são (isso só acontece se o apresentador pedir).',
+    'CHEGADA. As pessoas acabaram de entrar e ainda ninguém explicou nada. Só cabem cumprimentos, sinais de presença e perguntas sobre o som ou a imagem, curtos e cada um à maneira da pessoa. Nada de opiniões sobre o conteúdo, nada de perguntas técnicas, nada de dizer de onde são (isso só acontece se o apresentador pedir).',
   abertura:
     "EXPECTATIVA E APRESENTAÇÃO. Continuam a chegar pessoas e começa a expectativa ligada ao tema real deste webinar: o que esperam levar de hoje, porque se inscreveram, o que já tentaram antes. Frases simples e pessoais, sem jargão e sem elogiar o que ainda não viram.",
   conexao:
@@ -747,7 +875,7 @@ function momentsBrief(ctx: GenContext, from: number, to: number): string[] {
       (m) =>
         `- ${m.from}-${m.to}s · ${m.topic} · ${m.summary} · novidade ${m.novelty}/100 · reações naturais entre ${m.to + 3}s e ${m.reactionUntil}s`,
     ),
-    "NOVIDADE manda na intensidade: um momento verdadeiramente novo ou importante merece mais \"não sabia disso\", \"agora percebi\", \"isso muda muita coisa\"; conteúdo trivial quase não merece reação. Se não sabe a que ideia a pessoa está a reagir, não escreva.",
+    "NOVIDADE manda na intensidade: um momento verdadeiramente novo ou importante merece mais \"não sabia disso\", \"agora percebi\", \"isso muda muita coisa\"; conteúdo trivial quase não merece reação.",
     "DIVERSIDADE DE REAÇÃO: um momento forte não move a sala inteira na mesma direção. A mesma explicação pode convencer uma pessoa, deixar outra com dúvidas e não dizer nada a uma terceira. Nunca faça todos \"ficarem convencidos\" ao mesmo tempo.",
   ];
 }
@@ -792,11 +920,9 @@ function reactionBrief(ctx: GenContext, from: number, to: number): string[] {
     "REAÇÃO AO CONTEÚDO (o segundo grande motor do chat, a par dos cumprimentos e das respostas ao apresentador):",
     "Procure neste trecho as afirmações, explicações, revelações, exemplos, erros comuns e histórias com potencial real de provocar reação. Só aí nascem reações.",
     "Cada reação tem de nascer de uma ideia concreta que acabou de ser dita e tem de se perceber, pela mensagem, que a pessoa estava mesmo a acompanhar. Prefira sempre a reação específica à frase genérica: em vez de \"Muito bom\", algo como \"Essa parte da margem eu não sabia\" ou \"Então dá para começar sem experiência?\" — mas só se isso tiver mesmo sido explicado.",
-    "A intensidade acompanha o que foi dito: explicação básica → \"Entendi\"; algo surpreendente → \"Nossa, não sabia disso 😳\"; algo complexo explicado com clareza → \"Agora finalmente percebi\"; história pessoal → identificação (\"Passei exatamente por isso\"); erro comum → \"Eu fazia isso mesmo 😂\"; oportunidade → \"Nunca tinha olhado para isto assim\".",
+    "A intensidade acompanha o que foi dito: uma explicação básica pede no máximo um sinal de que se percebeu; algo surpreendente, espanto; algo complexo bem explicado, alívio por ter percebido; uma história pessoal, identificação; um erro comum, reconhecimento com humor; uma oportunidade, uma mudança de perspetiva. Cada pessoa di-lo com as suas palavras, na variante pedida.",
     "Pessoas diferentes reagem de maneiras diferentes ao mesmo momento: entusiasmo, descoberta, identificação, curiosidade (uma pergunta), reflexão, ação (\"já anotei\"). Nunca ponha cinco pessoas a escrever variações de \"Muito bom 🔥\" ao mesmo tempo; no máximo uma mensagem curta de elogio por momento, e mesmo essa só se houver motivo.",
-    "E muita gente não reage de todo. O silêncio depois de uma explicação é normal.",
     "TEMPO DA REAÇÃO: ninguém reage enquanto a ideia ainda está a ser dita. Conte a partir do momento em que a frase fecha e espalhe as reações de forma irregular a seguir (por exemplo, 3s, 6s, 12s depois), nunca todas juntas e nunca antes.",
-    "Nada de elogios soltos só para o chat parecer movimentado: se não consegue dizer a que ideia concreta a pessoa está a reagir, não escreva a mensagem.",
   ];
 }
 
@@ -842,7 +968,6 @@ function audienceStateBrief(
     lastAt >= 0
       ? `- tempo desde a última mensagem: ${Math.max(0, from - lastAt)}s`
       : "- ainda não houve mensagens nesta sessão",
-    "Antes de escrever cada mensagem pergunte: quem é esta pessoa, o que já disse, e o que seria natural ELA fazer neste exato segundo da experiência. Se a resposta for 'nada', não escreva.",
   ].filter(Boolean);
 }
 
@@ -991,27 +1116,27 @@ async function askWindow(
       ? `Comentários que já existem e NÃO podem ser repetidos nem contrariados:\n${existing}`
       : "",
     "",
-    `Escreva ${howMany} comentários de chat de espectadores, em ${variantLabel[settings.variant]}, com tom ${tone}.`,
+    `Escreva até ${howMany} comentários de chat de espectadores, em ${variantLabel[settings.variant]}, com tom ${tone}.`,
     `Use cerca de ${settings.participants} pessoas diferentes, com nomes próprios plausíveis e repetições naturais de quem fala mais.`,
     `Emojis ${emojiLabel[settings.emojis]}.`,
     settings.densityByMoment
       ? "Densidade variável: concentre muitas reações nas perguntas diretas, provas sociais, histórias, momentos emocionais e na oferta; deixe as partes técnicas quase silenciosas."
       : "Distribua os comentários de forma regular ao longo do tempo.",
     from <= 60
-      ? "Este trecho é a chegada à sala: cumprimentos curtos, sinais de presença e expectativa ligada ao tema. NÃO escreva de onde as pessoas estão a assistir — isso só acontece se e quando o apresentador pedir."
+      ? "Este trecho é a chegada à sala: cumprimentos curtos, sinais de presença e expectativa ligada ao tema. Ninguém diz ainda de onde está a assistir: isso só acontece quando o apresentador pedir."
       : "",
     from < 360
-      ? "ARRANQUE CHEIO (obrigatório): os primeiros minutos são o momento de maior volume de mensagens de toda a sessão. Toda a gente entra ao mesmo tempo, cumprimenta e mostra presença — o chat nunca começa fraco nem em silêncio. Escreva mensagens muito curtas, sobrepostas, de muitas pessoas diferentes, em rajadas de vários segundos seguidos, e vá reduzindo o ritmo à medida que o conteúdo começa."
+      ? "Os primeiros minutos são o momento de maior volume de mensagens da sessão, porque toda a gente entra ao mesmo tempo, cumprimenta e mostra presença. Mensagens muito curtas, de muitas pessoas diferentes, em rajadas de vários segundos seguidos, com o ritmo a descer quando o conteúdo começa."
       : "",
     "Regras: variar o comprimento (de duas palavras a uma frase longa); nada de linguagem publicitária, nem mensagens iguais entre si; não mencionar marcas nem links.",
     "",
-    "CAUSA → CONSEQUÊNCIA (regra mais importante). Antes de escolher o segundo de cada mensagem, classifique a relação com a fala do apresentador:",
-    '- "provoca": SÓ quando o apresentador está mesmo a ler, citar, responder ou reagir a uma mensagem do chat em voz alta (ex.: "o Carlos diz que já fez a primeira venda", "a Mariana pergunta se funciona para quem começa"). A mensagem tem de aparecer ANTES dessa fala, entre 4 e 20 segundos antes, com o mesmo nome que o apresentador diz e o mesmo conteúdo que ele resume. "anchor" é o segundo da fala do apresentador. Uma pergunta espontânea da audiência NÃO é "provoca" — é "espontaneo" e fica no momento em que a pessoa naturalmente perguntaria, nunca colada antes de uma fala do apresentador para criar pretexto.',
-    '- "responde": o apresentador fez uma pergunta direta ao público ou pediu que escrevessem algo no chat, e esta pessoa está a responder. Tem de aparecer DEPOIS da pergunta, entre 2 e 45 segundos depois. "anchor" é o segundo da pergunta.',
-    '- "reage": a pessoa responde ao que o apresentador acabou de dizer, perguntar, mostrar ou anunciar. A mensagem tem de aparecer DEPOIS dessa fala, entre 3 e 30 segundos depois, em cascata com outras. "anchor" é o segundo da fala.',
-    '- "espontaneo": engajamento solto, sem ligação a uma fala concreta. Nunca pode revelar, comentar ou antecipar algo que o apresentador ainda não disse (preço, oferta, bónus, resultados, conclusões). "anchor" é null.',
+    'Cada mensagem declara em "kind" a sua relação com a fala do apresentador, e é essa relação que decide o seu segundo:',
+    `- "provoca": SÓ quando o apresentador está mesmo a ler, citar, responder ou reagir a uma mensagem do chat em voz alta (ex.: "o Carlos diz que já fez a primeira venda", "a Mariana pergunta se funciona para quem começa"). A mensagem tem de aparecer ANTES dessa fala, ${TIMING.readAloud}, com o mesmo nome que o apresentador diz e o mesmo conteúdo que ele resume. "anchor" é o segundo da fala do apresentador. Uma pergunta espontânea da audiência NÃO é "provoca" — é "espontaneo" e fica no momento em que a pessoa naturalmente perguntaria, nunca colada antes de uma fala do apresentador para criar pretexto.`,
+    `- "responde": o apresentador fez uma pergunta direta ao público ou pediu que escrevessem algo no chat, e esta pessoa está a responder. Tem de aparecer DEPOIS da pergunta, ${TIMING.answer}. "anchor" é o segundo da pergunta.`,
+    `- "reage": a pessoa responde ao que o apresentador acabou de dizer, perguntar, mostrar ou anunciar. A mensagem tem de aparecer DEPOIS dessa fala, ${TIMING.react}, em cascata com outras. "anchor" é o segundo da fala.`,
+    '- "espontaneo": engajamento solto, sem ligação a uma fala concreta. Nunca pode revelar, comentar ou antecipar algo que o apresentador ainda não disse (preço, oferta, bónus, resultados, conclusões). "anchor" é -1.',
     "Nunca escreva uma resposta antes da pergunta, uma reação antes do conteúdo que a provoca, um comentário sobre a oferta antes de a oferta ser apresentada, nem um agradecimento sem mensagem anterior que o justifique.",
-    "TESTE OBRIGATÓRIO a cada mensagem antes de a aceitar: esta mensagem está a antecipar alguma pergunta, informação ou acontecimento que ainda não aconteceu no vídeo? Se sim, mude-a de sítio ou deite-a fora. O motor conhece o webinar todo; as pessoas do chat não conhecem o futuro.",
+    "O motor conhece o webinar todo, mas as pessoas do chat não conhecem o futuro: nenhuma mensagem antecipa uma pergunta, informação ou acontecimento que ainda não aconteceu no vídeo.",
     ...reactionBrief(view, from, to),
     ...momentsBrief(view, from, to),
     ...audienceCurveBrief(view, from, to),
@@ -1020,33 +1145,32 @@ async function askWindow(
     ...promptBrief(intel, from, to, settings.participants),
     ...intelBrief(intel, from, to),
     ...memoryBrief(intel, already),
-    intel
-      ? "Só escreva uma mensagem quando existir uma razão convincente para alguém a escrever naquele segundo. Se não houver, escreva menos do que o pedido — o silêncio faz parte de um chat real. Qualidade acima de quantidade."
-      : "",
+    "Só escreva uma mensagem quando existir uma razão convincente para alguém a escrever naquele segundo. Se não houver, escreva menos do que o pedido — o silêncio faz parte de um chat real. Qualidade acima de quantidade.",
     "",
     slots && slots.length > 0
       ? [
-          "OPORTUNIDADES DESTE TRECHO (obrigatório). O webinar é que cria as ocasiões para alguém escrever. Cada mensagem ligada ao apresentador TEM de indicar o \"slot\" de onde nasce, escolhido desta lista:",
+          "Oportunidades deste trecho. O webinar é que cria as ocasiões para alguém escrever; cada mensagem ligada ao apresentador indica em \"slot\" a ocasião de onde nasce, escolhida desta lista:",
           describeOpportunities(slots),
           'Regras dos slots: escreva no máximo o número de mensagens indicado em cada slot; use "kind":"responde" nos slots de resposta e "kind":"reage" nos slots de reação; escreva apenas conteúdo compatível com o que foi pedido ou dito nesse slot; não invente slots.',
           'O instante exato é escolhido pelo sistema dentro da janela do slot — indique na mesma um "at" dentro dessa janela, mas nunca fora dela.',
-          'Pode haver mensagens sem slot ("slot": null), espontâneas, mas no máximo um quarto das mensagens deste trecho e nunca a comentar algo que ainda não foi dito.',
-          "Nem toda a oportunidade tem de ser aproveitada: silêncios fazem parte de um chat real.",
+          'Pode haver mensagens sem slot ("slot" vazio), espontâneas, mas no máximo um quarto das mensagens deste trecho e nunca a comentar algo que ainda não foi dito.',
         ].join("\n")
       : "",
     "",
-    'Cada mensagem tem de trazer também "reason": uma frase curta, em português, que explique porque é que esta pessoa escreve exatamente isto neste segundo (ex.: "reage ao número de 3.000€ que o apresentador acabou de mostrar"). Mensagens espontâneas também têm de ter "reason" (ex.: "acabou de entrar na sala e cumprimenta"), mesmo sem fala relacionada. Sem razão convincente, não escreva a mensagem.',
-    'Responda apenas com JSON: {"comments":[{"at":<segundo inteiro>,"author":"<primeiro nome>","message":"<mensagem>","moment":"<chegada|pergunta|prova-social|emocao|explicacao|oferta|humor>","kind":"<provoca|reage|responde|espontaneo>","anchor":<segundo da fala relacionada ou null>,"slot":"<id do slot ou null>","reason":"<porque escreve isto agora>"}]}',
-    `Todos os "at" têm de estar entre ${from} e ${to}, por ordem crescente, sem dois iguais e cobrindo todo este intervalo até ao fim.`,
+    'Cada mensagem tem de trazer também "reason": uma frase curta, em português, que explique porque é que esta pessoa escreve exatamente isto neste segundo (ex.: "reage ao número de 3.000€ que o apresentador acabou de mostrar"). Mensagens espontâneas também têm de ter "reason" (ex.: "acabou de entrar na sala e cumprimenta"), mesmo sem fala relacionada.',
+    'Em cada mensagem, "at" é o segundo inteiro, "anchor" o segundo da fala relacionada (-1 sem fala relacionada) e "slot" o id do slot (vazio sem slot).',
+    `Todos os "at" têm de estar entre ${from} e ${to}, por ordem crescente, sem dois iguais e espalhados pelo intervalo.`,
 
   ]
     .filter(Boolean)
     .join("\n");
 
   const result = await chatJson({
+    task: "generation",
     system:
-      "És um argumentista de conversas de chat ao vivo. Escreves mensagens curtas e humanas de espectadores reais. Devolves sempre JSON válido.",
+      "És um argumentista de conversas de chat ao vivo. Escreves mensagens curtas e humanas de espectadores reais.",
     user: prompt,
+    schema: CHAT_COMMENTS,
   });
 
   if (!result.ok) throw new AIError(result);
@@ -1308,29 +1432,29 @@ async function auditTimeline(
       .join("\n")}`,
     "",
     "Reveja apenas a cronologia, sem reescrever mensagens. Procure:",
-    "- respostas colocadas antes da pergunta do apresentador (uma pergunta direta ao público só pode ter respostas depois dela, a partir de 2 segundos);",
-    "- perguntas diretas ao público sem respostas suficientes a seguir, ou com todas as respostas no mesmo instante em vez de espalhadas ao longo de 45 segundos;",
+    `- respostas colocadas antes da pergunta do apresentador (uma pergunta direta ao público só tem respostas ${TIMING.answer} dela);`,
+    "- respostas a uma pergunta direta todas no mesmo instante, em vez de espalhadas pela janela de resposta;",
     "- reações colocadas antes da fala que as provoca;",
-    "- mensagens que o apresentador lê em voz alta colocadas depois de ele as ler (têm de ficar 4 a 20 segundos antes);",
+    `- mensagens que o apresentador lê em voz alta colocadas depois de ele as ler (ficam ${TIMING.readAloud} de ele as ler);`,
     "- comentários sobre a oferta antes de a oferta ser apresentada;",
     "- agradecimentos ou respostas sem mensagem anterior que os justifique;",
     "- comentários que revelam algo que o apresentador ainda não disse;",
     "- pessoas a dizer de onde estão a assistir sem que o apresentador o tenha pedido antes (nesse caso mova para depois do pedido, se existir);",
     "- reações colocadas ainda com a ideia a ser explicada: só podem aparecer depois de a frase fechar;",
-    "- vários elogios genéricos parecidos (\"muito bom\", \"top\", \"👏\") no mesmo momento: deixe um só;",
-    "- elogios ou reações sem ligação a nada concreto que o apresentador tenha acabado de dizer;",
     "- no primeiro minuto, mensagens que não sejam de chegada ou expectativa.",
     `Os segundos corrigidos têm de ficar entre ${ctx.start} e ${ctx.end}.`,
-    'Responda apenas com JSON: {"fixes":[{"index":<índice>,"at":<novo segundo>}]}. Sem problemas, devolva {"fixes":[]}.',
+    "Para cada mensagem fora do sítio, devolva o índice e o novo segundo. Sem problemas, devolva a lista vazia.",
   ]
     .filter(Boolean)
     .join("\n");
 
   try {
     const result = await chatJson({
+      task: "analysis",
       system:
-        "És revisor de cronologia de chats de webinars. Verificas se cada mensagem está antes ou depois da fala certa. Devolves sempre JSON válido.",
+        "És revisor de cronologia de chats de webinars. Verificas se cada mensagem está antes ou depois da fala certa.",
       user: review,
+      schema: TIMELINE_FIXES,
     });
     if (result.ok) {
       const parsed = result.json as {
@@ -1373,7 +1497,6 @@ const segmentAnalysisSchema = z.object({
   density: z.coerce.number().int().catch(50),
   purchaseIntent: z.coerce.number().int().catch(20),
   objection: z.coerce.number().int().catch(20),
-  ctaProximity: z.coerce.number().int().catch(0),
   readsChat: z.boolean().catch(false),
   hostQuestion: z.string().trim().max(200).catch("").default(""),
 });
@@ -1452,14 +1575,14 @@ async function scanAudiencePrompts(
       "Liste TODAS as chamadas diretas à audiência que existem mesmo neste texto: perguntas feitas ao público, pedidos para escrever algo no chat, enquetes, pedidos de levantar a mão e convites a manifestar interesse. Ignore perguntas retóricas que o próprio apresentador responde de imediato.",
       "Para cada uma: at (o segundo em que o pedido termina, tirado da transcrição), ask (o pedido nas palavras dele), expects (cidade, sim-nao, palavra-chave, experiencia, duvida, interesse, numero ou livre), keyword (a palavra exata pedida, se houver) e intensity de 0 a 100 conforme o pedido seja explícito e insistente.",
       "Não invente nada. Se não houver nenhuma, devolva uma lista vazia.",
-      'Responda apenas com JSON: {"prompts":[{"at":0,"ask":"","expects":"livre","keyword":"","intensity":60}]}',
     ].join("\n");
 
     try {
       const result = await chatJson({
-        system:
-          "Detetas pedidos diretos de interação em transcrições de webinars e devolves sempre JSON válido.",
+        task: "classification",
+        system: "Detetas pedidos diretos de interação em transcrições de webinars.",
         user: prompt,
+        schema: AUDIENCE_PROMPTS,
       });
       if (!result.ok) continue;
       const parsed = z
@@ -1541,10 +1664,21 @@ function clampScore(value: number) {
 }
 
 /** Normaliza o que a IA devolveu: limites, ordem e trechos sem buracos. */
+/**
+ * Proximidade do CTA (0-100): 100 a partir do segundo em que a oferta abre;
+ * antes disso desce um ponto por cada 6 s de distância (70 a três minutos).
+ * ponytail: queda linear fixa; afinar os 6 s se os diagnósticos o pedirem.
+ */
+function ctaProximityOf(to: number, ctaStart: number | null) {
+  if (ctaStart === null) return 0;
+  return clampScore(100 - Math.max(0, ctaStart - to) / 6);
+}
+
 function normaliseAnalysis(
   raw: z.infer<typeof analysisPayloadSchema>,
   objective: EngagementObjective,
   duration: number,
+  ctaStart: number | null,
 ): WebinarAnalysis {
   const segments = raw.segments
     .map((s) => ({
@@ -1558,7 +1692,7 @@ function normaliseAnalysis(
       density: clampScore(s.density),
       purchaseIntent: clampScore(s.purchaseIntent),
       objection: clampScore(s.objection),
-      ctaProximity: clampScore(s.ctaProximity),
+      ctaProximity: ctaProximityOf(Math.round(s.to), ctaStart),
       readsChat: s.readsChat,
       hostQuestion: s.hostQuestion,
     }))
@@ -1661,7 +1795,7 @@ export async function analyseWebinarStructureImpl(supabase: any, data: any) {
         : "Não há transcrição. Baseie-se no título, descrição e oferta para estimar o percurso provável da apresentação.",
       "",
       "Analise este webinar como diretor de engajamento. Divida-o em 8 a 24 trechos com significado próprio (abertura, chegada, conteúdo, história, explicação técnica, demonstração, prova social, estudo de caso, objeção, transição para a oferta, oferta, preço, bónus, garantia, urgência, cta, encerramento). Os trechos têm de cobrir o webinar do segundo 0 ao segundo final, sem buracos nem sobreposições.",
-      "Para cada trecho dê notas de 0 a 100: engagement (potencial de interação), emotion (intensidade emocional), density (densidade de informação), purchaseIntent (intenção de compra), objection (probabilidade de objeção), ctaProximity (proximidade do CTA). Classifique dropRisk em baixo, moderado, alto ou critico, tendo em conta explicações longas, excesso técnico, tempo sem interação, mudanças lentas de assunto, silêncio, repetição, histórias longas, transição para o pitch, apresentação do preço e o momento logo a seguir ao CTA.",
+      "Para cada trecho dê notas de 0 a 100: engagement (potencial de interação), emotion (intensidade emocional), density (densidade de informação), purchaseIntent (intenção de compra), objection (probabilidade de objeção). Classifique dropRisk em baixo, moderado, alto ou critico, tendo em conta explicações longas, excesso técnico, tempo sem interação, mudanças lentas de assunto, silêncio, repetição, histórias longas, transição para o pitch, apresentação do preço e o momento logo a seguir ao CTA.",
       "Em prompts, liste TODAS as chamadas diretas à audiência: perguntas feitas ao público (\"de onde é que estão a falar?\", \"quem aqui já participou num leilão?\", \"vocês perceberam esta parte?\"), pedidos de palavra no chat (\"escreve EU\", \"põe SIM\"), pedidos de levantar a mão, enquetes e convites a manifestar interesse. Para cada uma: at (o segundo em que o pedido termina), ask (o pedido nas palavras dele), expects (cidade, sim-nao, palavra-chave, experiencia, duvida, interesse, numero ou livre), keyword (a palavra exata pedida, se houver) e intensity de 0 a 100 conforme o pedido seja explícito e insistente. Não invente pedidos que não existem na transcrição.",
       'Marque readsChat a verdadeiro quando o apresentador lê, cita ou responde ao chat ("estou a ver-vos aqui", "vi alguém perguntar", "quem perguntou isto", "tem muita gente a dizer"). Em hostQuestion escreva a pergunta direta que ele faz ao público, quando existir; caso contrário deixe vazio.',
       "Em moments, liste de 8 a 30 momentos semânticos: ideias completas com início e fim (uma ideia pode começar aos 620s e só fechar aos 648s). Para cada um: from, to (segundo em que a ideia fecha), topic (rótulo curto do tema, para memória das personas), summary, novelty de 0 a 100 (100 = revelação que muda tudo; 10 = conteúdo trivial) e reactionUntil (até que segundo faz sentido alguém reagir — normalmente to + 20 a 90).",
@@ -1671,16 +1805,16 @@ export async function analyseWebinarStructureImpl(supabase: any, data: any) {
       "Em rescue, liste os trechos com previsão de baixa retenção e sugestões concretas (pergunta ao público, comentário contextual, enquete, antecipar uma promessa, CTA secundário, encurtar o trecho no próximo webinar). Não resolva tudo com mais comentários.",
       "Em score, pontue de 0 a 100: overall, retention, engagement, clarity, pace, offer, cta, mais um resumo de duas frases.",
       "Escreva tudo em português de Portugal.",
-      "",
-      'Responda apenas com JSON: {"segments":[{"from":0,"to":0,"kind":"","summary":"","engagement":0,"dropRisk":"baixo","emotion":0,"density":0,"purchaseIntent":0,"objection":0,"ctaProximity":0,"readsChat":false,"hostQuestion":""}],"personas":[{"name":"","style":"","profile":"","emojis":"alguns","knowledge":"iniciante","rhythm":"moderada","arrivalAt":0}],"prompts":[{"at":0,"ask":"","expects":"cidade","keyword":"","intensity":80}],"moments":[{"from":0,"to":0,"topic":"","summary":"","novelty":50,"reactionUntil":0}],"audienceState":[{"at":0,"estimatedAttention":50,"estimatedConfusion":20,"estimatedExcitement":30,"estimatedTrust":30,"estimatedPurchaseIntent":10,"estimatedObjection":10,"chatEnergy":30}],"insights":[{"at":0,"level":"bom","title":"","note":""}],"rescue":[{"from":0,"to":0,"risk":"alto","reason":"","suggestions":[""]}],"score":{"overall":0,"retention":0,"engagement":0,"clarity":0,"pace":0,"offer":0,"cta":0,"summary":""}}',
     ]
       .filter(Boolean)
       .join("\n");
 
     const result = await chatJson({
+      task: "analysis",
       system:
-        "És diretor de engajamento de webinars. Analisas o percurso da apresentação, antecipas onde se perde atenção e preparas a estratégia de interação. Devolves sempre JSON válido.",
+        "És diretor de engajamento de webinars. Analisas o percurso da apresentação, antecipas onde se perde atenção e preparas a estratégia de interação.",
       user: prompt,
+      schema: WEBINAR_ANALYSIS,
     });
 
     if (!result.ok) throw new AIError(result);
@@ -1691,7 +1825,12 @@ export async function analyseWebinarStructureImpl(supabase: any, data: any) {
       durationSeconds: duration,
     });
 
-    const analysis = normaliseAnalysis(parsed, data.objective, duration);
+    const analysis = normaliseAnalysis(
+      parsed,
+      data.objective,
+      duration,
+      webinar.cta_text ? (webinar.cta_start_seconds ?? 0) : null,
+    );
 
     // Segunda leitura, sobre a transcrição literal completa: garante que
     // nenhuma pergunta ao público se perde e que o segundo é o real.
@@ -2170,20 +2309,19 @@ async function syncBatch(
     "",
     "Tarefa: corrigir o segundo de cada mensagem para o momento REAL da fala a que ela responde ou reage.",
     "Regras:",
-    "- Uma reação aparece DEPOIS da frase terminar, entre 2 e 12 segundos após a ideia ficar clara.",
-    "- Uma resposta a uma pergunta direta do apresentador aparece entre 3 e 25 segundos depois da pergunta.",
+    `- Uma reação aparece ${TIMING.react} de a ideia ficar clara.`,
+    `- Uma resposta a uma pergunta direta do apresentador aparece ${TIMING.answer} da pergunta.`,
     "- Nunca antecipar: ninguém pode comentar algo antes de ser dito.",
     "- Não empilhar: evite dois segundos iguais; espalhe de forma irregular.",
     "- Mantenha o texto e o autor exatamente iguais; só muda o segundo.",
     `- Todos os segundos entre 0 e ${Math.round(duration)}.`,
-    "",
-    'Responda apenas com JSON: {"comments":[{"id":"<id>","at":<segundo inteiro>}]}',
   ].join("\n");
 
   const result = await chatJson({
-    system:
-      "És um editor de timing de chat ao vivo. Alinhas mensagens com a fala do apresentador. Devolves sempre JSON válido.",
+    task: "analysis",
+    system: "És um editor de timing de chat ao vivo. Alinhas mensagens com a fala do apresentador.",
     user: prompt,
+    schema: SPEECH_SYNC,
   });
   if (!result.ok) throw new AIError(result);
 

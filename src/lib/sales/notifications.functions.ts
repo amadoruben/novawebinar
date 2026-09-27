@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import { assertWebinarAccess, requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { runBilled } from "@/lib/ai/billing.server";
+import { s, schema } from "@/lib/ai/schema";
 
 export type SaleNotificationSuggestion = {
   buyerName: string;
@@ -26,6 +27,8 @@ export type GeneratedSaleNotifications = {
 
 /** 2 minutos depois do início da oferta. */
 const OFFER_DELAY_SECONDS = 120;
+
+export const NAMES = schema("sale_names", { names: s.array(s.string()) });
 
 const FALLBACK_NAMES = [
   "João",
@@ -63,7 +66,7 @@ export const generateSaleNotifications = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<GeneratedSaleNotifications> => {
     const supabase = context.supabase as never as any;
     const organizationId = await assertWebinarAccess(context.supabase, data.webinarId);
-    const model = await import("@/lib/ai-agent/model.server");
+    const { chatJson } = await import("@/lib/ai/gateway.server");
 
     const { data: webinar } = await supabase
       .from("webinars")
@@ -92,15 +95,16 @@ export const generateSaleNotifications = createServerFn({ method: "POST" })
 
     let names: string[] = [];
     const result = await runBilled({ organizationId, action: "sale_notifications" }, () =>
-      model.askModelJson({
-      system:
-        'Devolve apenas JSON válido no formato {"names":["",""]}. Nomes próprios portugueses reais e variados (só o primeiro nome, sem apelido), adequados à audiência do webinar. Nada mais.',
-      user: `${sources}\n\nGera ${data.count} nomes diferentes de pessoas que poderiam comprar "${product}".`,
-    }),
+      chatJson({
+        task: "generation",
+        system:
+          "Nomes próprios portugueses reais e variados (só o primeiro nome, sem apelido), adequados à audiência do webinar.",
+        user: `${sources}\n\nGera ${data.count} nomes diferentes de pessoas que poderiam comprar "${product}".`,
+        schema: NAMES,
+      }),
     );
     if (result.ok) {
-      const parsed = model.parseJsonObject<{ names?: unknown }>(result.text);
-      const list = Array.isArray(parsed?.names) ? parsed?.names : [];
+      const list = Array.isArray(result.json["names"]) ? result.json["names"] : [];
       names = (list as unknown[])
         .map((n) => String(n ?? "").trim())
         .filter((n) => n.length > 1 && n.length <= 30);

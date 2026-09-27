@@ -40,6 +40,8 @@ async function request(path: string, init?: RequestInit): Promise<AssemblyTransc
   const token = key();
   if (!token) throw new Error("A transcrição com tempos por palavra não está configurada.");
   const response = await fetch(`${API}${path}`, {
+    // Sem resposta num minuto, o pedido falha e a etapa repete mais tarde.
+    signal: AbortSignal.timeout(60_000),
     ...init,
     headers: {
       Authorization: token,

@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { assertWebinarAccess, requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { runBilled } from "@/lib/ai/billing.server";
+import { s, schema } from "@/lib/ai/schema";
 import { defaultPermissions, KNOWLEDGE_FIELDS, type AgentSource } from "./defaults";
 
 type Row = Record<string, any>;
@@ -293,23 +294,26 @@ export const learnFromWebinar = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => z.object({ webinarId: uuid }).parse(data))
   .handler(async ({ data, context }): Promise<LearnSuggestions> => {
     const organizationId = await assertWebinarAccess(context.supabase, data.webinarId);
-    const [{ latestReadyVersion }, { askModelJson, parseJsonObject }] = await Promise.all([
+    const [{ latestReadyVersion }, { chatJson }] = await Promise.all([
       import("@/lib/temporal/engine.server"),
-      import("./model.server"),
+      import("@/lib/ai/gateway.server"),
     ]);
     const version = await latestReadyVersion(data.webinarId);
     if (!version || !version.rawText) {
       return { ok: false, error: "Ainda não há transcrição deste webinar.", faqs: [], objections: [] };
     }
     const text = version.rawText.slice(0, 24000);
-    const result = await runBilled({ organizationId, action: "agent_content" }, () => askModelJson({
-      system:
-        "És um assistente que prepara conhecimento de apoio a vendas a partir da transcrição de um webinar. Responde apenas com JSON válido: {\"faqs\":[{\"question\":\"\",\"answer\":\"\"}],\"objections\":[{\"objection\":\"\",\"response\":\"\"}]}. Português de Portugal. Nunca inventes preços, garantias ou bónus que não apareçam no texto.",
-      user: `Transcrição do webinar:\n${text}\n\nSugere até 12 perguntas frequentes e até 8 objeções com resposta, apenas com base no que foi dito.`,
-    }));
+    const result = await runBilled({ organizationId, action: "agent_content" }, () =>
+      chatJson({
+        task: "generation",
+        system:
+          "És um assistente que prepara conhecimento de apoio a vendas a partir da transcrição de um webinar. Português de Portugal. Nunca inventes preços, garantias ou bónus que não apareçam no texto.",
+        user: `Transcrição do webinar:\n${text}\n\nSugere até 12 perguntas frequentes e até 8 objeções com resposta, apenas com base no que foi dito.`,
+        schema: CONTENT_SCHEMAS.learn,
+      }),
+    );
     if (!result.ok) return { ok: false, error: result.reason, faqs: [], objections: [] };
-    const parsed = parseJsonObject<LearnSuggestions>(result.text);
-    if (!parsed) return { ok: false, error: "Sugestões incompletas.", faqs: [], objections: [] };
+    const parsed = result.json as Partial<LearnSuggestions>;
     return {
       ok: true,
       faqs: (parsed.faqs ?? []).slice(0, 12),
@@ -331,6 +335,34 @@ export type GeneratedContent = {
     allowedCta: string;
     escalateWhen: string;
   }[];
+};
+
+const FAQ = s.object({ question: s.string(), answer: s.string() });
+
+/** Forma da resposta de cada pedido de conteúdo do agente. */
+export const CONTENT_SCHEMAS = {
+  learn: schema("agent_learn", {
+    faqs: s.array(FAQ),
+    objections: s.array(s.object({ objection: s.string(), response: s.string() })),
+  }),
+  knowledge: schema("agent_knowledge", {
+    knowledge: s.array(
+      s.object({ field: s.string(KNOWLEDGE_FIELDS.map((f) => f.field)), value: s.string() }),
+    ),
+  }),
+  faqs: schema("agent_faqs", { faqs: s.array(FAQ) }),
+  objections: schema("agent_objections", {
+    objections: s.array(
+      s.object({
+        objection: s.string(),
+        response: s.string(),
+        keyPoints: s.string(),
+        neverSay: s.string(),
+        allowedCta: s.string(),
+        escalateWhen: s.string(),
+      }),
+    ),
+  }),
 };
 
 const EMPTY_CONTENT: Omit<GeneratedContent, "ok" | "error" | "usedTranscript"> = {
@@ -359,12 +391,16 @@ export const generateAgentContent = createServerFn({ method: "POST" })
     const supabase = context.supabase as never as any;
     const agent = await ensureAgentRow(supabase, data.webinarId);
 
-    const [{ data: webinar }, { data: knowledge }, { latestReadyVersion }, model] =
+    const [{ data: webinar }, { data: knowledge }, { latestReadyVersion }, { chatJson }] =
       await Promise.all([
-        supabase.from("webinars").select("title, description").eq("id", data.webinarId).single(),
+        supabase
+          .from("webinars")
+          .select("public_title, description")
+          .eq("id", data.webinarId)
+          .single(),
         supabase.from("ai_agent_knowledge").select("*").eq("agent_id", agent["id"]).order("position"),
         import("@/lib/temporal/engine.server"),
-        import("./model.server"),
+        import("@/lib/ai/gateway.server"),
       ]);
 
     const version = await latestReadyVersion(data.webinarId).catch(() => null);
@@ -378,13 +414,6 @@ export const generateAgentContent = createServerFn({ method: "POST" })
 
     const fieldList = KNOWLEDGE_FIELDS.map((f) => `- ${f.field}: ${f.label}`).join("\n");
 
-    const shape =
-      data.target === "knowledge"
-        ? '{"knowledge":[{"field":"","value":""}]}'
-        : data.target === "faqs"
-          ? '{"faqs":[{"question":"","answer":""}]}'
-          : '{"objections":[{"objection":"","response":"","keyPoints":"","neverSay":"","allowedCta":"","escalateWhen":""}]}';
-
     const ask =
       data.target === "knowledge"
         ? `Preenche os campos em falta usando apenas informação presente nas fontes. Campos possíveis:\n${fieldList}\nDevolve só os campos para os quais tens base real. Nunca inventes preço, garantia, prazos ou bónus.`
@@ -393,7 +422,7 @@ export const generateAgentContent = createServerFn({ method: "POST" })
           : "Sugere até 8 objeções reais com resposta recomendada, pontos-chave, o que nunca dizer, chamada à ação permitida e quando passar para uma pessoa da equipa.";
 
     const sources = [
-      webinar?.title ? `Webinar: ${webinar.title}` : "",
+      webinar?.public_title ? `Webinar: ${webinar.public_title}` : "",
       webinar?.description ? `Descrição: ${webinar.description}` : "",
       filled ? `Conhecimento já preenchido pelo vendedor:\n${filled}` : "",
       transcript ? `Transcrição do webinar:\n${transcript}` : "",
@@ -412,16 +441,18 @@ export const generateAgentContent = createServerFn({ method: "POST" })
 
     const result = await runBilled(
       { organizationId: String(agent["organization_id"]), action: "agent_content" },
-      () => model.askModelJson({
-      system: `És um assistente que prepara conhecimento de apoio a vendas para um webinar. Responde apenas com JSON válido no formato ${shape}. Português de Portugal. Nunca inventes preços, descontos, garantias, bónus ou resultados que não apareçam nas fontes.`,
-      user: `${sources}\n\n${ask}`,
-    }),
+      () =>
+        chatJson({
+          task: "generation",
+          system:
+            "És um assistente que prepara conhecimento de apoio a vendas para um webinar. Português de Portugal. Nunca inventes preços, descontos, garantias, bónus ou resultados que não apareçam nas fontes.",
+          user: `${sources}\n\n${ask}`,
+          schema: CONTENT_SCHEMAS[data.target],
+        }),
     );
     if (!result.ok) return { ok: false, error: result.reason, usedTranscript, ...EMPTY_CONTENT };
 
-    const parsed = model.parseJsonObject<GeneratedContent>(result.text);
-    if (!parsed)
-      return { ok: false, error: "Sugestões incompletas.", usedTranscript, ...EMPTY_CONTENT };
+    const parsed = result.json as Partial<GeneratedContent>;
 
     const allowed = new Set(KNOWLEDGE_FIELDS.map((f) => f.field));
     return {

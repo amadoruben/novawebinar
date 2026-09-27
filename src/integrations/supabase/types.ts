@@ -534,6 +534,69 @@ export type Database = {
           },
         ]
       }
+      ai_calls: {
+        Row: {
+          attempt: number
+          cost_micros: number | null
+          created_at: string
+          error_code: string | null
+          fallback: boolean
+          id: number
+          input_tokens: number
+          is_test: boolean
+          latency_ms: number
+          model: string
+          organization_id: string | null
+          outcome: string
+          output_tokens: number
+          pricing_status: string
+          provider: string
+          task: string
+        }
+        Insert: {
+          attempt?: number
+          cost_micros?: number | null
+          created_at?: string
+          error_code?: string | null
+          fallback?: boolean
+          input_tokens?: number
+          is_test?: boolean
+          latency_ms?: number
+          model: string
+          organization_id?: string | null
+          outcome: string
+          output_tokens?: number
+          pricing_status?: string
+          provider: string
+          task: string
+        }
+        Update: {
+          attempt?: number
+          cost_micros?: number | null
+          created_at?: string
+          error_code?: string | null
+          fallback?: boolean
+          input_tokens?: number
+          is_test?: boolean
+          latency_ms?: number
+          model?: string
+          organization_id?: string | null
+          outcome?: string
+          output_tokens?: number
+          pricing_status?: string
+          provider?: string
+          task?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_calls_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audience_configuration: {
         Row: {
           created_at: string

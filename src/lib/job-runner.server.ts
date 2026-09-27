@@ -3,13 +3,15 @@
  *
  * A geração do chat e a sincronização dos comentários não dependem de uma
  * única chamada longa: o pedido fica guardado na base de dados e este motor
- * avança-o etapa a etapa. Quem o empurra é o próprio servidor, de 15 em 15
+ * avança-o etapa a etapa, e cada etapa com IA é cobrada à organização do
+ * webinar. Quem o empurra é o próprio servidor, de 15 em 15
  * segundos (`job-ticker.server.ts`), por isso o trabalho continua com o
  * separador fechado. O browser dá só o arranque imediato. Em alojamento sem
  * processo permanente, agenda-se uma chamada a /api/public/run-jobs
  * (autenticada com x-job-runner-token).
  */
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { meterTranscription, NoCreditsError, runBilled } from "@/lib/ai/billing.server";
 import {
   analyseWebinarStructureImpl,
   auditCommentsTimelineImpl,
@@ -56,6 +58,7 @@ type Job = {
   id: string;
   kind: "chat" | "sync";
   webinar_id: string;
+  organization_id: string;
   created_by: string;
   webinar_title: string;
   status: string;
@@ -244,14 +247,27 @@ async function stepChat(job: Job): Promise<boolean> {
     const result = progress.result;
     const sentences = sentencesFrom(result);
     let events = detectPresenterEvents(sentences);
-    // Camada semântica: apanha pedidos à audiência que as regras não veem
-    // ("comenta aí de onde és", "quem aqui já...").
-    try {
-      const classified = await classifyAudiencePrompts(promptCandidates(sentences, events));
-      events = mergeClassifiedPrompts(events, classified, sentences);
-    } catch {
-      /* a camada de regras continua a valer */
-    }
+    // A transcrição já aconteceu no fornecedor: regista-se sem bloquear, e só
+    // uma vez por versão, como no caminho do editor.
+    await runBilled(
+      {
+        organizationId: job.organization_id,
+        action: "transcription",
+        alreadyIncurred: true,
+        ...(state.versionId ? { ref: `transcription:${state.versionId}` } : {}),
+      },
+      async () => {
+        await meterTranscription(state.duration ?? 0);
+        // Camada semântica: apanha pedidos à audiência que as regras não veem
+        // ("comenta aí de onde és", "quem aqui já...").
+        try {
+          const classified = await classifyAudiencePrompts(promptCandidates(sentences, events));
+          events = mergeClassifiedPrompts(events, classified, sentences);
+        } catch {
+          /* a camada de regras continua a valer */
+        }
+      },
+    );
 
     // A precisão declarada só vale se as palavras trouxerem mesmo tempos próprios.
     const { precision: realPrecision, integrity } = effectivePrecision(
@@ -776,11 +792,29 @@ export async function runPendingJobs(budgetMs = 45000, organizationIds?: string[
         });
         continue;
       }
-      const again = job.kind === "chat" ? await stepChat(job) : await stepSync(job);
+      const step = () => (job.kind === "chat" ? stepChat(job) : stepSync(job));
+      const phase = job.kind === "chat" ? String(job.state?.phase ?? "start") : "";
+      // Cada etapa com IA é cobrada à organização do webinar, como no editor.
+      // A espera pela transcrição não custa nada e é cobrada à parte quando acaba.
+      const again =
+        phase === "transcribe-word"
+          ? await step()
+          : await runBilled(
+              {
+                organizationId: job.organization_id,
+                action: phase === "structure" ? "webinar_analysis" : "chat_generation",
+              },
+              step,
+            );
       steps += 1;
       if (!again) await save(job.id, { locked_until: null });
       else await save(job.id, { locked_until: null, attempts: 0 });
     } catch (error) {
+      // Sem saldo, repetir não adianta: o trabalho pára com a razão.
+      if (error instanceof NoCreditsError) {
+        await save(job.id, { status: "error", error: error.message, locked_until: null });
+        continue;
+      }
       const attempts = (job.attempts ?? 0) + 1;
       const message = error instanceof Error ? error.message : "Falha inesperada.";
       if (attempts >= 3) {

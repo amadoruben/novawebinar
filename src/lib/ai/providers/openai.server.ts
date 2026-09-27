@@ -1,58 +1,45 @@
 /**
  * Fornecedor OpenAI, por `fetch` directo, sem SDK.
  *
- * Endpoint: Chat Completions com `response_format: { type: "json_object" }`.
- * Todos os prompts do produto pedem JSON explicitamente, como a OpenAI exige
- * para este modo.
+ * Texto: Chat Completions com saída estruturada (`json_schema`, estrita).
+ * Imagens: `/images/generations`.
  *
  * Configuração (só no servidor):
- *   OPENAI_API_KEY   chave da OpenAI (obrigatória)
- *   AI_CHAT_MODEL    modelo (por omissão `gpt-5.6-luna`)
- *   AI_BASE_URL      base alternativa compatível com a API da OpenAI (opcional)
+ *   OPENAI_API_KEY        chave (obrigatória)
+ *   AI_CHAT_MODEL         modelo de todos os níveis (por omissão `gpt-5.6-luna`)
+ *   OPENAI_MODEL_FAST / OPENAI_MODEL / OPENAI_MODEL_CAPABLE   modelo por nível
+ *   AI_BASE_URL           base alternativa compatível com a API da OpenAI
+ *   AI_IMAGE_MODEL        modelo de imagens (por omissão `gpt-image-1`)
  */
+import { OPENAI_DEFAULT_MODEL, tierModel } from "../models";
 import {
-  DEFAULT_TIMEOUT_MS,
   codeFromStatus,
-  describeFailure,
-  parseJsonText,
+  failure,
+  readObject,
   type AIErrorCode,
-  type AIProvider,
-  type ChatJsonFailure,
-  type ChatJsonInput,
+  type AIModelProvider,
   type ChatJsonResult,
   type ImageInput,
   type ImageResult,
-} from "../provider";
+  type ProviderRequest,
+} from "../types";
 
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_MODEL = "gpt-5.6-luna";
-/** Modelo de imagem por omissão; `AI_IMAGE_MODEL` substitui-o. */
 const DEFAULT_IMAGE_MODEL = "gpt-image-1";
 /** Fotogramas parciais pedidos no streaming (o editor mostra-os desfocados até ao final). */
 const PARTIAL_IMAGES = 2;
 
 type ChatCompletion = {
-  choices?: { message?: { content?: string | null }; finish_reason?: string | null }[];
-  error?: { message?: string; type?: string; code?: string | null } | null;
+  choices?: {
+    message?: { content?: string | null; refusal?: string | null };
+    finish_reason?: string | null;
+  }[];
+  error?: { message?: string } | null;
   usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
 };
 
-function apiKey(): string {
-  return process.env["OPENAI_API_KEY"]?.trim() ?? "";
-}
-
-function baseUrl(): string {
-  const configured = process.env["AI_BASE_URL"]?.trim();
-  return (configured || DEFAULT_BASE_URL).replace(/\/+$/, "");
-}
-
-function model(): string {
-  return process.env["AI_CHAT_MODEL"]?.trim() || DEFAULT_MODEL;
-}
-
-function imageModel(): string {
-  return process.env["AI_IMAGE_MODEL"]?.trim() || DEFAULT_IMAGE_MODEL;
-}
+const apiKey = () => process.env["OPENAI_API_KEY"]?.trim() ?? "";
+const baseUrl = () => (process.env["AI_BASE_URL"]?.trim() || DEFAULT_BASE_URL).replace(/\/+$/, "");
 
 /** Nunca deixa a chave, nem fragmentos dela, passar para logs ou mensagens. */
 function redact(text: string): string {
@@ -61,78 +48,59 @@ function redact(text: string): string {
   return withoutKey.replace(/sk-[A-Za-z0-9_*-]{4,}/g, "[redacted]");
 }
 
-function failure(
-  code: AIErrorCode,
-  status: number | null,
-  detail: string | null,
-  used: string,
-): ChatJsonFailure {
-  return {
-    ok: false,
-    code,
-    status,
-    reason: describeFailure(code, status),
-    detail: detail ? redact(detail).slice(0, 300) : null,
-    provider: "openai",
-    model: used,
-  };
+const fail = (model: string, code: AIErrorCode, status: number | null, detail: string | null) =>
+  failure("openai", model, code, status, detail ? redact(detail) : null);
+
+/** Falha de rede ou tempo esgotado antes de haver resposta. */
+function networkFailure(model: string, error: unknown) {
+  const name = (error as Error)?.name;
+  return name === "TimeoutError" || name === "AbortError"
+    ? fail(model, "timeout", null, "sem resposta dentro do tempo limite")
+    : fail(model, "unavailable", null, String((error as Error)?.message ?? error));
 }
 
-export const openAiProvider: AIProvider = {
+/** Os modelos de raciocínio aceitam o nível de esforço; os outros recusam o parâmetro. */
+const reasons = (model: string) => /^(gpt-5|o\d)/.test(model);
+
+export const openAiProvider: AIModelProvider = {
   id: "openai",
 
   isConfigured() {
     return apiKey().length > 0;
   },
 
-  defaultModel() {
-    return model();
+  model(tier) {
+    const all = process.env["AI_CHAT_MODEL"]?.trim() || OPENAI_DEFAULT_MODEL;
+    return tierModel("OPENAI", tier, { fast: all, balanced: all, capable: all });
   },
 
-  async chatJson(input: ChatJsonInput): Promise<ChatJsonResult> {
-    const used = input.model?.trim() || model();
-    const key = apiKey();
-    if (!key) return failure("not_configured", null, "chave em falta", used);
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-
+  async complete(request: ProviderRequest): Promise<ChatJsonResult> {
+    const { model } = request;
     let response: Response;
+    let raw = "";
     try {
       response = await fetch(`${baseUrl()}/chat/completions`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        headers: { Authorization: `Bearer ${apiKey()}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: used,
+          model,
           messages: [
-            { role: "system", content: input.system },
-            { role: "user", content: input.user },
+            { role: "system", content: request.system },
+            { role: "user", content: request.user },
           ],
-          response_format: { type: "json_object" },
-          ...(input.maxTokens ? { max_completion_tokens: input.maxTokens } : {}),
+          response_format: {
+            type: "json_schema",
+            json_schema: { name: request.schema.name, schema: request.schema.schema, strict: true },
+          },
+          max_completion_tokens: request.maxOutputTokens,
+          ...(reasons(model) ? { reasoning_effort: request.effort } : {}),
         }),
-        signal: controller.signal,
+        signal: AbortSignal.timeout(request.timeoutMs),
       });
-    } catch (error) {
-      clearTimeout(timer);
-      const aborted = (error as Error)?.name === "AbortError";
-      return failure(
-        aborted ? "timeout" : "unavailable",
-        null,
-        aborted ? "sem resposta dentro do tempo limite" : String((error as Error)?.message ?? error),
-        used,
-      );
-    }
-
-    let raw = "";
-    try {
       raw = await response.text();
     } catch (error) {
-      clearTimeout(timer);
-      const aborted = (error as Error)?.name === "AbortError";
-      return failure(aborted ? "timeout" : "unavailable", response.status, null, used);
+      return networkFailure(model, error);
     }
-    clearTimeout(timer);
 
     let payload: ChatCompletion = {};
     try {
@@ -140,29 +108,25 @@ export const openAiProvider: AIProvider = {
     } catch {
       payload = {};
     }
-
     if (!response.ok) {
       const detail = payload.error?.message || raw.slice(0, 300) || response.statusText;
-      return failure(codeFromStatus(response.status), response.status, detail, used);
+      return fail(model, codeFromStatus(response.status), response.status, detail);
     }
 
     const choice = payload.choices?.[0];
-    const text = (choice?.message?.content ?? "").trim();
-    if (!text) {
-      return failure("invalid_json", response.status, "resposta vazia", used);
+    if (choice?.message?.refusal)
+      return fail(model, "refused", response.status, choice.message.refusal);
+    if (choice?.finish_reason === "length") {
+      return fail(model, "invalid_json", response.status, "resposta cortada pelo limite de tokens");
     }
-    const json = parseJsonText(text);
-    if (json == null || typeof json !== "object") {
-      const cut = choice?.finish_reason === "length" ? "resposta cortada pelo limite de tokens" : null;
-      return failure("invalid_json", response.status, cut ?? "texto sem JSON válido", used);
-    }
+    const json = readObject(choice?.message?.content ?? "");
+    if (!json) return fail(model, "invalid_json", response.status, "resposta sem o objeto pedido");
 
     return {
       ok: true,
       json,
-      text,
       provider: "openai",
-      model: used,
+      model,
       ...(payload.usage
         ? {
             usage: {
@@ -175,27 +139,25 @@ export const openAiProvider: AIProvider = {
   },
 
   /**
-   * Imagens pelo endpoint `/images/generations`. Com `stream`, a OpenAI emite
-   * SSE `data: { type: "image_generation.partial_image" | "image_generation.completed", b64_json }`,
-   * exactamente o que `stream-image.ts` lê; sem `stream`, devolve `{ data: [{ b64_json }] }`.
-   * O corpo é reencaminhado tal e qual: nada é descodificado no servidor.
+   * Com `stream`, a OpenAI emite SSE `data: { type: "image_generation.partial_image"
+   * | "image_generation.completed", b64_json }`, exactamente o que `stream-image.ts`
+   * lê; sem `stream`, devolve `{ data: [{ b64_json }] }`. O corpo é reencaminhado
+   * tal e qual: nada é descodificado no servidor.
    */
-  async generateImage(input: ImageInput): Promise<ImageResult> {
-    const used = input.model?.trim() || imageModel();
-    const key = apiKey();
-    if (!key) return failure("not_configured", null, "chave em falta", used);
+  async generateImage(input: ImageInput & { timeoutMs: number }): Promise<ImageResult> {
+    const model = process.env["AI_IMAGE_MODEL"]?.trim() || DEFAULT_IMAGE_MODEL;
     const stream = input.stream !== false;
-
+    // Só até chegarem os cabeçalhos: depois disso o corpo flui para o browser sem limite aqui.
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), input.timeoutMs);
 
     let response: Response;
     try {
       response = await fetch(`${baseUrl()}/images/generations`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        headers: { Authorization: `Bearer ${apiKey()}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: used,
+          model,
           prompt: input.prompt,
           ...(stream ? { stream: true, partial_images: PARTIAL_IMAGES } : {}),
         }),
@@ -203,13 +165,7 @@ export const openAiProvider: AIProvider = {
       });
     } catch (error) {
       clearTimeout(timer);
-      const aborted = (error as Error)?.name === "AbortError";
-      return failure(
-        aborted ? "timeout" : "unavailable",
-        null,
-        aborted ? "sem resposta dentro do tempo limite" : String((error as Error)?.message ?? error),
-        used,
-      );
+      return networkFailure(model, error);
     }
 
     if (!response.ok || !response.body) {
@@ -222,13 +178,18 @@ export const openAiProvider: AIProvider = {
       } catch {
         /* corpo não é JSON: fica o texto */
       }
-      return failure(codeFromStatus(response.status), response.status, detail, used);
+      return fail(model, codeFromStatus(response.status), response.status, detail);
     }
 
     if (stream) {
-      // Os cabeçalhos chegaram: o resto flui para o browser sem limite de tempo aqui.
       clearTimeout(timer);
-      return { ok: true, body: response.body, contentType: "text/event-stream", provider: "openai", model: used };
+      return {
+        ok: true,
+        body: response.body,
+        contentType: "text/event-stream",
+        provider: "openai",
+        model,
+      };
     }
 
     let raw = "";
@@ -236,8 +197,7 @@ export const openAiProvider: AIProvider = {
       raw = await response.text();
     } catch (error) {
       clearTimeout(timer);
-      const aborted = (error as Error)?.name === "AbortError";
-      return failure(aborted ? "timeout" : "unavailable", response.status, null, used);
+      return networkFailure(model, error);
     }
     clearTimeout(timer);
     return {
@@ -245,7 +205,7 @@ export const openAiProvider: AIProvider = {
       body: new Blob([raw]).stream() as ReadableStream<Uint8Array>,
       contentType: "application/json",
       provider: "openai",
-      model: used,
+      model,
     };
   },
 };

@@ -6,12 +6,31 @@
  * "quem é de Lisboa", "me diz aí quanto tempo", "levanta a mão quem já".
  * Nunca inventa frases: só classifica as que existem na transcrição.
  */
-import { AIError, chatJson, isConfigured } from "@/lib/ai/provider";
+import { AIError, chatJson, isConfigured } from "@/lib/ai/gateway.server";
+import { s, schema } from "@/lib/ai/schema";
 
 import type { ClassifiedPrompt } from "./events";
 import type { NormalizedSentence } from "./types";
 
 const BATCH = 60;
+
+export const PROMPTS = schema("audience_prompt_classes", {
+  prompts: s.array(
+    s.object({
+      id: s.string(),
+      isAudiencePrompt: s.boolean(),
+      promptType: s.string([
+        "REQUEST_LOCATION",
+        "REQUEST_TO_TYPE",
+        "REQUEST_CONFIRMATION",
+        "DIRECT_QUESTION",
+        "AUDIENCE_PROMPT",
+      ]),
+      expectedResponseType: s.string(["LOCATION", "KEYWORD", "CONFIRMATION", "ANSWER", "NONE"]),
+      confidence: s.number(),
+    }),
+  ),
+});
 
 export async function classifyAudiencePrompts(
   candidates: NormalizedSentence[],
@@ -43,12 +62,14 @@ async function askBatch(chunk: NormalizedSentence[]): Promise<ClassifiedPrompt[]
     "",
     `Frases:\n${lines}`,
     "",
-    'Responde só com JSON: {"prompts":[{"id":"<id da frase>","isAudiencePrompt":true|false,"promptType":"<tipo>","expectedResponseType":"<resposta>","confidence":<0 a 1>}]} — inclui todas as frases.',
+    "Classifica todas as frases, com confidence de 0 a 1.",
   ].join("\n");
 
   const result = await chatJson({
-    system: "Classificas frases de apresentadores. Devolves sempre JSON válido.",
+    task: "classification",
+    system: "Classificas frases de apresentadores.",
     user: prompt,
+    schema: PROMPTS,
   });
   if (!result.ok) throw new AIError(result);
 
