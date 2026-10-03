@@ -62,10 +62,19 @@ describe("automação base", () => {
     }
   });
 
-  it("as mensagens nascem vazias: não se activa sem as escrever", () => {
-    const blockers = activationBlockers(find("aquecimento").steps, channelStatus(true, true));
-    expect(blockers.some((b) => b.includes("falta mensagem"))).toBe(true);
-    expect(blockers.some((b) => b.includes("falta grupo"))).toBe(true);
+  it("as mensagens nascem escritas a partir dos modelos do utilizador; o upsell fica por escrever", () => {
+    expect(activationBlockers(find("aquecimento").steps, channelStatus(true, true))).toEqual([]);
+    expect(activationBlockers(find("lembretes").steps, channelStatus(true, true))).toEqual([]);
+    const posCompra = activationBlockers(find("pos-compra").steps, channelStatus(true, true));
+    expect(posCompra).toHaveLength(1);
+    expect(posCompra[0]).toContain("Upsell");
+    // Os textos usam só variáveis que o motor preenche; o resto fica entre parênteses rectos.
+    const known = new Set(["nome", "primeiro_nome", "email", "webinar", "data", "hora", "link", "link_oferta", "preco", "link_grupo", "link_replay", "produto"]);
+    for (const a of baseWorkflow())
+      for (const n of a.steps.nodes)
+        if (n.kind === "action")
+          for (const s of n.sends)
+            for (const m of `${s.subject ?? ""} ${s.message ?? ""}`.matchAll(/\{\{\s*([a-z_]+)\s*\}\}/g)) expect(known.has(m[1]!), m[1]).toBe(true);
   });
 });
 
@@ -99,47 +108,34 @@ describe("percurso de uma execução", () => {
     const r = walk(find("aquecimento").steps, "p2", { now, facts: {}, session, guards: [] });
     expect(r.status).toBe("next");
     expect(r.cursor).toBe("p3");
-    expect(r.scheduledFor.toISOString()).toBe("2026-10-01T20:00:00.000Z");
+    // O convite para o grupo sai 1 dia depois do obrigado.
+    expect(r.scheduledFor.toISOString()).toBe("2026-10-02T18:00:00.000Z");
   });
 
   it("espera relativa à sessão: 1 hora antes do início", () => {
     const steps = find("lembretes").steps;
-    const r = walk(steps, "p3", { now, facts: {}, session, guards: [] });
-    expect([r.cursor, r.scheduledFor.toISOString()]).toEqual(["p4", "2026-10-01T19:00:00.000Z"]);
+    const r = walk(steps, "p9", { now, facts: {}, session, guards: [] });
+    expect([r.cursor, r.scheduledFor.toISOString()]).toEqual(["p10", "2026-10-01T19:00:00.000Z"]);
   });
 
   it("um lembrete cuja hora já passou não sai (inscreveu-se tarde)", () => {
     const late = new Date("2026-10-01T19:30:00Z");
     const r = walk(find("lembretes").steps, "p1", { now: late, facts: {}, session, guards: [] });
-    // 1 dia antes e 1 hora antes já passaram: as duas mensagens ficam de fora; falta o de 15 min.
-    expect(r.cursor).toBe("p6");
+    // 7 dias, 4 dias, amanhã, hoje às 9 e 1 hora antes já passaram: ficam de fora; falta o de 15 min.
+    expect(r.cursor).toBe("p12");
     expect(r.scheduledFor.toISOString()).toBe("2026-10-01T19:45:00.000Z");
-    expect(r.log.filter((l) => l.outcome.includes("já tinha passado"))).toHaveLength(2);
+    expect(r.log.filter((l) => l.outcome.includes("já tinha passado"))).toHaveLength(5);
   });
 
-  it("ramo: participou e não comprou → recuperação, com as condições do caminho guardadas", () => {
-    const r = walk(find("pos-webinar").steps, "p1", {
-      now,
-      facts: { attended: true, purchased: false },
-      session,
-      guards: [],
-    });
-    expect(r.cursor).toBe("p5");
-    expect(r.scheduledFor.toISOString()).toBe("2026-10-01T20:00:00.000Z");
-    expect(r.guards).toEqual([
-      { fact: "attended", value: true },
-      { fact: "purchased", value: false },
-    ]);
-    expect(r.log.map((l) => l.branch)).toEqual(["yes", "no", undefined]);
-  });
-
-  it("ramo: não participou → replay imediato", () => {
-    const r = walk(find("pos-webinar").steps, "p1", { now, facts: { attended: false }, session, guards: [] });
-    expect([r.status, r.cursor]).toEqual(["next", "p2"]);
+  it("ramo: não comprou até ao fim → replay no dia seguinte às 9, com a condição do caminho guardada", () => {
+    const r = walk(find("pos-webinar").steps, "p1", { now, facts: { purchased: false }, session, guards: [] });
+    expect(r.cursor).toBe("p3");
+    expect(r.scheduledFor.toISOString()).toBe("2026-10-02T09:00:00.000Z");
+    expect(r.guards).toEqual([{ fact: "purchased", value: false }]);
   });
 
   it("ramo: comprou → a jornada termina", () => {
-    const r = walk(find("pos-webinar").steps, "p1", { now, facts: { attended: true, purchased: true }, session, guards: [] });
+    const r = walk(find("pos-webinar").steps, "p1", { now, facts: { purchased: true }, session, guards: [] });
     expect(r.status).toBe("done");
   });
 
@@ -228,7 +224,7 @@ describe("edição", () => {
       steps_log: [],
       automations: { name: "Pós-webinar", trigger_event: "webinar_session_ended", steps: find("pos-webinar").steps },
     });
-    expect(next).toEqual({ label: "Recuperação 1", channels: "Email · individual", at: "2026-10-01T20:00:00Z" });
+    expect(next).toEqual({ label: "Replay · segunda chamada", channels: "WhatsApp · individual", at: "2026-10-01T20:00:00Z" });
   });
 });
 
@@ -297,22 +293,23 @@ describe("condições do caminho com factos em falta", () => {
 });
 
 describe("duplicar um ramo", () => {
-  const flow = find("pos-webinar").steps;
+  // Checkout abandonado: espera (p1) → «Comprou?» (p2) → mensagens.
+  const flow = find("abandono").steps;
 
   it("a cópia fica logo a seguir ao original (no 'Sim'), sem mudar o início nem as outras ligações", () => {
-    const copy = duplicateNode(flow, "p3");
+    const copy = duplicateNode(flow, "p2");
     expect(copy.start).toBe("p1");
-    const original = copy.nodes.find((n) => n.id === "p3")!;
-    const dup = copy.nodes.find((n) => n.id === "p12")!;
-    expect(original).toMatchObject({ yes: "p12", no: "p4" });
+    const original = copy.nodes.find((n) => n.id === "p2")!;
+    const dup = copy.nodes.find((n) => n.id === "p8")!;
+    expect(original).toMatchObject({ yes: "p8", no: "p3" });
     expect(dup).toMatchObject({ kind: "branch", condition: { fact: "purchased", value: true }, yes: null, no: null });
     expect(validateSteps(copy)).toEqual([]);
     expect(unreachable(copy)).toEqual([]);
   });
 
   it("o percurso de quem passa pelo ramo não muda: a cópia faz a mesma pergunta e segue igual", () => {
-    const copy = duplicateNode(flow, "p3");
-    for (const facts of [{ attended: true, purchased: true }, { attended: true, purchased: false }, { attended: false }]) {
+    const copy = duplicateNode(flow, "p2");
+    for (const facts of [{ purchased: true }, { purchased: false }, {}]) {
       const before = walk(flow, flow.start, { now, facts, session, guards: [] });
       const after = walk(copy, copy.start, { now, facts, session, guards: [] });
       expect(after.cursor).toBe(before.cursor);
@@ -333,10 +330,10 @@ describe("lembretes fora de horas", () => {
 
   it("a mensagem de '1 hora antes' com o cursor já nela não sai depois da hora", () => {
     const at = (minutesBeforeStart: number) => new Date(Date.parse(session.startsAt) - minutesBeforeStart * 60_000);
-    expect(lateReminder(steps, "p4", at(60), session)).toBe(false); // à hora
-    expect(lateReminder(steps, "p4", at(58), session)).toBe(false); // 2 min de atraso
-    expect(lateReminder(steps, "p4", at(-30), session)).toBe(true); // 90 min de atraso, sessão já começou
-    expect(lateReminder(steps, "p4", at(-30), null)).toBe(false); // sem sessão: a espera não se aplica
+    expect(lateReminder(steps, "p10", at(60), session)).toBe(false); // à hora
+    expect(lateReminder(steps, "p10", at(58), session)).toBe(false); // 2 min de atraso
+    expect(lateReminder(steps, "p10", at(-30), session)).toBe(true); // 90 min de atraso, sessão já começou
+    expect(lateReminder(steps, "p10", at(-30), null)).toBe(false); // sem sessão: a espera não se aplica
   });
 
   it("uma mensagem que não vem de uma espera antes da sessão nunca é 'fora de horas'", () => {
@@ -347,22 +344,14 @@ describe("lembretes fora de horas", () => {
 describe("audiences", () => {
   const steps = (key: string) => baseWorkflow().find((a) => a.key === key)!.steps;
 
-  it("separa quem não assistiu de quem assistiu e não comprou; quem comprou não recebe nada", () => {
+  it("quem não comprou recebe o replay, «só o filé» e o fecho do carrinho; quem comprou não recebe nada", () => {
     expect(audiences(steps("pos-webinar"))).toEqual([
-      {
-        who: [
-          { fact: "attended", value: true },
-          { fact: "purchased", value: false },
-        ],
-        channels: ["email", "whatsapp", "sms"],
-        messages: 4,
-      },
-      { who: [{ fact: "attended", value: false }], channels: ["email", "whatsapp", "sms"], messages: 1 },
+      { who: [{ fact: "purchased", value: false }], channels: ["email", "whatsapp"], messages: 6 },
     ]);
   });
 
   it("sem ramos é um caminho só, para todos", () => {
-    expect(audiences(steps("aquecimento"))).toEqual([{ who: [], channels: ["email", "whatsapp"], messages: 2 }]);
+    expect(audiences(steps("aquecimento"))).toEqual([{ who: [], channels: ["email"], messages: 2 }]);
   });
 });
 
@@ -372,14 +361,14 @@ describe("stepLayout", () => {
   it("põe cada ramo na sua linha e as esperas nas legendas", () => {
     const { items, edges, rows } = stepLayout(steps("pos-webinar"));
     const at = (id: string) => items.find((i) => i.node.id === id);
-    expect(rows).toBe(2);
-    // Participou? → Sim segue para «Comprou?» na linha 0; Não vai para o replay na linha 1.
+    // «Comprou → nada» não ocupa linha: o replay fica na mesma linha do «Comprou?».
+    expect(rows).toBe(1);
     expect(at("p1")).toMatchObject({ col: 0, row: 0 });
     expect(at("p3")).toMatchObject({ col: 1, row: 0 });
-    expect(at("p2")).toMatchObject({ col: 1, row: 1 });
-    // «Comprou → nada» não ocupa linha: a recuperação fica na mesma linha do «Comprou?».
     expect(at("p5")).toMatchObject({ col: 2, row: 0 });
-    expect(edges).toContainEqual({ from: "p3", to: "p5", handle: "no", label: "Não comprou", wait: "Esperar 2 horas" });
+    const toReplay = edges.find((e) => e.from === "p1" && e.to === "p3");
+    expect(toReplay).toMatchObject({ handle: "no", label: "Não comprou" });
+    expect(toReplay?.wait).toContain("09:00");
     expect(items.some((i) => i.node.kind === ("wait" as string))).toBe(false);
   });
 

@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Archive, Check, ExternalLink, Trash2, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { NavTabs } from "@/components/ds/navigation";
@@ -48,8 +48,12 @@ import {
   newId,
   nodeMap,
   nodeTitle,
+  ORIGIN_LABEL,
+  ORIGIN_PLACEMENTS,
   ORIGINS,
+  originParts,
   PAGE_TYPE_LABEL,
+  PAID_ORIGINS,
   readCanvas,
   readSteps,
   triggerTitle,
@@ -98,6 +102,14 @@ function WorkflowPage() {
   const ids = automations.map((a) => a.id);
   const { data: runs = [] } = useAutomationRuns({ automationIds: ids }, 500);
   const [open, setOpen] = useState<Selected | null>(null);
+  const [full, setFull] = useState(false);
+  // Esc sai do ecrã inteiro.
+  useEffect(() => {
+    if (!full) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setFull(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [full]);
   const queryClient = useQueryClient();
   const tab = search.tab ?? "fluxo";
   const status = channelStatus(Boolean(workspace?.isTest), destination.ready);
@@ -195,7 +207,7 @@ function WorkflowPage() {
     const id = `${component.kind === "page" ? "pagina" : component.kind === "group" ? "grupo" : "origem"}-${Date.now().toString(36)}`;
     const node: CanvasNode =
       component.kind === "page"
-        ? { id, kind: "page", name: PAGE_TYPE_LABEL[component.pageType], url: "", pageType: component.pageType }
+        ? { id, kind: "page", name: component.pageType === "outro" ? "Página" : PAGE_TYPE_LABEL[component.pageType], url: "", pageType: component.pageType }
         : component.kind === "group"
           ? { id, kind: "group", name: "Grupo do lançamento", url: "" }
           : { id, kind: "origin", source: component.source };
@@ -335,8 +347,10 @@ function WorkflowPage() {
                 );
               })}
             </ul>
-            <div className="relative h-[calc(100dvh-15rem)] min-h-[32rem] rounded-card bg-card">
+            <div className={cn(full ? "fixed inset-0 z-50 bg-card p-3" : "relative h-[calc(100dvh-15rem)] min-h-[32rem] rounded-card bg-card")}>
               <FlowMap
+                full={full}
+                onToggleFull={() => setFull((f) => !f)}
                 automations={automations}
                 canvas={canvas}
                 forms={forms}
@@ -389,32 +403,41 @@ function CanvasNodeSettings({ node, onSave, onRemove }: { node: CanvasNode; onSa
   return (
       <div className="space-y-6">
         {draft.kind === "page" ? (
-          <div className="space-y-3">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Que página é esta?</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {(Object.keys(PAGE_TYPE_LABEL) as PageType[])
+                  .filter((t) => t !== "inscricao")
+                  .map((t) => {
+                    const on = draft.pageType === t;
+                    const defaults = new Set(["Página", ...Object.values(PAGE_TYPE_LABEL)]);
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => setDraft({ ...draft, pageType: t, name: defaults.has(draft.name) ? PAGE_TYPE_LABEL[t] : draft.name })}
+                        className={cn(
+                          "h-8 rounded-pill px-3 text-xs ring-1 transition-colors",
+                          on ? "bg-navy text-white ring-navy" : "bg-white ring-[var(--border-subtle)] hover:bg-gray-50",
+                        )}
+                      >
+                        {PAGE_TYPE_LABEL[t]}
+                      </button>
+                    );
+                  })}
+              </div>
+              <p className="text-xs text-muted-foreground">A página de inscrição é a do formulário (Configuração → Captura).</p>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="page-name">Nome</Label>
               <Input id="page-name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="page-url">URL</Label>
+              <Label htmlFor="page-url">Endereço</Label>
               <Input id="page-url" value={draft.url} placeholder="https://meusite.com/checkout" onChange={(e) => setDraft({ ...draft, url: e.target.value })} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Tipo</Label>
-              <Select value={draft.pageType} onValueChange={(v) => setDraft({ ...draft, pageType: v as PageType })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(PAGE_TYPE_LABEL) as PageType[])
-                    .filter((t) => t !== "inscricao")
-                    .map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {PAGE_TYPE_LABEL[t]}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">A página de inscrição é a do formulário (Configuração → Captura).</p>
+              <p className="text-xs text-muted-foreground">A página vive fora da plataforma. O endereço entra nas mensagens e diz-nos quem lá chegou.</p>
             </div>
           </div>
         ) : draft.kind === "group" ? (
@@ -430,24 +453,42 @@ function CanvasNodeSettings({ node, onSave, onRemove }: { node: CanvasNode; onSa
             </div>
           </div>
         ) : (
-          <div className="space-y-1.5">
-            <Label>Origem</Label>
-            <Select value={draft.source} onValueChange={(v) => setDraft({ ...draft, source: v })}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ORIGINS.map((o) => (
-                  <SelectItem key={o} value={o}>
-                    {o}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Só representa a origem no fluxo. Os dados reais de origem são as UTM de cada inscrição; não se gerem campanhas aqui.
-            </p>
-          </div>
+          (() => {
+            const parts = originParts(draft);
+            const platform = parts.platform as (typeof ORIGINS)[number];
+            const placements = ORIGIN_PLACEMENTS[platform] ?? [];
+            const chip = (on: boolean) =>
+              cn("h-8 rounded-pill px-3 text-xs ring-1 transition-colors", on ? "bg-navy text-white ring-navy" : "bg-white ring-[var(--border-subtle)] hover:bg-gray-50");
+            return (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Plataforma</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ORIGINS.map((o) => (
+                      <button key={o} type="button" aria-pressed={platform === o} className={chip(platform === o)} onClick={() => setDraft({ ...draft, source: o, placement: undefined })}>
+                        {ORIGIN_LABEL[o]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {placements.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>{PAID_ORIGINS.has(platform) ? "Onde anuncia?" : "Em que rede?"}</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {placements.map((p) => (
+                        <button key={p} type="button" aria-pressed={parts.placement === p} className={chip(parts.placement === p)} onClick={() => setDraft({ ...draft, source: platform, placement: p })}>
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Só representa a origem no fluxo. Os dados reais de origem são as UTM de cada inscrição; não se gerem campanhas aqui.
+                </p>
+              </div>
+            );
+          })()
         )}
         <div className="flex flex-wrap justify-between gap-2">
           <Button variant="ghost" className="text-destructive" onClick={() => onRemove(draft.id)}>

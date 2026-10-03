@@ -17,6 +17,7 @@ import {
   type TriggerEvent,
 } from "@/lib/automations";
 import { parseTime, zonedTimeToMs, zoneParts } from "@/lib/schedule";
+import { BASE_MESSAGES } from "./base-messages";
 
 /* ---------- Passos ---------- */
 
@@ -499,6 +500,7 @@ export const MESSAGE_VARIABLES = [
   { key: "link_oferta", label: "Link da oferta (checkout)" },
   { key: "preco", label: "Preço da oferta" },
   { key: "link_grupo", label: "Link do grupo de WhatsApp" },
+  { key: "link_replay", label: "Link do replay" },
   { key: "produto", label: "Produto do pagamento" },
 ] as const;
 
@@ -515,6 +517,7 @@ const LINK_SOURCE = {
   link: "o endereço da sala do webinar",
   link_oferta: "o link da oferta no webinar",
   link_grupo: "o link do grupo de WhatsApp no Fluxo",
+  link_replay: "o replay ligado no webinar",
 } as const;
 
 /**
@@ -554,10 +557,35 @@ export const PAGE_TYPE_LABEL: Record<PageType, string> = {
   replay: "Replay",
   outro: "Outra",
 };
-export const ORIGINS = ["Facebook", "Instagram", "YouTube", "Google", "TikTok", "Orgânico", "Email", "Outro"] as const;
+/** Plataformas de tráfego: pagas (Meta, Google, TikTok) e orgânicas. O sítio onde se anuncia escolhe-se ao clicar no nó. */
+export const ORIGINS = ["Meta", "Google", "TikTok", "Orgânico", "Email", "Outro"] as const;
+export type OriginPlatform = (typeof ORIGINS)[number];
+export const ORIGIN_LABEL: Record<OriginPlatform, string> = { Meta: "Meta Ads", Google: "Google Ads", TikTok: "TikTok Ads", Orgânico: "Orgânico", Email: "Email", Outro: "Outro" };
+export const ORIGIN_PLACEMENTS: Record<OriginPlatform, string[]> = {
+  Meta: ["Facebook", "Instagram", "Facebook e Instagram"],
+  Google: ["Pesquisa", "YouTube", "Display"],
+  TikTok: ["TikTok"],
+  Orgânico: ["Instagram", "YouTube", "TikTok", "Facebook", "LinkedIn", "Indicação"],
+  Email: ["Lista própria", "Parceiro"],
+  Outro: [],
+};
+export const PAID_ORIGINS = new Set<string>(["Meta", "Google", "TikTok"]);
+/** Origens antigas, guardadas como rede (Facebook, Instagram, YouTube), lêem-se como plataforma + sítio. */
+export function originParts(node: { source: string; placement?: string | undefined }): { platform: string; placement?: string } {
+  if (node.placement || (ORIGINS as readonly string[]).includes(node.source)) return { platform: node.source, ...(node.placement ? { placement: node.placement } : {}) };
+  if (node.source === "Facebook" || node.source === "Instagram") return { platform: "Meta", placement: node.source };
+  if (node.source === "YouTube") return { platform: "Google", placement: "YouTube" };
+  return { platform: node.source };
+}
+export function originTitle(node: { source: string; placement?: string | undefined }) {
+  const p = originParts(node);
+  const platform = ORIGIN_LABEL[p.platform as OriginPlatform] ?? p.platform;
+  return p.placement ? `${platform} · ${p.placement}` : platform;
+}
 
 export type CanvasNode =
-  | { id: string; kind: "origin"; source: string; note?: string }
+  /** Origem de tráfego: a plataforma (Meta, Google, TikTok, Orgânico…) e, se escolhido, o sítio (Instagram, Pesquisa, YouTube…). */
+  | { id: string; kind: "origin"; source: string; placement?: string | undefined; note?: string }
   | { id: string; kind: "page"; name: string; url: string; pageType: PageType }
   /** Grupo de WhatsApp para onde a página de obrigado leva (link de convite). Só representação. */
   | { id: string; kind: "group"; name: string; url: string };
@@ -767,9 +795,37 @@ function chain(nodes: StepNode[]): Steps {
   return { start: nodes[0]?.id ?? null, nodes: linked };
 }
 
+/** Um envio com o texto do modelo do utilizador (docs/automacao/modelo-de-disparo, via base-messages.ts). */
+const tpl = (channel: Channel, id: string, target: Target = "contact"): Send => {
+  const t = BASE_MESSAGES[id];
+  return {
+    channel,
+    target,
+    ...(target === "group" ? { group: "Grupo do lançamento" } : {}),
+    ...(channel === "email" && t?.subject ? { subject: t.subject } : {}),
+    ...(t?.body ? { message: t.body } : {}),
+  };
+};
+/** [PROPOSTA] Um envio curto nosso, para os momentos que o modelo do utilizador não cobre. */
+const short = (channel: Channel, message: string, target: Target = "contact"): Send => ({
+  channel,
+  target,
+  ...(target === "group" ? { group: "Grupo do lançamento" } : {}),
+  message,
+});
+const wait = (id: string, mode: WaitMode, minutes: number, time?: string): WaitNode => ({ id, kind: "wait", mode, minutes, ...(time ? { time } : {}), next: null });
+const act = (id: string, label: string, sends: Send[]): ActionNode => ({ id, kind: "action", label, sends, next: null });
+const HOUR_BEFORE = "Falta 1 hora para o {{webinar}}. Entre uns minutos antes para garantir o seu lugar: {{link}}";
+const MIN_15 = "Começamos em 15 minutos! Entre agora: {{link}}";
+const STARTED = "O {{webinar}} já começou e ainda dá tempo de entrar: {{link}}";
+const CLICKED = "Vi que você abriu a página da oferta. Ficou alguma dúvida? Responda por aqui que eu ajudo. Para concluir: {{link_oferta}}";
+const DAY = 1440;
+
 /**
- * O esqueleto que nasce com "Criar automação base": pré-evento, evento e pós-evento, com as
- * mensagens por escrever. Nasce tudo desligado; o utilizador configura e activa.
+ * As automações prontas de um fluxo, pela ordem do lançamento do utilizador (docs/automacao):
+ * obrigado e pesquisa, convite para o grupo, faltam 7 e 4 dias, amanhã, hoje, 1 hora, 15 minutos,
+ * ao vivo, replay, «só o filé», encerra hoje, última chamada, carrinho, pagamento, boas-vindas.
+ * Nascem desligadas, com os textos dos modelos; o que o motor não preenche vai entre parênteses rectos.
  */
 export function baseWorkflow(): BaseAutomation[] {
   return [
@@ -779,15 +835,9 @@ export function baseWorkflow(): BaseAutomation[] {
       trigger_event: "webinar_registered",
       conditions: [],
       steps: chain([
-        { id: "p1", kind: "action", label: "Agradecimento", sends: [empty("email"), empty("whatsapp")], next: null },
-        { id: "p2", kind: "wait", mode: "delay", minutes: 120, next: null },
-        {
-          id: "p3",
-          kind: "action",
-          label: "Aquecimento",
-          sends: [empty("email"), empty("whatsapp"), empty("whatsapp", "group")],
-          next: null,
-        },
+        act("p1", "Obrigado e pesquisa", [tpl("email", "ppl_email_inscricao_pesquisa")]),
+        wait("p2", "delay", DAY),
+        act("p3", "Convite para o grupo", [tpl("email", "ppl_email_grupo_whatsapp")]),
       ]),
     },
     {
@@ -796,18 +846,18 @@ export function baseWorkflow(): BaseAutomation[] {
       trigger_event: "webinar_registered",
       conditions: [],
       steps: chain([
-        { id: "p1", kind: "wait", mode: "before_session", minutes: 1440, next: null },
-        { id: "p2", kind: "action", label: "Lembrete 1 dia", sends: [empty("email"), empty("whatsapp")], next: null },
-        { id: "p3", kind: "wait", mode: "before_session", minutes: 60, next: null },
-        { id: "p4", kind: "action", label: "Lembrete 1 hora", sends: [empty("email"), empty("whatsapp"), empty("sms")], next: null },
-        { id: "p5", kind: "wait", mode: "before_session", minutes: 15, next: null },
-        {
-          id: "p6",
-          kind: "action",
-          label: "Lembrete 15 minutos",
-          sends: [empty("whatsapp"), empty("whatsapp", "group")],
-          next: null,
-        },
+        wait("p1", "before_session", 7 * DAY, "09:00"),
+        act("p2", "Faltam 7 dias", [tpl("email", "ppl_email_faltam_7"), tpl("whatsapp", "ppl_wpp_faltam_7")]),
+        wait("p3", "before_session", 4 * DAY, "09:00"),
+        act("p4", "Faltam 4 dias", [tpl("email", "ppl_email_faltam_4"), tpl("whatsapp", "ppl_wpp_faltam_4")]),
+        wait("p5", "before_session", DAY, "09:00"),
+        act("p6", "É amanhã", [tpl("email", "ppl_email_amanha"), tpl("whatsapp", "ppl_wpp_amanha")]),
+        wait("p7", "before_session", 0, "09:00"),
+        act("p8", "É hoje", [tpl("email", "pl_email_hoje"), tpl("whatsapp", "pl_wpp_hoje")]),
+        wait("p9", "before_session", 60),
+        act("p10", "Falta 1 hora", [short("whatsapp", HOUR_BEFORE), short("sms", HOUR_BEFORE)]),
+        wait("p11", "before_session", 15),
+        act("p12", "Faltam 15 minutos", [short("whatsapp", MIN_15), short("whatsapp", MIN_15, "group")]),
       ]),
     },
     {
@@ -818,9 +868,10 @@ export function baseWorkflow(): BaseAutomation[] {
       steps: {
         start: "p1",
         nodes: [
-          { id: "p1", kind: "wait", mode: "delay", minutes: 10, next: "p2" },
-          { id: "p2", kind: "branch", label: "Entrou?", condition: { fact: "entered", value: true }, yes: null, no: "p3" },
-          { id: "p3", kind: "action", label: "Já começou (não entrou)", sends: [empty("whatsapp"), empty("sms")], next: null },
+          { ...act("p1", "Estamos ao vivo", [tpl("email", "pl_email_ao_vivo"), tpl("whatsapp", "pl_wpp_ao_vivo"), tpl("whatsapp", "pl_wpp_ao_vivo", "group")]), next: "p2" },
+          { ...wait("p2", "delay", 10), next: "p3" },
+          { id: "p3", kind: "branch", label: "Entrou?", condition: { fact: "entered", value: true }, yes: null, no: "p4" },
+          act("p4", "Já começou, entre agora", [short("whatsapp", STARTED), short("sms", STARTED)]),
         ],
       },
     },
@@ -832,13 +883,14 @@ export function baseWorkflow(): BaseAutomation[] {
       steps: {
         start: "p1",
         nodes: [
-          { id: "p1", kind: "wait", mode: "delay", minutes: 30, next: "p2" },
+          { ...wait("p1", "delay", 30), next: "p2" },
           { id: "p2", kind: "branch", label: "Comprou?", condition: { fact: "purchased", value: true }, yes: null, no: "p3" },
-          { id: "p3", kind: "action", label: "Ajuda para comprar", sends: [empty("whatsapp")], next: null },
+          act("p3", "Ajuda para comprar", [short("whatsapp", CLICKED)]),
         ],
       },
     },
     {
+      // Quem não comprou até ao fim recebe o replay, «só o filé» e o fecho do carrinho; a compra cancela o resto.
       key: "pos-webinar",
       name: "Pós-webinar",
       trigger_event: "webinar_session_ended",
@@ -846,31 +898,42 @@ export function baseWorkflow(): BaseAutomation[] {
       steps: {
         start: "p1",
         nodes: [
-          { id: "p1", kind: "branch", label: "Participou?", condition: { fact: "attended", value: true }, yes: "p3", no: "p2" },
-          { id: "p2", kind: "action", label: "No-show: replay", sends: [empty("email"), empty("whatsapp"), empty("sms")], next: null },
-          { id: "p3", kind: "branch", label: "Comprou?", condition: { fact: "purchased", value: true }, yes: null, no: "p4" },
-          { id: "p4", kind: "wait", mode: "delay", minutes: 120, next: "p5" },
-          { id: "p5", kind: "action", label: "Recuperação 1", sends: [empty("email")], next: "p6" },
-          { id: "p6", kind: "wait", mode: "delay", minutes: 120, next: "p7" },
-          { id: "p7", kind: "action", label: "Recuperação 2", sends: [empty("whatsapp")], next: "p8" },
-          { id: "p8", kind: "wait", mode: "delay", minutes: 1440, next: "p9" },
-          { id: "p9", kind: "action", label: "Recuperação 3", sends: [empty("sms")], next: "p10" },
-          { id: "p10", kind: "wait", mode: "delay", minutes: 1440, next: "p11" },
-          { id: "p11", kind: "action", label: "Recuperação 4", sends: [empty("email")], next: null },
+          { id: "p1", kind: "branch", label: "Comprou?", condition: { fact: "purchased", value: true }, yes: null, no: "p2" },
+          ...chain([
+            wait("p2", "after_session", DAY, "09:00"),
+            act("p3", "Replay disponível", [tpl("email", "l_email_replay"), tpl("whatsapp", "l_wpp_replay_1")]),
+            wait("p4", "delay", 6 * 60),
+            act("p5", "Replay · segunda chamada", [tpl("whatsapp", "l_wpp_replay_2")]),
+            wait("p6", "after_session", 2 * DAY, "09:00"),
+            act("p7", "Só o filé", [tpl("email", "l_email_so_o_file"), tpl("whatsapp", "l_wpp_so_o_file_1")]),
+            wait("p8", "delay", 6 * 60),
+            act("p9", "Só o filé · segunda chamada", [tpl("whatsapp", "l_wpp_so_o_file_2")]),
+            wait("p10", "after_session", 3 * DAY, "09:00"),
+            act("p11", "Encerra hoje", [tpl("email", "l_email_encerra_hoje"), tpl("whatsapp", "l_wpp_encerra_hoje")]),
+            wait("p12", "after_session", 3 * DAY, "20:00"),
+            act("p13", "Última chamada", [tpl("email", "l_email_ultima_chamada"), tpl("whatsapp", "l_wpp_ultima_chamada")]),
+          ]).nodes,
         ],
       },
     },
     {
+      // Começou a pagar e, 15 minutos depois, ainda não comprou (modelo do utilizador).
       key: "abandono",
       name: "Checkout abandonado",
-      trigger_event: "checkout_abandoned",
+      trigger_event: "checkout_started",
       conditions: [],
       steps: {
         start: "p1",
         nodes: [
-          { id: "p1", kind: "wait", mode: "delay", minutes: 30, next: "p2" },
+          { ...wait("p1", "delay", 15), next: "p2" },
           { id: "p2", kind: "branch", label: "Comprou?", condition: { fact: "purchased", value: true }, yes: null, no: "p3" },
-          { id: "p3", kind: "action", label: "Recuperar checkout", sends: [empty("email"), empty("whatsapp"), empty("sms")], next: null },
+          ...chain([
+            act("p3", "Posso ajudar a concluir?", [tpl("whatsapp", "rec_wpp_carrinho_abandonado")]),
+            wait("p4", "delay", 45),
+            act("p5", "Operação em aberto", [tpl("email", "rec_email_carrinho_abandonado_1")]),
+            wait("p6", "delay", 23 * 60),
+            act("p7", "Precisa de ajuda?", [tpl("email", "rec_email_carrinho_abandonado_2")]),
+          ]).nodes,
         ],
       },
     },
@@ -883,7 +946,7 @@ export function baseWorkflow(): BaseAutomation[] {
         start: "p1",
         nodes: [
           { id: "p1", kind: "branch", label: "Comprou?", condition: { fact: "purchased", value: true }, yes: null, no: "p2" },
-          { id: "p2", kind: "action", label: "Outra forma de pagar", sends: [empty("email"), empty("whatsapp"), empty("sms")], next: null },
+          act("p2", "Outra forma de pagar", [tpl("email", "rec_email_pagamento_recusado_1")]),
         ],
       },
     },
@@ -895,11 +958,13 @@ export function baseWorkflow(): BaseAutomation[] {
       steps: {
         start: "p1",
         nodes: [
-          { id: "p1", kind: "action", label: "Boas-vindas e acesso", sends: [empty("email"), empty("whatsapp")], next: "p2" },
-          { id: "p2", kind: "wait", mode: "delay", minutes: 2880, next: "p3" },
+          { ...act("p1", "Boas-vindas", [tpl("email", "pos_email_compra_aprovada_1")]), next: "p2" },
+          { ...wait("p2", "delay", 5), next: "p3" },
+          { ...act("p3", "Matrícula concluída", [tpl("whatsapp", "pos_wpp_compra_aprovada")]), next: "p4" },
+          { ...wait("p4", "delay", 2 * DAY), next: "p5" },
           // Reembolsou entretanto? Então já não comprou: o upsell não sai.
-          { id: "p3", kind: "branch", label: "Continua cliente?", condition: { fact: "purchased", value: true }, yes: "p4", no: null },
-          { id: "p4", kind: "action", label: "Upsell", sends: [empty("email")], next: null },
+          { id: "p5", kind: "branch", label: "Continua cliente?", condition: { fact: "purchased", value: true }, yes: "p6", no: null },
+          act("p6", "Upsell", [empty("email")]),
         ],
       },
     },
@@ -917,7 +982,7 @@ export function baseWorkflow(): BaseAutomation[] {
 export function baseCanvas(): Canvas {
   return {
     nodes: [
-      { id: "origem", kind: "origin", source: "Facebook" },
+      { id: "origem", kind: "origin", source: "Meta" },
       { id: "checkout", kind: "page", name: "Página de checkout", url: "", pageType: "checkout" },
       { id: "obrigado", kind: "page", name: "Página de obrigado", url: "", pageType: "obrigado" },
     ],

@@ -20,6 +20,8 @@ import {
   DollarSign,
   FileText,
   GitFork,
+  Maximize2,
+  Minimize2,
   PlayCircle,
   Plus,
   Send as SendIcon,
@@ -39,7 +41,10 @@ import {
   audiences,
   negate,
   nodeTitle,
+  originParts,
+  originTitle,
   PAGE_TYPE_LABEL,
+  PAID_ORIGINS,
   readSteps,
   stageOf,
   stepLayout,
@@ -171,7 +176,7 @@ function WaitStrip({ text }: { text: string }) {
 
 /* ---------- Nós da jornada ---------- */
 
-type OriginData = { source: string; onClick: () => void };
+type OriginData = { source: string; placement?: string | undefined; onClick: () => void };
 type PageData = { name: string; url: string; pageType: PageType; image?: string | null; stat?: string | undefined; onClick: () => void };
 type GroupData = { name: string; onClick: () => void };
 type HubData = {
@@ -186,9 +191,11 @@ type HubData = {
 };
 
 function OriginNode({ data }: NodeProps<Node<OriginData>>) {
+  const parts = originParts(data);
+  const kicker = `${PAID_ORIGINS.has(parts.platform) ? "Tráfego pago" : "Tráfego"}${parts.placement ? "" : " · clique para dizer onde"}`;
   return (
     <Card onClick={data.onClick} className="w-[220px]">
-      <Header tile="bg-white ring-1 ring-gray-200" icon={<BrandLogo name={data.source} className="size-[18px]" />} kicker="Tráfego" title={data.source} />
+      <Header tile="bg-white ring-1 ring-gray-200" icon={<BrandLogo name={parts.platform} className="size-[18px]" />} kicker={kicker} title={originTitle(data)} />
       <Side type="source" position={Position.Right} />
     </Card>
   );
@@ -233,7 +240,12 @@ function PageNode({ data }: NodeProps<Node<PageData>>) {
   return (
     <Card onClick={data.onClick} className="w-[220px]">
       <Side type="target" position={Position.Left} top={HEADER_H / 2} />
-      <Header tile="bg-gray-100 text-gray-700" icon={<FileText className="size-4" strokeWidth={1.75} aria-hidden />} kicker={`Página · ${PAGE_TYPE_LABEL[data.pageType]}`} title={data.name} />
+      <Header
+        tile="bg-gray-100 text-gray-700"
+        icon={<FileText className="size-4" strokeWidth={1.75} aria-hidden />}
+        kicker={data.pageType === "outro" ? "Página · clique para dizer qual" : `Página · ${PAGE_TYPE_LABEL[data.pageType]}`}
+        title={data.name}
+      />
       <div className="mx-3 mb-3 h-28 overflow-hidden rounded-xl ring-1 ring-gray-200">
         <PagePreview type={data.pageType} image={data.image} />
       </div>
@@ -497,13 +509,18 @@ export function buildFlow(input: {
   const column = origins.length + 1;
   const originY = (i: number) => (i - (column - 1) / 2) * 72 + 30;
   origins.forEach((o, i) =>
-    nodes.push({ id: `origin:${o.id}`, type: "origin", position: pos(`origin:${o.id}`, 0, originY(i)), data: { source: o.source, onClick: () => input.onEditCanvasNode(o) } }),
+    nodes.push({
+      id: `origin:${o.id}`,
+      type: "origin",
+      position: pos(`origin:${o.id}`, 0, originY(i)),
+      data: { source: o.source, placement: o.placement, onClick: () => input.onEditCanvasNode(o) } satisfies OriginData,
+    }),
   );
   nodes.push({
     id: "origin:add",
     type: "addOrigin",
     position: pos("origin:add", 0, originY(origins.length)),
-    data: { onClick: () => input.onEditCanvasNode({ id: `origem-${Date.now().toString(36)}`, kind: "origin", source: "Facebook" }) },
+    data: { onClick: () => input.onEditCanvasNode({ id: `origem-${Date.now().toString(36)}`, kind: "origin", source: "Meta" }) },
   });
   x += COL;
 
@@ -707,6 +724,9 @@ export function FlowMap(
     onAddComponent: (component: FlowComponent, at?: XY, automationId?: string) => void;
     onMoveNodes: (moves: Record<string, XY>) => void;
     onResetLayout: () => void;
+    /** Ecrã inteiro: o mapa ocupa a janela toda para se trabalhar à vontade. */
+    full?: boolean | undefined;
+    onToggleFull?: (() => void) | undefined;
   },
 ) {
   const [mounted, setMounted] = useState(false);
@@ -772,14 +792,27 @@ export function FlowMap(
           <Controls showInteractive={false} position="bottom-right" className="!overflow-hidden !rounded-xl !border-0 !shadow-pop" />
         </ReactFlow>
         <ToolsPanel onAdd={(c) => props.onAddComponent(c, undefined, lastAutomation.current)} />
-        <button
-          type="button"
-          onClick={props.onResetLayout}
-          title="Volta a pôr tudo no sítio automático"
-          className="absolute top-3 right-3 z-10 inline-flex h-9 items-center rounded-pill bg-white px-4 text-sm shadow-pop ring-1 ring-gray-200 hover:bg-gray-50"
-        >
-          Organizar
-        </button>
+        <div className="absolute top-3 right-3 z-10 flex gap-2">
+          {props.onToggleFull && (
+            <button
+              type="button"
+              onClick={props.onToggleFull}
+              title={props.full ? "Sair do ecrã inteiro (Esc)" : "Trabalhar em ecrã inteiro"}
+              className="inline-flex h-9 items-center gap-1.5 rounded-pill bg-white px-4 text-sm shadow-pop ring-1 ring-gray-200 hover:bg-gray-50"
+            >
+              {props.full ? <Minimize2 className="size-4" aria-hidden /> : <Maximize2 className="size-4" aria-hidden />}
+              {props.full ? "Sair" : "Ecrã inteiro"}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={props.onResetLayout}
+            title="Volta a pôr tudo no sítio automático"
+            className="inline-flex h-9 items-center rounded-pill bg-white px-4 text-sm shadow-pop ring-1 ring-gray-200 hover:bg-gray-50"
+          >
+            Organizar
+          </button>
+        </div>
       </div>
       <JourneyList {...props} />
     </>

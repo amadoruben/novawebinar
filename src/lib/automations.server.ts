@@ -80,7 +80,7 @@ async function payloadFor(run: Run) {
     run.webinar_id
       ? supabaseAdmin
           .from("webinars")
-          .select("id, public_title, internal_name, slug, timezone, cta_url, cta_price_now")
+          .select("id, public_title, internal_name, slug, timezone, cta_url, cta_price_now, replay_enabled")
           .eq("id", run.webinar_id)
           .eq("organization_id", org)
           .maybeSingle()
@@ -114,6 +114,7 @@ async function payloadFor(run: Run) {
     offer: w?.cta_url ? { url: w.cta_url, price: w.cta_price_now || null } : null,
     group_url: group?.kind === "group" ? group.url : null,
     room_url: w ? `${APP_URL}/w/${w.slug}` : null,
+    replay_url: w?.replay_enabled ? `${APP_URL}/replay/${w.id}` : null,
     session: s ? { id: s.id, starts_at: s.starts_at, ends_at: s.ends_at } : null,
     contact: { id: c.id, name: c.name, email: c.email, phone: c.phone },
     facts: run.facts,
@@ -235,6 +236,7 @@ async function executeAction(
     link_oferta: data.offer?.url ?? "",
     preco: data.offer?.price ?? "",
     link_grupo: data.group_url ?? "",
+    link_replay: data.replay_url ?? "",
     produto: typeof data.purchase?.product === "string" ? data.purchase.product : "",
   };
   const entry: LogEntry = { node: node.id, kind: "action", at: new Date().toISOString(), outcome: "", sends: [] };

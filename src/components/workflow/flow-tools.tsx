@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState, type DragEvent, type ReactNode } from "re
 import { BrandLogo } from "@/components/ds/brand-icons";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { baseWorkflow, ORIGINS, triggerTitle, type PageType } from "@/lib/workflow";
+import { baseWorkflow, ORIGIN_LABEL, ORIGIN_PLACEMENTS, ORIGINS, triggerTitle, type PageType } from "@/lib/workflow";
 import type { FlowComponent } from "./flow-map";
 import { Glyph, LOOK, type Look } from "./flow-look";
 import { PALETTE } from "./step-panel";
@@ -43,15 +43,16 @@ function buildCatalog(): Category[] {
   return [
     {
       key: "trafego",
-      label: "Redes sociais",
-      short: "Redes",
+      label: "Tráfego",
+      short: "Tráfego",
       icon: Megaphone,
-      hint: "De onde vêm as pessoas",
+      hint: "Pago (Meta, Google, TikTok) ou orgânico. Onde anuncia escolhe-se ao clicar no nó.",
       grid: true,
       items: ORIGINS.map((o) => ({
         key: `origin-${o}`,
         component: { kind: "origin", source: o },
-        label: o,
+        label: ORIGIN_LABEL[o],
+        hint: ORIGIN_PLACEMENTS[o].slice(0, 2).join(" · ") || undefined,
         tile: (
           <span className="flex size-9 items-center justify-center rounded-xl bg-white ring-1 ring-gray-200">
             <BrandLogo name={o} className="size-5" />
@@ -65,8 +66,9 @@ function buildCatalog(): Category[] {
       short: "Páginas",
       icon: FileText,
       hint: "Por onde as pessoas passam",
+      // Uma só «Página»: o tipo (obrigado, vendas, checkout, replay…) escolhe-se ao clicar nela no fluxo.
       items: [
-        page("confirmacao", "Obrigado (inscrição)", "Depois da inscrição"),
+        page("outro", "Página", "Obrigado, vendas, checkout, replay… escolhe ao clicar"),
         {
           key: "group",
           component: { kind: "group" },
@@ -74,13 +76,6 @@ function buildCatalog(): Category[] {
           hint: "O link de convite vai na página de obrigado",
           tile: tile(LOOK.whatsapp_group.tile, <Glyph look="whatsapp_group" />),
         },
-        page("vendas", "Vendas"),
-        page("checkout", "Checkout"),
-        page("upsell", "Upsell"),
-        page("downsell", "Downsell"),
-        page("obrigado", "Obrigado (compra)", "Depois da compra"),
-        page("replay", "Replay"),
-        page("outro", "Outra página"),
       ],
     },
     {

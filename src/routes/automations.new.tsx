@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { createBaseWorkflow, useInvalidate, useWebinars, useWorkflows, useWorkspace } from "@/lib/data";
+import { createBaseWorkflow, formatDateTime, useInvalidate, useWebinars, useWorkflows, useWorkspace } from "@/lib/data";
 import { friendlyError } from "@/lib/friendly-error";
 import { cn } from "@/lib/utils";
 import { baseWorkflow, CHANNELS, channelStatus } from "@/lib/workflow";
@@ -84,10 +84,36 @@ function NewFlowPage() {
               ))}
             </SelectContent>
           </Select>
-          {webinarId === NONE && (
+          {webinarId === NONE ? (
             <p className="text-sm text-muted-foreground">
               Pode desenhar e escrever tudo já. O fluxo fica em rascunho e só liga depois de escolher o webinar.
             </p>
+          ) : (
+            webinar && (
+              <div className="flex gap-4 rounded-md bg-white p-3 ring-1 ring-[var(--border-subtle)]">
+                {(webinar.registration_cover_url || webinar.cover_url) && (
+                  <img src={webinar.registration_cover_url || webinar.cover_url || ""} alt="" className="h-20 w-32 shrink-0 rounded-md object-cover" />
+                )}
+                <div className="min-w-0 flex-1 space-y-0.5 text-sm">
+                  <p className="truncate font-medium">{title}</p>
+                  <p className="text-muted-foreground">
+                    {[
+                      webinar.scheduled_at ? formatDateTime(webinar.scheduled_at) : webinar.recurrence_enabled ? "Sessões recorrentes" : "Sem hora marcada",
+                      webinar.duration_seconds ? `${Math.round(webinar.duration_seconds / 60)} min` : null,
+                      webinar.pitch_seconds ? `pitch ao minuto ${Math.round(webinar.pitch_seconds / 60)}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                  <p className="text-muted-foreground">
+                    {webinar.cta_url ? `Oferta: ${webinar.cta_price_now ? `${webinar.cta_price_now} · ` : ""}${webinar.cta_url}` : "Oferta por definir no webinar"}
+                  </p>
+                  <Link to="/webinars/$webinarId/edit" params={{ webinarId: webinar.id }} className="inline-block font-medium text-primary hover:underline">
+                    Ver o webinar
+                  </Link>
+                </div>
+              </div>
+            )
           )}
           <div className="space-y-1.5 pt-1">
             <Label htmlFor="flow-name">Nome do fluxo</Label>
