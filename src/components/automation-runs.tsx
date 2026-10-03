@@ -57,7 +57,7 @@ type RunResult = {
 };
 
 /** O resultado numa etiqueta curta, para tabelas. */
-export function resultShort(run: AutomationRun) {
+function resultShort(run: AutomationRun) {
   const result = (run.result ?? {}) as RunResult;
   if (readSteps(run.automations?.steps)) {
     const next = nextAction({ ...run, automations: run.automations ?? null });

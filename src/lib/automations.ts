@@ -57,7 +57,7 @@ export const BOOLEAN_FACTS: { fact: BooleanFact; question: string; yes: string; 
   },
 ];
 
-export const WAIT_OPTIONS = [
+const WAIT_OPTIONS = [
   { minutes: 0, label: "Imediatamente" },
   { minutes: 30, label: "30 minutos" },
   { minutes: 60, label: "1 hora" },

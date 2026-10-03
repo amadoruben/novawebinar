@@ -18,7 +18,7 @@ Ao criar ou renomear um gatilho, um facto ou uma automação pronta, actualize e
 | `cond_comprou`, `cond_nao_comprou` | Condição «Comprou?» | Facto `purchased`; gatilho `purchase_approved` | Feito |
 | `seq_nao_acessou` | Automação «Não acessou» | `webinar_session_ended` com `entered = false` e `purchased = false` | Feito |
 | `seq_saiu_antes` | Automação «Saiu antes do pitch» | `webinar_session_ended` com `entered = true`, `reached_offer = false` e `purchased = false` | Feito |
-| `seq_assistiu` | Automação «Assistiu o pitch» | `webinar_session_ended` com `reached_offer = true` e `purchased = false` | Feito |
+| `seq_assistiu` | Automação «Assistiu o pitch» | `webinar_session_ended` com `entered = true`, `reached_offer = true` e `purchased = false` | Feito |
 | `rmkt_facebook` | Não existe | Não existe | Por fazer: o público de quem não comprou não é enviado à Meta |
 | `pg_upsell`, `pg_downsell`, `pg_obrigado` | Páginas do fluxo: upsell, downsell, obrigado (compra) | Nós `page` do canvas. Só representação. | Feito como desenho |
 | `cond_upsell`, `seq_upsell` | Não existe | Não existe | Por fazer: o motor não sabe se o upsell foi comprado |
@@ -28,25 +28,29 @@ Ao criar ou renomear um gatilho, um facto ou uma automação pronta, actualize e
 
 | No mapa | No motor |
 |---|---|
+| `lead.criado` | Gatilho `webinar_registered` |
+| `lead.entrou_grupo` | Não existe: o motor não sabe quem entrou no grupo |
+| `acesso.visitado` | Não existe |
 | `webinar.entrou` | Facto `entered` |
 | `webinar.saiu` antes de `oferta.exibida` | Facto `reached_offer = false` com `entered = true` |
 | `oferta.exibida` com a pessoa presente | Facto `reached_offer` (chegou ao ponto da oferta). `saw_offer` é o registo da sala de que a oferta foi mostrada. |
 | `oferta.clicada` | Gatilho `offer_clicked`; facto `clicked` |
 | `webinar.encerrado` | Gatilho `webinar_session_ended` |
 | `compra.aprovada` | Gatilho `purchase_approved`; facto `purchased` |
+| `upsell.*`, `downsell.*`, `obrigado.visitado` | Não existem: o motor não distingue o upsell da oferta principal nem regista visitas a páginas |
 | Segmento `nao_acessou` | `entered = false` |
 | Segmento `saiu_antes_pitch` | `entered = true` e `reached_offer = false` |
-| Segmento `assistiu_pitch` | `reached_offer = true` |
+| Segmento `assistiu_pitch` | `entered = true` e `reached_offer = true` |
 | Precedência dos segmentos | As três condições são exclusivas: cada pessoa entra numa só automação |
 | `avaliado_em: webinar.encerrado` | As três automações começam no gatilho `webinar_session_ended` |
-| `reavaliacao` | Não existe. Os factos de uma sessão ficam fixos quando ela termina; quem vê a gravação depois continua na mesma automação. |
+| `reavaliacao` | Não existe. Quem vê a gravação depois continua na mesma automação: numa automação que começa no fim da sessão, o que a pessoa fez na sessão não se volta a confirmar (`conditionsAtSend`). A troca de automação no passo equivalente está por fazer. |
 
 ## Regras do mapa e onde vivem
 
 | Regra | No motor |
 |---|---|
 | Compra aprovada cancela as sequências de venda | As três automações de quem não comprou exigem `purchased = false` à entrada; o motor confirma as condições de entrada antes de cada mensagem |
-| A condição de cada envio é avaliada no momento do envio | `conditionsHold` e `guardsHold` correm antes de cada mensagem |
+| A condição de cada envio é avaliada no momento do envio | `conditionsHold` e `guardsHold` correm antes de cada mensagem. Excepção: depois de a sessão terminar, o que a pessoa fez nela já não se volta a confirmar (`conditionsAtSend`), para a gravação não a tirar da automação. |
 | Um contato está numa única sequência por trilha | Garantido para quem não comprou, pelas condições exclusivas. Nas outras automações cada uma tem o seu gatilho. |
 
 ## Automações prontas que o mapa não tem

@@ -546,7 +546,11 @@ export function TriggerEditor({
             </div>
           ))}
         </div>
-        <p className="text-xs text-muted-foreground">Confirmadas outra vez antes de cada mensagem.</p>
+        <p className="text-xs text-muted-foreground">
+          {trigger === "webinar_session_ended"
+            ? "O que a pessoa fez na sessão fica decidido quando ela termina. A compra volta a confirmar-se antes de cada mensagem."
+            : "Confirmadas outra vez antes de cada mensagem."}
+        </p>
       </div>
       <div className="rounded-md bg-white p-3.5 ring-1 ring-[var(--border-subtle)]">
         <label className="flex items-center justify-between gap-3 text-sm font-medium">

@@ -233,6 +233,19 @@ export function conditionsHold(conditions: Condition[], facts: RunFacts | null |
   return conditions.every((c) => conditionHeld(c, facts));
 }
 
+/** O que a pessoa fez na sessão ao vivo. Fica decidido quando a sessão termina. */
+const SESSION_BEHAVIOUR = new Set<string>(["entered", "attended", "no_show", "reached_pitch", "reached_offer", "left_early", "saw_offer", "actual_watch_seconds", "entry_seconds"]);
+
+/**
+ * As condições que se confirmam outra vez antes de cada mensagem. Numa automação que começa quando a sessão
+ * termina, o que a pessoa fez na sessão já não muda: ver a gravação depois conta no mesmo registo dela, e não
+ * a pode tirar da automação a meio. A compra e o resto continuam a confirmar-se.
+ * ponytail: quem muda de segmento fica onde está; a troca de automação do mapa (reavaliação) faz-se no motor quando for precisa.
+ */
+export function conditionsAtSend(trigger: string, conditions: Condition[]): Condition[] {
+  return trigger === "webinar_session_ended" ? conditions.filter((c) => !SESSION_BEHAVIOUR.has(c.fact)) : conditions;
+}
+
 /**
  * As condições do caminho (os ramos por onde a execução passou) voltam a confirmar-se antes de
  * cada mensagem. Um facto em falta não é um "não": um comprador sem participação não tem
@@ -829,7 +842,7 @@ const CLICKED = "Vi que você abriu a página da oferta. Ficou alguma dúvida? R
 const DAY = 1440;
 
 /**
- * Depois do webinar, quem não comprou segue uma de três sequências, conforme o que viu
+ * Depois do webinar, quem não comprou entra numa de três automações, conforme o que viu
  * (docs/automacao/mapa-de-automacao, passos 9 e 10 [FONTE]): não acessou, saiu antes do pitch, assistiu o pitch.
  * Oito mensagens cada, nos tempos da proposta do mapa; o fecho fica no 4.º dia [PROPOSTA].
  * A compra faz deixar de cumprir a entrada, e o resto não sai. Sem modelo do utilizador, a mensagem nasce por escrever.
@@ -837,7 +850,7 @@ const DAY = 1440;
 const FOLLOW_UP_WAITS: [minutes: number, time?: string][] = [[60], [DAY, "09:00"], [DAY, "20:00"], [2 * DAY, "09:00"], [2 * DAY, "20:00"], [3 * DAY, "09:00"], [4 * DAY, "09:00"], [4 * DAY, "20:00"]];
 type FollowUpMessage = [label: string, sends: Send[]];
 const draft = (label: string): FollowUpMessage => [label, [empty("email")]];
-function followUp(key: string, name: string, segment: Condition[], messages: FollowUpMessage[]): BaseAutomation {
+function followUp(key: string, name: string, segment: Condition[], messages: [FollowUpMessage, FollowUpMessage, FollowUpMessage, FollowUpMessage, FollowUpMessage, FollowUpMessage]): BaseAutomation {
   const closing: FollowUpMessage[] = [
     ["Encerra hoje", [tpl("email", "l_email_encerra_hoje"), tpl("whatsapp", "l_wpp_encerra_hoje")]],
     ["Última chamada", [tpl("email", "l_email_ultima_chamada"), tpl("whatsapp", "l_wpp_ultima_chamada")]],
@@ -852,7 +865,7 @@ function followUp(key: string, name: string, segment: Condition[], messages: Fol
 /**
  * As automações prontas de um fluxo, pela ordem do lançamento do utilizador (docs/automacao):
  * obrigado e pesquisa, convite para o grupo, faltam 7 e 4 dias, amanhã, hoje, 1 hora, 15 minutos,
- * ao vivo, as três sequências de quem não comprou, carrinho, pagamento, boas-vindas.
+ * ao vivo, as três automações de quem não comprou, carrinho, pagamento, boas-vindas.
  * Nascem desligadas, com os textos dos modelos; o que o motor não preenche vai entre parênteses rectos.
  */
 export function baseWorkflow(): BaseAutomation[] {
@@ -933,7 +946,7 @@ export function baseWorkflow(): BaseAutomation[] {
       draft("Prova: resultados de alunos"),
       draft("Garantia"),
     ]),
-    followUp("assistiu", "Assistiu o pitch", [{ fact: "reached_offer", value: true }], [
+    followUp("assistiu", "Assistiu o pitch", [{ fact: "entered", value: true }, { fact: "reached_offer", value: true }], [
       draft("Resumo da oferta e link de compra"),
       draft("Objeção 1"),
       draft("Objeção 2"),

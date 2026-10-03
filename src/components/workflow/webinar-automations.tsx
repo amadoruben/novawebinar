@@ -150,7 +150,6 @@ export function WebinarAutomations({ webinarId, title }: { webinarId: string; ti
                   <span className="block font-medium">{a.name}</span>
                   <span className="block text-xs text-muted-foreground">
                     {STAGE_LABEL[stage]} · quando {triggerTitle(a.trigger_event).toLowerCase()}
-                    {!a.workflow_id && " · automação avulsa"}
                   </span>
                 </span>
                 <span className="hidden text-xs tabular-nums text-muted-foreground sm:block">

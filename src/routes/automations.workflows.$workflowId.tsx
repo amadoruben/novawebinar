@@ -198,7 +198,10 @@ function WorkflowPage() {
         if (at) await saveCanvas({ ...canvas, positions: { ...canvas.positions, [`auto:${id}`]: at } });
         invalidate(["workflows", "automations"]);
         if (template) toast.success(`«${template.name}» está no fluxo, em rascunho`, { description: "Clique nas mensagens para as escrever." });
-        else go({ a: id });
+        else {
+          setOpen(null);
+          go({ a: id });
+        }
       } catch (error) {
         toast.error(friendlyError(error, "Não foi possível criar a automação."));
       }
@@ -291,6 +294,7 @@ function WorkflowPage() {
     try {
       const id = await addWorkflowAutomation(workflow, trigger, triggerTitle(trigger));
       invalidate(["workflows", "automations"]);
+      setOpen(null);
       go({ a: id, tab: "fluxo" });
     } catch (error) {
       toast.error(friendlyError(error, "Não foi possível criar a automação."));

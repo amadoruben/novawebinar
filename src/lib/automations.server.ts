@@ -13,6 +13,7 @@ import { AUTOMATION_EVENT, type Condition, type RunFacts } from "@/lib/automatio
 import { deliverOutgoing } from "@/lib/integrations.server";
 import { safeZone } from "@/lib/schedule";
 import {
+  conditionsAtSend,
   conditionsHold,
   guardsHold,
   lateReminder,
@@ -373,7 +374,7 @@ async function stepRun(run: Run, automation: StepAutomation, steps: Steps): Prom
   const node = cursor ? map.get(cursor) : undefined;
   if (node?.kind === "action") {
     // Antes de cada mensagem: a pessoa ainda cumpre as condições de entrada e as do caminho?
-    if (!conditionsHold(entry, facts) || !guardsHold(guards, facts)) {
+    if (!conditionsHold(conditionsAtSend(automation.trigger_event, entry), facts) || !guardsHold(conditionsAtSend(automation.trigger_event, guards), facts)) {
       return advance(
         run,
         "cancelled",

@@ -7,6 +7,7 @@ import {
   baseWorkflow,
   branchQuestion,
   channelStatus,
+  conditionsAtSend,
   conditionsHold,
   connect,
   duplicateNode,
@@ -36,6 +37,7 @@ import {
   type Steps,
   type WaitNode,
 } from "./workflow";
+import type { Condition } from "./automations";
 
 const now = new Date("2026-10-01T18:00:00Z");
 const session = { startsAt: "2026-10-01T20:00:00Z", endsAt: "2026-10-01T21:00:00Z" };
@@ -356,13 +358,13 @@ describe("lembretes fora de horas", () => {
   });
 });
 
-describe("depois do webinar: quem não comprou segue uma de três sequências", () => {
-  const sequences = ["nao-acessou", "saiu-antes", "assistiu"].map(find);
+describe("depois do webinar: quem não comprou entra numa de três automações", () => {
+  const followUps = ["nao-acessou", "saiu-antes", "assistiu"].map(find);
   // Os exemplos do mapa de automação (passo 9): Rui nunca entrou, Ana entrou e saiu antes da oferta, Maria estava presente no pitch.
   const rui = { entered: false, reached_offer: false, purchased: false };
   const ana = { entered: true, reached_offer: false, purchased: false };
   const maria = { entered: true, reached_offer: true, purchased: false };
-  const entersIn = (facts: Record<string, boolean>) => sequences.filter((a) => conditionsHold(a.conditions, facts)).map((a) => a.name);
+  const entersIn = (facts: Record<string, boolean>) => followUps.filter((a) => conditionsHold(a.conditions, facts)).map((a) => a.name);
 
   it("cada pessoa entra numa só, pela que lhe corresponde", () => {
     expect(entersIn(rui)).toEqual(["Não acessou"]);
@@ -374,8 +376,27 @@ describe("depois do webinar: quem não comprou segue uma de três sequências", 
     for (const person of [rui, ana, maria]) expect(entersIn({ ...person, purchased: true })).toEqual([]);
   });
 
+  it("com a oferta logo no início do vídeo, quem nunca entrou continua a ser só «não acessou»", () => {
+    // Oferta ao segundo zero: o ponto da oferta conta como atingido mesmo sem ter entrado.
+    expect(entersIn({ entered: false, reached_offer: true, purchased: false })).toEqual(["Não acessou"]);
+  });
+
+  it("quem não acessou e depois vê a gravação continua a receber as mensagens; se comprar, param", () => {
+    const a = find("nao-acessou");
+    // A gravação conta no mesmo registo da pessoa: os factos da sessão passam a dizer que entrou e chegou à oferta.
+    const sawRecording = { entered: true, reached_offer: true, purchased: false };
+    expect(conditionsAtSend(a.trigger_event, a.conditions)).toEqual([{ fact: "purchased", value: false }]);
+    expect(conditionsHold(conditionsAtSend(a.trigger_event, a.conditions), sawRecording)).toBe(true);
+    expect(conditionsHold(conditionsAtSend(a.trigger_event, a.conditions), { ...sawRecording, purchased: true })).toBe(false);
+  });
+
+  it("durante a sessão tudo se volta a confirmar: quem entrou entretanto já não recebe o aviso de que começou", () => {
+    const entry: Condition[] = [{ fact: "entered", value: false }];
+    expect(conditionsAtSend("webinar_session_started", entry)).toEqual(entry);
+  });
+
   it("as três começam quando a sessão termina e levam oito mensagens até ao fecho", () => {
-    for (const a of sequences) {
+    for (const a of followUps) {
       expect(a.trigger_event, a.name).toBe("webinar_session_ended");
       const labels = a.steps.nodes.filter((n) => n.kind === "action").map((n) => (n as ActionNode).label);
       expect(labels, a.name).toHaveLength(8);
