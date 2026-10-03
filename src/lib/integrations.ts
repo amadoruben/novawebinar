@@ -231,6 +231,44 @@ export function providerInfo(id: string) {
   return PROVIDERS.find((p) => p.id === id);
 }
 
+/**
+ * O WhatsApp envia pelas automações quando o número não oficial (WAHA) já foi ligado pelo
+ * código QR. A ligação oficial fica guardada, mas só envia com modelos aprovados pela Meta.
+ */
+export function whatsappReady(
+  row: { provider: string; enabled: boolean; settings: unknown } | undefined,
+): boolean {
+  const s = (row?.settings ?? {}) as Record<string, unknown>;
+  return Boolean(
+    row?.provider === "whatsapp" &&
+    row.enabled &&
+    s["mode"] === "unofficial" &&
+    s["session"] &&
+    s["phone"],
+  );
+}
+
+/** Indicativo para os números guardados sem "+": Angola, salvo outro na ligação. */
+export const DEFAULT_COUNTRY_CODE = "244";
+
+/**
+ * O número no formato do WhatsApp (só dígitos, com indicativo). Com "+" já é internacional;
+ * sem ele, um número que já começa pelo indicativo e é mais longo do que um nacional fica
+ * como está, e os outros levam o indicativo da ligação.
+ * ponytail: um número nacional brasileiro com DDD igual ao indicativo (ex.: DDD 55 com 55)
+ * passa por internacional; pedir o país no formulário de inscrição resolve de vez.
+ */
+export function whatsappNumber(
+  phone: string | null | undefined,
+  countryCode = DEFAULT_COUNTRY_CODE,
+): string | null {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  if (digits.length < 7) return null;
+  if ((phone ?? "").trim().startsWith("+")) return digits;
+  const local = digits.replace(/^0+/, "");
+  return local.startsWith(countryCode) && local.length > 9 ? local : `${countryCode}${local}`;
+}
+
 /** Segredo aleatório para as integrações onde somos nós a gerá-lo. */
 export function generateSecret() {
   const bytes = crypto.getRandomValues(new Uint8Array(24));

@@ -12,6 +12,7 @@ import type { Database, Json } from "@/integrations/supabase/types";
 import { AUTOMATION_EVENT, type Condition, type RunFacts } from "@/lib/automations";
 import { deliverOutgoing } from "@/lib/integrations.server";
 import { safeZone } from "@/lib/schedule";
+import { sendWhatsapp } from "@/lib/whatsapp.server";
 import {
   conditionsAtSend,
   conditionsHold,
@@ -196,10 +197,16 @@ const mask = (value: string | null | undefined) =>
 /**
  * Uma mensagem para um grupo sai uma vez por sessão (sem sessão: por webinar), não uma vez por
  * pessoa: se outra execução da mesma automação já a enviou nesse passo, esta só o regista.
+ * Só conta um envio que saiu (ou foi simulado): um que falhou não impede o seguinte.
  * ponytail: verificação antes do envio, sem trinco (o executor corre as execuções uma a uma);
  * com vários servidores a executar ao mesmo tempo, uma chave única por automação, passo, grupo e sessão.
  */
-async function groupAlreadySent(run: Run, nodeId: string, send: Send) {
+async function groupAlreadySent(
+  run: Run,
+  nodeId: string,
+  send: Send,
+  status: "delivered" | "simulated",
+) {
   if (!run.webinar_session_id && !run.webinar_id) return false;
   const query = supabaseAdmin
     .from("automation_runs")
@@ -207,7 +214,15 @@ async function groupAlreadySent(run: Run, nodeId: string, send: Send) {
     .eq("automation_id", run.automation_id)
     .neq("id", run.id)
     // jsonb: o valor vai em JSON (um array JS seria enviado como array do Postgres).
-    .contains("steps_log", JSON.stringify([{ node: nodeId, sends: [{ channel: send.channel, target: "group", to: send.group ?? null }] }]))
+    .contains(
+      "steps_log",
+      JSON.stringify([
+        {
+          node: nodeId,
+          sends: [{ channel: send.channel, target: "group", to: send.group ?? null, status }],
+        },
+      ]),
+    )
     .limit(1);
   const scoped = run.webinar_session_id
     ? query.eq("webinar_session_id", run.webinar_session_id)
@@ -215,8 +230,8 @@ async function groupAlreadySent(run: Run, nodeId: string, send: Send) {
   return Boolean(must(await scoped, "envios ao grupo")?.length);
 }
 
-/** Uma mensagem: cada envio pelo seu canal. Só o webhook tem fornecedor real; na conta de
- * teste tudo é simulado e nada sai da plataforma. */
+/** Uma mensagem: cada envio pelo seu canal. O webhook e o WhatsApp não oficial (WAHA) têm
+ * fornecedor real; na conta de teste tudo é simulado e nada sai da plataforma. */
 async function executeAction(
   run: Run,
   node: ActionNode,
@@ -288,11 +303,42 @@ async function executeAction(
       }
       continue;
     }
+    if (send.channel === "whatsapp" && !isTest) {
+      if (send.target === "group" && (await groupAlreadySent(run, node.id, send, "delivered"))) {
+        entry.sends!.push({ channel: "whatsapp", target: "group", to, status: "shared" });
+        continue;
+      }
+      await holdLock(run);
+      const delivery = await sendWhatsapp(
+        run.organization_id,
+        send.target === "group" ? { group: send.group ?? "" } : { phone: data.contact.phone },
+        renderMessage(send.message, vars),
+      );
+      entry.sends!.push({
+        channel: "whatsapp",
+        target: send.target,
+        to,
+        status: delivery.ok ? "delivered" : "failed",
+        http_status: delivery.status,
+        error: delivery.error,
+      });
+      if (!delivery.ok) {
+        entry.outcome = delivery.error ?? "O WhatsApp falhou";
+        return {
+          ok: false,
+          transient: delivery.transient,
+          result: { action: "steps", node: node.id, http_status: delivery.status },
+          error: entry.outcome,
+          entry,
+        };
+      }
+      continue;
+    }
     if (!isTest) {
       entry.outcome = `Sem fornecedor de ${send.channel} configurado`;
       return { ok: false, transient: false, result: null, error: entry.outcome, entry };
     }
-    if (send.target === "group" && (await groupAlreadySent(run, node.id, send))) {
+    if (send.target === "group" && (await groupAlreadySent(run, node.id, send, "simulated"))) {
       entry.sends!.push({ channel: send.channel, target: "group", to, status: "shared" });
       continue;
     }

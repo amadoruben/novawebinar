@@ -112,7 +112,7 @@ function WorkflowPage() {
   }, [full]);
   const queryClient = useQueryClient();
   const tab = search.tab ?? "fluxo";
-  const status = channelStatus(Boolean(workspace?.isTest), destination.ready);
+  const status = channelStatus(Boolean(workspace?.isTest), destination.ready, destination.whatsappReady);
 
   const go = (patch: Partial<Search>) =>
     void navigate({ search: (prev: Search) => ({ ...prev, ...patch }), replace: true });

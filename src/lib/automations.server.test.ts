@@ -311,7 +311,10 @@ describe("automações com passos (workflow)", () => {
     expect(log[0]!.sends!.map((s) => `${s.target}:${s.status}`)).toEqual(["contact:simulated", "group:shared"]);
     // steps_log é jsonb: o filtro vai em JSON (um array JS iria como array do Postgres e falhava).
     const contains = filters.find((f) => f.table === "automation_runs" && f.name === "contains")!;
-    expect(JSON.parse(contains.args[1] as string)).toEqual([{ node: "m", sends: [{ channel: "whatsapp", target: "group", to: "Webinar IA" }] }]);
+    // Só conta o envio que saiu (aqui, simulado): um que falhou não impede o seguinte.
+    expect(JSON.parse(contains.args[1] as string)).toEqual([
+      { node: "m", sends: [{ channel: "whatsapp", target: "group", to: "Webinar IA", status: "simulated" }] },
+    ]);
   });
 
   it("comprou entretanto: a recuperação é cancelada antes de a mensagem sair", async () => {
@@ -348,6 +351,81 @@ describe("automações com passos (workflow)", () => {
     expect(advances()).toEqual([]);
     const headers = (fetchMock.mock.calls[0] as [string, RequestInit])[1].headers as Record<string, string>;
     expect(headers["x-delivery-id"]).toBe("run-1:m2");
+  });
+});
+
+describe("WhatsApp não oficial (WAHA)", () => {
+  const WA = { provider: "whatsapp", enabled: true, settings: { mode: "unofficial", session: "org_1", phone: "244900000001", country_code: "244" } };
+  const advances = () => rpcCalls.filter((c) => c.name === "advance_automation_run").map((c) => c.args);
+  // Compra aprovada: as horas de silêncio não se aplicam, o teste não depende da hora a que corre.
+  const oneSend = (send: Record<string, unknown>) => {
+    answers["automations"] = {
+      data: {
+        id: "auto-1",
+        name: "Pós-compra",
+        trigger_event: "purchase_approved",
+        conditions: [],
+        steps: { start: "m", nodes: [{ id: "m", kind: "action", sends: [{ channel: "whatsapp", message: "Olá {{primeiro_nome}}", ...send }], next: null }] },
+        organizations: { is_test: false },
+      },
+      error: null,
+    };
+    answers["rpc.automation_contact_facts"] = { data: {}, error: null };
+    answers["rpc.claim_automation_runs"] = [{ data: [{ ...RUN, occurrence_key: "purchase_approved:p1", cursor: "m", guards: [], steps_log: [] }], error: null }] as never;
+  };
+  const call = (i: number) => {
+    const [url, init] = fetchMock.mock.calls[i] as [string, RequestInit];
+    return { url, body: init.body ? JSON.parse(init.body as string) : null, headers: init.headers as Record<string, string> };
+  };
+
+  beforeEach(() => {
+    vi.stubEnv("WAHA_URL", "https://waha.exemplo.com/");
+    vi.stubEnv("WAHA_API_KEY", "chave");
+    answers["integrations"] = { data: WA, error: null };
+    answers["contacts"] = { data: { id: "contact-1", name: "Ana Silva", email: null, phone: "923456789" }, error: null };
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("ao contacto: sai pelo WAHA para o número com o indicativo da ligação", async () => {
+    oneSend({ target: "contact" });
+    await runDueAutomations();
+    expect(call(0)).toEqual({
+      url: "https://waha.exemplo.com/api/sendText",
+      body: { session: "org_1", chatId: "244923456789@c.us", text: "Olá Ana" },
+      headers: expect.objectContaining({ "X-Api-Key": "chave" }),
+    });
+    const step = advances()[0]!;
+    expect(step).toMatchObject({ _status: "done" });
+    expect((step["_log"] as { sends: unknown[] }[])[0]!.sends).toEqual([
+      { channel: "whatsapp", target: "contact", to: "92…789", status: "delivered", http_status: 200, error: null },
+    ]);
+  });
+
+  it("em grupo: encontra o grupo pelo nome entre os grupos do número ligado", async () => {
+    oneSend({ target: "group", group: "webinar ia " });
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify([{ id: { _serialized: "111@g.us" }, name: "Outro" }, { id: { _serialized: "222@g.us" }, name: "Webinar IA" }]), { status: 200 }),
+    );
+    await runDueAutomations();
+    expect(call(0).url).toBe("https://waha.exemplo.com/api/org_1/groups?exclude=participants");
+    expect(call(1).body).toEqual({ session: "org_1", chatId: "222@g.us", text: "Olá Ana" });
+    expect(advances()[0]).toMatchObject({ _status: "done" });
+  });
+
+  it("número por ligar (só a ligação oficial guardada): falha definitiva, sem pedido", async () => {
+    answers["integrations"] = { data: { ...WA, settings: { mode: "official" } }, error: null };
+    oneSend({ target: "contact" });
+    await runDueAutomations();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(advances()[0]).toMatchObject({ _status: "failed", _error: "O WhatsApp não oficial não está ligado (Integrações › Canais)." });
+  });
+
+  it("o WAHA responde 5xx: passageira, o mesmo passo volta a tentar", async () => {
+    oneSend({ target: "contact" });
+    fetchMock.mockResolvedValueOnce(new Response("indisponível", { status: 503 }));
+    await runDueAutomations();
+    expect(finishes()[0]).toMatchObject({ _ok: false, _transient: true });
+    expect(advances()).toEqual([]);
   });
 });
 

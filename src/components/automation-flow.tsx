@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { TRIGGER_LABEL, type TriggerEvent } from "@/lib/automations";
 import { useIntegrations, useWorkspace } from "@/lib/data";
+import { whatsappReady } from "@/lib/integrations";
 
 export const TRIGGER_ICON: Record<TriggerEvent, LucideIcon> = {
   webinar_registered: UserPlus,
@@ -53,5 +54,7 @@ export function useWebhookDestination(organizationId: string | undefined) {
     host,
     /** Conta de teste: o envio é simulado no servidor e nada sai da plataforma. */
     simulated: Boolean(workspace?.isTest),
+    /** O WhatsApp não oficial já ligado pelo código QR (lido da mesma lista de integrações). */
+    whatsappReady: whatsappReady(integrations.find((i) => i.provider === "whatsapp")),
   };
 }

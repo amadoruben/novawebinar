@@ -1,6 +1,27 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeEvent, parseAmount, webhookStatus } from "./integrations";
+import { normalizeEvent, parseAmount, webhookStatus, whatsappNumber, whatsappReady } from "./integrations";
+
+describe("WhatsApp: número e ligação", () => {
+  it("o número no formato do WhatsApp: com +, sem +, com 00 e com o indicativo já escrito", () => {
+    expect(whatsappNumber("+351 912 345 678")).toBe("351912345678");
+    expect(whatsappNumber("923456789")).toBe("244923456789");
+    expect(whatsappNumber("923456789", "351")).toBe("351923456789");
+    expect(whatsappNumber("244923456789")).toBe("244923456789");
+    expect(whatsappNumber("0923456789")).toBe("244923456789");
+    expect(whatsappNumber("12345")).toBeNull();
+    expect(whatsappNumber(null)).toBeNull();
+  });
+
+  it("só conta como ligado o não oficial com sessão e número", () => {
+    const settings = { mode: "unofficial", session: "org_1", phone: "244900000001" };
+    expect(whatsappReady({ provider: "whatsapp", enabled: true, settings })).toBe(true);
+    expect(whatsappReady({ provider: "whatsapp", enabled: false, settings })).toBe(false);
+    expect(whatsappReady({ provider: "whatsapp", enabled: true, settings: { mode: "unofficial" } })).toBe(false);
+    expect(whatsappReady({ provider: "whatsapp", enabled: true, settings: { ...settings, mode: "official" } })).toBe(false);
+    expect(whatsappReady(undefined)).toBe(false);
+  });
+});
 
 describe("normalizeEvent", () => {
   it("Kambafy: pagamento em kwanzas, teste e reembolso", () => {

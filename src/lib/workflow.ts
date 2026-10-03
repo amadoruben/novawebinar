@@ -755,10 +755,15 @@ export function channelsOf(steps: Steps | null): Channel[] {
 export type ChannelStatus = { channel: Channel; ready: boolean; simulated: boolean; note: string };
 
 /**
- * Fornecedores disponíveis. Só o webhook de saída tem executor real; email, WhatsApp e SMS
- * ficam preparados. Numa conta de teste tudo é simulado e nada sai da plataforma.
+ * Fornecedores disponíveis. O webhook de saída e o WhatsApp não oficial (WAHA, ligado por
+ * código QR) têm executor real; email e SMS ficam preparados. Numa conta de teste tudo é
+ * simulado e nada sai da plataforma.
  */
-export function channelStatus(isTest: boolean, webhookReady: boolean): ChannelStatus[] {
+export function channelStatus(
+  isTest: boolean,
+  webhookReady: boolean,
+  whatsappReady = false,
+): ChannelStatus[] {
   return (Object.keys(CHANNELS) as Channel[]).map((channel) => {
     if (isTest) return { channel, ready: true, simulated: true, note: "Conta de teste: envio simulado" };
     if (channel === "webhook")
@@ -767,6 +772,13 @@ export function channelStatus(isTest: boolean, webhookReady: boolean): ChannelSt
         ready: webhookReady,
         simulated: false,
         note: webhookReady ? "Configurado" : "Por configurar em Integrações",
+      };
+    if (channel === "whatsapp")
+      return {
+        channel,
+        ready: whatsappReady,
+        simulated: false,
+        note: whatsappReady ? "Número ligado" : "Ligue o número em Integrações › Canais",
       };
     return { channel, ready: false, simulated: false, note: "Sem fornecedor ligado" };
   });

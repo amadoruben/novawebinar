@@ -1,7 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Check, Copy, ExternalLink, RefreshCw, Send, Webhook } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  Check,
+  ChevronRight,
+  Copy,
+  ExternalLink,
+  Mail,
+  MessageSquareText,
+  RefreshCw,
+  Send,
+  Webhook,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import whatsappLogo from "@/assets/local/whatsapp-icon.webp";
 import eduzzLogo from "@/assets/integrations/eduzz.png";
 import googleLogo from "@/assets/integrations/google_ads.jpg";
 import hotmartLogo from "@/assets/integrations/hotmart.png";
@@ -13,13 +25,19 @@ import tiktokLogo from "@/assets/integrations/tiktok.svg";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CHANNEL_ICON } from "@/components/workflow/flow-map";
 import { CHANNELS, channelStatus, type Channel } from "@/lib/workflow";
 import { supabase } from "@/integrations/supabase/client";
 import { relativeDays } from "@/lib/contacts";
@@ -36,14 +54,17 @@ import {
   type IntegrationRow,
 } from "@/lib/data";
 import {
+  DEFAULT_COUNTRY_CODE,
   generateSecret,
   PROVIDERS,
   providerInfo,
+  whatsappReady,
   type IntegrationGroup,
   type ProviderId,
   type ProviderInfo,
 } from "@/lib/integrations";
 import { cn } from "@/lib/utils";
+import { whatsappSession } from "@/lib/whatsapp.functions";
 
 export const Route = createFileRoute("/integrations")({
   head: () => ({
@@ -79,7 +100,8 @@ const TABS: { id: IntegrationGroup; title: string; description: string }[] = [
   {
     id: "ads",
     title: "Pixels e conversões",
-    description: "Os anúncios recebem a visita, a inscrição e o clique na oferta, para aprenderem quem converte.",
+    description:
+      "Os anúncios recebem a visita, a inscrição e o clique na oferta, para aprenderem quem converte.",
   },
   {
     id: "send",
@@ -88,7 +110,10 @@ const TABS: { id: IntegrationGroup; title: string; description: string }[] = [
   },
 ];
 
-const EVENT_STATUS: Record<string, { label: string; variant: "success" | "destructive" | "secondary" }> = {
+const EVENT_STATUS: Record<
+  string,
+  { label: string; variant: "success" | "destructive" | "secondary" }
+> = {
   accepted: { label: "Aceite", variant: "success" },
   rejected: { label: "Recusado", variant: "destructive" },
   ignored: { label: "Ignorado", variant: "secondary" },
@@ -97,7 +122,10 @@ const EVENT_STATUS: Record<string, { label: string; variant: "success" | "destru
 function money(value: number | null, currency: string | null) {
   if (value === null) return "—";
   try {
-    return new Intl.NumberFormat("pt-PT", { style: "currency", currency: currency || "AOA" }).format(value);
+    return new Intl.NumberFormat("pt-PT", {
+      style: "currency",
+      currency: currency || "AOA",
+    }).format(value);
   } catch {
     return `${value} ${currency ?? ""}`;
   }
@@ -105,7 +133,10 @@ function money(value: number | null, currency: string | null) {
 
 function Logo({ id, className }: { id: ProviderId; className?: string }) {
   const src = LOGOS[id];
-  const box = cn("flex shrink-0 items-center justify-center rounded-lg border bg-white", className ?? "size-11");
+  const box = cn(
+    "flex shrink-0 items-center justify-center rounded-lg border bg-white",
+    className ?? "size-11",
+  );
   if (src) {
     return (
       <span className={box}>
@@ -115,13 +146,62 @@ function Logo({ id, className }: { id: ProviderId; className?: string }) {
   }
   const Icon = id === "outgoing_webhook" ? Send : Webhook;
   return (
-    <span className={cn(box, "bg-muted text-muted-foreground")}>
+    <span className={cn(box, "text-foreground")}>
       <Icon className="size-1/2" strokeWidth={1.75} aria-hidden />
     </span>
   );
 }
 
-type Status = { label: string; tone: "on" | "warn" | "off" };
+/** Ícone de cada canal das automações: WhatsApp com a marca, email e SMS em mosaico de cor, webhook igual a Enviar dados. */
+function ChannelLogo({ channel, className = "size-11" }: { channel: Channel; className?: string }) {
+  if (channel === "webhook") return <Logo id="outgoing_webhook" className={className} />;
+  if (channel === "whatsapp")
+    return (
+      <span
+        className={cn(
+          "flex shrink-0 items-center justify-center rounded-lg border bg-white",
+          className,
+        )}
+      >
+        <img src={whatsappLogo} alt="" className="size-[70%] object-contain" draggable={false} />
+      </span>
+    );
+  const Icon = channel === "email" ? Mail : MessageSquareText;
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-lg text-white",
+        channel === "email" ? "bg-info" : "bg-navy",
+        className,
+      )}
+    >
+      <Icon className="size-[55%]" strokeWidth={1.75} aria-hidden />
+    </span>
+  );
+}
+
+const CHANNEL_EXPLAIN: Record<Channel, string> = {
+  email: "Mensagens por email para o contacto (assunto e mensagem).",
+  whatsapp: "WhatsApp individual (para o número do contacto) ou em grupo (para um grupo indicado).",
+  sms: "SMS para o número do contacto.",
+  webhook: "Envia a pessoa, o webinar e o passo para o seu Zapier, Make, n8n ou CRM, assinado.",
+};
+
+type WhatsappMode = "official" | "unofficial";
+
+const WHATSAPP_MODE: Record<WhatsappMode, { title: string; detail: string }> = {
+  official: {
+    title: "Oficial",
+    detail: "API do WhatsApp Business (Meta). Número verificado e modelos aprovados.",
+  },
+  unofficial: {
+    title: "Não oficial",
+    detail:
+      "O seu número, ligado por código QR como no WhatsApp Web. Risco de bloqueio em envios em massa.",
+  },
+};
+
+type Status = { label: string; tone: "on" | "warn" | "off" | "info" };
 
 function statusOf(info: ProviderInfo, row: IntegrationRow | undefined): Status {
   if (!row) return { label: "Por ligar", tone: "off" };
@@ -136,16 +216,20 @@ function StatusPill({ status }: { status: Status }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium",
-        status.tone === "on" && "border-success/25 bg-success/10 text-success",
-        status.tone === "warn" && "border-warning/30 bg-warning/12 text-warning-foreground",
-        status.tone === "off" && "bg-muted text-muted-foreground",
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium",
+        status.tone === "on" && "border-success/30 bg-success-soft text-success",
+        status.tone === "warn" && "border-warning/40 bg-warning-soft text-warning-foreground",
+        status.tone === "info" && "border-info/30 bg-info-soft text-info",
+        status.tone === "off" && "bg-white text-muted-foreground",
       )}
     >
       <span
         className={cn(
-          "size-1.5 rounded-full",
-          status.tone === "on" ? "bg-success" : status.tone === "warn" ? "bg-warning" : "bg-muted-foreground/60",
+          "size-2 rounded-full",
+          status.tone === "on" && "bg-success",
+          status.tone === "warn" && "bg-warning",
+          status.tone === "info" && "bg-info",
+          status.tone === "off" && "bg-gray-400",
         )}
         aria-hidden
       />
@@ -164,13 +248,29 @@ function statsFor(provider: string, payments: Payments) {
 }
 
 /** Os canais que as automações usam: configurado, simulado (conta de teste) ou sem fornecedor. */
-function AutomationChannels({ isTest, webhookReady }: { isTest: boolean; webhookReady: boolean }) {
-  const EXPLAIN: Record<Channel, string> = {
-    email: "Mensagens por email para o contacto (assunto e mensagem).",
-    whatsapp: "WhatsApp individual (para o número do contacto) ou em grupo (para um grupo indicado).",
-    sms: "SMS para o número do contacto.",
-    webhook: "Envia a pessoa, o webinar e o passo para o seu Zapier, Make, n8n ou CRM, assinado.",
-  };
+function channelPill(
+  c: { simulated: boolean; ready: boolean; channel: Channel },
+  whatsapp: IntegrationRow | undefined,
+): Status {
+  if (c.simulated) return { label: "Simulado", tone: "info" };
+  if (c.ready) return { label: "Configurado", tone: "on" };
+  // Escolha guardada, mas o envio por WhatsApp ainda não está activo na plataforma.
+  const mode = whatsapp?.settings?.["mode"] as WhatsappMode | undefined;
+  if (c.channel === "whatsapp" && mode) return { label: WHATSAPP_MODE[mode].title, tone: "warn" };
+  return { label: "Não configurado", tone: "off" };
+}
+
+function AutomationChannels({
+  isTest,
+  webhookReady,
+  whatsapp,
+  onOpen,
+}: {
+  isTest: boolean;
+  webhookReady: boolean;
+  whatsapp: IntegrationRow | undefined;
+  onOpen: (channel: Channel) => void;
+}) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
@@ -178,33 +278,339 @@ function AutomationChannels({ isTest, webhookReady }: { isTest: boolean; webhook
           ? "Conta de teste: todos os canais são simulados. As execuções mostram a mensagem que teria saído e nada sai da plataforma."
           : "Uma automação só pode ser activada quando todos os canais que usa têm fornecedor. Sem fornecedor, a configuração fica preparada e desligada."}
       </p>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {channelStatus(isTest, webhookReady).map((c) => {
-          const Icon = CHANNEL_ICON[c.channel];
-          return (
-            <article key={c.channel} className="rounded-card bg-card p-4">
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2 font-semibold">
-                  <Icon className="size-4" aria-hidden /> {CHANNELS[c.channel].label}
-                </span>
-                <Badge variant={c.simulated ? "secondary" : c.ready ? "success" : "outline"}>
-                  {c.simulated ? "Simulado" : c.ready ? "✓ Configurado" : "✕ Não configurado"}
-                </Badge>
-              </div>
-              <p className="mt-2 text-sm text-muted-foreground">{EXPLAIN[c.channel]}</p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                {c.channel === "webhook"
-                  ? c.ready
-                    ? "Usa o webhook de saída (separador Enviar dados)."
-                    : "Ligue o webhook de saída no separador Enviar dados."
-                  : c.simulated
-                    ? "Simulado nesta conta."
-                    : "Ainda sem fornecedor na plataforma. Até lá, pode enviar pelo webhook para a sua ferramenta."}
-              </p>
-            </article>
-          );
-        })}
+      <div className="grid gap-3 lg:grid-cols-2">
+        {channelStatus(isTest, webhookReady, whatsappReady(whatsapp)).map((c) => (
+          <button
+            key={c.channel}
+            type="button"
+            onClick={() => onOpen(c.channel)}
+            className="flex cursor-pointer items-center gap-4 rounded-card bg-card p-4 text-left transition-shadow hover:shadow-[var(--shadow-raised)] focus-visible:outline-none focus-visible:ring-focus"
+          >
+            <ChannelLogo channel={c.channel} />
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">{CHANNELS[c.channel].label}</span>
+              <span className="mt-0.5 block text-sm text-muted-foreground">
+                {CHANNEL_EXPLAIN[c.channel]}
+              </span>
+            </span>
+            <StatusPill status={channelPill(c, whatsapp)} />
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          </button>
+        ))}
       </div>
+    </div>
+  );
+}
+
+/** Pop-up de configuração dos canais: separadores em cima, um canal de cada vez. */
+function ChannelDialog({
+  channel,
+  isTest,
+  webhookReady,
+  whatsapp,
+  organizationId,
+  onChannel,
+  onWebhook,
+  onClose,
+}: {
+  channel: Channel;
+  isTest: boolean;
+  webhookReady: boolean;
+  whatsapp: IntegrationRow | undefined;
+  organizationId: string;
+  onChannel: (channel: Channel) => void;
+  onWebhook: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-xl gap-0 p-6">
+        <div
+          role="tablist"
+          aria-label="Canais"
+          className="mr-8 grid grid-cols-4 gap-1 rounded-pill bg-chip p-1"
+        >
+          {(Object.keys(CHANNELS) as Channel[]).map((ch) => (
+            <button
+              key={ch}
+              type="button"
+              role="tab"
+              aria-selected={ch === channel}
+              onClick={() => onChannel(ch)}
+              className={cn(
+                "flex cursor-pointer items-center justify-center gap-1.5 rounded-pill px-2 py-1.5 text-[13px] transition-colors",
+                ch === channel
+                  ? "bg-white font-medium shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <ChannelLogo channel={ch} className="size-5 rounded-md" />
+              <span className="truncate">{CHANNELS[ch].label}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-6 flex flex-col items-center text-center">
+          <ChannelLogo channel={channel} className="size-16 rounded-2xl" />
+          <DialogTitle className="mt-4 text-xl">Configurar {CHANNELS[channel].label}</DialogTitle>
+          <DialogDescription className="mt-1 max-w-sm">
+            {CHANNEL_EXPLAIN[channel]}
+          </DialogDescription>
+        </div>
+
+        {isTest && (
+          <p className="mt-5 rounded-lg bg-info-soft px-3 py-2 text-center text-sm text-info">
+            Conta de teste: este canal é simulado e nada sai da plataforma.
+          </p>
+        )}
+
+        <div className="mt-6">
+          {channel === "whatsapp" ? (
+            <WhatsappSetup
+              key={whatsapp?.id ?? "novo"}
+              row={whatsapp}
+              organizationId={organizationId}
+            />
+          ) : channel === "webhook" ? (
+            <div className="space-y-4">
+              <p className="text-center text-sm text-muted-foreground">
+                {webhookReady
+                  ? "Ligado: cada passo de webhook usa o webhook de saída."
+                  : "Ainda por ligar. Indique o endereço do Zapier, do Make, do n8n ou do seu CRM."}
+              </p>
+              <Button variant="dark" className="h-11 w-full" onClick={onWebhook}>
+                {webhookReady ? "Gerir webhook" : "Ligar webhook"}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-center text-sm text-muted-foreground">
+                Ainda sem fornecedor na plataforma. Até lá, pode enviar pelo webhook para a sua
+                ferramenta.
+              </p>
+              <Button variant="dark" className="h-11 w-full" onClick={() => onChannel("webhook")}>
+                Enviar pelo webhook
+              </Button>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** WhatsApp: escolha entre a API oficial da Meta e o número ligado por código QR. */
+function WhatsappSetup({
+  row,
+  organizationId,
+}: {
+  row: IntegrationRow | undefined;
+  organizationId: string;
+}) {
+  const invalidate = useInvalidate();
+  const [mode, setMode] = useState<WhatsappMode>(
+    (row?.settings?.["mode"] as WhatsappMode) ?? "official",
+  );
+  const [phoneId, setPhoneId] = useState(row?.settings?.["phone_number_id"] ?? "");
+  const [wabaId, setWabaId] = useState(row?.settings?.["waba_id"] ?? "");
+  const [token, setToken] = useState("");
+  const [countryCode, setCountryCode] = useState(
+    row?.settings?.["country_code"] ?? DEFAULT_COUNTRY_CODE,
+  );
+  const [busy, setBusy] = useState(false);
+  // Só pede a sessão ao WAHA depois de a pessoa carregar em "Gerar código QR".
+  const [linking, setLinking] = useState(false);
+  const session = useQuery({
+    queryKey: ["whatsapp-session", organizationId],
+    queryFn: () => whatsappSession({ data: { organizationId } }),
+    enabled: linking && mode === "unofficial",
+    refetchInterval: (q) =>
+      ["WORKING", "NO_SERVER"].includes(q.state.data?.status ?? "") ? false : 3000,
+    retry: false,
+  });
+  const linkedPhone =
+    session.data?.status === "WORKING"
+      ? session.data.phone
+      : row?.settings?.["mode"] === "unofficial"
+        ? row.settings["phone"]
+        : null;
+
+  const tokenOk = token.trim().length >= 20 || (token === "" && Boolean(row?.has_secret));
+  const countryOk = /^\d{1,4}$/.test(countryCode.trim());
+  const officialOk =
+    /^\d{6,20}$/.test(phoneId.trim()) && /^\d{6,20}$/.test(wabaId.trim()) && tokenOk;
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const country_code = countryCode.trim();
+      const settings: Record<string, string> =
+        mode === "official"
+          ? { mode, phone_number_id: phoneId.trim(), waba_id: wabaId.trim(), country_code }
+          : // A sessão e o número já ligados ficam; só muda o que a pessoa escolheu.
+            {
+              ...(row?.settings?.["mode"] === "unofficial" ? row.settings : {}),
+              mode,
+              country_code,
+            };
+      // Na não oficial o token da Meta deixa de servir: apaga-se.
+      const secret = mode === "official" ? token.trim() || undefined : "";
+      const id = row?.id ?? (await connectIntegration(organizationId, "whatsapp", secret ?? "")).id;
+      await updateIntegration(id, {
+        settings,
+        ...(row && secret !== undefined ? { secret } : {}),
+      });
+      if (mode === "official") toast.success("Ligação oficial guardada.");
+      else if (linkedPhone) toast.success("Guardado.");
+      else setLinking(true);
+      setToken("");
+      invalidate(["integrations"]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível guardar.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div role="radiogroup" aria-label="Tipo de ligação" className="grid gap-3 sm:grid-cols-2">
+        {(Object.keys(WHATSAPP_MODE) as WhatsappMode[]).map((m) => (
+          <button
+            key={m}
+            type="button"
+            role="radio"
+            aria-checked={mode === m}
+            onClick={() => setMode(m)}
+            className={cn(
+              "cursor-pointer rounded-xl border bg-white p-3 text-left transition-shadow",
+              mode === m
+                ? "border-foreground shadow-[inset_0_0_0_1px_var(--navy)]"
+                : "hover:border-gray-300",
+            )}
+          >
+            <span className="flex items-center gap-2 text-sm font-semibold">
+              <span
+                className={cn(
+                  "flex size-4 items-center justify-center rounded-full border",
+                  mode === m ? "border-foreground" : "border-gray-300",
+                )}
+                aria-hidden
+              >
+                {mode === m && <span className="size-2 rounded-full bg-foreground" />}
+              </span>
+              {WHATSAPP_MODE[m].title}
+            </span>
+            <span className="mt-1 block text-xs text-muted-foreground">
+              {WHATSAPP_MODE[m].detail}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {mode === "official" ? (
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="wa-phone">ID do número de telefone</Label>
+            <Input
+              id="wa-phone"
+              inputMode="numeric"
+              value={phoneId}
+              onChange={(e) => setPhoneId(e.target.value)}
+              placeholder="Ex.: 109876543210987"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="wa-waba">ID da conta do WhatsApp Business</Label>
+            <Input
+              id="wa-waba"
+              inputMode="numeric"
+              value={wabaId}
+              onChange={(e) => setWabaId(e.target.value)}
+              placeholder="Ex.: 123456789012345"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="wa-token">Token de acesso permanente</Label>
+            <Input
+              id="wa-token"
+              type="password"
+              autoComplete="off"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder={row?.has_secret ? "Guardado. Escreva para substituir." : "EAAG…"}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Estão no Meta for Developers › a sua app › WhatsApp › Configuração da API. O token
+            permanente cria-se num utilizador de sistema do Gestor de Negócios.
+          </p>
+          <p className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning-foreground">
+            Fica guardada para o passo seguinte: pela API oficial, as mensagens das automações só
+            saem com modelos aprovados pela Meta. Até lá, as automações enviam pela ligação não
+            oficial.
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center text-center">
+          <div className="flex size-44 items-center justify-center overflow-hidden rounded-xl border bg-white p-2 text-xs text-muted-foreground">
+            {linkedPhone ? (
+              <span className="flex flex-col items-center gap-2 text-success">
+                <Check className="size-8" aria-hidden />
+                Ligado ao +{linkedPhone}
+              </span>
+            ) : session.error ? (
+              <span className="text-destructive">{session.error.message}</span>
+            ) : session.data?.status === "NO_SERVER" ? (
+              "O servidor de WhatsApp (WAHA) ainda não está ligado à plataforma."
+            ) : session.data?.status === "SCAN_QR_CODE" && session.data.qr ? (
+              <img
+                src={session.data.qr}
+                alt="Código QR para ligar o WhatsApp"
+                className="size-full object-contain"
+              />
+            ) : linking ? (
+              "A preparar o código…"
+            ) : (
+              "O código QR aparece aqui."
+            )}
+          </div>
+          <p className="mt-3 text-sm text-muted-foreground">
+            No telemóvel: WhatsApp › Aparelhos ligados › Ligar um aparelho, e aponte a câmara ao
+            código.
+          </p>
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        <Label htmlFor="wa-country">Indicativo dos números sem +</Label>
+        <Input
+          id="wa-country"
+          inputMode="numeric"
+          value={countryCode}
+          onChange={(e) => setCountryCode(e.target.value)}
+          placeholder="244"
+          className="w-28"
+        />
+        <p className="text-xs text-muted-foreground">
+          Um contacto inscrito com 923 456 789 recebe no +{countryCode.trim() || "…"} 923 456 789.
+        </p>
+      </div>
+
+      {!(mode === "unofficial" && linking && !linkedPhone) && (
+        <Button
+          variant="dark"
+          className="h-11 w-full"
+          disabled={busy || !countryOk || (mode === "official" && !officialOk)}
+          onClick={save}
+        >
+          {mode === "official"
+            ? "Guardar ligação oficial"
+            : linkedPhone
+              ? "Guardar"
+              : "Gerar código QR"}
+        </Button>
+      )}
     </div>
   );
 }
@@ -216,12 +622,15 @@ function IntegrationsPage() {
   const { data: events = [] } = useIntegrationEvents(orgId);
   const { data: payments = [] } = useRecentPayments(orgId);
   const [open, setOpen] = useState<ProviderInfo | null>(null);
+  const [channel, setChannel] = useState<Channel | null>(null);
 
   const byProvider = new Map(rows.map((r) => [r.provider, r]));
   const connected = PROVIDERS.filter((p) => statusOf(p, byProvider.get(p.id)).tone === "on").length;
   const since = Date.now() - 30 * 86_400_000;
   const salesMonth = payments.filter((p) => p.status === "approved").length;
-  const rejectedMonth = events.filter((e) => e.status === "rejected" && Date.parse(e.received_at) >= since).length;
+  const rejectedMonth = events.filter(
+    (e) => e.status === "rejected" && Date.parse(e.received_at) >= since,
+  ).length;
 
   return (
     <AppShell
@@ -230,7 +639,8 @@ function IntegrationsPage() {
       action={false}
     >
       <p className="-mt-4 mb-6 text-sm text-muted-foreground" role="status">
-        {connected} de {PROVIDERS.length} ligadas · {salesMonth} vendas recebidas nos últimos 30 dias
+        {connected} de {PROVIDERS.length} ligadas · {salesMonth} vendas recebidas nos últimos 30
+        dias
         {rejectedMonth > 0 ? ` · ${rejectedMonth} pedidos recusados (ver Actividade)` : ""}
       </p>
 
@@ -274,13 +684,34 @@ function IntegrationsPage() {
         ))}
 
         <TabsContent value="channels" className="mt-6">
-          <AutomationChannels isTest={Boolean(workspace?.isTest)} webhookReady={Boolean(byProvider.get("outgoing_webhook")?.enabled)} />
+          <AutomationChannels
+            isTest={Boolean(workspace?.isTest)}
+            webhookReady={Boolean(byProvider.get("outgoing_webhook")?.enabled)}
+            whatsapp={byProvider.get("whatsapp")}
+            onOpen={setChannel}
+          />
         </TabsContent>
 
         <TabsContent value="activity" className="mt-6">
           <Activity events={events} />
         </TabsContent>
       </Tabs>
+
+      {channel && orgId && (
+        <ChannelDialog
+          channel={channel}
+          isTest={Boolean(workspace?.isTest)}
+          webhookReady={Boolean(byProvider.get("outgoing_webhook")?.enabled)}
+          whatsapp={byProvider.get("whatsapp")}
+          organizationId={orgId}
+          onChannel={setChannel}
+          onWebhook={() => {
+            setChannel(null);
+            setOpen(providerInfo("outgoing_webhook") ?? null);
+          }}
+          onClose={() => setChannel(null)}
+        />
+      )}
 
       {open && orgId && (
         <SetupSheet
@@ -335,7 +766,7 @@ function ProviderCard({
           {row.last_event_at ? relativeDays(row.last_event_at) : "ainda nenhum"}
         </p>
       )}
-      <Button variant="secondary" className="mt-4 w-full" onClick={onOpen}>
+      <Button variant="outline" className="mt-4 w-full" onClick={onOpen}>
         {row ? "Gerir" : "Conectar"}
       </Button>
     </article>
@@ -388,7 +819,9 @@ function SetupSheet({
   const [secretInput, setSecretInput] = useState("");
   // Segredo gerado por nós: mostrado uma única vez; depois só se sabe que existe.
   const [shownSecret, setShownSecret] = useState<string | null>(null);
-  const [setting, setSetting] = useState(info.setting ? (row?.settings?.[info.setting.key] ?? "") : "");
+  const [setting, setSetting] = useState(
+    info.setting ? (row?.settings?.[info.setting.key] ?? "") : "",
+  );
 
   const run = async (task: () => Promise<void>, ok?: string) => {
     setBusy(true);
@@ -487,7 +920,10 @@ function SetupSheet({
         return (
           <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
             <span className="text-muted-foreground">
-              {info.secret.label}: <strong className="text-foreground">{row.has_secret ? "definido" : "sem segredo"}</strong>
+              {info.secret.label}:{" "}
+              <strong className="text-foreground">
+                {row.has_secret ? "definido" : "sem segredo"}
+              </strong>
             </span>
             <Button variant="outline" size="sm" onClick={regenerate} disabled={busy}>
               <RefreshCw /> {row.has_secret ? "Gerar novo" : "Gerar"}
@@ -503,7 +939,11 @@ function SetupSheet({
               autoComplete="off"
               value={secretInput}
               aria-label={info.secret.label}
-              placeholder={row.has_secret ? `${info.secret.label} guardado · colar para substituir` : info.secret.label}
+              placeholder={
+                row.has_secret
+                  ? `${info.secret.label} guardado · colar para substituir`
+                  : info.secret.label
+              }
               onChange={(e) => setSecretInput(e.target.value)}
             />
             <Button
@@ -565,7 +1005,8 @@ function SetupSheet({
               <div className="mb-4 rounded-lg border border-dashed p-4">
                 <p className="text-muted-foreground">
                   Ao ligar, criamos o seu endereço de ligação
-                  {info.secret?.generate ? " e um segredo único" : ""}. Depois é só seguir os passos.
+                  {info.secret?.generate ? " e um segredo único" : ""}. Depois é só seguir os
+                  passos.
                 </p>
                 <Button onClick={connect} disabled={busy} className="mt-3 w-full">
                   Ligar {info.name}
@@ -608,18 +1049,24 @@ function SetupSheet({
               <h3 className="mb-2 font-semibold">Últimos pedidos</h3>
               {recent.length === 0 ? (
                 <p className="text-muted-foreground">
-                  Ainda não chegou nada. Use o botão de teste da plataforma para confirmar a ligação.
+                  Ainda não chegou nada. Use o botão de teste da plataforma para confirmar a
+                  ligação.
                 </p>
               ) : (
                 <ul className="divide-y rounded-lg border">
                   {recent.map((e) => {
-                    const st = EVENT_STATUS[e.status] ?? { label: e.status, variant: "secondary" as const };
+                    const st = EVENT_STATUS[e.status] ?? {
+                      label: e.status,
+                      variant: "secondary" as const,
+                    };
                     return (
                       <li key={e.id} className="flex items-start justify-between gap-3 px-3 py-2.5">
                         <div className="min-w-0">
                           <p className="truncate">
                             {e.buyer_email ?? e.event_type ?? "Pedido"}
-                            {e.amount_value !== null ? ` · ${money(e.amount_value, e.currency)}` : ""}
+                            {e.amount_value !== null
+                              ? ` · ${money(e.amount_value, e.currency)}`
+                              : ""}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {relativeDays(e.received_at)}
@@ -649,7 +1096,12 @@ function SetupSheet({
                 variant="ghost"
                 disabled={busy}
                 onClick={() => {
-                  if (!window.confirm(`Remover a ligação à ${info.name}? O histórico de vendas mantém-se.`)) return;
+                  if (
+                    !window.confirm(
+                      `Remover a ligação à ${info.name}? O histórico de vendas mantém-se.`,
+                    )
+                  )
+                    return;
                   void run(async () => {
                     const { error } = await supabase.from("integrations").delete().eq("id", row.id);
                     if (error) throw error;
@@ -674,8 +1126,8 @@ function Activity({ events }: { events: Events }) {
         <Webhook className="mx-auto size-6 text-muted-foreground" aria-hidden />
         <h2 className="mt-3 font-semibold">Ainda não chegou nada</h2>
         <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-          Quando uma plataforma enviar uma venda ou um teste para o endereço de ligação, aparece aqui
-          com o estado e, se for recusado, o motivo.
+          Quando uma plataforma enviar uma venda ou um teste para o endereço de ligação, aparece
+          aqui com o estado e, se for recusado, o motivo.
         </p>
       </div>
     );
@@ -698,7 +1150,9 @@ function Activity({ events }: { events: Events }) {
             const info = providerInfo(e.provider);
             return (
               <tr key={e.id} className="border-t align-top">
-                <td className="whitespace-nowrap p-4 text-muted-foreground">{formatDateTime(e.received_at)}</td>
+                <td className="whitespace-nowrap p-4 text-muted-foreground">
+                  {formatDateTime(e.received_at)}
+                </td>
                 <td className="p-4">
                   <span className="flex items-center gap-2">
                     {info && <Logo id={info.id} className="size-6" />}
@@ -709,7 +1163,9 @@ function Activity({ events }: { events: Events }) {
                   <Badge variant={st.variant}>{st.label}</Badge>
                 </td>
                 <td className="max-w-[220px] truncate p-4">{e.buyer_email ?? "—"}</td>
-                <td className="whitespace-nowrap p-4 tabular-nums">{money(e.amount_value, e.currency)}</td>
+                <td className="whitespace-nowrap p-4 tabular-nums">
+                  {money(e.amount_value, e.currency)}
+                </td>
                 <td className="p-4 text-muted-foreground">
                   {[e.event_type, e.product_name, e.reason].filter(Boolean).join(" · ") || "—"}
                 </td>

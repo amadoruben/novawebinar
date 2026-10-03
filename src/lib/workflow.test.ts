@@ -91,13 +91,19 @@ describe("canais e destinos", () => {
     expect(sendMissing({ channel: "webhook", target: "webhook" })).toEqual([]);
   });
 
-  it("fora da conta de teste só o webhook tem fornecedor", () => {
+  it("fora da conta de teste só o webhook e o WhatsApp ligado têm fornecedor", () => {
     const steps: Steps = {
       start: "a",
       nodes: [{ id: "a", kind: "action", sends: [{ channel: "sms", target: "contact", message: "Olá" }], next: null }],
     };
     expect(activationBlockers(steps, channelStatus(false, true))).toEqual(["SMS: sem fornecedor configurado"]);
     expect(activationBlockers(steps, channelStatus(true, false))).toEqual([]);
+    const whatsapp: Steps = {
+      start: "a",
+      nodes: [{ id: "a", kind: "action", sends: [{ channel: "whatsapp", target: "contact", message: "Olá" }], next: null }],
+    };
+    expect(activationBlockers(whatsapp, channelStatus(false, true))).toEqual(["WhatsApp: sem fornecedor configurado"]);
+    expect(activationBlockers(whatsapp, channelStatus(false, true, true))).toEqual([]);
   });
 
   it("preenche as variáveis da mensagem e deixa as desconhecidas", () => {

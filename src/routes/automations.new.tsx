@@ -41,7 +41,7 @@ function NewFlowPage() {
   const webinarId = chosen ?? free[0]?.id ?? NONE;
   const webinar = webinars.find((w) => w.id === webinarId);
   const title = webinar ? webinar.public_title || webinar.internal_name : "";
-  const status = channelStatus(Boolean(workspace?.isTest), destination.ready);
+  const status = channelStatus(Boolean(workspace?.isTest), destination.ready, destination.whatsappReady);
   const ready = baseWorkflow();
 
   const create = async () => {
