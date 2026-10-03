@@ -29,6 +29,9 @@ import { Route as AuthLoginRouteImport } from './routes/auth.login'
 import { Route as AuthRegisterRouteImport } from './routes/auth.register'
 import { Route as AuthResetRouteImport } from './routes/auth.reset'
 import { Route as AuthWelcomeRouteImport } from './routes/auth.welcome'
+import { Route as AutomationsIndexRouteImport } from './routes/automations.index'
+import { Route as AutomationsAutomationIdRouteImport } from './routes/automations.$automationId'
+import { Route as AutomationsNewRouteImport } from './routes/automations.new'
 import { Route as FuncionalidadesIndexRouteImport } from './routes/funcionalidades.index'
 import { Route as FuncionalidadesSlugRouteImport } from './routes/funcionalidades.$slug'
 import { Route as LegalCookiesRouteImport } from './routes/legal.cookies'
@@ -40,10 +43,13 @@ import { Route as WSlugRouteImport } from './routes/w.$slug'
 import { Route as WebinarsIndexRouteImport } from './routes/webinars.index'
 import { Route as WebinarsNewRouteImport } from './routes/webinars.new'
 import { Route as ApiPublicPurchaseWebhookRouteImport } from './routes/api/public/purchase-webhook'
+import { Route as ApiPublicRegisterRouteImport } from './routes/api/public/register'
 import { Route as ApiPublicRunJobsRouteImport } from './routes/api/public/run-jobs'
+import { Route as AutomationsWorkflowsWorkflowIdRouteImport } from './routes/automations.workflows.$workflowId'
 import { Route as WebinarsWebinarIdEditRouteImport } from './routes/webinars.$webinarId.edit'
 import { Route as WebinarsWebinarIdMetricsRouteImport } from './routes/webinars.$webinarId.metrics'
 import { Route as ApiPublicHooksKeyRouteImport } from './routes/api/public/hooks.$key'
+import { Route as ApiPublicFormsFormIdEmbedRouteImport } from './routes/api/public/forms.$formId.embed'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -145,6 +151,21 @@ const AuthWelcomeRoute = AuthWelcomeRouteImport.update({
   path: '/auth/welcome',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AutomationsIndexRoute = AutomationsIndexRouteImport.update({
+  id: '/automations/',
+  path: '/automations/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AutomationsAutomationIdRoute = AutomationsAutomationIdRouteImport.update({
+  id: '/automations/$automationId',
+  path: '/automations/$automationId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AutomationsNewRoute = AutomationsNewRouteImport.update({
+  id: '/automations/new',
+  path: '/automations/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FuncionalidadesIndexRoute = FuncionalidadesIndexRouteImport.update({
   id: '/funcionalidades/',
   path: '/funcionalidades/',
@@ -201,11 +222,22 @@ const ApiPublicPurchaseWebhookRoute =
     path: '/api/public/purchase-webhook',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicRegisterRoute = ApiPublicRegisterRouteImport.update({
+  id: '/api/public/register',
+  path: '/api/public/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicRunJobsRoute = ApiPublicRunJobsRouteImport.update({
   id: '/api/public/run-jobs',
   path: '/api/public/run-jobs',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AutomationsWorkflowsWorkflowIdRoute =
+  AutomationsWorkflowsWorkflowIdRouteImport.update({
+    id: '/automations/workflows/$workflowId',
+    path: '/automations/workflows/$workflowId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const WebinarsWebinarIdEditRoute = WebinarsWebinarIdEditRouteImport.update({
   id: '/webinars/$webinarId/edit',
   path: '/webinars/$webinarId/edit',
@@ -222,6 +254,12 @@ const ApiPublicHooksKeyRoute = ApiPublicHooksKeyRouteImport.update({
   path: '/api/public/hooks/$key',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicFormsFormIdEmbedRoute =
+  ApiPublicFormsFormIdEmbedRouteImport.update({
+    id: '/api/public/forms/$formId/embed',
+    path: '/api/public/forms/$formId/embed',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -244,6 +282,8 @@ export interface FileRoutesByFullPath {
   '/auth/register': typeof AuthRegisterRoute
   '/auth/reset': typeof AuthResetRoute
   '/auth/welcome': typeof AuthWelcomeRoute
+  '/automations/$automationId': typeof AutomationsAutomationIdRoute
+  '/automations/new': typeof AutomationsNewRoute
   '/funcionalidades/$slug': typeof FuncionalidadesSlugRoute
   '/legal/cookies': typeof LegalCookiesRoute
   '/legal/privacidade': typeof LegalPrivacidadeRoute
@@ -252,13 +292,17 @@ export interface FileRoutesByFullPath {
   '/replay/$webinarId': typeof ReplayWebinarIdRoute
   '/w/$slug': typeof WSlugRoute
   '/webinars/new': typeof WebinarsNewRoute
+  '/automations/': typeof AutomationsIndexRoute
   '/funcionalidades/': typeof FuncionalidadesIndexRoute
   '/webinars/': typeof WebinarsIndexRoute
   '/api/public/purchase-webhook': typeof ApiPublicPurchaseWebhookRoute
+  '/api/public/register': typeof ApiPublicRegisterRoute
   '/api/public/run-jobs': typeof ApiPublicRunJobsRoute
+  '/automations/workflows/$workflowId': typeof AutomationsWorkflowsWorkflowIdRoute
   '/webinars/$webinarId/edit': typeof WebinarsWebinarIdEditRoute
   '/webinars/$webinarId/metrics': typeof WebinarsWebinarIdMetricsRoute
   '/api/public/hooks/$key': typeof ApiPublicHooksKeyRoute
+  '/api/public/forms/$formId/embed': typeof ApiPublicFormsFormIdEmbedRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -281,6 +325,8 @@ export interface FileRoutesByTo {
   '/auth/register': typeof AuthRegisterRoute
   '/auth/reset': typeof AuthResetRoute
   '/auth/welcome': typeof AuthWelcomeRoute
+  '/automations/$automationId': typeof AutomationsAutomationIdRoute
+  '/automations/new': typeof AutomationsNewRoute
   '/funcionalidades/$slug': typeof FuncionalidadesSlugRoute
   '/legal/cookies': typeof LegalCookiesRoute
   '/legal/privacidade': typeof LegalPrivacidadeRoute
@@ -289,13 +335,17 @@ export interface FileRoutesByTo {
   '/replay/$webinarId': typeof ReplayWebinarIdRoute
   '/w/$slug': typeof WSlugRoute
   '/webinars/new': typeof WebinarsNewRoute
+  '/automations': typeof AutomationsIndexRoute
   '/funcionalidades': typeof FuncionalidadesIndexRoute
   '/webinars': typeof WebinarsIndexRoute
   '/api/public/purchase-webhook': typeof ApiPublicPurchaseWebhookRoute
+  '/api/public/register': typeof ApiPublicRegisterRoute
   '/api/public/run-jobs': typeof ApiPublicRunJobsRoute
+  '/automations/workflows/$workflowId': typeof AutomationsWorkflowsWorkflowIdRoute
   '/webinars/$webinarId/edit': typeof WebinarsWebinarIdEditRoute
   '/webinars/$webinarId/metrics': typeof WebinarsWebinarIdMetricsRoute
   '/api/public/hooks/$key': typeof ApiPublicHooksKeyRoute
+  '/api/public/forms/$formId/embed': typeof ApiPublicFormsFormIdEmbedRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -319,6 +369,8 @@ export interface FileRoutesById {
   '/auth/register': typeof AuthRegisterRoute
   '/auth/reset': typeof AuthResetRoute
   '/auth/welcome': typeof AuthWelcomeRoute
+  '/automations/$automationId': typeof AutomationsAutomationIdRoute
+  '/automations/new': typeof AutomationsNewRoute
   '/funcionalidades/$slug': typeof FuncionalidadesSlugRoute
   '/legal/cookies': typeof LegalCookiesRoute
   '/legal/privacidade': typeof LegalPrivacidadeRoute
@@ -327,13 +379,17 @@ export interface FileRoutesById {
   '/replay/$webinarId': typeof ReplayWebinarIdRoute
   '/w/$slug': typeof WSlugRoute
   '/webinars/new': typeof WebinarsNewRoute
+  '/automations/': typeof AutomationsIndexRoute
   '/funcionalidades/': typeof FuncionalidadesIndexRoute
   '/webinars/': typeof WebinarsIndexRoute
   '/api/public/purchase-webhook': typeof ApiPublicPurchaseWebhookRoute
+  '/api/public/register': typeof ApiPublicRegisterRoute
   '/api/public/run-jobs': typeof ApiPublicRunJobsRoute
+  '/automations/workflows/$workflowId': typeof AutomationsWorkflowsWorkflowIdRoute
   '/webinars/$webinarId/edit': typeof WebinarsWebinarIdEditRoute
   '/webinars/$webinarId/metrics': typeof WebinarsWebinarIdMetricsRoute
   '/api/public/hooks/$key': typeof ApiPublicHooksKeyRoute
+  '/api/public/forms/$formId/embed': typeof ApiPublicFormsFormIdEmbedRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -358,6 +414,8 @@ export interface FileRouteTypes {
     | '/auth/register'
     | '/auth/reset'
     | '/auth/welcome'
+    | '/automations/$automationId'
+    | '/automations/new'
     | '/funcionalidades/$slug'
     | '/legal/cookies'
     | '/legal/privacidade'
@@ -366,13 +424,17 @@ export interface FileRouteTypes {
     | '/replay/$webinarId'
     | '/w/$slug'
     | '/webinars/new'
+    | '/automations/'
     | '/funcionalidades/'
     | '/webinars/'
     | '/api/public/purchase-webhook'
+    | '/api/public/register'
     | '/api/public/run-jobs'
+    | '/automations/workflows/$workflowId'
     | '/webinars/$webinarId/edit'
     | '/webinars/$webinarId/metrics'
     | '/api/public/hooks/$key'
+    | '/api/public/forms/$formId/embed'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -395,6 +457,8 @@ export interface FileRouteTypes {
     | '/auth/register'
     | '/auth/reset'
     | '/auth/welcome'
+    | '/automations/$automationId'
+    | '/automations/new'
     | '/funcionalidades/$slug'
     | '/legal/cookies'
     | '/legal/privacidade'
@@ -403,13 +467,17 @@ export interface FileRouteTypes {
     | '/replay/$webinarId'
     | '/w/$slug'
     | '/webinars/new'
+    | '/automations'
     | '/funcionalidades'
     | '/webinars'
     | '/api/public/purchase-webhook'
+    | '/api/public/register'
     | '/api/public/run-jobs'
+    | '/automations/workflows/$workflowId'
     | '/webinars/$webinarId/edit'
     | '/webinars/$webinarId/metrics'
     | '/api/public/hooks/$key'
+    | '/api/public/forms/$formId/embed'
   id:
     | '__root__'
     | '/'
@@ -432,6 +500,8 @@ export interface FileRouteTypes {
     | '/auth/register'
     | '/auth/reset'
     | '/auth/welcome'
+    | '/automations/$automationId'
+    | '/automations/new'
     | '/funcionalidades/$slug'
     | '/legal/cookies'
     | '/legal/privacidade'
@@ -440,13 +510,17 @@ export interface FileRouteTypes {
     | '/replay/$webinarId'
     | '/w/$slug'
     | '/webinars/new'
+    | '/automations/'
     | '/funcionalidades/'
     | '/webinars/'
     | '/api/public/purchase-webhook'
+    | '/api/public/register'
     | '/api/public/run-jobs'
+    | '/automations/workflows/$workflowId'
     | '/webinars/$webinarId/edit'
     | '/webinars/$webinarId/metrics'
     | '/api/public/hooks/$key'
+    | '/api/public/forms/$formId/embed'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -470,6 +544,8 @@ export interface RootRouteChildren {
   AuthRegisterRoute: typeof AuthRegisterRoute
   AuthResetRoute: typeof AuthResetRoute
   AuthWelcomeRoute: typeof AuthWelcomeRoute
+  AutomationsAutomationIdRoute: typeof AutomationsAutomationIdRoute
+  AutomationsNewRoute: typeof AutomationsNewRoute
   FuncionalidadesSlugRoute: typeof FuncionalidadesSlugRoute
   LegalCookiesRoute: typeof LegalCookiesRoute
   LegalPrivacidadeRoute: typeof LegalPrivacidadeRoute
@@ -478,13 +554,17 @@ export interface RootRouteChildren {
   ReplayWebinarIdRoute: typeof ReplayWebinarIdRoute
   WSlugRoute: typeof WSlugRoute
   WebinarsNewRoute: typeof WebinarsNewRoute
+  AutomationsIndexRoute: typeof AutomationsIndexRoute
   FuncionalidadesIndexRoute: typeof FuncionalidadesIndexRoute
   WebinarsIndexRoute: typeof WebinarsIndexRoute
   ApiPublicPurchaseWebhookRoute: typeof ApiPublicPurchaseWebhookRoute
+  ApiPublicRegisterRoute: typeof ApiPublicRegisterRoute
   ApiPublicRunJobsRoute: typeof ApiPublicRunJobsRoute
+  AutomationsWorkflowsWorkflowIdRoute: typeof AutomationsWorkflowsWorkflowIdRoute
   WebinarsWebinarIdEditRoute: typeof WebinarsWebinarIdEditRoute
   WebinarsWebinarIdMetricsRoute: typeof WebinarsWebinarIdMetricsRoute
   ApiPublicHooksKeyRoute: typeof ApiPublicHooksKeyRoute
+  ApiPublicFormsFormIdEmbedRoute: typeof ApiPublicFormsFormIdEmbedRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -629,6 +709,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthWelcomeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/automations/': {
+      id: '/automations/'
+      path: '/automations'
+      fullPath: '/automations/'
+      preLoaderRoute: typeof AutomationsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/automations/$automationId': {
+      id: '/automations/$automationId'
+      path: '/automations/$automationId'
+      fullPath: '/automations/$automationId'
+      preLoaderRoute: typeof AutomationsAutomationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/automations/new': {
+      id: '/automations/new'
+      path: '/automations/new'
+      fullPath: '/automations/new'
+      preLoaderRoute: typeof AutomationsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/funcionalidades/': {
       id: '/funcionalidades/'
       path: '/funcionalidades'
@@ -706,11 +807,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicPurchaseWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/register': {
+      id: '/api/public/register'
+      path: '/api/public/register'
+      fullPath: '/api/public/register'
+      preLoaderRoute: typeof ApiPublicRegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/run-jobs': {
       id: '/api/public/run-jobs'
       path: '/api/public/run-jobs'
       fullPath: '/api/public/run-jobs'
       preLoaderRoute: typeof ApiPublicRunJobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/automations/workflows/$workflowId': {
+      id: '/automations/workflows/$workflowId'
+      path: '/automations/workflows/$workflowId'
+      fullPath: '/automations/workflows/$workflowId'
+      preLoaderRoute: typeof AutomationsWorkflowsWorkflowIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/webinars/$webinarId/edit': {
@@ -732,6 +847,13 @@ declare module '@tanstack/react-router' {
       path: '/api/public/hooks/$key'
       fullPath: '/api/public/hooks/$key'
       preLoaderRoute: typeof ApiPublicHooksKeyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/forms/$formId/embed': {
+      id: '/api/public/forms/$formId/embed'
+      path: '/api/public/forms/$formId/embed'
+      fullPath: '/api/public/forms/$formId/embed'
+      preLoaderRoute: typeof ApiPublicFormsFormIdEmbedRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -758,6 +880,8 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRegisterRoute: AuthRegisterRoute,
   AuthResetRoute: AuthResetRoute,
   AuthWelcomeRoute: AuthWelcomeRoute,
+  AutomationsAutomationIdRoute: AutomationsAutomationIdRoute,
+  AutomationsNewRoute: AutomationsNewRoute,
   FuncionalidadesSlugRoute: FuncionalidadesSlugRoute,
   LegalCookiesRoute: LegalCookiesRoute,
   LegalPrivacidadeRoute: LegalPrivacidadeRoute,
@@ -766,13 +890,17 @@ const rootRouteChildren: RootRouteChildren = {
   ReplayWebinarIdRoute: ReplayWebinarIdRoute,
   WSlugRoute: WSlugRoute,
   WebinarsNewRoute: WebinarsNewRoute,
+  AutomationsIndexRoute: AutomationsIndexRoute,
   FuncionalidadesIndexRoute: FuncionalidadesIndexRoute,
   WebinarsIndexRoute: WebinarsIndexRoute,
   ApiPublicPurchaseWebhookRoute: ApiPublicPurchaseWebhookRoute,
+  ApiPublicRegisterRoute: ApiPublicRegisterRoute,
   ApiPublicRunJobsRoute: ApiPublicRunJobsRoute,
+  AutomationsWorkflowsWorkflowIdRoute: AutomationsWorkflowsWorkflowIdRoute,
   WebinarsWebinarIdEditRoute: WebinarsWebinarIdEditRoute,
   WebinarsWebinarIdMetricsRoute: WebinarsWebinarIdMetricsRoute,
   ApiPublicHooksKeyRoute: ApiPublicHooksKeyRoute,
+  ApiPublicFormsFormIdEmbedRoute: ApiPublicFormsFormIdEmbedRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

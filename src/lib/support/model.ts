@@ -3,6 +3,7 @@
  * Os ids são os mesmos que as colunas `intent`, `priority`, `status` da base de dados.
  */
 import type { Database } from "@/integrations/supabase/types";
+import { TIMELINE_LABEL } from "@/lib/contacts";
 
 type Tables = Database["public"]["Tables"];
 export type CaseRow = Tables["support_cases"]["Row"];
@@ -238,7 +239,8 @@ export const EVENT_LABEL: Record<string, string> = {
   sla_breached: "Prazo ultrapassado",
 };
 
-export const eventLabel = (name: string) => EVENT_LABEL[name] ?? name;
+// Pagamentos e fim da sessão também chegam ao rasto: o nome é o mesmo da linha do tempo.
+export const eventLabel = (name: string) => EVENT_LABEL[name] ?? TIMELINE_LABEL[name] ?? name;
 
 /** Eventos que pedem a atenção do supervisor. */
 export const ALERT_EVENTS = ["case_unassigned", "sla_warning", "sla_breached", "case_stalled", "case_escalated"];

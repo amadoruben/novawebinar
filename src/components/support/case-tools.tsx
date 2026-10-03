@@ -363,7 +363,7 @@ export function CaseSummary({
 
       {c.summary && (
         <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
-          <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-primary">
+          <p className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
             <Bot className="size-3.5" aria-hidden /> Resumo
           </p>
           <p className="whitespace-pre-line text-sm leading-relaxed">{c.summary}</p>
@@ -397,7 +397,7 @@ export function CaseSummary({
 
       {c.recommended_action && (
         <div className="rounded-lg bg-muted px-3 py-2.5 text-sm">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Próxima acção</p>
+          <p className="text-xs text-muted-foreground">Próxima acção</p>
           <p className="mt-0.5 font-medium">{c.recommended_action}</p>
         </div>
       )}

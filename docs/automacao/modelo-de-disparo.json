@@ -1,0 +1,1112 @@
+{
+  "versao": 1,
+  "gerado_de": "Launch Drive Semente + modelos de recuperação",
+  "convencoes": {
+    "FONTE": "escrito nos arquivos",
+    "INFERIDO": "deduzido do texto",
+    "PROPOSTA": "decisão sugerida para a plataforma"
+  },
+  "agendamento_sintaxe": {
+    "+0m": "imediato após o evento",
+    "+1d": "1 dia após",
+    "-7d@hora_padrao": "7 dias antes do marco, na hora padrão do lançamento",
+    "D0@20:00": "no dia do marco às 20:00",
+    "-1du": "1 dia útil antes"
+  },
+  "variaveis": {
+    "remetente.nome": {
+      "origem": [
+        "[FULANO]",
+        "[NOME DO REMETENTE]"
+      ],
+      "descricao": "Nome de quem assina"
+    },
+    "negocio.nome": {
+      "origem": [
+        "[NOME DO NEGÓCIO]"
+      ]
+    },
+    "negocio.equipe_nome": {
+      "origem": [
+        "[NOME DA EQUIPE]"
+      ]
+    },
+    "produto.nome": {
+      "origem": [
+        "[NOME DO CURSO]"
+      ]
+    },
+    "produto.email_boas_vindas_titulo": {
+      "origem": [
+        "[TÍTULO DO E-MAIL DE BOAS VINDAS]"
+      ]
+    },
+    "evento.nome": {
+      "origem": [
+        "[EVENTO XYZ]",
+        "[Evento XYZ]",
+        "[NOME DO EVENTO]",
+        "[Nome do Evento]"
+      ]
+    },
+    "evento.data": {
+      "origem": [
+        "[DATA DO EVENTO]",
+        "[DATA]"
+      ]
+    },
+    "evento.hora": {
+      "origem": [
+        "[HORÁRIO]",
+        "[HORA DO EVENTO]"
+      ]
+    },
+    "evento.tema": {
+      "origem": [
+        "TEMA DO WEBINÁRIO",
+        "TEMA DO WEBNÁRIO"
+      ]
+    },
+    "evento.transformacao": {
+      "origem": [
+        "[TRANSFORMAÇÃO]",
+        "[COMO CONSEGUIR A TRANSFORMAÇÃO]",
+        "[ALCANÇAR A TRANSFORMAÇÃO]",
+        "[PARA ATINGIR A TRANSFORMAÇÃO]"
+      ],
+      "descricao": "Derivada da ROMA"
+    },
+    "suporte.email": {
+      "origem": [
+        "suporte@dominio.com.br",
+        "suporte@dominio.com"
+      ]
+    },
+    "garantia.incondicional_dias": {
+      "origem": [
+        "07 dias",
+        "7 dias (e-mails de recuperação)"
+      ]
+    },
+    "checkout.gateway": {
+      "origem": [
+        "Pagar-me"
+      ]
+    },
+    "boleto.url": {
+      "origem": [
+        "URL BOLETO",
+        "url personalizada do boleto"
+      ]
+    },
+    "boleto.linha_digitavel": {
+      "origem": [
+        "LINHA DIGITÁVEL",
+        "linha digitável personalizada do boleto"
+      ]
+    },
+    "boleto.prazo_dias_uteis": {
+      "origem": [
+        "X dias úteis",
+        "3 dias úteis"
+      ]
+    },
+    "link.pesquisa": {},
+    "link.grupo_whatsapp": {},
+    "link.lembrete_youtube": {},
+    "link.transmissao": {},
+    "link.pagina_replay": {},
+    "link.checkout": {},
+    "link.checkout_cartao": {},
+    "link.checkout_boleto": {},
+    "link.checkout_pix": {},
+    "link.suporte_whatsapp": {}
+  },
+  "fluxos": [
+    {
+      "id": "captacao",
+      "tipo": "campanha",
+      "gatilho": "lead.criado",
+      "entrada": "Todo lead criado numa página de inscrição do lançamento",
+      "passos": [
+        {
+          "modelo": "ppl_email_inscricao_pesquisa",
+          "agendamento": {
+            "base": "evento",
+            "offset": "+0m"
+          },
+          "origem_tempo": "INFERIDO"
+        },
+        {
+          "modelo": "ppl_email_grupo_whatsapp",
+          "agendamento": {
+            "base": "evento",
+            "offset": "+1d"
+          },
+          "condicao_envio": "lead.grupo_whatsapp == false",
+          "origem_tempo": "INFERIDO: texto diz \"ontem você se inscreveu\"",
+          "origem_condicao": "PROPOSTA"
+        },
+        {
+          "modelo": "ppl_wpp_boas_vindas",
+          "agendamento": {
+            "base": "evento:lead.entrou_grupo",
+            "offset": "+0m"
+          },
+          "origem_tempo": "FONTE: mensagem de boas-vindas do grupo"
+        }
+      ],
+      "saida": []
+    },
+    {
+      "id": "aquecimento",
+      "tipo": "campanha",
+      "gatilho": "marco",
+      "entrada": "Inscritos com data de inscrição anterior ao horário do envio",
+      "passos": [
+        {
+          "modelo": "ppl_email_faltam_7",
+          "agendamento": {
+            "base": "marco:webinario",
+            "offset": "-7d@hora_padrao"
+          }
+        },
+        {
+          "modelo": "ppl_wpp_faltam_7",
+          "agendamento": {
+            "base": "marco:webinario",
+            "offset": "-7d@hora_padrao"
+          }
+        },
+        {
+          "modelo": "ppl_email_faltam_4",
+          "agendamento": {
+            "base": "marco:webinario",
+            "offset": "-4d@hora_padrao"
+          }
+        },
+        {
+          "modelo": "ppl_wpp_faltam_4",
+          "agendamento": {
+            "base": "marco:webinario",
+            "offset": "-4d@hora_padrao"
+          }
+        },
+        {
+          "modelo": "ppl_email_amanha",
+          "agendamento": {
+            "base": "marco:webinario",
+            "offset": "-1d@hora_padrao"
+          }
+        },
+        {
+          "modelo": "ppl_wpp_amanha",
+          "agendamento": {
+            "base": "marco:webinario",
+            "offset": "-1d@hora_padrao"
+          }
+        }
+      ],
+      "saida": [],
+      "origem_tempo": "FONTE para o dia; hora_padrao é PROPOSTA"
+    },
+    {
+      "id": "evento",
+      "tipo": "campanha",
+      "gatilho": "marco",
+      "entrada": "Todos os inscritos",
+      "passos": [
+        {
+          "modelo": "pl_email_hoje",
+          "agendamento": {
+            "base": "marco:webinario",
+            "offset": "D0@hora_padrao"
+          },
+          "origem_tempo": "FONTE dia; hora PROPOSTA"
+        },
+        {
+          "modelo": "pl_wpp_hoje",
+          "agendamento": {
+            "base": "marco:webinario",
+            "offset": "D0@hora_padrao"
+          }
+        },
+        {
+          "modelo": "pl_email_ao_vivo",
+          "agendamento": {
+            "base": "marco:webinario",
+            "offset": "+0m"
+          },
+          "origem_tempo": "FONTE: \"Começou! Estamos ao vivo.\""
+        },
+        {
+          "modelo": "pl_wpp_ao_vivo",
+          "agendamento": {
+            "base": "marco:webinario",
+            "offset": "+0m"
+          }
+        }
+      ],
+      "saida": []
+    },
+    {
+      "id": "carrinho",
+      "tipo": "campanha",
+      "gatilho": "marco",
+      "entrada": "Inscritos sem compra aprovada e sem boleto pendente (PROPOSTA)",
+      "passos": [
+        {
+          "modelo": "l_email_replay",
+          "agendamento": {
+            "base": "marco:webinario",
+            "offset": "+1d@hora_padrao"
+          },
+          "origem_tempo": "INFERIDO: texto diz \"ontem\""
+        },
+        {
+          "modelo": "l_wpp_replay_1",
+          "agendamento": {
+            "base": "marco:webinario",
+            "offset": "+1d@hora_padrao"
+          }
+        },
+        {
+          "modelo": "l_wpp_replay_2",
+          "agendamento": {
+            "base": "marco:webinario",
+            "offset": "+1d@hora_padrao+6h"
+          },
+          "origem_tempo": "PROPOSTA"
+        },
+        {
+          "modelo": "l_email_so_o_file",
+          "agendamento": {
+            "base": "marco:webinario",
+            "offset": "+2d@hora_padrao"
+          },
+          "origem_tempo": "PROPOSTA"
+        },
+        {
+          "modelo": "l_wpp_so_o_file_1",
+          "agendamento": {
+            "base": "marco:webinario",
+            "offset": "+2d@hora_padrao"
+          }
+        },
+        {
+          "modelo": "l_wpp_so_o_file_2",
+          "agendamento": {
+            "base": "marco:webinario",
+            "offset": "+2d@hora_padrao+6h"
+          }
+        },
+        {
+          "modelo": "l_email_encerra_hoje",
+          "agendamento": {
+            "base": "marco:fechamento_carrinho",
+            "offset": "D0@hora_padrao"
+          },
+          "origem_tempo": "FONTE: dia do fechamento, encerra 23h59"
+        },
+        {
+          "modelo": "l_wpp_encerra_hoje",
+          "agendamento": {
+            "base": "marco:fechamento_carrinho",
+            "offset": "D0@hora_padrao"
+          }
+        },
+        {
+          "modelo": "l_email_ultima_chamada",
+          "agendamento": {
+            "base": "marco:fechamento_carrinho",
+            "offset": "D0@20:00"
+          },
+          "origem_tempo": "PROPOSTA"
+        },
+        {
+          "modelo": "l_wpp_ultima_chamada",
+          "agendamento": {
+            "base": "marco:fechamento_carrinho",
+            "offset": "D0@20:00"
+          }
+        }
+      ],
+      "saida": [
+        "compra.aprovada",
+        "boleto.gerado",
+        "marco:fechamento_carrinho+1m"
+      ]
+    },
+    {
+      "id": "carrinho_abandonado",
+      "tipo": "transacional",
+      "gatilho": "checkout.iniciado sem compra.aprovada nem boleto.gerado em 15 min (PROPOSTA)",
+      "entrada": "Contato com e-mail e telefone capturados na proteção de checkout",
+      "passos": [
+        {
+          "modelo": "rec_wpp_carrinho_abandonado",
+          "agendamento": {
+            "base": "evento",
+            "offset": "+15m"
+          },
+          "origem_tempo": "PROPOSTA"
+        },
+        {
+          "modelo": "rec_email_carrinho_abandonado_1",
+          "agendamento": {
+            "base": "evento",
+            "offset": "+1h"
+          },
+          "origem_tempo": "PROPOSTA"
+        },
+        {
+          "modelo": "rec_email_carrinho_abandonado_2",
+          "agendamento": {
+            "base": "evento",
+            "offset": "+24h"
+          },
+          "origem_tempo": "PROPOSTA"
+        }
+      ],
+      "saida": [
+        "compra.aprovada",
+        "boleto.gerado",
+        "pagamento.recusado",
+        "marco:fechamento_carrinho+1m"
+      ],
+      "nota": "O e-mail 1 promete liberar a vaga \"ainda hoje\": só enviar com carrinho aberto."
+    },
+    {
+      "id": "pagamento_recusado",
+      "tipo": "transacional",
+      "gatilho": "pagamento.recusado (cartão)",
+      "entrada": "Comprador com transação recusada ou cancelada pela operadora",
+      "passos": [
+        {
+          "modelo": "rec_email_pagamento_recusado_1",
+          "agendamento": {
+            "base": "evento",
+            "offset": "+0m"
+          },
+          "origem_tempo": "FONTE: \"caráter de urgência\""
+        }
+      ],
+      "saida": [
+        "compra.aprovada",
+        "boleto.gerado"
+      ]
+    },
+    {
+      "id": "boleto_emitido",
+      "tipo": "transacional",
+      "gatilho": "boleto.gerado",
+      "entrada": "Comprador que gerou boleto",
+      "passos": [
+        {
+          "modelo": "rec_email_boleto_emitido_1",
+          "agendamento": {
+            "base": "evento",
+            "offset": "+0m"
+          }
+        },
+        {
+          "modelo": "rec_wpp_boleto_emitido",
+          "agendamento": {
+            "base": "evento",
+            "offset": "+0m"
+          }
+        },
+        {
+          "modelo": "rec_email_boleto_emitido_2",
+          "agendamento": {
+            "base": "boleto.vencimento",
+            "offset": "-1du@hora_padrao"
+          },
+          "origem_tempo": "INFERIDO: \"já está perto de vencer\"; -1 dia útil é PROPOSTA"
+        }
+      ],
+      "saida": [
+        "boleto.pago",
+        "compra.aprovada",
+        "boleto.vencido"
+      ],
+      "nota": "Prazo do boleto: 3 dias úteis (FONTE). Validação do pagamento: 24 a 48 horas (FONTE)."
+    },
+    {
+      "id": "compra_aprovada",
+      "tipo": "transacional",
+      "gatilho": "compra.aprovada",
+      "entrada": "Comprador com pagamento confirmado (cartão, Pix ou boleto pago)",
+      "passos": [
+        {
+          "modelo": "pos_email_compra_aprovada_1",
+          "agendamento": {
+            "base": "evento",
+            "offset": "+0m"
+          }
+        },
+        {
+          "modelo": "pos_wpp_compra_aprovada",
+          "agendamento": {
+            "base": "evento",
+            "offset": "+5m"
+          },
+          "origem_tempo": "INFERIDO: texto diz \"já deve ter recebido no seu e-mail\""
+        }
+      ],
+      "saida": [],
+      "efeitos": [
+        "cancelar_pendentes:carrinho",
+        "cancelar_pendentes:carrinho_abandonado",
+        "cancelar_pendentes:pagamento_recusado",
+        "cancelar_pendentes:boleto_emitido",
+        "contato.estado = comprou"
+      ],
+      "nota": "Os dados de login chegam por um e-mail separado da área de membros (FONTE: \"Em breve, você vai receber todos os seus dados de acesso\")."
+    }
+  ],
+  "modelos": [
+    {
+      "id": "ppl_email_inscricao_pesquisa",
+      "arquivo_origem": "e1",
+      "fluxo": "captacao",
+      "canal": "email",
+      "momento": "Inscrição: obrigado + pesquisa",
+      "assunto": "Preciso da sua ajuda",
+      "corpo": "Olá, e ai, tudo bem?\nAqui é o {{remetente.nome}}, e eu estou passando para te dar os parabéns por ter realizado a sua inscrição para o {{evento.nome}}. \nTenho certeza que nesse evento você vai aprender a {{evento.transformacao}}. Você vai ficar surpreso com muita coisa.\nNesse exato momento, eu e a minha equipe estamos cuidando de todos os preparativos para realizar o {{evento.nome}}.\nEstamos nos esforçando ao máximo para produzir o melhor conteúdo pra você e é exatamente por isso que eu preciso da sua ajuda.  \nPara ser mais exato, preciso que você me ajude  com duas  coisas muito importantes.\nA primeira coisa é:  eu gostaria muito de saber   quais são as principais dificuldades e necessidades que você tem enfrentando neste momento {{evento.transformacao}}. \nA sua resposta vai me ajudar a garantir que esse evento supere as suas expectativas.\nLogo abaixo, tem um link com uma pesquisa pra você responder. \n Com base nas suas respostas, pode ser que eu consiga  adaptar ou até mesmo produzir um conteúdo específico pra você.  Então reserve um tempinho na sua agenda  e responda essa pesquisa com o máximo de atenção possível, ok ?\n[CONFIRMAR INSCRIÇÃO - PESQUISA {{link.pesquisa}}]\nE o meu segundo pedido é o seguinte.\nDa última vez que eu fiz um evento assim, muitas pessoas ficaram chateadas porque não receberam meus e-mails e, por conta disso, não tiveram acesso a todos os conteúdos que eu enviei..\n Dessa vez, eu quero ter a certeza que minhas mensagens vão chegar  até você. Mas pra isso, eu preciso  que você responda à pesquisa que eu coloquei ali em cima e depois responda este  e-mail aqui falando assim:\n\"Eu recebi o e-mail e já respondi a pesquisa\".\nAssim, eu vou saber que está tudo ok com seu acesso e posso ficar tranquilo por ter a certeza de que você não vai perder nenhum conteúdo. \nEntão, é isso aí, não ignora esse e-mail, tá? Espero de verdade poder contar com a sua ajuda.\nA gente se fala novamente em breve.\nGrande abraço,\n{{remetente.nome}}",
+      "variaveis": [
+        "remetente.nome",
+        "evento.nome",
+        "evento.transformacao",
+        "link.pesquisa"
+      ],
+      "links_esperados": [
+        "link.pesquisa"
+      ],
+      "destino": "individual",
+      "tipo": "campanha"
+    },
+    {
+      "id": "ppl_email_grupo_whatsapp",
+      "arquivo_origem": "e2",
+      "fluxo": "captacao",
+      "canal": "email",
+      "momento": "Inscrição: convite para o grupo",
+      "assunto": "Tudo o que você precisa para acessar o evento",
+      "corpo": "Olá, tudo bem? \nAqui é {{remetente.nome}}, eu vi que ontem você se inscreveu para participar do {{evento.nome}} e que a sua inscrição já foi confirmada! \nPensando em tornar sua experiência  ainda melhor, nós criamos um grupo exclusivo no Whatsapp para quem se inscreveu no evento. \nNesse grupo, você vai receber todos os links de acesso e conteúdos extras do {{evento.nome}}.\nLá no grupo de WhatsApp, a entrega dos conteúdos é imediata. Assim, você  não corre o  risco de alguma  mensagem não chegar ou cair no SPAM, como pode acontecer com o e-mail, às vezes.\nAh, e pode ficar despreocupado porque o grupo é altamente moderado e apenas administradores podem enviar mensagens. \nEu te garanto que por lá você vai receber apenas mensagens oficiais do evento, tá?\nEntão pra não perder absolutamente nada desse evento, eu recomendo que você participe agora mesmo do grupo de whatsapp, é só clicar no link abaixo:\nPARTICIPAR DO WHATSAPP {{link.grupo_whatsapp}}\nAbraço, \n{{remetente.nome}}",
+      "variaveis": [
+        "remetente.nome",
+        "evento.nome",
+        "link.grupo_whatsapp"
+      ],
+      "links_esperados": [
+        "link.grupo_whatsapp"
+      ],
+      "destino": "individual",
+      "tipo": "campanha"
+    },
+    {
+      "id": "ppl_email_faltam_7",
+      "arquivo_origem": "e3",
+      "fluxo": "aquecimento",
+      "canal": "email",
+      "momento": "Faltam 7 dias",
+      "assunto": "{{evento.nome}} Faltam 7 dias",
+      "corpo": "Opa, tudo bem? Aqui é {{remetente.nome}}. \nEstou te mandando esse e-mail para avisar que faltam apenas 7 dias para começar o {{evento.nome}}.\nComo vai ser um evento com muito conteúdo de valor, sugiro que você organize sua agenda para conseguir aproveitar ao máximo cada minuto dele.  Sinceramente, eu acredito que esse evento pode  ser um divisor de águas na sua maneira de {{evento.transformacao}}\nE para que você possa se preparar com antecedência para participar ao vivo, já vou deixar aqui a programação do evento: \n{{evento.data}} {{evento.tema}}\nTodos os avisos, link de acessos  e materiais extras serão enviados por e-mail e WhatsApp. Se você ainda não está no nosso grupo exclusivo do Whatsapp, recomendo que  entre  o quanto antes. \nLá no grupo de WhatsApp, a entrega dos conteúdos é imediata. Assim, você não corre o risco de alguma mensagem não chegar ou cair no SPAM, como pode acontecer com o e-mail, às vezes.\nPara entrar no grupo do evento,  basta clicar no link abaixo:\nPARTICIPAR DO GRUPO DE WHATSAPP {{link.grupo_whatsapp}}\nSe você já faz parte do grupo, parabéns. Agora,  é só aguardar que em breve você receberá todas as informações sobre o acesso no {{evento.nome}}.\nA gente se fala em breve.\n Abraços.",
+      "variaveis": [
+        "evento.nome",
+        "remetente.nome",
+        "evento.transformacao",
+        "evento.data",
+        "evento.tema",
+        "link.grupo_whatsapp"
+      ],
+      "links_esperados": [
+        "link.grupo_whatsapp"
+      ],
+      "destino": "individual",
+      "tipo": "campanha"
+    },
+    {
+      "id": "ppl_email_faltam_4",
+      "arquivo_origem": "e4",
+      "fluxo": "aquecimento",
+      "canal": "email",
+      "momento": "Faltam 4 dias",
+      "assunto": "{{evento.nome}} O acesso está liberado",
+      "corpo": "Olá, tudo bem? \nAqui é {{remetente.nome}}, estou passando  para te lembrar que faltam apenas 4 dias para começar o {{evento.nome}}.\nEu e minha equipe  estamos nos preparativos finais para o evento e nesse momento já estamos liberando o link de acesso. Com isso,  você já pode confirmar sua presença no nosso evento.\nPara confirmar sua presença é só acessar o link abaixo e clicar em [Definir Lembrete]. Depois disso, sua  presença já estará confirmada.\nAcesse o link abaixo agora e confirme agora mesmo a sua presença:\n{{link.lembrete_youtube}}",
+      "variaveis": [
+        "evento.nome",
+        "remetente.nome",
+        "link.lembrete_youtube"
+      ],
+      "links_esperados": [
+        "link.lembrete_youtube"
+      ],
+      "destino": "individual",
+      "tipo": "campanha"
+    },
+    {
+      "id": "ppl_email_amanha",
+      "arquivo_origem": "e5",
+      "fluxo": "aquecimento",
+      "canal": "email",
+      "momento": "É amanhã",
+      "assunto": "{{evento.nome}} É amanhã",
+      "corpo": "Opa, beleza?\n\nPassando aqui para te avisar que falta apenas 1 dia para começar a {{evento.nome}}, então se organiza para participar ao vivo no dia {{evento.data}} às {{evento.hora}}.\n\nNo exato momento em que você está lendo esse e-mail, nós liberamos o link para acessar a transmissão e você já pode confirmar sua presença.\n\nPara confirmar sua presença é só clicar no link abaixo e clicar em ([Definir Lembrete]). Feito isso,  sua presença será  confirmada automaticamente.\n\n{{link.lembrete_youtube}}\n\nÉ isso e vejo você em breve no {{evento.nome}}.\n\nAbraços.",
+      "variaveis": [
+        "evento.nome",
+        "evento.data",
+        "evento.hora",
+        "link.lembrete_youtube"
+      ],
+      "links_esperados": [
+        "link.lembrete_youtube"
+      ],
+      "destino": "individual",
+      "tipo": "campanha"
+    },
+    {
+      "id": "pl_email_hoje",
+      "arquivo_origem": "e6",
+      "fluxo": "evento",
+      "canal": "email",
+      "momento": "É hoje",
+      "assunto": "{{evento.nome}} É hoje, os seus dados de acesso estão aqui",
+      "corpo": "Olá, \nEstou passando aqui para te lembrar que HOJE, às {{evento.hora}}, começa o {{evento.nome}}, onde você vai aprender {{evento.transformacao}}.\nPara participar ao vivo é só clicar link abaixo no horário da transmissão:\nCLIQUE AQUI PARA ACESSAR {{link.transmissao}}\nTema da aula: {{evento.tema}}.\nColoca na sua agenda e não se esqueça. Participando ao vivo você também vai ter a chance de ter suas dúvidas respondidas durante o evento.\nConto com a sua presença.\nVejo você em breve.\nAbraços.",
+      "variaveis": [
+        "evento.nome",
+        "evento.hora",
+        "evento.transformacao",
+        "link.transmissao",
+        "evento.tema"
+      ],
+      "links_esperados": [
+        "link.transmissao"
+      ],
+      "destino": "individual",
+      "tipo": "campanha"
+    },
+    {
+      "id": "pl_email_ao_vivo",
+      "arquivo_origem": "e7",
+      "fluxo": "evento",
+      "canal": "email",
+      "momento": "Estamos ao vivo",
+      "assunto": "{{evento.nome}} Estamos ao vivo, venha participar",
+      "corpo": "Começou! Estamos ao vivo.\n\nPara participar ao vivo é só clicar no link abaixo:\n\nCLIQUE AQUI PARA ACESSAR {{link.transmissao}}\n\nTema da aula: {{evento.tema}}.\n\nParticipando ao vivo você também vai ter a chance de ter suas dúvidas em tempo real, durante o evento. \n\nConto com a sua presença.\n\nVenha participar agora!\n\nAbraços.",
+      "variaveis": [
+        "evento.nome",
+        "link.transmissao",
+        "evento.tema"
+      ],
+      "links_esperados": [
+        "link.transmissao"
+      ],
+      "destino": "individual",
+      "tipo": "campanha"
+    },
+    {
+      "id": "ppl_wpp_boas_vindas",
+      "arquivo_origem": "w1",
+      "fluxo": "captacao",
+      "canal": "whatsapp",
+      "momento": "Boas-vindas + pesquisa",
+      "assunto": null,
+      "corpo": "⚠️ Sejam bem- vindos ao grupo do {{evento.nome}}, que vai acontecer do dia {{evento.data}} ao dia {{evento.data}}. ⚠️\nNesse grupo, você vai receber todos os links de acesso, material bônus e informações sobre as premiações. \nAs mensagens são moderadas e apenas administradores enviam mensagens, por esse motivo deixe as notificações sempre ativadas. \nAtenção! Nossa equipe não entrará em contato com ninguém no privado, tome cuidado com mensagens de outros membros do grupo.\nEstamos preparando todo o conteúdo do evento e, neste  momento, precisamos da ajuda de vocês. Queremos saber quais são as principais dificuldades de cada um de vocês e o que  vocês mais gostariam de aprender nesse evento.\nPara responder a pesquisa, basta acessar o link abaixo: .\nSerá muito importante para o desenvolvimento do conteúdo da {{evento.nome}}.\n{{link.pesquisa}}\nAbraços!",
+      "variaveis": [
+        "evento.nome",
+        "evento.data",
+        "link.pesquisa"
+      ],
+      "links_esperados": [
+        "link.pesquisa"
+      ],
+      "destino": "grupo",
+      "tipo": "campanha"
+    },
+    {
+      "id": "ppl_wpp_faltam_7",
+      "arquivo_origem": "w2",
+      "fluxo": "aquecimento",
+      "canal": "whatsapp",
+      "momento": "Faltam 7 dias",
+      "assunto": null,
+      "corpo": "⏰ FALTAM 7 DIAS PARA COMEÇAR O {{evento.nome}} ⏰\nSugiro que você organize sua agenda para conseguir aproveitar ao máximo todo o evento. Vai ser um evento com muito conteúdo e, sinceramente, acredito que possa ser um divisor de águas na sua maneira de {{evento.transformacao}}\nO {{evento.nome}} vai acontecer no dia {{evento.data}}, às {{evento.hora}}. Anota na sua agenda e participe ao vivo.",
+      "variaveis": [
+        "evento.nome",
+        "evento.transformacao",
+        "evento.data",
+        "evento.hora"
+      ],
+      "links_esperados": [],
+      "destino": "grupo",
+      "tipo": "campanha"
+    },
+    {
+      "id": "ppl_wpp_faltam_4",
+      "arquivo_origem": "w3",
+      "fluxo": "aquecimento",
+      "canal": "whatsapp",
+      "momento": "Faltam 4 dias",
+      "assunto": null,
+      "corpo": "🔥 Atenção 🔥\nFaltam 4 dias para o {{evento.nome}}.\nEu e minha equipe já estamos nos preparativos finais para o evento e, nesse momento, já estamos liberando o link de acesso. Com isso,  você já pode confirmar sua presença no evento.\nPara confirmar sua presença é só acessar o link abaixo e clicar em [Definir Lembrete]. Depois disso,  sua presença já estará confirmada.\nAcesse o link abaixo agora mesmo e confirme sua presença:\n{{link.lembrete_youtube}}",
+      "variaveis": [
+        "evento.nome",
+        "link.lembrete_youtube"
+      ],
+      "links_esperados": [
+        "link.lembrete_youtube"
+      ],
+      "destino": "grupo",
+      "tipo": "campanha"
+    },
+    {
+      "id": "ppl_wpp_amanha",
+      "arquivo_origem": "w4",
+      "fluxo": "aquecimento",
+      "canal": "whatsapp",
+      "momento": "É amanhã",
+      "assunto": null,
+      "corpo": "📣📣 Está chegando o dia! \nPassando aqui para te avisar que falta 1 dia para começar a {{evento.nome}}, então se organiza para participar ao vivo no dia {{evento.data}}, às {{evento.hora}}.\nNo exato momento em que você está lendo essa mensagem, nós liberamos o link para acessar a transmissão e você já pode confirmar sua presença.\nPara confirmar sua presença é só clicar no link abaixo e clicar em [Definir Lembrete]. Depois disso, sua presença será  confirmada automaticamente.\nCLIQUE AQUI PARA CONFIRMAR SUA PRESENÇA.\nVejo você em breve no {{evento.nome}}.\nAbraços.",
+      "variaveis": [
+        "evento.nome",
+        "evento.data",
+        "evento.hora"
+      ],
+      "links_esperados": [],
+      "destino": "grupo",
+      "tipo": "campanha"
+    },
+    {
+      "id": "pl_wpp_hoje",
+      "arquivo_origem": "w5",
+      "fluxo": "evento",
+      "canal": "whatsapp",
+      "momento": "É hoje",
+      "assunto": null,
+      "corpo": "🔥🔥É hoje! Os seus dados de acesso estão aqui 🔥🔥\nOlá, estou passando aqui para te lembrar que HOJE, às {{evento.hora}}, começa o {{evento.nome}}, onde você vai aprender {{evento.transformacao}}.\nPara participar ao vivo é só clicar link abaixo no horário da transmissão:\nTema da aula: {{evento.tema}}.\nColoca na sua agenda e não se esqueça. Participando ao vivo você também vai ter a chance de ter suas dúvidas respondidas durante o evento, em tempo real. \nPara participar da aula ao vivo HOJE, às {{evento.hora}}, é só clicar no link abaixo:\nCLIQUE AQUI PARA ACESSAR {{link.transmissao}}",
+      "variaveis": [
+        "evento.hora",
+        "evento.nome",
+        "evento.transformacao",
+        "evento.tema",
+        "link.transmissao"
+      ],
+      "links_esperados": [
+        "link.transmissao"
+      ],
+      "destino": "grupo",
+      "tipo": "campanha"
+    },
+    {
+      "id": "pl_wpp_ao_vivo",
+      "arquivo_origem": "w6",
+      "fluxo": "evento",
+      "canal": "whatsapp",
+      "momento": "Estamos ao vivo",
+      "assunto": null,
+      "corpo": "⚠️⚠️Estamos ao vivo, venha participar⚠️⚠️\nComeçou! Estamos ao vivo.\nTema da aula: {{evento.tema}}.\nParticipando ao vivo, você também vai ter a chance de ter suas dúvidas respondidas durante o evento, em tempo real. .\nConto com a sua presença.\nVenha participar agora!\nPara participar ao vivo é só clicar link abaixo:\nCLIQUE AQUI PARA ACESSAR {{link.transmissao}}",
+      "variaveis": [
+        "evento.tema",
+        "link.transmissao"
+      ],
+      "links_esperados": [
+        "link.transmissao"
+      ],
+      "destino": "grupo",
+      "tipo": "campanha"
+    },
+    {
+      "id": "l_email_replay",
+      "arquivo_origem": "l1",
+      "fluxo": "carrinho",
+      "canal": "email",
+      "momento": "Replay disponível",
+      "assunto": "{{evento.nome}} Replay disponível",
+      "corpo": "Olá,  tudo bem?\nEstou te mandando essa mensagem para avisar que o replay do {{evento.nome}} já está disponível.\nSe você não pôde comparecer ao vivo ontem ou quer rever a aula, já é possível acessar todo o conteúdo  clicando no link abaixo:\nCLIQUE AQUI PARA ACESSAR O REPLAY {{link.pagina_replay}}\nNo link acima, você também tem chance de dar um passo além e participar do {{produto.nome}}, 100% online, em que  você vai ter acesso completo a:\nEntregáveis\nBônus\nGarantia\nAtenção! \nA gravação da aula vai ficar disponível por pouco tempo. Então se você realmente quer aprender a {{evento.transformacao}}, aproveite e assista enquanto ainda há tempo.\nAbraços.",
+      "variaveis": [
+        "evento.nome",
+        "link.pagina_replay",
+        "produto.nome",
+        "evento.transformacao"
+      ],
+      "links_esperados": [
+        "link.pagina_replay"
+      ],
+      "destino": "individual",
+      "tipo": "campanha"
+    },
+    {
+      "id": "l_email_so_o_file",
+      "arquivo_origem": "l2",
+      "fluxo": "carrinho",
+      "canal": "email",
+      "momento": "Só o filé",
+      "assunto": "{{evento.nome}} Só o filé, melhores momentos",
+      "corpo": "Olá,  tudo bem?\nEu e minha equipe decidimos fazer uma coisa que sem dúvidas vai te ajudar muito. Nós fizemos uma re-edição do {{evento.nome}}.\nComo assim?\nNós extraímos os pontos mais importantes que você precisa para aprender a {{evento.transformacao}} e compilamos em uma “aula resumida”.\nDessa jeito, você vai conseguir aprender todos os pontos que foram ensinados no evento de forma mais rápida e prática.\nPara acessar a edição com os melhores momentos é só clicar no link abaixo:\nACESSAR A AULA DE MELHORES MOMENTOS {{link.pagina_replay}}\nNo link acima, você também tem chance de dar um passo além e participar do {{produto.nome}}, 100% online, em que  você vai ter acesso completo a:\nEntregáveis\nBônus\nGarantia\nAtenção! \nA gravação da aula vai ficar disponível por pouco tempo.e você realmente quer aprender a {{evento.transformacao}}, aproveite e assista enquanto ainda há tempo.\nAbraços.",
+      "variaveis": [
+        "evento.nome",
+        "evento.transformacao",
+        "link.pagina_replay",
+        "produto.nome"
+      ],
+      "links_esperados": [
+        "link.pagina_replay"
+      ],
+      "destino": "individual",
+      "tipo": "campanha"
+    },
+    {
+      "id": "l_email_encerra_hoje",
+      "arquivo_origem": "l3",
+      "fluxo": "carrinho",
+      "canal": "email",
+      "momento": "Encerra hoje",
+      "assunto": "{{evento.nome}} O seu acesso vai ser cancelado",
+      "corpo": "O seu acesso vai ser cancelado!\nHoje, às 23h59, a gravação do {{evento.nome}} vai sair do ar e também encerraremos as inscrições do {{produto.nome}}.\nEntão se você quer aprender a {{evento.transformacao}} a hora é agora.\nACESSAR A AULA {{link.pagina_replay}}\nNo link acima, você também tem chance de dar um passo além e participar do {{produto.nome}}, 100% online, em que  você vai ter acesso completo a:\nEntregáveis\nBônus\nGarantia\nATENÇÃO! \nA gravação da aula e as inscrições realmente vão encerrar HOJE, às 23h59, e não abriremos exceções, aproveite enquanto ainda há tempo.\nQualquer dúvida basta retornar este e-mail que eu e minha equipe estamos à disposição!\nAbraços.",
+      "variaveis": [
+        "evento.nome",
+        "produto.nome",
+        "evento.transformacao",
+        "link.pagina_replay"
+      ],
+      "links_esperados": [
+        "link.pagina_replay"
+      ],
+      "destino": "individual",
+      "tipo": "campanha"
+    },
+    {
+      "id": "l_email_ultima_chamada",
+      "arquivo_origem": "l4",
+      "fluxo": "carrinho",
+      "canal": "email",
+      "momento": "Última chamada",
+      "assunto": "{{evento.nome}} Última chamada.",
+      "corpo": "Atenção, essa é a última chamada.\nHoje, às 23h59, a gravação do {{evento.nome}} vai sair do ar e também encerraremos as inscrições do {{produto.nome}}.\nFAZER INSCRIÇÃO {{link.pagina_replay}}\nNo link acima, você também tem chance de dar um passo além e participar do {{produto.nome}}, 100% online, em que  você vai ter acesso completo a:\nEntregáveis\nBônus\nGarantia\nATENÇÃO! Essa é a última chance para se inscrever no {{produto.nome}}.\nQualquer dúvida basta retornar este e-mail que eu e minha equipe estamos à disposição!\nAbraços.",
+      "variaveis": [
+        "evento.nome",
+        "produto.nome",
+        "link.pagina_replay"
+      ],
+      "links_esperados": [
+        "link.pagina_replay"
+      ],
+      "destino": "individual",
+      "tipo": "campanha"
+    },
+    {
+      "id": "l_wpp_replay_1",
+      "arquivo_origem": "lw1",
+      "fluxo": "carrinho",
+      "canal": "whatsapp",
+      "momento": "Replay, chamada 1",
+      "assunto": null,
+      "corpo": "📢📢 Atenção - Replay Disponível 📢📢\nPassando aqui para avisar que o replay do {{evento.nome}} já está disponível.\nAtenção! A gravação da aula vai ficar disponível por pouco tempo. Se você realmente quer aprender a {{evento.transformacao}}, aproveite e assista enquanto ainda há tempo.\nSe você não pôde comparecer ao vivo ontem ou quer rever a aula, basta  acessar o conteúdo clicando no link abaixo:\nNo link abaixo, além de ter acesso ao replay, você também tem chance de dar um passo além e participar do {{produto.nome}}, 100% online, em que  você vai ter acesso completo a:\nEntregáveis\nBônus\nGarantia\nCLIQUE NO LINK ABAIXO PARA ACESSAR O REPLAY OU PARTICIPAR DO {{produto.nome}}:\n{{link.pagina_replay}}",
+      "variaveis": [
+        "evento.nome",
+        "evento.transformacao",
+        "produto.nome",
+        "link.pagina_replay"
+      ],
+      "links_esperados": [
+        "link.pagina_replay"
+      ],
+      "destino": "grupo",
+      "tipo": "campanha"
+    },
+    {
+      "id": "l_wpp_replay_2",
+      "arquivo_origem": "lw2",
+      "fluxo": "carrinho",
+      "canal": "whatsapp",
+      "momento": "Replay, chamada 2",
+      "assunto": null,
+      "corpo": "📢📢Segunda chamada - A gravação já está disponível 📢📢\n\nSe você ainda não assistiu ou deseja rever a aula, a gravação do {{evento.nome}} já está disponível.\n\nAtenção! A gravação da aula vai ficar disponível por pouco tempo. Se você realmente quer aprender a {{evento.transformacao}}, aproveite e assista enquanto ainda há tempo.\n\nSe você não pôde comparecer ao vivo ontem ou quer rever a aula, basta acessar o conteúdo clicando no link abaixo:\n\nNo link abaixo, além de ter acesso ao replay, você também tem chance de dar um passo além e participar do {{produto.nome}}, 100% online, em que  você vai ter acesso completo a:\n\nEntregáveis\nBônus\nGarantia\n\nCLIQUE NO LINK ABAIXO PARA ACESSAR O REPLAY OU PARTICIPAR DO {{produto.nome}}:\n\n{{link.pagina_replay}}",
+      "variaveis": [
+        "evento.nome",
+        "evento.transformacao",
+        "produto.nome",
+        "link.pagina_replay"
+      ],
+      "links_esperados": [
+        "link.pagina_replay"
+      ],
+      "destino": "grupo",
+      "tipo": "campanha"
+    },
+    {
+      "id": "l_wpp_so_o_file_1",
+      "arquivo_origem": "lw3",
+      "fluxo": "carrinho",
+      "canal": "whatsapp",
+      "momento": "Só o filé, chamada 1",
+      "assunto": null,
+      "corpo": "🔥🔥 Só o filé, melhores momentos🔥🔥\nEu e minha equipe decidimos fazer uma coisa que sem dúvidas vai te ajudar muito. Nós fizemos uma re-edição do {{evento.nome}}.\nComo assim?\nNós extraímos os pontos mais importantes que você precisa para aprender a {{evento.transformacao}} e compilamos em uma “aula resumida”. Desse jeito, você vai conseguir aprender todos os pontos que foram ensinados no evento de forma mais rápida e prática.\nNo link abaixo, além de ter acesso aos melhores momentos, você também tem chance de dar um passo além e participar do {{produto.nome}}, 100% online, em que  você vai ter acesso completo a:\nEntregáveis\nBônus\nGarantia\nCLIQUE NO LINK ABAIXO PARA ACESSAR OS MELHORES MOMENTOS OU PARTICIPAR DO {{produto.nome}}:\n{{link.pagina_replay}}",
+      "variaveis": [
+        "evento.nome",
+        "evento.transformacao",
+        "produto.nome",
+        "link.pagina_replay"
+      ],
+      "links_esperados": [
+        "link.pagina_replay"
+      ],
+      "destino": "grupo",
+      "tipo": "campanha"
+    },
+    {
+      "id": "l_wpp_so_o_file_2",
+      "arquivo_origem": "lw4",
+      "fluxo": "carrinho",
+      "canal": "whatsapp",
+      "momento": "Só o filé, chamada 2",
+      "assunto": null,
+      "corpo": "🚨🚨 Acesso aos melhores momentos está liberado🚨🚨 \nEu e minha equipe decidimos fazer uma coisa que sem dúvidas vai te ajudar muito. Nós fizemos uma re-edição do {{evento.nome}}.\nComo assim?\nNós extraímos os pontos mais importantes que você precisa para aprender a {{evento.transformacao}} e compilamos em uma “aula resumida”. Desse jeito, você vai conseguir aprender todos os pontos que foram ensinados no evento de forma mais rápida e prática.\nNo link abaixo, além de ter acesso aos melhores momentos, você também tem chance de dar um passo além e participar do {{produto.nome}}, 100% online, em que  você vai ter acesso completo a:\nEntregáveis\nBônus\nGarantia\nCLIQUE NO LINK ABAIXO PARA ACESSAR OS MELHORES MOMENTOS OU PARTICIPAR DO {{produto.nome}}:\n{{link.pagina_replay}}",
+      "variaveis": [
+        "evento.nome",
+        "evento.transformacao",
+        "produto.nome",
+        "link.pagina_replay"
+      ],
+      "links_esperados": [
+        "link.pagina_replay"
+      ],
+      "destino": "grupo",
+      "tipo": "campanha"
+    },
+    {
+      "id": "l_wpp_encerra_hoje",
+      "arquivo_origem": "lw5",
+      "fluxo": "carrinho",
+      "canal": "whatsapp",
+      "momento": "Encerra hoje",
+      "assunto": null,
+      "corpo": "⚠️⚠️ Os acessos serão cancelados ⚠️⚠️\nHoje, às 23h59, a gravação do {{evento.nome}} vai sair do ar e também encerraremos as inscrições do {{produto.nome}}.\nEntão se você quer aprender a {{evento.transformacao}} a hora é agora.\nNo link abaixo, além de ter acesso aos melhores momentos, você também tem chance de dar um passo além e participar do {{produto.nome}}, 100% online, em que você vai ter acesso completo a:\nEntregáveis\nBônus\nGarantia\nCLIQUE NO LINK ABAIXO PARA ACESSAR OS MELHORES MOMENTOS OU PARTICIPAR DO {{produto.nome}}:\n{{link.pagina_replay}}",
+      "variaveis": [
+        "evento.nome",
+        "produto.nome",
+        "evento.transformacao",
+        "link.pagina_replay"
+      ],
+      "links_esperados": [
+        "link.pagina_replay"
+      ],
+      "destino": "grupo",
+      "tipo": "campanha"
+    },
+    {
+      "id": "l_wpp_ultima_chamada",
+      "arquivo_origem": "lw6",
+      "fluxo": "carrinho",
+      "canal": "whatsapp",
+      "momento": "Última chamada",
+      "assunto": null,
+      "corpo": "⚠️⚠️ Última Chamada ⚠️⚠️\nAtenção, essa é a última chamada.\nHoje, às 23h59, a gravação do {{evento.nome}} vai sair do ar e também encerraremos as inscrições do {{produto.nome}}.\nEntão se você quer aprender a {{evento.transformacao}}, essa é sua última chance.\nNo link abaixo, além de ter acesso aos melhores momentos, você também tem chance de dar um passo além e participar do {{produto.nome}}, 100% online, em que  você vai ter acesso completo a:\nEntregáveis\nBônus\nGarantia\nCLIQUE NO LINK ABAIXO PARA ACESSAR OS MELHORES MOMENTOS OU PARTICIPAR DO {{produto.nome}}:\n{{link.pagina_replay}}",
+      "variaveis": [
+        "evento.nome",
+        "produto.nome",
+        "evento.transformacao",
+        "link.pagina_replay"
+      ],
+      "links_esperados": [
+        "link.pagina_replay"
+      ],
+      "destino": "grupo",
+      "tipo": "campanha"
+    },
+    {
+      "id": "rec_wpp_carrinho_abandonado",
+      "arquivo_origem": "q1",
+      "fluxo": "carrinho_abandonado",
+      "canal": "whatsapp",
+      "momento": "Compra iniciada e não concluída",
+      "assunto": null,
+      "corpo": "Olá, tudo bem?\nAqui é {{remetente.nome}}, da equipe {{negocio.nome}}.\nEu vi aqui você iniciou a sua inscrição para o {{produto.nome}}, mas por algum motivo não concluiu.\nSe você teve algum problema com internet ou precisou se ausentar e deixou para terminar depois, você pode concluir sua matrícula clicando no link abaixo (é só repetir o processo de matricula).\nAgora, se você tem  alguma dúvida ou precisa de ajuda, é só me responder essa mensagem que estou à disposição.\nSegue o link para concluir a sua inscrição:\n{{link.checkout}}",
+      "variaveis": [
+        "remetente.nome",
+        "negocio.nome",
+        "produto.nome",
+        "link.checkout"
+      ],
+      "links_esperados": [
+        "link.checkout"
+      ],
+      "destino": "individual",
+      "tipo": "transacional"
+    },
+    {
+      "id": "rec_email_carrinho_abandonado_1",
+      "arquivo_origem": "q3",
+      "fluxo": "carrinho_abandonado",
+      "canal": "email",
+      "momento": "Operação em aberto",
+      "assunto": "Operação em aberto no seu nome",
+      "corpo": "Estou te encaminhando essa mensagem porque  você ficou com uma operação em aberto para o cadastro do {{produto.nome}}.\nPrecisamos que você se manifeste o mais rápido possível, através do link abaixo:\n[FINALIZAR INSCRIÇÃO] {{link.checkout}}\nPedimos que dê uma resposta o quanto antes. Do contrário, iremos liberar a sua vaga ainda hoje para outra pessoa.\n\nAbraços,\nP.S. Caso você esteja precisando de alguma forma diferenciada de pagamento, você pode:\n1 - Pagar com cartão de crédito À VISTA.\n2 - Pagar com cartão de crédito EM ATÉ 12X.\n3 - Pagar com Boleto Bancário. \n4 - Pagar com Pix.\nAcesse agora mesmo, clicando no botão acima, para conhecer TODAS as formas de pagamento disponíveis.\nP.S.2 Caso tenha realizado o pagamento por boleto bancário, pedimos um prazo de 24 a 48 horas para validação do comprovante. Se você ainda está dentro desse prazo, desconsidere essa mensagem. Caso já tenha se passado mais de 48 horas e ainda não recebeu os seus dados de acesso, por favor, nos informe respondendo este email.",
+      "variaveis": [
+        "produto.nome",
+        "link.checkout"
+      ],
+      "links_esperados": [
+        "link.checkout"
+      ],
+      "destino": "individual",
+      "tipo": "transacional"
+    },
+    {
+      "id": "rec_email_carrinho_abandonado_2",
+      "arquivo_origem": "q6",
+      "fluxo": "carrinho_abandonado",
+      "canal": "email",
+      "momento": "Pedido de ajuda",
+      "assunto": "Eu acho que você precisa de ajuda",
+      "corpo": "Eu percebi que você tentou adquirir o {{produto.nome}}, mas parece que houve algum problema. \nSe eu puder te ajudar de alguma forma, fique à vontade para me enviar um e-mail para: {{suporte.email}}\nOu se você preferir, pode entrar em contato com nossa equipe de suporte no Whatsapp:\nCLIQUE AQUI PARA ENTRAR EM CONTATO COM SUPORTE VIA WHATSAPP {{link.suporte_whatsapp}}\nSe ainda estiver em dúvida se esse curso é para você, fique tranquilo(a): você tem {{garantia.incondicional_dias}} dias para solicitar o REEMBOLSO.\nGostaria de lembrar também que no nosso site utilizamos uma das mais confiáveis plataformas de pagamento online do mercado, para que você possa comprar com toda tranquilidade.\nTodas as formas de pagamento:\n1 - Cartão de Crédito:\nNosso site é 100% seguro e você pode efetuar o pagamento através de cartão de crédito sem nenhum risco. E nesta opção você ainda pode parcelar a sua inscrição.\nCLIQUE AQUI {{link.checkout_cartao}} para pagar com CARTÃO DE CRÉDITO!\nAssim que finalizar sua inscrição, nós enviaremos os dados de acesso para o seu e-mail. \n2 - Pagamento via boleto bancário:\nEsta opção é ótima se você tiver interesse em efetuar seu pagamento à vista. Basta gerar um boleto e fazer  o pagamento pelo aplicativo ou site do seu banco, numa agência bancária ou casa lotérica.\nCLIQUE AQUI {{link.checkout_boleto}} para pagar através do BOLETO.\n3 - Pagar com Pix:\nÉ uma das formas de pagamento mais rápidas disponíveis. Basta colocar a nossa chave do PIX e fazer o pagamento.\n\nCLIQUE AQUI {{link.checkout_pix}} para pagar com Pix.\n\nEssa é uma compra com RISCO ZERO para você. Não existe possibilidade de dar errado. Além disso, você tem {{garantia.incondicional_dias}} dias para certificar de que gostou do curso. Caso isso não aconteça, você solicita o REEMBOLSO e eu devolvo o seu investimento sem perguntas.\nAbraços,\n{{remetente.nome}}",
+      "variaveis": [
+        "produto.nome",
+        "suporte.email",
+        "link.suporte_whatsapp",
+        "garantia.incondicional_dias",
+        "link.checkout_cartao",
+        "link.checkout_boleto",
+        "link.checkout_pix",
+        "remetente.nome"
+      ],
+      "links_esperados": [
+        "link.suporte_whatsapp",
+        "link.checkout_cartao",
+        "link.checkout_boleto",
+        "link.checkout_pix"
+      ],
+      "destino": "individual",
+      "tipo": "transacional"
+    },
+    {
+      "id": "rec_email_pagamento_recusado_1",
+      "arquivo_origem": "q8",
+      "fluxo": "pagamento_recusado",
+      "canal": "email",
+      "momento": "Cadastro cancelado",
+      "assunto": "[Urgente] Seu cadastro foi cancelado",
+      "corpo": "Olá, tudo bem?\nEstou te  enviando esse e-mail em caráter de urgência, pois a sua inscrição para o {{produto.nome}} foi cancelada.\nAcesse o link abaixo e faça uma nova inscrição para participar do {{produto.nome}}.\nCLIQUE AQUI PARA REALIZAR UMA NOVA INSCRIÇÃO {{link.checkout}}\nRecomendo que você faça isso o quanto antes, pois  falta pouco tempo  para encerrarmos as inscrições.\nNão deixe para depois.\nSua compra pode ter sido cancelada por alguns motivos:\n1 - Saldo Insuficiente no cartão.\n2 - Dados Incorretos (algum erro de digitação na hora da compra)\n3 - Cancelamento pela operadora. (isso pode acontecer em transações online)\nSe eu puder te ajudar de alguma forma, fique à vontade para me enviar um e-mail para: {{suporte.email}}\nOu se você preferir pode entrar em contato com minha equipe através do WhatsApp.\nCLIQUE AQUI PARA FALAR COM SUPORTE VIA WHATSAPP.\nSe ainda estiver em dúvida se esse curso é para você ou não, fique tranquilo(a): você tem {{garantia.incondicional_dias}} dias para solicitar o REEMBOLSO.\nGostaria de lembrar também que no nosso site utilizamos uma das mais confiáveis plataformas de pagamento online do mercado ({{checkout.gateway}}) para que você possa comprar com toda tranquilidade.\nTodas as formas de pagamento:\n1 - Cartão de Crédito:\nNosso site é 100% seguro e você pode efetuar o pagamento através de cartão de crédito sem nenhum risco. E nesta opção você ainda pode parcelar em até 12 vezes. \n\nAssim que finalizar sua inscrição, nós enviaremos os dados de acesso para o seu e-mail. \n2 - Pagamento via boleto bancário:\nEsta opção é ótima se você tiver interesse em efetuar seu pagamento à vista. Basta gerar um boleto e efetuar o pagamento pelo aplicativo ou site do seu banco, numa agência bancária ou casa lotérica.\n3 - Pagamento com PIX:\nSe você tem interesse em realizar o pagamento à vista de forma rápida com praticidade, nós já estamos disponibilizando o pagamento utilizando PIX, basta selecionar essa opção em nosso site e realizar a operação, o seu acesso será liberado imediatamente.\nEssa é uma compra com RISCO ZERO para você. Não existe possibilidade de dar errado. Além disso, você tem {{garantia.incondicional_dias}} dias para certificar de que gostou do curso. Caso isso não aconteça, você solicita o REEMBOLSO e eu devolvo o seu investimento sem perguntas.\nAbraços, {{remetente.nome}}",
+      "variaveis": [
+        "produto.nome",
+        "link.checkout",
+        "suporte.email",
+        "garantia.incondicional_dias",
+        "checkout.gateway",
+        "remetente.nome"
+      ],
+      "links_esperados": [
+        "link.checkout"
+      ],
+      "destino": "individual",
+      "tipo": "transacional"
+    },
+    {
+      "id": "rec_wpp_boleto_emitido",
+      "arquivo_origem": "q4",
+      "fluxo": "boleto_emitido",
+      "canal": "whatsapp",
+      "momento": "Boleto emitido",
+      "assunto": null,
+      "corpo": "Parabéns por ter realizado a sua inscrição para {{produto.nome}}!\nEstou passando aqui para te avisar que você tem até {{boleto.prazo_dias_uteis}} dias úteis para realizar o pagamento do boleto.\nAssim que o pagamento for confirmado, o acesso ao curso será liberado. Você  receberá todos os dados de acesso no seu e-mail.\nCaso você queira imprimir seu boleto, é só acessar o link:\n{{boleto.url}}\nSe preferir, você também pode usar a linha digitável para pagar online:\n{{boleto.linha_digitavel}}\nSe precisar de alguma ajuda estou à disposição :)",
+      "variaveis": [
+        "produto.nome",
+        "boleto.prazo_dias_uteis",
+        "boleto.url",
+        "boleto.linha_digitavel"
+      ],
+      "links_esperados": [
+        "boleto.url",
+        "boleto.linha_digitavel"
+      ],
+      "destino": "individual",
+      "tipo": "transacional"
+    },
+    {
+      "id": "rec_email_boleto_emitido_1",
+      "arquivo_origem": "q9",
+      "fluxo": "boleto_emitido",
+      "canal": "email",
+      "momento": "Boleto emitido",
+      "assunto": "O seu boleto foi emitido - {{produto.nome}}",
+      "corpo": "Olá, tudo bem?\nObrigado por gerar o boleto para adquirir o  {{produto.nome}}.\nIMPORTANTE: você ainda tem um próximo passo para liberar o seu acesso ao curso.\nVocê ainda precisa efetuar o pagamento do boleto através do seu banco (na agência ou internet banking) ou casa lotérica.\nImprima seu boleto: {{boleto.url}}\nLinha digitável: {{boleto.linha_digitavel}}\nDepois disso, você precisa prestar bastante atenção às informações que vamos enviar para o seu e-mail. \nAssim que  o sistema registrar o seu pagamento, vamos te enviar um e-mail com o link para você acessar o curso.\nEventualmente, esse email de acesso pode cair na sua caixa de spam, por isso, lembre sempre de verificar lá.\nPara nós é muito importante que neste momento você não tenha dificuldade alguma.Não queremos  que você fique perdido na hora de realizar seu primeiro acesso. \nCaso você tenha  algum tipo de dificuldade, pode entrar em contato através do email {{suporte.email}}, pois estamos prontos para atender à sua solicitação.\nOu se preferir CLIQUE AQUI PARA COM NOSSA EQUIPE NO WHATSAPP {{link.suporte_whatsapp}}\nE por fim, não se esqueça de concluir essa operação que está em aberto para desbloquear todos os benefícios e bônus que estamos disponibilizando\nAbraços,\n{{remetente.nome}}",
+      "variaveis": [
+        "produto.nome",
+        "boleto.url",
+        "boleto.linha_digitavel",
+        "suporte.email",
+        "link.suporte_whatsapp",
+        "remetente.nome"
+      ],
+      "links_esperados": [
+        "boleto.url",
+        "boleto.linha_digitavel",
+        "link.suporte_whatsapp"
+      ],
+      "destino": "individual",
+      "tipo": "transacional"
+    },
+    {
+      "id": "rec_email_boleto_emitido_2",
+      "arquivo_origem": "q10",
+      "fluxo": "boleto_emitido",
+      "canal": "email",
+      "momento": "Boleto perto de vencer",
+      "assunto": "Você vai perder seu cadastro",
+      "corpo": "Olá, tudo bem por aí?\nEstou passando apenas para lembrar que o seu boleto do {{produto.nome}} já está perto de vencer. Caso esteja enfrentando alguma dificuldade para efetuar o pagamento, não deixe de me enviar uma mensagem, ok? \nCaso você precise reimprimir o seu boleto, pode fazê-lo por aqui: {{boleto.url}}\nSe você preferir a linha digitável para  pagar online, está aqui: {{boleto.linha_digitavel}}\nNão deixe passar essa oportunidade, não teremos uma nova turma tão cedo! \nAssim que identificarmos o pagamento do boleto, enviaremos um e-mail com registro da compra e o acesso imediato ao curso, assim como todos os seus bônus.\nAbraços!\n{{remetente.nome}}\nPS: Caso já tenha efetuado o pagamento do boleto, pode desconsiderar esta mensagem. Assim que recebermos a confirmação do banco, enviaremos um e-mail com os detalhes.",
+      "variaveis": [
+        "produto.nome",
+        "boleto.url",
+        "boleto.linha_digitavel",
+        "remetente.nome"
+      ],
+      "links_esperados": [
+        "boleto.url",
+        "boleto.linha_digitavel"
+      ],
+      "destino": "individual",
+      "tipo": "transacional"
+    },
+    {
+      "id": "pos_wpp_compra_aprovada",
+      "arquivo_origem": "q7",
+      "fluxo": "compra_aprovada",
+      "canal": "whatsapp",
+      "momento": "Matrícula concluída",
+      "assunto": null,
+      "corpo": "Olá, seja bem-vindo ao {{produto.nome}}. Sua matrícula foi concluída com sucesso!\nVocê já deve ter recebido no seu e-mail todas as informações de acesso ao curso. \nVerifique a  sua caixa de entrada e encontre o e-mail com o título {{produto.email_boas_vindas_titulo}}, enviado por {{remetente.nome}}.\nCaso não encontre o e-mail, lembre-se de verificar na sua caixa de spam ou promoções, pode ser que o e-mail tenha ido pra lá.\nQualquer dúvida ou dificuldade, é só enviar um e-mail para {{suporte.email}}, que nossa equipe vai te ajudar o mais rápido possível.\nParabéns por ter dado esse passo importante e seja muito bem-vindo!\nAtt.,\n{{negocio.equipe_nome}}",
+      "variaveis": [
+        "produto.nome",
+        "produto.email_boas_vindas_titulo",
+        "remetente.nome",
+        "suporte.email",
+        "negocio.equipe_nome"
+      ],
+      "links_esperados": [],
+      "destino": "individual",
+      "tipo": "transacional"
+    },
+    {
+      "id": "pos_email_compra_aprovada_1",
+      "arquivo_origem": "q11",
+      "fluxo": "compra_aprovada",
+      "canal": "email",
+      "momento": "Boas-vindas",
+      "assunto": "Seja bem vindo ao {{produto.nome}}",
+      "corpo": "Parabéns por ter feito a sua inscrição para o {{produto.nome}}. \nEstou te mandando esse e-mail para lhe dar boas-vindas e também para dizer que eu espero de verdade que esse curso supere todas as suas expectativas.\nEm breve, você vai receber todos os seus dados de  acesso ao curso. Lembre-se de checar sua caixa de SPAM. \nÉ bem  comum que esse e-mail demore um pouco para chegar, mas caso você não receba ou não o encontre,  entre em contato com nossa equipe via Whatsapp ou por e-mail, estaremos prontos para te ajudar.\nCLIQUE AQUI PARA ENTRAR EM CONTATO VIA WHATSAPP {{link.suporte_whatsapp}}\nOu envie um e-mail para: {{suporte.email}}\nSeja muito bem-vindo ao {{produto.nome}}.\nAbraços,\n{{remetente.nome}}",
+      "variaveis": [
+        "produto.nome",
+        "link.suporte_whatsapp",
+        "suporte.email",
+        "remetente.nome"
+      ],
+      "links_esperados": [
+        "link.suporte_whatsapp"
+      ],
+      "destino": "individual",
+      "tipo": "transacional"
+    }
+  ]
+}

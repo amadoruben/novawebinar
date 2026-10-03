@@ -243,7 +243,7 @@ export function AiImageDialog({
 
         {results.length > 0 && (
           <div className="space-y-2">
-            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               {results.length} versão{results.length === 1 ? "" : "ões"} gerada
               {results.length === 1 ? "" : "s"}
             </p>

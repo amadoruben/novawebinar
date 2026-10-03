@@ -1,10 +1,15 @@
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { ChevronRight, Download, ListPlus, Plus, Search, Trash2, Upload } from "lucide-react";
+import { ChevronRight, Download, ListPlus, Pencil, Plus, Search, Sparkles, Trash2, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { ContactSheet, TemperatureBadge } from "@/components/contacts/contact-sheet";
 import { ImportContactsDialog } from "@/components/contacts/import-dialog";
+import { SegmentDialog } from "@/components/contacts/segment-dialog";
+import { segmentSentence } from "@/lib/segments";
+import { RUN_STATUS, type RunStatus } from "@/lib/automations";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -27,6 +32,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import {
   contactInsight,
+  formatPhone,
+  paymentState,
   relativeDays,
   sourceLabel,
   sourceVerdict,
@@ -39,19 +46,26 @@ import {
   CONTACTS_PAGE_SIZE,
   fetchAllContacts,
   useContactLists,
+  useContactSegments,
   useContacts,
   useContactSources,
   useContactStageCounts,
   useInvalidate,
   useWebinars,
+  switchWorkspace,
   useWorkspace,
   watchLabel,
+  type ContactList,
   type SourceRow,
   type StageCounts,
 } from "@/lib/data";
 import { downloadCsv, toCsv } from "@/lib/webinar-metrics";
 
+type Search = { contact?: string | undefined };
+
 export const Route = createFileRoute("/contacts")({
+  validateSearch: (search: Record<string, unknown>): Search =>
+    typeof search["contact"] === "string" ? { contact: search["contact"] } : {},
   head: () => ({
     meta: [
       { title: "Contactos | Convertewebinar" },
@@ -65,8 +79,10 @@ type Scope = { kind: "all" } | { kind: "list"; id: string } | { kind: "event"; i
 
 /** O que fazer com cada grupo, dito em linguagem de quem vende. */
 const ADVICE: Record<string, string> = {
+  checkout:
+    "Iniciaram o pagamento e não concluíram: são as pessoas mais perto de comprar. Fale com elas primeiro, de preferência no próprio dia; se o pagamento falhou, ofereça outra forma de pagar.",
   clicked:
-    "Clicaram na oferta e não compraram: são as pessoas mais perto de comprar. Fale com elas primeiro, de preferência no próprio dia.",
+    "Clicaram na oferta e não iniciaram o pagamento. Normalmente falta uma resposta a uma dúvida sobre preço, garantia ou prazo.",
   reached_offer:
     "Ficaram até à oferta mas não clicaram. Normalmente falta uma resposta a uma objeção ou um motivo para decidir agora.",
   watched:
@@ -89,9 +105,13 @@ function ContactsPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [open, setOpen] = useState<ContactSummary | null>(null);
+  const routeSearch = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const [openRow, setOpenRow] = useState<ContactSummary | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // Diálogo do segmento: null fechado; { segment: null } novo; { segment } a editar.
+  const [segmentDialog, setSegmentDialog] = useState<{ segment: ContactList | null } | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput), 300);
@@ -107,12 +127,42 @@ function ContactsPage() {
   const filters = { stage, listId, webinarId, search, page };
 
   const { data: lists = [] } = useContactLists(orgId);
+  const manualLists = lists.filter((l) => l.kind === "manual");
+  const segments = lists.filter((l) => l.kind === "smart");
+  const currentList = lists.find((l) => l.id === listId) ?? null;
   const { data: webinars = [] } = useWebinars(orgId);
   const { data: counts } = useContactStageCounts(orgId, listId, webinarId);
   const { data: sources = [] } = useContactSources(orgId, listId, webinarId);
   const { data, isLoading, isFetching } = useContacts(orgId, filters);
   const rows = data?.rows ?? [];
   const total = data?.total ?? 0;
+  const pageIds = rows.map((r) => r.id!).filter(Boolean);
+  const { data: runsByContact } = useContactRuns(pageIds);
+  const { data: segmentsByContact } = useContactSegments(segments.length ? pageIds : []);
+  const listNames = (c: ContactSummary) => [
+    ...manualLists.filter((l) => c.list_ids?.includes(l.id)).map((l) => l.name),
+    ...segments.filter((l) => segmentsByContact?.get(c.id!)?.includes(l.id)).map((l) => l.name),
+  ];
+  const webinarTitle = (id: string) => {
+    const w = webinars.find((x) => x.id === id);
+    return w ? w.public_title || w.internal_name : undefined;
+  };
+  const { data: linked } = useLinkedContact(routeSearch.contact, orgId);
+  // Aberto pela linha da tabela ou pela ligação (/contacts?contact=…), vindo de uma execução ou do Painel.
+  const open =
+    openRow ?? (routeSearch.contact ? (rows.find((r) => r.id === routeSearch.contact) ?? linked ?? null) : null);
+  const setOpen = (contact: ContactSummary | null) => {
+    setOpenRow(contact);
+    if (!contact && routeSearch.contact) void navigate({ search: {}, replace: true });
+  };
+  const webinarName = (ids: string[] | null) => {
+    const last = ids?.at(-1);
+    const w = last ? webinars.find((x) => x.id === last) : null;
+    if (!w) return null;
+    const title = w.public_title || w.internal_name;
+    return (ids?.length ?? 0) > 1 ? `${title} +${ids!.length - 1}` : title;
+  };
+  const testOrg = workspace?.organizations.find((o) => o.isTest && o.id !== orgId);
   const pages = Math.max(1, Math.ceil(total / CONTACTS_PAGE_SIZE));
 
   const scopeName =
@@ -139,7 +189,7 @@ function ContactsPage() {
   };
 
   const deleteList = async (id: string) => {
-    if (!window.confirm("Apagar esta lista? Os contactos continuam guardados.")) return;
+    if (!window.confirm("Apagar? Os contactos continuam guardados.")) return;
     const { error } = await supabase.from("contact_lists").delete().eq("id", id);
     if (error) {
       toast.error("Não foi possível apagar a lista.");
@@ -258,7 +308,7 @@ function ContactsPage() {
               Todos os contactos
             </ScopeButton>
             <div>
-              <p className="mb-1.5 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+              <p className="mb-1.5 px-3 text-xs text-muted-foreground/70">
                 Por evento
               </p>
               {webinars.length === 0 && <p className="px-3 text-muted-foreground">Sem webinars.</p>}
@@ -274,22 +324,49 @@ function ContactsPage() {
             </div>
             <div>
               <div className="mb-1.5 flex items-center justify-between px-3">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+                <p className="text-xs text-muted-foreground/70">
                   As minhas listas
                 </p>
                 <Button variant="ghost" size="icon" className="size-7" onClick={createList} aria-label="Nova lista">
                   <Plus className="size-4" />
                 </Button>
               </div>
-              {lists.length === 0 && (
+              {manualLists.length === 0 && (
                 <p className="px-3 text-muted-foreground">Crie listas ou importe uma folha.</p>
               )}
-              {lists.map((l) => (
+              {manualLists.map((l) => (
                 <ScopeButton
                   key={l.id}
                   active={scope.kind === "list" && scope.id === l.id}
                   onClick={() => setScope({ kind: "list", id: l.id })}
                 >
+                  {l.name}
+                </ScopeButton>
+              ))}
+            </div>
+            <div>
+              <div className="mb-1.5 flex items-center justify-between px-3">
+                <p className="text-xs text-muted-foreground/70">Segmentos</p>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  onClick={() => setSegmentDialog({ segment: null })}
+                  aria-label="Novo segmento"
+                >
+                  <Plus className="size-4" />
+                </Button>
+              </div>
+              {segments.length === 0 && (
+                <p className="px-3 text-muted-foreground">Regras sobre o comportamento e a origem: quem as cumpre entra sozinho.</p>
+              )}
+              {segments.map((l) => (
+                <ScopeButton
+                  key={l.id}
+                  active={scope.kind === "list" && scope.id === l.id}
+                  onClick={() => setScope({ kind: "list", id: l.id })}
+                >
+                  <Sparkles className="mr-1.5 inline size-3.5 text-muted-foreground" aria-hidden />
                   {l.name}
                 </ScopeButton>
               ))}
@@ -322,10 +399,20 @@ function ContactsPage() {
                     ))}
                   </SelectGroup>
                 )}
-                {lists.length > 0 && (
+                {manualLists.length > 0 && (
                   <SelectGroup>
                     <SelectLabel>As minhas listas</SelectLabel>
-                    {lists.map((l) => (
+                    {manualLists.map((l) => (
+                      <SelectItem key={l.id} value={`list:${l.id}`}>
+                        {l.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
+                {segments.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>Segmentos</SelectLabel>
+                    {segments.map((l) => (
                       <SelectItem key={l.id} value={`list:${l.id}`}>
                         {l.name}
                       </SelectItem>
@@ -336,11 +423,24 @@ function ContactsPage() {
             </Select>
           </div>
 
+          {currentList?.kind === "smart" && currentList.rules && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-card bg-card px-4 py-3 text-sm">
+              <p>
+                <Sparkles className="mr-1.5 inline size-4 text-muted-foreground" aria-hidden />
+                <span className="font-medium">Segmento:</span> {segmentSentence(currentList.rules, webinarTitle)}.
+                <span className="text-muted-foreground"> Calculado agora, a partir do comportamento e da origem.</span>
+              </p>
+              <Button variant="outline" size="sm" onClick={() => setSegmentDialog({ segment: currentList })}>
+                <Pencil /> Editar regras
+              </Button>
+            </div>
+          )}
+
           <JourneyStrip counts={counts} stage={stage} onSelect={setStage} />
 
           <SourcePanel rows={sources} />
           {stage && ADVICE[stage] && (
-            <p role="status" className="rounded-lg border bg-card px-4 py-3 text-sm">
+            <p role="status" className="rounded-card bg-card px-4 py-3 text-sm">
               {ADVICE[stage]}
             </p>
           )}
@@ -365,17 +465,17 @@ function ContactsPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    {lists.length === 0 && (
+                    {manualLists.length === 0 && (
                       <DropdownMenuItem onSelect={createList}>Criar a primeira lista…</DropdownMenuItem>
                     )}
-                    {lists.map((l) => (
+                    {manualLists.map((l) => (
                       <DropdownMenuItem key={l.id} onSelect={() => addSelectedTo(l.id)}>
                         {l.name}
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
-                {listId && (
+                {listId && currentList?.kind === "manual" && (
                   <Button variant="ghost" onClick={removeSelectedFromList}>
                     Remover da lista
                   </Button>
@@ -384,7 +484,7 @@ function ContactsPage() {
             )}
             {listId && selected.size === 0 && (
               <Button variant="ghost" onClick={() => deleteList(listId)}>
-                <Trash2 /> Apagar lista
+                <Trash2 /> {currentList?.kind === "smart" ? "Apagar segmento" : "Apagar lista"}
               </Button>
             )}
           </div>
@@ -398,7 +498,7 @@ function ContactsPage() {
           {isLoading ? (
             <Skeleton className="h-72 w-full" />
           ) : rows.length === 0 ? (
-            <div className="rounded-lg border border-dashed bg-card px-6 py-14 text-center">
+            <div className="rounded-card bg-card px-6 py-14 text-center">
               <h2 className="font-semibold">
                 {total === 0 && !stage && !search && scope.kind === "all"
                   ? "Ainda sem contactos"
@@ -410,18 +510,25 @@ function ContactsPage() {
                   : "Experimente outra etapa da jornada ou outra lista."}
               </p>
               {scope.kind === "all" && !stage && !search && (
-                <Button className="mt-5" onClick={() => setImportOpen(true)}>
-                  <Upload /> Importar contactos
-                </Button>
+                <div className="mt-5 flex flex-wrap justify-center gap-2">
+                  <Button onClick={() => setImportOpen(true)}>
+                    <Upload /> Importar contactos
+                  </Button>
+                  {testOrg && (
+                    <Button variant="outline" onClick={() => switchWorkspace(testOrg.id)}>
+                      Ver a conta de teste
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
           ) : (
             <>
               <div className={`overflow-x-auto rounded-lg border bg-card ${isFetching ? "opacity-70" : ""}`}>
-                <table className="hidden w-full min-w-[760px] text-left text-sm md:table">
+                <table className="hidden w-full min-w-[960px] text-left text-sm md:table">
                   <thead className="bg-muted">
                     <tr>
-                      <th className="w-10 p-4">
+                      <th className="w-10 py-4 pl-4 pr-2">
                         <Checkbox
                           checked={allOnPageSelected}
                           onCheckedChange={(v) =>
@@ -430,8 +537,8 @@ function ContactsPage() {
                           aria-label="Seleccionar todos nesta página"
                         />
                       </th>
-                      {["Contacto", "Telefone", "Eventos", "Etapa", "Temperatura", "Última actividade"].map((h) => (
-                        <th key={h} className="p-4 font-medium">
+                      {["Contacto", "Estado", "Webinar e origem", "Comportamento", "Pagamento", "Listas e segmentos", "Automações", "Actividade"].map((h) => (
+                        <th key={h} className="px-2 py-3 font-medium">
                           {h}
                         </th>
                       ))}
@@ -446,7 +553,7 @@ function ContactsPage() {
                           className="cursor-pointer border-t hover:bg-muted/40"
                           onClick={() => setOpen(c)}
                         >
-                          <td className="p-4" onClick={(e) => e.stopPropagation()}>
+                          <td className="py-4 pl-4 pr-2" onClick={(e) => e.stopPropagation()}>
                             <Checkbox
                               checked={selected.has(c.id!)}
                               onCheckedChange={(v) => {
@@ -458,20 +565,47 @@ function ContactsPage() {
                               aria-label={`Seleccionar ${c.name || c.email}`}
                             />
                           </td>
-                          <td className="max-w-[260px] p-4">
+                          <td className="max-w-[230px] px-2 py-3">
                             <p className="truncate font-medium">{c.name || "Sem nome"}</p>
                             <p className="truncate text-xs text-muted-foreground">{c.email ?? "—"}</p>
+                            {c.phone && (
+                              <p className="truncate text-xs tabular-nums text-muted-foreground" title="WhatsApp">
+                                WhatsApp {formatPhone(c.phone)}
+                              </p>
+                            )}
                           </td>
-                          <td className="p-4 text-muted-foreground">{c.phone ?? "—"}</td>
-                          <td className="p-4">
-                            {c.events_attended}/{c.events_registered}
-                            <span className="ml-1 text-xs text-muted-foreground">assistidos</span>
-                          </td>
-                          <td className="p-4">{stageLabel(i.stage)}</td>
-                          <td className="p-4">
+                          <td className="px-2 py-3">
+                            <p className="mb-1">{stageLabel(i.stage)}</p>
                             <TemperatureBadge temperature={i.temperature} />
                           </td>
-                          <td className="p-4 text-muted-foreground">{relativeDays(c.last_seen_at)}</td>
+                          <td className="max-w-[140px] px-2 py-3">
+                            <p className="truncate" title={webinarName(c.webinar_ids) ?? undefined}>
+                              {webinarName(c.webinar_ids) ?? <span className="text-muted-foreground">—</span>}
+                            </p>
+                            <p
+                              className="truncate text-xs text-muted-foreground"
+                              title="Primeira origem da pessoa; a origem de cada inscrição está na ficha"
+                            >
+                              {sourceLabel(c.first_source)}
+                              {c.first_campaign ? ` · ${c.first_campaign}` : ""}
+                            </p>
+                          </td>
+                          <td className="px-2 py-3">
+                            <Behaviour contact={c} />
+                          </td>
+                          <td className="px-2 py-3">
+                            {(() => {
+                              const pay = paymentState(c);
+                              return pay ? <Badge variant={pay.variant}>{pay.label}</Badge> : <span className="text-muted-foreground">—</span>;
+                            })()}
+                          </td>
+                          <td className="max-w-[150px] px-2 py-3">
+                            <ListBadges names={listNames(c)} />
+                          </td>
+                          <td className="px-2 py-3">
+                            <RunsSummary runs={runsByContact?.get(c.id!) ?? []} />
+                          </td>
+                          <td className="whitespace-nowrap px-2 py-3 text-muted-foreground">{relativeDays(c.last_seen_at)}</td>
                         </tr>
                       );
                     })}
@@ -494,6 +628,9 @@ function ContactsPage() {
                               {stageLabel(i.stage)} · {c.events_attended}/{c.events_registered} eventos ·{" "}
                               {relativeDays(c.last_seen_at)}
                             </p>
+                            {paymentState(c) && (
+                              <p className="mt-1 text-xs">{paymentState(c)!.label}</p>
+                            )}
                           </div>
                           <TemperatureBadge temperature={i.temperature} />
                           <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
@@ -526,18 +663,127 @@ function ContactsPage() {
         </div>
       </div>
 
-      {open && <ContactSheet contact={open} lists={lists} onClose={() => setOpen(null)} />}
+      {open && (
+        <ContactSheet contact={open} lists={manualLists} segments={segments} onClose={() => setOpen(null)} />
+      )}
+      {segmentDialog && orgId && (
+        <SegmentDialog
+          organizationId={orgId}
+          webinars={webinars}
+          segment={
+            segmentDialog.segment?.rules
+              ? { id: segmentDialog.segment.id, name: segmentDialog.segment.name, rules: segmentDialog.segment.rules }
+              : null
+          }
+          onClose={() => setSegmentDialog(null)}
+          onSaved={(id) => {
+            setSegmentDialog(null);
+            setScope({ kind: "list", id });
+          }}
+        />
+      )}
       {importOpen && orgId && (
         <ImportContactsDialog
           open
           onOpenChange={setImportOpen}
           organizationId={orgId}
-          lists={lists}
-          defaultListId={listId}
+          lists={manualLists}
+          defaultListId={currentList?.kind === "manual" ? listId : null}
         />
       )}
     </AppShell>
   );
+}
+
+/** O que a pessoa fez nos webinars, numa linha. */
+function Behaviour({ contact: c }: { contact: ContactSummary }) {
+  if (!c.events_registered) return <span className="text-muted-foreground">Sem eventos</span>;
+  if (!c.events_attended) {
+    return (
+      <span className="text-muted-foreground">
+        {(c.watched_seconds ?? 0) > 0 ? `Viu só ${watchLabel(c.watched_seconds ?? 0)}` : "Não apareceu"}
+      </span>
+    );
+  }
+  const offer = c.clicked_offer ? "Clicou na oferta" : c.reached_offer ? "Viu a oferta" : "Sem oferta";
+  return (
+    <span>
+      <span className="whitespace-nowrap">Assistiu {watchLabel(c.watched_seconds ?? 0)}</span>
+      <span className="block text-xs text-muted-foreground">{offer}</span>
+      {(c.events_registered ?? 0) > 1 && (
+        <span className="block text-xs text-muted-foreground">
+          {c.events_attended}/{c.events_registered} eventos
+        </span>
+      )}
+    </span>
+  );
+}
+
+function ListBadges({ names }: { names: string[] }) {
+  if (names.length === 0) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span className="flex flex-wrap gap-1" title={names.join(", ")}>
+      {names.slice(0, 2).map((n) => (
+        <Badge key={n} variant="outline" className="max-w-[140px] truncate">
+          {n}
+        </Badge>
+      ))}
+      {names.length > 2 && <Badge variant="outline">+{names.length - 2}</Badge>}
+    </span>
+  );
+}
+
+function RunsSummary({ runs }: { runs: { status: string }[] }) {
+  if (runs.length === 0) return <span className="text-muted-foreground">—</span>;
+  const n = (statuses: string[]) => runs.filter((r) => statuses.includes(r.status)).length;
+  const pending = n(["waiting", "ready", "running"]);
+  const failed = n(["failed"]);
+  const done = n(["done"]);
+  return (
+    <span className="flex flex-wrap gap-1">
+      {done > 0 && <Badge variant="success">{done} {done === 1 ? "executada" : "executadas"}</Badge>}
+      {pending > 0 && <Badge variant="secondary">{pending} {RUN_STATUS["waiting" as RunStatus].label.toLowerCase()}</Badge>}
+      {failed > 0 && <Badge variant="destructive">{failed} {failed === 1 ? "falhou" : "falharam"}</Badge>}
+      {done + pending + failed === 0 && <Badge variant="outline">{runs.length} canceladas</Badge>}
+    </span>
+  );
+}
+
+/** As execuções das automações dos contactos desta página (uma leitura para a página inteira). */
+function useContactRuns(contactIds: string[]) {
+  return useQuery({
+    queryKey: ["automation-runs", "by-contact", contactIds.join(",")],
+    enabled: contactIds.length > 0,
+    refetchInterval: 30_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("automation_runs")
+        .select("contact_id, status")
+        .in("contact_id", contactIds);
+      if (error) throw error;
+      const map = new Map<string, { status: string }[]>();
+      for (const row of data ?? []) map.set(row.contact_id, [...(map.get(row.contact_id) ?? []), row]);
+      return map;
+    },
+  });
+}
+
+/** O contacto de uma ligação directa, mesmo que não esteja na página visível da lista. */
+function useLinkedContact(contactId: string | undefined, organizationId: string | undefined) {
+  return useQuery({
+    queryKey: ["contacts", "one", contactId, organizationId],
+    enabled: Boolean(contactId && organizationId),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("contact_summaries")
+        .select("*")
+        .eq("id", contactId!)
+        .eq("organization_id", organizationId!)
+        .maybeSingle();
+      if (error) throw error;
+      return (data ?? null) as ContactSummary | null;
+    },
+  });
 }
 
 function ScopeButton({
@@ -570,7 +816,7 @@ function SourcePanel({ rows }: { rows: SourceRow[] }) {
   if (rows.length === 0) return null;
   const pct = (n: number, of: number) => (of > 0 ? `${Math.round((n / of) * 100)}%` : "—");
   return (
-    <details className="group rounded-lg border bg-card text-sm">
+    <details className="group rounded-card bg-card text-sm">
       <summary className="flex cursor-pointer list-none items-start justify-between gap-3 px-4 py-3">
         <span>
           <span className="block font-medium">De onde vêm os leads</span>
@@ -579,10 +825,10 @@ function SourcePanel({ rows }: { rows: SourceRow[] }) {
         <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
       </summary>
       <div className="overflow-x-auto border-t">
-        <table className="w-full min-w-[520px] text-left">
+        <table className="w-full min-w-[640px] text-left">
           <thead className="bg-muted/60 text-xs text-muted-foreground">
             <tr>
-              {["Origem", "Contactos", "Assistiram", "Viram a oferta", "Clicaram", "Compraram"].map((h) => (
+              {["Origem", "Contactos", "Assistiram", "Viram a oferta", "Clicaram", "Iniciaram o pagamento", "Compraram"].map((h) => (
                 <th key={h} className="px-4 py-2 font-medium">
                   {h}
                 </th>
@@ -597,6 +843,7 @@ function SourcePanel({ rows }: { rows: SourceRow[] }) {
                 <td className="px-4 py-2">{pct(r.attended, r.contacts)}</td>
                 <td className="px-4 py-2">{pct(r.reached_offer, r.contacts)}</td>
                 <td className="px-4 py-2">{pct(r.clicked, r.contacts)}</td>
+                <td className="px-4 py-2">{pct(r.checkout, r.contacts)}</td>
                 <td className="px-4 py-2">
                   {r.customers} <span className="text-muted-foreground">({pct(r.customers, r.contacts)})</span>
                 </td>
@@ -629,12 +876,13 @@ function JourneyStrip({
         onClick={() => onSelect(active && id !== null ? null : id)}
         aria-pressed={active}
         title={hint}
-        className={`min-w-[112px] flex-1 border-b-2 px-3 py-3 text-left transition-colors ${
+        className={`min-w-[104px] flex-1 border-b-2 px-3 py-3 text-left transition-colors ${
           active ? "border-primary bg-primary/5" : "border-transparent hover:bg-muted/60"
         }`}
       >
         <span className="block text-xl font-semibold tabular-nums">{value ?? "—"}</span>
-        <span className="block text-xs text-muted-foreground">{label}</span>
+        <span className="block text-xs font-medium">{label}</span>
+        {hint && <span className="block text-[11px] leading-tight text-muted-foreground">{hint}</span>}
         {id !== null && all > 0 && (
           <span className="mt-2 block h-1 rounded-full bg-muted">
             <span
@@ -647,10 +895,15 @@ function JourneyStrip({
     );
   };
   return (
-    <div className="flex overflow-x-auto rounded-lg border bg-card" role="group" aria-label="Jornada dos contactos">
+    <div className="rounded-card bg-card" role="group" aria-label="Onde cada pessoa parou na jornada">
+      <p className="border-b px-3 py-2 text-xs text-muted-foreground">
+        Onde cada pessoa parou: cada contacto conta numa só etapa, a mais avançada.
+      </p>
+      <div className="flex overflow-x-auto">
       {cell(null, "Todos", counts?.all)}
       {STAGES.map((s) => cell(s.id, s.label, counts?.[s.id], s.hint))}
       <div className="border-l">{cell("returning", "Voltaram 2+ vezes", counts?.returning)}</div>
+      </div>
     </div>
   );
 }

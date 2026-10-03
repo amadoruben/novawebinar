@@ -1,0 +1,18 @@
+:root{
+--shadow-none:none;
+--shadow-soft:0 1px 2px rgba(15,27,45,.04);
+--shadow-pop:0 8px 24px rgba(15,27,45,.08);
+--shadow-float:0 24px 60px rgba(15,27,45,.14);
+--glow-accent:0 0 24px 6px rgba(232,68,12,.5);
+
+--blur-glass:18px;
+
+/* Signature diagonal hatch used for highlighted chart bars / ranges */
+--hatch:repeating-linear-gradient(-45deg,var(--chart-hatch) 0 1.5px,transparent 1.5px 7px);
+--hatch-light:repeating-linear-gradient(-45deg,var(--silver) 0 1.5px,transparent 1.5px 7px); /* @kind other */
+
+--focus-ring:0 0 0 3px rgba(232,68,12,.28); /* @kind other */
+--ease-standard:cubic-bezier(.2,.7,.2,1); /* @kind other */
+--duration-fast:140ms; /* @kind other */
+--duration-base:220ms; /* @kind other */
+}

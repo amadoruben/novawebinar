@@ -1,0 +1,21 @@
+<!-- @dsCard group="Componentes" viewport="700x330" name="Navegação" subtitle="Pílulas, breadcrumb, barra lateral, barra inferior" -->
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{padding:20px;margin:0}.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.col{display:flex;flex-direction:column;gap:14px}.lbl{font-size:11px;color:var(--text-tertiary);width:72px;flex:none}</style>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const NS = window.OrvionDesignSystem_1d6ac1;
+const { NavTabs, Breadcrumb, SideRail, BottomNav } = NS;
+const items=[{id:'painel',label:'Painel',icon:'layout-grid'},{id:'analises',label:'Análises',icon:'square-activity'},{id:'aovivo',label:'Ao vivo',icon:'radio'},{id:'dados',label:'Dados',icon:'database'}];
+const rail=[{id:'search',icon:'search'},{id:'pen',icon:'pen-tool'},{id:'chat',icon:'message-circle'},{id:'clip',icon:'clipboard'},{id:'set',icon:'settings'}];
+const bn=[{id:'painel',label:'Painel',icon:'layout-grid'},{id:'webinars',label:'Webinars',icon:'clapperboard'},{id:'calendario',label:'Calendário',icon:'calendar-days'},{id:'definicoes',label:'Definições',icon:'sliders-horizontal'}];
+function Card(){const [t,setT]=React.useState('painel');const [r,setR]=React.useState('search');const [b,setB]=React.useState('painel');return (<div className="row" style={{alignItems:'flex-start',gap:28}}>
+<SideRail items={rail} value={r} onChange={setR}/>
+<div className="col" style={{gap:20}}><NavTabs items={items} value={t} onChange={setT}/><Breadcrumb items={[{label:'Webinars'},{label:'Método Perpétuo'}]}/><div style={{fontSize:34,fontWeight:500,letterSpacing:'-0.03em',lineHeight:1.15}}>Desempenho dos webinars</div><BottomNav items={bn} value={b} onChange={setB} style={{width:390,borderRadius:20,border:'1px solid var(--border-hairline)'}}/></div>
+</div>);}
+ReactDOM.createRoot(document.getElementById('root')).render(<Card />);
+</script></body></html>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeEvent, parseAmount } from "./integrations";
+import { normalizeEvent, parseAmount, webhookStatus } from "./integrations";
 
 describe("normalizeEvent", () => {
   it("Kambafy: pagamento em kwanzas, teste e reembolso", () => {
@@ -58,7 +58,23 @@ describe("normalizeEvent", () => {
       "BRL",
       "HP02316330308193",
     ]);
-    expect(normalizeEvent("hotmart", { event: "PURCHASE_CANCELED" }).kind).toBe("ignore");
+    expect(normalizeEvent("hotmart", { event: "PURCHASE_PROTEST" }).kind).toBe("ignore");
+    const refused = normalizeEvent("hotmart", {
+      event: "PURCHASE_CANCELED",
+      data: { buyer: { email: "b@x.com" }, purchase: { transaction: "HP1" } },
+    });
+    expect(refused.kind === "purchase" && [refused.status, refused.externalId]).toEqual(["failed", "HP1"]);
+    // O abandono de carrinho não tem transacção: fica com o id do evento.
+    const cart = normalizeEvent("hotmart", {
+      id: "evt-9",
+      event: "PURCHASE_OUT_OF_SHOPPING_CART",
+      data: { buyer: { email: "c@x.com" }, product: { id: 4774438, name: "Curso" } },
+    });
+    expect(cart.kind === "purchase" && [cart.status, cart.externalId, cart.productId]).toEqual([
+      "abandoned",
+      "cart:evt-9",
+      "4774438",
+    ]);
   });
 
   it("Kiwify: valor em cêntimos", () => {
@@ -71,6 +87,13 @@ describe("normalizeEvent", () => {
       Commissions: { charge_amount: 4492, currency: "BRL" },
     });
     expect(e.kind === "purchase" && [e.status, e.amountValue, e.name]).toEqual(["approved", 44.92, "John Doe"]);
+    const refused = normalizeEvent("kiwify", {
+      order_id: "94ea",
+      order_status: "refused",
+      webhook_event_type: "order_rejected",
+      Customer: { email: "john@example.com" },
+    });
+    expect(refused.kind === "purchase" && refused.status).toBe("failed");
   });
 
   it("Eduzz: estado vem do evento, não de data.status", () => {
@@ -86,6 +109,21 @@ describe("normalizeEvent", () => {
     });
     expect(e.kind === "purchase" && [e.status, e.product, e.amountValue]).toEqual(["refunded", "Widget X", 301.5]);
     expect(normalizeEvent("eduzz", { event: "ping" }).kind).toBe("ignore");
+    const expired = normalizeEvent("eduzz", {
+      event: "myeduzz.invoice_expired",
+      data: { id: "9", buyer: { email: "a@x.com" }, items: [{ name: "W", productId: "p-77" }] },
+    });
+    expect(expired.kind === "purchase" && [expired.status, expired.productId]).toEqual(["abandoned", "p-77"]);
+    const cart = normalizeEvent("eduzz", {
+      id: "e-1",
+      event: "sun.cart_abandonment",
+      data: { transactionId: "t-5", lastStep: "payment-failed", customer: { email: "d@x.com" }, productId: ["p-88"] },
+    });
+    expect(cart.kind === "purchase" && [cart.status, cart.externalId, cart.productId]).toEqual([
+      "failed",
+      "t-5",
+      "p-88",
+    ]);
   });
 
   it("Stripe: cêntimos, moeda sem casas decimais e reembolso ligado pelo payment_intent", () => {
@@ -117,13 +155,79 @@ describe("normalizeEvent", () => {
       data: { object: { id: "ch_1", payment_intent: "pi_1", amount: 1099, currency: "usd" } },
     });
     expect(refund.kind === "purchase" && [refund.status, refund.externalId]).toEqual(["refunded", "pi_1"]);
+    // As tentativas que não acabaram em compra ligam-se pelo mesmo payment_intent.
+    const failed = normalizeEvent("stripe", {
+      type: "payment_intent.payment_failed",
+      data: { object: { id: "pi_1", amount: 1099, currency: "usd", receipt_email: "x@y.com" } },
+    });
+    expect(failed.kind === "purchase" && [failed.status, failed.externalId, failed.email]).toEqual([
+      "failed",
+      "pi_1",
+      "x@y.com",
+    ]);
+    const expired = normalizeEvent("stripe", {
+      type: "checkout.session.expired",
+      data: { object: { id: "cs_9", payment_intent: null, customer_details: { email: "z@y.com" } } },
+    });
+    expect(expired.kind === "purchase" && [expired.status, expired.externalId]).toEqual(["abandoned", "cs_9"]);
+  });
+
+  it("Kambafy: pagamento falhado e pedido cancelado", () => {
+    const failed = normalizeEvent("kambafy", { event: "payment.failed", email: "a@b.ao", data: { order_id: "L1" } });
+    expect(failed.kind === "purchase" && failed.status).toBe("failed");
+    const cancelled = normalizeEvent("kambafy", { event: "order.cancelled", email: "a@b.ao", data: { order_id: "L1" } });
+    expect(cancelled.kind === "purchase" && cancelled.status).toBe("abandoned");
   });
 
   it("Outra plataforma: campos simples e estado em português", () => {
     const e = normalizeEvent("webhook", { email: "a@b.pt", amount: "97,00", status: "pago", id: "7" });
     expect(e.kind === "purchase" && [e.status, e.amountValue, e.externalId]).toEqual(["approved", 97, "7"]);
-    expect(normalizeEvent("webhook", { email: "a@b.pt", status: "cancelado" }).kind).toBe("ignore");
+    const cancelled = normalizeEvent("webhook", { email: "a@b.pt", status: "cancelado" });
+    expect(cancelled.kind === "purchase" && cancelled.status).toBe("abandoned");
+    // Sem estado não é venda.
+    expect(normalizeEvent("webhook", { email: "a@b.pt", id: "8" }).kind).toBe("ignore");
   });
+
+  it("product_id liga a venda à oferta (outra plataforma e metadata do Stripe)", () => {
+    const generic = normalizeEvent("webhook", { email: "a@b.pt", status: "approved", product_id: "curso-7" });
+    expect(generic.kind === "purchase" && generic.productId).toBe("curso-7");
+    const stripe = normalizeEvent("stripe", {
+      type: "checkout.session.completed",
+      data: { object: { payment_status: "paid", customer_details: { email: "a@b.pt" }, metadata: { product_id: "prod_X" } } },
+    });
+    expect(stripe.kind === "purchase" && stripe.productId).toBe("prod_X");
+  });
+});
+
+describe("webhookStatus: nunca confundir falha com compra", () => {
+  it.each([
+    ["unpaid", "failed"],
+    ["not_paid", "failed"],
+    ["nao_pago", "failed"],
+    ["não pago", "failed"],
+    ["nao_aprovado", "failed"],
+    ["desaprovado", "failed"],
+    ["unsuccessful", "failed"],
+    ["payment_failed", "failed"],
+    ["recusado", "failed"],
+    ["incomplete", "pending"],
+    ["aguardando pagamento", "pending"],
+    ["abandoned", "abandoned"],
+    ["expirado", "abandoned"],
+    ["approved", "approved"],
+    ["pago", "approved"],
+    ["refunded", "refunded"],
+    ["chargeback", "refunded"],
+  ])("%s → %s", (raw, status) => {
+    expect(webhookStatus(raw)).toBe(status);
+  });
+
+  it.each(["", "pending_refund", "refund_requested", "chargeback_won", "desconhecido"])(
+    "%s → sem estado, não conta",
+    (raw) => {
+      expect(webhookStatus(raw)).toBeNull();
+    },
+  );
 });
 
 describe("parseAmount", () => {

@@ -40,7 +40,7 @@ vi.mock("@/integrations/supabase/client.server", () => {
   };
 });
 
-const { loadPublicRoom, loadRoomMessages, recordCta } = await import("./public-room.server");
+const { loadPublicRoom, loadRoomMessages, participantFromToken, recordCta, roomToken } = await import("./public-room.server");
 
 const down: Result = { data: null, error: { message: "fetch failed" } };
 const WEBINAR = {
@@ -115,5 +115,32 @@ describe("clique na oferta", () => {
   it("falha a ler o participante é erro, não um clique ignorado", async () => {
     answers["participants.select"] = down;
     await expect(click()).rejects.toThrow("indisponível");
+  });
+});
+
+/* ---------- Cenário do /code-review (2026-10-01): acesso ao chat de outra pessoa ---------- */
+
+describe("credencial da sala", () => {
+  beforeEach(() => vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "chave-de-teste"));
+
+  it("só a credencial emitida ao entrar diz quem é o participante", () => {
+    const token = roomToken(PARTICIPANT);
+    expect(participantFromToken(token)).toBe(PARTICIPANT);
+  });
+
+  it("o id de outra pessoa (vindo de um webhook ou da API) não chega para ler ou escrever no chat dela", () => {
+    const outra = "22222222-2222-4222-8222-222222222222";
+    expect(participantFromToken(outra)).toBeNull();
+    // Trocar o id numa credencial válida também não serve: a assinatura é do id original.
+    const [, signature] = roomToken(PARTICIPANT).split(".");
+    expect(participantFromToken(`${outra}.${signature}`)).toBeNull();
+    expect(participantFromToken(`${outra}.`)).toBeNull();
+    expect(participantFromToken(`${roomToken(PARTICIPANT)}.extra`)).toBeNull();
+  });
+
+  it("com outra chave de servidor, as credenciais antigas deixam de valer", () => {
+    const token = roomToken(PARTICIPANT);
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "chave-nova");
+    expect(participantFromToken(token)).toBeNull();
   });
 });

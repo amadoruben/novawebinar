@@ -1,32 +1,14 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import {
-  CalendarDays,
-  ChevronsUpDown,
-  Clapperboard,
-  ClipboardList,
-  Headset,
-  LayoutDashboard,
-  Menu,
-  Plus,
-  Search,
-  Settings2,
-  Users,
-} from "lucide-react";
+import { Menu, Plus } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { SidebarNav } from "@/components/ui/dashboard-sidebar";
+import iconAsset from "@/assets/brand/convertewebinar-icon.svg";
+import { BottomNav, PageHeader, type BackLink, type Crumb, type RailItem } from "@/components/ds/navigation";
+import { NAV_ICON, SidebarNav } from "@/components/ui/dashboard-sidebar";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { PageLoader, useInitialPageLoader } from "@/components/page-loader";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
-import { switchWorkspace, useAdminHostRedirect, useWorkspace } from "@/lib/data";
+import { useAdminHostRedirect, useWorkspace } from "@/lib/data";
 import { usePresence } from "@/lib/support/hooks";
 import { canAttend, canOpenPath } from "@/lib/support/model";
 
@@ -36,12 +18,18 @@ export function AppShell({
   description,
   action = true,
   compact = false,
+  crumbs,
+  back,
 }: {
   children: ReactNode;
   title?: string;
   description?: string;
   action?: boolean | ReactNode;
   compact?: boolean;
+  /** Migalhas por cima do título (páginas de detalhe). */
+  crumbs?: Crumb[];
+  /** Botão voltar circular à esquerda do título. */
+  back?: BackLink;
 }) {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (r) => r.location.pathname });
@@ -49,15 +37,24 @@ export function AppShell({
   const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileViewport, setMobileViewport] = useState(false);
-  const [query, setQuery] = useState("");
+  // Entre 768 e 1023 px a barra lateral fica recolhida (só ícones) para o conteúdo respirar.
+  const [tabletViewport, setTabletViewport] = useState(false);
 
   useEffect(() => {
     setCollapsed(localStorage.getItem("nw-sidebar-collapsed") === "1");
-    const media = window.matchMedia("(max-width: 767px)");
-    const updateViewport = () => setMobileViewport(media.matches);
+    const mobile = window.matchMedia("(max-width: 767px)");
+    const tablet = window.matchMedia("(min-width: 768px) and (max-width: 1023px)");
+    const updateViewport = () => {
+      setMobileViewport(mobile.matches);
+      setTabletViewport(tablet.matches);
+    };
     updateViewport();
-    media.addEventListener("change", updateViewport);
-    return () => media.removeEventListener("change", updateViewport);
+    mobile.addEventListener("change", updateViewport);
+    tablet.addEventListener("change", updateViewport);
+    return () => {
+      mobile.removeEventListener("change", updateViewport);
+      tablet.removeEventListener("change", updateViewport);
+    };
   }, []);
 
   const toggleCollapsed = () => {
@@ -100,30 +97,25 @@ export function AppShell({
   }, [navigate]);
 
   const showLoader = useInitialPageLoader(!authorized);
-  const sidebarCollapsed = collapsed && !mobileViewport;
+  const sidebarCollapsed = (collapsed || tabletViewport) && !mobileViewport;
 
   const initial = (workspace?.fullName ?? "?").trim().charAt(0).toUpperCase() || "?";
 
-  const tabItems = supportOnly
+  const tabItems: RailItem[] = supportOnly
     ? [
-        { to: "/support", title: "Atendimento", icon: Headset, exact: false },
-        { to: "/cases", title: "Casos", icon: ClipboardList, exact: false },
-        { to: "/contacts", title: "Contactos", icon: Users, exact: false },
-        { to: "/settings", title: "Definições", icon: Settings2, exact: false },
+        { to: "/support", label: "Atendimento", icon: NAV_ICON.support },
+        { to: "/cases", label: "Casos", icon: NAV_ICON.cases },
+        { to: "/contacts", label: "Contactos", icon: NAV_ICON.contacts },
       ]
     : [
-        { to: "/dashboard", title: "Painel", icon: LayoutDashboard, exact: true },
-        { to: "/webinars", title: "Webinars", icon: Clapperboard, exact: false },
-        { to: "/calendar", title: "Calendário", icon: CalendarDays, exact: false },
-        { to: "/settings", title: "Definições", icon: Settings2, exact: false },
+        { to: "/dashboard", label: "Painel", icon: NAV_ICON.dashboard, exact: true },
+        { to: "/webinars", label: "Webinars", icon: NAV_ICON.webinars },
+        { to: "/calendar", label: "Agenda", icon: NAV_ICON.calendar },
+        { to: "/automations", label: "Automações", icon: NAV_ICON.automations },
       ];
+  const tabActive = (item: RailItem) =>
+    item.exact ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`);
 
-  const roleLabels: Record<NonNullable<typeof workspace>["role"], string> = {
-    owner: "Proprietário",
-    admin: "Administrador",
-    member: "Membro",
-    support: "Suporte",
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -141,160 +133,96 @@ export function AppShell({
         <SidebarNav
           className="h-full"
           collapsed={sidebarCollapsed}
-          onToggleCollapse={toggleCollapsed}
+          onToggleCollapse={tabletViewport ? undefined : toggleCollapsed}
           onClose={() => setMenuOpen(false)}
           role={role}
         />
       </div>
       {menuOpen && (
         <div
-          className="fixed inset-0 z-30 bg-foreground/30 md:hidden"
+          className="fixed inset-0 z-30 bg-navy/30 backdrop-blur-[2px] md:hidden"
           onClick={() => setMenuOpen(false)}
         />
       )}
       <div
         aria-hidden={showLoader ? true : undefined}
-        className={`flex min-h-screen flex-col transition-all duration-300 ${showLoader ? "invisible" : "visible"} ${collapsed ? "md:pl-[72px]" : "md:pl-[260px]"}`}
+        className={`flex min-h-screen flex-col transition-all duration-300 ${showLoader ? "invisible" : "visible"} ${sidebarCollapsed ? "md:pl-[72px]" : "md:pl-[260px]"}`}
       >
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-card/95 px-4 backdrop-blur md:px-8">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:hidden"
-              onClick={() => setMenuOpen(true)}
-              aria-label="Abrir menu"
-            >
-              <Menu />
-            </Button>
-            <form
-              className={`relative hidden w-72 items-center ${supportOnly ? "" : "md:flex"}`}
-              onSubmit={(event) => {
-                event.preventDefault();
-                navigate({ to: "/webinars", search: { q: query.trim() || undefined } });
-              }}
-            >
-              <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Pesquisar webinars..."
-                aria-label="Pesquisar webinars"
-                className="w-full border-transparent bg-muted pl-9 hover:border-border focus-visible:bg-card"
-              />
-            </form>
-          </div>
-          <div className="flex items-center gap-1">
-            {workspace && workspace.organizations.length > 1 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="mr-1 max-w-44 gap-1.5">
-                    <span className="truncate">{workspace.organizationName}</span>
-                    <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-56">
-                  <DropdownMenuLabel>Espaço de trabalho</DropdownMenuLabel>
-                  {workspace.organizations.map((org) => (
-                    <DropdownMenuItem
-                      key={org.id}
-                      disabled={org.id === workspace.organizationId}
-                      onSelect={() => switchWorkspace(org.id)}
-                    >
-                      <span className="truncate">{org.name}</span>
-                      <span className="ml-auto pl-3 text-xs text-muted-foreground">
-                        {roleLabels[org.role]}
-                      </span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            <NotificationsBell />
-            <Link to="/settings" className="ml-2 flex items-center gap-2.5">
+        {/* No computador a navegação, a pesquisa e a conta vivem na barra lateral;
+            no telemóvel fica só uma barra fina com a marca e os avisos. */}
+        <header className="glass sticky top-0 z-20 flex h-14 items-center justify-between gap-3 px-4 md:hidden">
+          <Link
+            to={supportOnly ? "/support" : "/dashboard"}
+            className="flex items-center gap-2"
+            aria-label="Convertewebinar"
+          >
+            <img src={iconAsset} alt="" className="size-7" draggable={false} />
+            <span className="text-[15px] font-semibold tracking-[-0.04em]">Convertewebinar</span>
+          </Link>
+          <div className="flex items-center gap-1.5">
+            {workspace?.isTest && <TestBadge />}
+            <NotificationsBell quiet />
+            <Link to="/settings" aria-label="Perfil e definições">
               {workspace?.avatarUrl ? (
                 <img
                   src={workspace.avatarUrl}
                   alt={workspace.fullName || "Fotografia de perfil"}
-                  className="size-9 rounded-full object-cover"
+                  className="size-8 rounded-full object-cover"
                 />
               ) : (
-                <span className="flex size-9 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
+                <span className="flex size-8 items-center justify-center rounded-full bg-navy text-[13px] text-white">
                   {initial}
                 </span>
               )}
-              <div className="hidden flex-col items-start sm:flex">
-                <span className="text-sm font-semibold leading-tight">
-                  {workspace?.fullName ?? ""}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {workspace ? roleLabels[workspace.role] : ""}
-                </span>
-              </div>
             </Link>
           </div>
         </header>
         <main
-          className={`mx-auto flex w-full max-w-[1480px] min-h-[calc(100dvh-4rem)] flex-1 flex-col p-4 pb-32 md:min-h-0 md:pb-8 ${compact ? "md:px-6 md:py-5" : "md:p-8"}`}
+          className={`mx-auto flex w-full max-w-[1480px] min-h-[calc(100dvh-3.5rem)] flex-1 flex-col px-4 pt-4 pb-32 md:min-h-0 md:pb-10 ${compact ? "md:px-6 md:pt-6" : "md:px-8 md:pt-8"}`}
         >
           {title && (
-          <div
-              className={`${compact ? "mb-4" : "mb-8"} flex flex-wrap items-start justify-between gap-4 pb-5`}
-            >
-              <div className="min-w-0">
-                <h1
-                  className={`${compact ? "text-xl md:text-2xl" : "text-2xl md:text-[1.75rem]"} font-semibold`}
-                >
-                  {title}
-                </h1>
-                {description && (
-                  <p
-                    className={`${compact ? "mt-0.5" : "mt-1"} text-sm leading-relaxed text-muted-foreground`}
-                  >
-                    {description}
-                  </p>
-                )}
-              </div>
-              {typeof action === "boolean"
-                ? action &&
-                  !supportOnly && (
-                    <Button asChild>
-                      <Link to="/webinars/new">
-                        <Plus />
-                        Novo webinar
-                      </Link>
-                    </Button>
-                  )
-                : action}
-            </div>
+            <PageHeader
+              title={title}
+              description={description}
+              crumbs={crumbs}
+              back={back}
+              compact={compact}
+              toolbar={
+                typeof action === "boolean"
+                  ? action &&
+                    !supportOnly && (
+                      <Button asChild>
+                        <Link to="/webinars/new">
+                          <Plus />
+                          Novo webinar
+                        </Link>
+                      </Button>
+                    )
+                  : action
+              }
+            />
           )}
           {blocked ? null : children}
         </main>
       </div>
-      <nav
-        aria-hidden={showLoader ? true : undefined}
-        className={`fixed inset-x-0 bottom-0 z-30 items-stretch justify-around border-t border-border/60 bg-card pb-[env(safe-area-inset-bottom)] md:hidden ${showLoader ? "hidden" : "flex"}`}
-        aria-label="Navegação principal"
-      >
-        {tabItems.map((item) => {
-          const active = item.exact
-            ? pathname === item.to
-            : pathname === item.to || pathname.startsWith(`${item.to}/`);
-          return (
-            <Link
-              key={item.to}
-              to={item.to}
-              aria-label={item.title}
-              className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${
-                active ? "text-primary" : "text-muted-foreground"
-              }`}
-            >
-              <item.icon className="size-5" strokeWidth={active ? 2.25 : 1.75} />
-              {item.title}
-            </Link>
-          );
-        })}
-      </nav>
+      <BottomNav
+        items={tabItems}
+        isActive={tabActive}
+        hidden={showLoader}
+        extra={{ label: "Menu", icon: Menu, onClick: () => setMenuOpen(true), active: menuOpen }}
+      />
     </div>
+  );
+}
+
+/** Conta de teste: dados fictícios e nenhum envio real. */
+function TestBadge() {
+  return (
+    <span
+      className="shrink-0 rounded-xs bg-warning-soft px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-warning uppercase"
+      title="Conta de teste: dados fictícios, nada sai para destinos reais"
+    >
+      Teste
+    </span>
   );
 }

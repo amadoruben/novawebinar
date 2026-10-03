@@ -161,7 +161,7 @@ function LibraryPage() {
       {open && (
         <form
           onSubmit={add}
-          className="mb-6 grid gap-5 rounded-lg border bg-card p-5 sm:grid-cols-2 xl:grid-cols-4 xl:p-6"
+          className="mb-6 grid gap-5 rounded-card bg-card p-5 sm:grid-cols-2 xl:grid-cols-4 xl:p-6"
         >
           <div>
             <Label>Nome</Label>
@@ -225,7 +225,7 @@ function LibraryPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {videos.map((v) => (
-            <article key={v.id} className="overflow-hidden rounded-lg border bg-card">
+            <article key={v.id} className="overflow-hidden rounded-card bg-card">
               <VideoThumb name={v.name} thumbnailUrl={v.thumbnail_url} sourceUrl={v.source_url} />
               <div className="p-4">
                 <h2 className="font-medium">{v.name}</h2>

@@ -5,3 +5,17 @@
 - Base de dados: alterações de esquema só por migration explícita e com confirmação; o projecto Supabase é o indicado em `supabase/config.toml`.
 - Antes de propor um checkpoint: `npx tsc --noEmit`, `npm run build`, `npx vitest run`.
 - Toda a IA passa por `src/lib/ai` (`chatJson`, `generateImage`); nunca chamar fornecedores directamente noutros módulos.
+
+## Agent skills
+
+### Issue tracker
+
+Issues e specs vivem como ficheiros markdown em `.scratch/<feature>/` neste repositório. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Os cinco papéis canónicos com os nomes por omissão (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: um `GLOSSARY.md` e `docs/adr/` na raiz. See `docs/agents/domain.md`.

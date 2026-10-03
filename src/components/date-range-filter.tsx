@@ -31,7 +31,7 @@ export function DateRangeFilter({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-end gap-3 rounded-2xl border bg-card p-4 shadow-sm",
+        "flex flex-wrap items-end gap-3 rounded-card bg-card p-4",
         className,
       )}
     >

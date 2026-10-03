@@ -3,7 +3,8 @@ import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { EmptySection, WebinarTable } from "@/components/page-primitives";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useWebinars, useWorkspace, type WebinarStatus } from "@/lib/data";
+import { lifecycleOf, useWebinars, useWorkspace } from "@/lib/data";
+import type { WebinarLifecycle } from "@/lib/schedule";
 
 export const Route = createFileRoute("/webinars/")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -22,11 +23,17 @@ export const Route = createFileRoute("/webinars/")({
   component: WebinarsPage,
 });
 
-const filters: { value: string; label: string; statuses?: WebinarStatus[] }[] = [
+/** Os separadores seguem o ciclo de vida calculado, nunca o estado guardado. */
+const filters: { value: string; label: string; match?: (l: WebinarLifecycle) => boolean }[] = [
   { value: "todos", label: "Todos" },
-  { value: "agendados", label: "Agendados", statuses: ["scheduled", "live"] },
-  { value: "replay", label: "Replay", statuses: ["replay", "finished"] },
-  { value: "rascunhos", label: "Rascunhos", statuses: ["draft"] },
+  {
+    value: "agendados",
+    label: "Agendados e em andamento",
+    match: (l) => l.kind === "session" && l.state !== "finished",
+  },
+  { value: "terminados", label: "Terminados", match: (l) => l.kind === "session" && l.state === "finished" },
+  { value: "sempre", label: "Sob demanda", match: (l) => l.kind === "on_demand" || l.kind === "jit" },
+  { value: "rascunhos", label: "Inativos", match: (l) => l.kind === "draft" },
 ];
 
 function WebinarsPage() {
@@ -36,9 +43,7 @@ function WebinarsPage() {
   const { q } = Route.useSearch();
 
   const active = filters.find((f) => f.value === tab);
-  const byStatus = active?.statuses
-    ? webinars.filter((w) => active.statuses!.includes(w.status))
-    : webinars;
+  const byStatus = active?.match ? webinars.filter((w) => active.match!(lifecycleOf(w))) : webinars;
   const term = (q ?? "").trim().toLowerCase();
   const rows = term
     ? byStatus.filter((w) =>

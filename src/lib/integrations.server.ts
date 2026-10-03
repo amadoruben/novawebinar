@@ -62,14 +62,28 @@ function verify(provider: ProviderId, secret: string, request: Request, raw: str
   }
 }
 
-const STATUS_RANK = { pending: 0, approved: 1, refunded: 2 } as const;
+/** O estado de um pagamento só avança: iniciado → falhado ou abandonado → aprovado → reembolsado. */
+const STATUS_RANK = { pending: 0, failed: 1, abandoned: 1, approved: 2, refunded: 3 } as const;
+
+/** O que o webhook de saída envia em cada estado. */
+const OUTGOING_EVENT = {
+  pending: "purchase.pending",
+  failed: "payment.failed",
+  abandoned: "checkout.abandoned",
+  approved: "purchase.approved",
+  refunded: "purchase.refunded",
+} as const;
 
 /** Falha nossa: a plataforma guarda o evento e volta a enviar. */
 const retryLater = () =>
   new Response("Temporarily unavailable", { status: 503, headers: { "retry-after": "60" } });
 
+/** Outro pedido da mesma venda chegou primeiro: volta-se a ler e decide-se outra vez. */
+class Conflict extends Error {}
+
 /** O resultado de uma chamada à base de dados; um erro nunca passa por "não existe". */
-function must<T>(result: { data: T; error: { message: string } | null }, what: string): T {
+function must<T>(result: { data: T; error: { message: string; code?: string } | null }, what: string): T {
+  if (result.error?.code === "23505") throw new Conflict(`${what}: ${result.error.message}`);
   if (result.error) throw new Error(`${what}: ${result.error.message}`);
   return result.data;
 }
@@ -149,46 +163,57 @@ export async function receiveIntegrationWebhook(key: string, request: Request): 
     await log("rejected", "A venda não traz o email do comprador.", summary);
     return Response.json({ ok: false });
   }
+  const sale = event;
+  const email = event.email;
+  // Sem id da plataforma, o próprio pedido é a chave: um reenvio igual cai em "já existe".
+  const externalId = event.externalId ?? `body:${createHash("sha256").update(raw, "utf8").digest("hex").slice(0, 32)}`;
 
-  try {
-    const existing = event.externalId
-      ? must(
-          await supabaseAdmin
-            .from("real_purchase_events")
-            .select("id, status, amount_value, currency, product_name, webinar_id")
-            .eq("organization_id", integration.organization_id)
-            .eq("provider", provider)
-            .eq("external_id", event.externalId)
-            .maybeSingle(),
-          "venda por ler",
-        )
-      : null;
+  const applyPurchase = async (): Promise<Response> => {
+    const existing = must(
+      await supabaseAdmin
+        .from("real_purchase_events")
+        .select("id, status, amount_value, currency, product_name, webinar_id")
+        .eq("organization_id", integration.organization_id)
+        .eq("provider", provider)
+        .eq("external_id", externalId)
+        .maybeSingle(),
+      "venda por ler",
+    );
+    const touched = () =>
+      supabaseAdmin.from("integrations").update({ last_event_at: new Date().toISOString() }).eq("id", integration.id);
 
     if (existing) {
       // O estado só avança (pendente → aprovada → reembolsada). Um reembolso muitas
       // vezes não traz valor nem produto: muda o estado e preenche o que faltar,
       // sem apagar o que a venda original trouxe nem mudar a atribuição.
       const before = existing.status as keyof typeof STATUS_RANK;
-      if (STATUS_RANK[event.status] <= STATUS_RANK[before]) {
-        await log("ignored", "Esta venda já estava registada.", { ...summary, purchase_id: existing.id });
+      if (STATUS_RANK[sale.status] <= STATUS_RANK[before]) {
+        await log("ignored", "Este pagamento já estava registado neste estado ou num posterior.", {
+          ...summary,
+          purchase_id: existing.id,
+        });
         return Response.json({ ok: true });
       }
-      must(
+      // Só muda se ninguém o mudou entretanto; senão volta a ler.
+      const updated = must(
         await supabaseAdmin
           .from("real_purchase_events")
           .update({
-            status: event.status,
-            amount_value: existing.amount_value ?? event.amountValue,
-            currency: existing.currency ?? event.currency,
-            product_name: existing.product_name || event.product.slice(0, 120),
+            status: sale.status,
+            amount_value: existing.amount_value ?? sale.amountValue,
+            currency: existing.currency ?? sale.currency,
+            product_name: existing.product_name || sale.product.slice(0, 120),
           })
-          .eq("id", existing.id),
+          .eq("id", existing.id)
+          .eq("status", before)
+          .select("id"),
         "venda por actualizar",
       );
-      await log("accepted", "", { ...summary, purchase_id: existing.id });
-      await notifyOutgoing(integration.organization_id, `purchase.${event.status}`, {
-        email: event.email,
-        external_id: event.externalId,
+      if (!updated?.length) throw new Conflict();
+      await Promise.all([log("accepted", "", { ...summary, purchase_id: existing.id }), touched()]);
+      await notifyOutgoing(integration.organization_id, OUTGOING_EVENT[sale.status], {
+        email,
+        external_id: sale.externalId,
         provider,
         webinar_id: existing.webinar_id,
       });
@@ -200,85 +225,81 @@ export async function receiveIntegrationWebhook(key: string, request: Request): 
     const contactId = must(
       await supabaseAdmin.rpc("upsert_contact", {
         _organization_id: integration.organization_id,
-        _name: event.name,
-        _email: event.email,
-        _phone: event.phone ?? "",
+        _name: sale.name,
+        _email: email,
+        _phone: sale.phone ?? "",
         _source: "integration",
       }),
       "contacto por guardar",
     );
-    // Atribuição, da mais exacta para a mais fraca: o webinar a que a pessoa
-    // assistiu cuja oferta aponta para este produto; senão o último que viu.
-    const seen = contactId
-      ? must(
-          await supabaseAdmin
-            .from("participants")
-            .select("webinar_id, webinars(cta_url)")
-            .eq("contact_id", contactId)
-            .order("joined_at", { ascending: false })
-            .limit(50),
-          "participações por ler",
-        )
-      : null;
-    const byOffer = event.productId
-      ? seen?.find((p) => p.webinars?.cta_url?.includes(event.productId!))
-      : undefined;
-    const last = byOffer ?? seen?.[0] ?? null;
-    const attribution = byOffer
-      ? "Atribuída ao webinar cuja oferta aponta para este produto."
-      : last
-        ? "Atribuída ao último webinar a que a pessoa assistiu."
-        : "Comprador sem participação em webinars.";
+    // Atribuição só com prova, calculada na base de dados sobre os factos: o
+    // webinar cuja oferta aponta para este produto; senão o último a que a pessoa
+    // assistiu dentro da janela; senão nenhum.
+    const [match] = contactId
+      ? (must(
+          await supabaseAdmin.rpc("purchase_attribution", {
+            _contact_id: contactId,
+            _product_id: sale.productId ?? "",
+          }),
+          "atribuição por calcular",
+        ) ?? [])
+      : [];
+    const attribution =
+      match?.evidence === "offer"
+        ? "Atribuída ao webinar cuja oferta aponta para este produto."
+        : match
+          ? "Atribuída ao último webinar a que a pessoa assistiu antes do pagamento."
+          : "Sem webinar atribuível: nenhuma oferta com este produto nem presença recente.";
 
-    // Dois envios em simultâneo chocam no índice único; a plataforma repete e o
-    // segundo pedido cai no ramo "já existe" acima.
     const saved = must(
       await supabaseAdmin
         .from("real_purchase_events")
         .insert({
           organization_id: integration.organization_id,
-          webinar_id: last?.webinar_id ?? null,
+          webinar_id: match?.webinar_id ?? null,
           contact_id: contactId ?? null,
-          buyer_email: event.email,
-          buyer_name: (event.name || event.email).slice(0, 80),
-          product_name: event.product.slice(0, 120),
-          amount: event.amountValue === null ? "" : String(event.amountValue),
-          amount_value: event.amountValue,
-          currency: event.currency,
-          status: event.status,
+          buyer_email: email,
+          buyer_name: (sale.name || email).slice(0, 80),
+          product_name: sale.product.slice(0, 120),
+          amount: sale.amountValue === null ? "" : String(sale.amountValue),
+          amount_value: sale.amountValue,
+          currency: sale.currency,
+          status: sale.status,
           provider,
           source: provider,
-          external_id: event.externalId,
+          external_id: externalId,
+          product_id: sale.productId ?? null,
         })
         .select("id")
         .single(),
       "venda por guardar",
     );
 
-    await Promise.all([
-      log("accepted", attribution, { ...summary, purchase_id: saved?.id ?? null }),
-      supabaseAdmin
-        .from("integrations")
-        .update({ last_event_at: new Date().toISOString() })
-        .eq("id", integration.id),
-    ]);
-    if (event.status !== "pending") {
-      await notifyOutgoing(integration.organization_id, `purchase.${event.status}`, {
-        email: event.email,
-        name: event.name,
-        product: event.product,
-        amount: event.amountValue,
-        currency: event.currency,
-        provider,
-        webinar_id: last?.webinar_id ?? null,
-      });
-    }
+    await Promise.all([log("accepted", attribution, { ...summary, purchase_id: saved?.id ?? null }), touched()]);
+    await notifyOutgoing(integration.organization_id, OUTGOING_EVENT[sale.status], {
+      email,
+      name: sale.name,
+      product: sale.product,
+      amount: sale.amountValue,
+      currency: sale.currency,
+      provider,
+      webinar_id: match?.webinar_id ?? null,
+    });
     return Response.json({ ok: true });
-  } catch (error) {
-    // Nada do que falhou aqui é culpa do pedido: fica o registo e a plataforma repete.
-    console.error("[webhook] falha a tratar a venda", error);
-    await log("rejected", "Falha temporária do nosso lado. A plataforma vai repetir o envio.", summary);
-    return retryLater();
+  };
+
+  // Dois envios em simultâneo: quem perde a corrida (índice único ou estado mudado entretanto)
+  // volta a ler a venda e segue pelo ramo "já existe".
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await applyPurchase();
+    } catch (error) {
+      if (error instanceof Conflict && attempt < 2) continue;
+      // Nada do que falhou aqui é culpa do pedido: fica o registo e a plataforma repete.
+      console.error("[webhook] falha a tratar a venda", error);
+      await log("rejected", "Falha temporária do nosso lado. A plataforma vai repetir o envio.", summary);
+      return retryLater();
+    }
   }
 }
 
@@ -296,25 +317,97 @@ function isPublicHost(url: string) {
   );
 }
 
-/** Webhook de saída da organização, assinado com HMAC-SHA256 no cabeçalho X-Signature. */
-export async function notifyOutgoing(organizationId: string, event: string, data: Record<string, unknown>) {
-  const { data: hook } = await supabaseAdmin
+/** O que aconteceu a um envio. `transient`: vale a pena tentar outra vez mais tarde. */
+export type Delivery = {
+  ok: boolean;
+  transient: boolean;
+  status: number | null;
+  ms: number;
+  error: string | null;
+  /** Conta de teste: o envio foi simulado no servidor e nada saiu para a rede. */
+  sandbox?: boolean;
+};
+
+/**
+ * Webhook de saída da organização, assinado com HMAC-SHA256 no cabeçalho X-Signature.
+ * Nunca lança: devolve o resultado. `deliveryId` (cabeçalho X-Delivery-Id) é o mesmo em
+ * todas as tentativas de um envio, para o destino poder ignorar repetidos.
+ *
+ * Numa conta de teste (organizations.is_test) nada sai para a rede: o envio é simulado
+ * aqui, depois das mesmas verificações. `settings.simulate` mostra os outros desfechos:
+ * "fail_first" (a 1.ª tentativa responde 503 e a seguinte passa) e "reject" (o destino
+ * recusa com 400, falha definitiva).
+ */
+export async function deliverOutgoing(
+  organizationId: string,
+  event: string,
+  data: Record<string, unknown>,
+  {
+    deliveryId,
+    timeoutMs = 10_000,
+    attempt = 1,
+  }: { deliveryId?: string; timeoutMs?: number; attempt?: number } = {},
+): Promise<Delivery> {
+  const started = Date.now();
+  const failed = (error: string, transient: boolean, status: number | null = null): Delivery => ({
+    ok: false,
+    transient,
+    status,
+    ms: Date.now() - started,
+    error,
+  });
+  const { data: hook, error: readError } = await supabaseAdmin
     .from("integrations")
-    .select("enabled, secret, settings")
+    .select("enabled, secret, settings, organizations(is_test)")
     .eq("organization_id", organizationId)
     .eq("provider", "outgoing_webhook")
     .maybeSingle();
-  const url = (hook?.settings as { url?: string } | null)?.url;
-  if (!hook?.enabled || !isHttpUrl(url) || !url.startsWith("https://") || !isPublicHost(url)) return;
+  if (readError) return failed(`Não foi possível ler a integração: ${readError.message}`, true);
+  const settings = (hook?.settings ?? {}) as { url?: string; simulate?: string };
+  const url = settings.url;
+  if (!hook?.enabled || !isHttpUrl(url) || !url.startsWith("https://") || !isPublicHost(url)) {
+    return failed("O webhook de saída está desligado ou sem endereço https válido (Integrações).", false);
+  }
+  if (hook.organizations?.is_test) {
+    if (settings.simulate === "reject") {
+      return { ...failed("Destino de teste: recusa simulada (HTTP 400). Nada saiu da plataforma.", false, 400), sandbox: true };
+    }
+    if (settings.simulate === "fail_first" && attempt === 1) {
+      return { ...failed("Destino de teste: falha simulada (HTTP 503). Nada saiu da plataforma.", true, 503), sandbox: true };
+    }
+    return { ok: true, transient: false, status: 200, ms: Date.now() - started, error: null, sandbox: true };
+  }
   const body = JSON.stringify({ event, sent_at: new Date().toISOString(), data });
   try {
-    await fetch(url, {
+    const response = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-signature": hmac("sha256", hook.secret, body) },
+      headers: {
+        "content-type": "application/json",
+        "x-signature": hmac("sha256", hook.secret, body),
+        ...(deliveryId ? { "x-delivery-id": deliveryId } : {}),
+      },
       body,
-      signal: AbortSignal.timeout(4000),
+      // Um redireccionamento podia levar o pedido para um endereço interno.
+      redirect: "manual",
+      signal: AbortSignal.timeout(timeoutMs),
     });
-  } catch {
-    // Um destino lento ou em baixo nunca afecta a sala nem a venda.
+    void response.body?.cancel().catch(() => {});
+    if (response.ok) return { ok: true, transient: false, status: response.status, ms: Date.now() - started, error: null };
+    const transient = response.status === 408 || response.status === 429 || response.status >= 500;
+    return failed(`O destino respondeu HTTP ${response.status}.`, transient, response.status);
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "TimeoutError";
+    return failed(
+      timedOut
+        ? `O destino não respondeu em ${Math.round(timeoutMs / 1000)} s.`
+        : `Falha de rede: ${error instanceof Error ? error.message : String(error)}`,
+      true,
+    );
   }
+}
+
+/** Avisos em tempo real (inscrição, clique, venda, caso): uma tentativa, sem esperar. */
+export async function notifyOutgoing(organizationId: string, event: string, data: Record<string, unknown>) {
+  // Um destino lento ou em baixo nunca afecta a sala nem a venda.
+  await deliverOutgoing(organizationId, event, data, { timeoutMs: 4000 });
 }

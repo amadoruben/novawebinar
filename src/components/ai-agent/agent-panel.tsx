@@ -188,7 +188,7 @@ export function AgentPanel({
 
   if (isLoading || !agent) {
     return (
-      <div className="flex items-center gap-2 rounded-2xl border bg-card p-6 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 rounded-card bg-card p-6 text-sm text-muted-foreground">
         <Loader2 className="size-4 animate-spin" /> A carregar o agente…
       </div>
     );
@@ -200,7 +200,7 @@ export function AgentPanel({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-1.5 rounded-2xl border bg-card p-1.5">
+      <div className="flex flex-wrap gap-1.5 rounded-card bg-card p-1.5">
         {SUBTABS.map((item) => (
           <button
             key={item.id}
@@ -217,7 +217,7 @@ export function AgentPanel({
       </div>
 
       {tab === "visao" ? (
-        <section className="space-y-4 rounded-2xl border bg-card p-5">
+        <section className="space-y-4 rounded-card bg-card p-5">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold">Agente ativo</p>
@@ -352,7 +352,7 @@ export function AgentPanel({
 
 
       {tab === "personalidade" ? (
-        <section className="space-y-4 rounded-2xl border bg-card p-5">
+        <section className="space-y-4 rounded-card bg-card p-5">
           <div className="grid gap-3 sm:grid-cols-2">
             <Choice
               label="Tom"
@@ -418,7 +418,7 @@ export function AgentPanel({
       ) : null}
 
       {tab === "regras" ? (
-        <section className="space-y-4 rounded-2xl border bg-card p-5">
+        <section className="space-y-4 rounded-card bg-card p-5">
           <div>
             <p className="text-sm font-semibold">O que o agente pode fazer</p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -579,7 +579,7 @@ function KnowledgeTab({
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border bg-card px-5 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-card bg-card px-5 py-4">
         <p className="text-xs text-muted-foreground">
           Se este webinar já tiver transcrição, a geração usa-a como fonte. Reveja sempre antes de
           guardar.
@@ -608,7 +608,7 @@ function KnowledgeTab({
       </div>
       {sections.map((section) => (
 
-        <div key={section.id} className="space-y-3 rounded-2xl border bg-card p-5">
+        <div key={section.id} className="space-y-3 rounded-card bg-card p-5">
           <p className="text-sm font-semibold">{section.title}</p>
           {knowledge
             .filter((row) => row["section"] === section.id)
@@ -698,7 +698,7 @@ function FaqTab({
   const [loading, setLoading] = useState(false);
 
   return (
-    <section className="space-y-4 rounded-2xl border bg-card p-5">
+    <section className="space-y-4 rounded-card bg-card p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold">Perguntas frequentes</p>
         <Button
@@ -810,7 +810,7 @@ function ObjectionTab({
   const [loading, setLoading] = useState(false);
 
   return (
-    <section className="space-y-4 rounded-2xl border bg-card p-5">
+    <section className="space-y-4 rounded-card bg-card p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold">Objeções</p>
         <Button
@@ -940,7 +940,7 @@ function SimulatorTab({
   const [result, setResult] = useState<SimulationResult | null>(null);
 
   return (
-    <section className="space-y-4 rounded-2xl border bg-card p-5">
+    <section className="space-y-4 rounded-card bg-card p-5">
       <p className="text-sm font-semibold">Testar agente</p>
       <div className="grid gap-2 sm:grid-cols-[1fr_9rem_auto]">
         <Input
@@ -996,7 +996,7 @@ function SimulatorTab({
           </div>
           {result.answer ? <p className="text-sm">{result.answer}</p> : null}
           <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <p className="mb-1 text-xs text-muted-foreground">
               Fontes
             </p>
             <SourceList sources={result.sources} onSeek={onSeek} />

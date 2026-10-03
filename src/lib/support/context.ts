@@ -20,7 +20,13 @@ export type WebinarParticipation = {
   watchedSeconds: number;
   reachedOffer: boolean;
   clicked: boolean;
+  /** A plataforma registou um pagamento atribuído a este webinar. */
+  checkout: boolean;
+  paymentFailed: boolean;
+  checkoutAbandoned: boolean;
   purchased: boolean;
+  /** Comprou e foi reembolsado: não é uma compra activa. */
+  refunded: boolean;
   messages: number;
 };
 
@@ -59,24 +65,27 @@ export function buildCommercialContext(input: {
 }): CommercialContext {
   const journey = buildJourney(input);
   const approved = input.purchases.filter((p) => p.status === "approved");
-  const boughtIn = new Set(approved.map((p) => p.webinar_id).filter(Boolean));
 
   const webinars: WebinarParticipation[] = [];
   for (const step of journey) {
     if (step.kind !== "event") continue;
-    const participation = input.participations.find((p) => p.id === step.id);
+    const participation = input.participations.find((p) => p.participant_id === step.id);
     if (!participation) continue;
     webinars.push({
       participantId: step.id,
-      webinarId: participation.webinar_id,
+      webinarId: participation.webinar_id ?? "",
       title: step.title,
       at: step.at,
-      attended: step.watchedSeconds > 0,
+      attended: step.attended,
       watchedPct: step.watchedPct,
       watchedSeconds: step.watchedSeconds,
       reachedOffer: step.reachedOffer,
       clicked: step.clicked,
-      purchased: boughtIn.has(participation.webinar_id),
+      checkout: Boolean(participation.checkout_started),
+      paymentFailed: Boolean(participation.payment_failed),
+      checkoutAbandoned: Boolean(participation.checkout_abandoned),
+      purchased: Boolean(participation.purchased),
+      refunded: Boolean(participation.refunded),
       messages: step.messages,
     });
   }
@@ -88,8 +97,8 @@ export function buildCommercialContext(input: {
   }
 
   const moments = [
-    ...input.participations.map((p) => p.joined_at),
-    ...input.purchases.map((p) => p.created_at),
+    ...input.participations.map((p) => p.joined_at ?? ""),
+    ...input.purchases.map((p) => p.status_at),
     ...input.messages.map((m) => m.created_at ?? ""),
   ].filter(Boolean);
 
@@ -141,6 +150,15 @@ export function contextFacts(context: CommercialContext, currentWebinarId?: stri
   } else {
     facts.push("Ainda não comprou nada.");
   }
+  // O pagamento mais recente, quando não acabou em compra.
+  const last = context.purchases[0];
+  const attempt: Record<string, string> = {
+    failed: "O último pagamento falhou",
+    pending: "Tem um pagamento pendente",
+    abandoned: "Iniciou o pagamento e não concluiu",
+    refunded: "A última compra foi reembolsada",
+  };
+  if (last && attempt[last.status]) facts.push(`${attempt[last.status]} (${last.title}).`);
 
   const current = context.webinars.find((w) => w.webinarId === currentWebinarId);
   if (current) {
@@ -149,10 +167,22 @@ export function contextFacts(context: CommercialContext, currentWebinarId?: stri
         ? current.watchedPct !== null
           ? `assistiu a ${current.watchedPct}%`
           : "está a assistir"
-        : "inscreveu-se e ainda não assistiu",
+        : current.watchedSeconds > 0
+          ? "viu pouco até agora"
+          : "inscreveu-se e ainda não assistiu",
       current.reachedOffer ? "viu a oferta" : "",
       current.clicked ? "clicou na oferta" : "",
-      current.purchased ? "comprou" : "",
+      current.purchased
+        ? "comprou"
+        : current.refunded
+          ? "comprou e foi reembolsado"
+          : current.paymentFailed
+          ? "o pagamento falhou"
+          : current.checkoutAbandoned
+          ? "abandonou o pagamento"
+          : current.checkout
+            ? "iniciou o pagamento"
+            : "",
     ].filter(Boolean);
     facts.push(`Neste webinar (${current.title}): ${parts.join(", ")}.`);
   }

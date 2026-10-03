@@ -123,7 +123,7 @@ function SettingsPage() {
         </TabsList>
 
         <TabsContent value="perfil" className="mt-6">
-          <section className="max-w-3xl rounded-lg border bg-card p-5 sm:p-6">
+          <section className="max-w-3xl rounded-card bg-card p-5 sm:p-6">
             <h2 className="text-lg font-semibold">Informações pessoais</h2>
             <div className="mt-6 flex flex-wrap items-center gap-4">
               <div className="relative">
@@ -200,7 +200,7 @@ function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="workspace" className="mt-6">
-          <section className="max-w-3xl rounded-lg border bg-card p-5 sm:p-6">
+          <section className="max-w-3xl rounded-card bg-card p-5 sm:p-6">
             <h2 className="text-lg font-semibold">Organização</h2>
             <div className="mt-6 grid gap-5 sm:grid-cols-2">
               <div>

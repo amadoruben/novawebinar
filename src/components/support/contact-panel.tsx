@@ -5,6 +5,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ExternalLink, Mail, MapPin, Megaphone, MessageCircle, MonitorSmartphone } from "lucide-react";
+import { ContactAutomations } from "@/components/automation-runs";
 import { TemperatureBadge } from "@/components/contacts/contact-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,6 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { contactInsight, sourceLabel, stageLabel, whatsappLink, type ContactSummary } from "@/lib/contacts";
 import { customerLabel, formatMoney, type WebinarParticipation } from "@/lib/support/context";
+import { useAutomationRuns } from "@/lib/data";
+import { journeySentence, nextAction } from "@/lib/workflow";
 import {
   useContactContext,
   useEvents,
@@ -26,6 +29,34 @@ import {
 } from "@/lib/support/model";
 import { Avatar, CaseStatusBadge, dateTimeLabel } from "./badges";
 import { CaseActions, CaseSummary, Timeline } from "./case-tools";
+
+/** O contexto da jornada numa frase: o que fez, em que automação está e o que vem a seguir. */
+function JourneyContext({ contactId, webinars }: { contactId: string | null | undefined; webinars: WebinarParticipation[] }) {
+  const { data: runs = [] } = useAutomationRuns({ contactId: contactId ?? null }, 50);
+  const any = (key: keyof WebinarParticipation) => webinars.some((w) => Boolean(w[key]));
+  const active = runs
+    .filter((r) => ["waiting", "ready", "running"].includes(r.status))
+    .map((r) => ({ name: r.automations?.name ?? "Automação", next: nextAction({ ...r, automations: r.automations ?? null }) }));
+  return (
+    <p className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm leading-relaxed">
+      {journeySentence(
+        {
+          registered: webinars.length > 0,
+          attended: any("attended"),
+          sawOffer: any("reachedOffer"),
+          clicked: any("clicked"),
+          checkout: any("checkout"),
+          paymentFailed: any("paymentFailed"),
+          checkoutAbandoned: any("checkoutAbandoned"),
+          purchased: any("purchased"),
+          refunded: any("refunded"),
+        },
+        active,
+        (iso) => new Date(iso).toLocaleString("pt-PT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }),
+      )}
+    </p>
+  );
+}
 
 function useContactSummary(contactId: string | null | undefined) {
   return useQuery({
@@ -63,6 +94,10 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function participationBadge(w: WebinarParticipation) {
   if (w.purchased) return { label: "Comprou", variant: "success" as const };
+  if (w.refunded) return { label: "Reembolsado", variant: "outline" as const };
+  if (w.paymentFailed) return { label: "Pagamento falhou", variant: "warning" as const };
+  if (w.checkoutAbandoned) return { label: "Abandonou o pagamento", variant: "warning" as const };
+  if (w.checkout) return { label: "Iniciou o pagamento", variant: "warning" as const };
   if (w.clicked) return { label: "Clicou na oferta", variant: "warning" as const };
   if (w.reachedOffer) return { label: "Viu a oferta", variant: "info" as const };
   if (w.attended) return { label: "Assistiu", variant: "secondary" as const };
@@ -72,6 +107,8 @@ function participationBadge(w: WebinarParticipation) {
 const PURCHASE_STATUS: Record<string, { label: string; variant: "success" | "warning" | "outline" }> = {
   approved: { label: "Pago", variant: "success" },
   pending: { label: "Pendente", variant: "warning" },
+  failed: { label: "Falhou", variant: "warning" },
+  abandoned: { label: "Abandonado", variant: "outline" },
   refunded: { label: "Reembolsado", variant: "outline" },
 };
 
@@ -113,6 +150,7 @@ export function ContactPanel({
       </TabsList>
 
       <TabsContent value="contact" className="mt-0 flex-1 space-y-5 overflow-y-auto p-4">
+        {context && <JourneyContext contactId={contactId} webinars={context.webinars} />}
         <div className="flex items-start gap-3">
           <Avatar name={name} className="size-12 text-sm" />
           <div className="min-w-0 flex-1">
@@ -275,6 +313,8 @@ export function ContactPanel({
                 </ul>
               )}
             </Section>
+
+            <ContactAutomations contactId={contactId} />
 
             {detail && detail.lists.length > 0 && (
               <Section title="Listas">

@@ -21,16 +21,27 @@ async function tokenMatches(request: Request) {
 }
 
 /**
- * Motor da fila. É isto que faz a geração do chat e a sincronização
- * continuarem quando o separador está fechado, desde que exista uma chamada
+ * Motor da fila. É isto que faz a geração do chat, a sincronização e as
+ * automações continuarem quando o separador está fechado, desde que exista uma chamada
  * agendada a este endpoint com o cabeçalho `x-job-runner-token`.
  */
 async function run(request: Request) {
   if (!(await tokenMatches(request))) return new Response("Unauthorized", { status: 401 });
 
-  const { runPendingJobs } = await import("@/lib/job-runner.server");
-  const result = await runPendingJobs(55000);
-  return Response.json({ ok: true, ...result });
+  // As duas passagens correm lado a lado, como no ticker: uma falha ou um atraso das
+  // automações não tira tempo nem pára a fila (geração do chat, sincronização).
+  const [automations, jobs] = await Promise.allSettled([
+    import("@/lib/automations.server").then(({ runDueAutomations }) => runDueAutomations({ budgetMs: 30_000 })),
+    import("@/lib/job-runner.server").then(({ runPendingJobs }) => runPendingJobs(50_000)),
+  ]);
+  if (automations.status === "rejected") console.error("[automations] passagem falhada", automations.reason);
+  if (jobs.status === "rejected") throw jobs.reason;
+  return Response.json({
+    ok: true,
+    ...jobs.value,
+    automations: automations.status === "fulfilled" ? automations.value.executed : null,
+    ...(automations.status === "rejected" ? { automations_error: "A passagem das automações falhou." } : {}),
+  });
 }
 
 export const Route = createFileRoute("/api/public/run-jobs")({

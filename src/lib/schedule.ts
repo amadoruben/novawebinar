@@ -37,7 +37,7 @@ export type SessionWindow = {
   waitingOpen: boolean;
 };
 
-function parseTime(value?: string | null): { hour: number; minute: number } | null {
+export function parseTime(value?: string | null): { hour: number; minute: number } | null {
   if (!value) return null;
   const match = /^(\d{1,2}):(\d{2})/.exec(value.trim());
   if (!match) return null;
@@ -47,7 +47,8 @@ function parseTime(value?: string | null): { hour: number; minute: number } | nu
   return { hour, minute };
 }
 
-function safeZone(timezone?: string | null) {
+/** O fuso do webinar quando é válido; senão UTC (um fuso inválido faria o Intl lançar erro). */
+export function safeZone(timezone?: string | null) {
   if (!timezone) return "UTC";
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: timezone });
@@ -57,7 +58,7 @@ function safeZone(timezone?: string | null) {
   }
 }
 
-function zoneParts(ms: number, timezone: string) {
+export function zoneParts(ms: number, timezone: string) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
     hour12: false,
@@ -197,6 +198,95 @@ export function sessionWindow(webinar: ScheduleInput, nowMs = Date.now()): Sessi
   }
 
   return { startMs: null, endMs: null, live: false, endedMs: null, waitingOpen: true };
+}
+
+/* ---------- Ciclo de vida ---------- */
+
+/**
+ * Estado de uma sessão global: a mesma regra que a base de dados aplica de minuto a
+ * minuto (sweep_webinar_sessions). As sessões são automáticas: começam sozinhas à hora
+ * marcada. Sem fim conhecido (sem duração nem hora de fim), não se inventa o fim.
+ */
+export type SessionState = "scheduled" | "live" | "finished";
+
+export function sessionState(startMs: number, endMs: number | null, nowMs = Date.now()): SessionState {
+  if (nowMs < startMs) return "scheduled";
+  if (endMs !== null && nowMs >= endMs) return "finished";
+  return "live";
+}
+
+/**
+ * Ciclo de vida de um webinar, igual em todas as páginas. Só há sessão global com data
+ * única ou repetição automática. O just in time recomeça de minutos a minutos, e sem
+ * horário cada pessoa vê a partir do início: nenhum dos dois tem um "terminou" global.
+ * A sessão terminar não é a pessoa acabar de ver o vídeo.
+ */
+export type WebinarLifecycle =
+  | { kind: "draft" }
+  | { kind: "on_demand" }
+  | { kind: "jit"; intervalMinutes: number }
+  | {
+      kind: "session";
+      state: SessionState;
+      startMs: number;
+      endMs: number | null;
+      /** Fim da última sessão já terminada (repetição automática). */
+      lastEndedMs: number | null;
+    };
+
+export function webinarLifecycle(
+  webinar: ScheduleInput & { status?: string | null },
+  nowMs = Date.now(),
+): WebinarLifecycle {
+  if (webinar.status === "draft") return { kind: "draft" };
+  if (webinar.schedule_mode === "jit") {
+    return { kind: "jit", intervalMinutes: Math.max(5, webinar.jit_interval_minutes ?? 15) };
+  }
+  const window = sessionWindow(webinar, nowMs);
+  if (window.startMs === null) return { kind: "on_demand" };
+  return {
+    kind: "session",
+    state: sessionState(window.startMs, window.endMs, nowMs),
+    startMs: window.startMs,
+    endMs: window.endMs,
+    lastEndedMs: window.endedMs,
+  };
+}
+
+export function lifecycleLabel(lifecycle: WebinarLifecycle) {
+  switch (lifecycle.kind) {
+    case "draft":
+      return "Inativo";
+    case "on_demand":
+      return "Sob demanda";
+    case "jit":
+      return `A cada ${lifecycle.intervalMinutes} min`;
+    case "session":
+      if (lifecycle.state === "scheduled") return "Agendado";
+      if (lifecycle.state === "finished") return "Terminado";
+      // Começou, mas sem duração nem hora de fim não se sabe quando acaba.
+      return lifecycle.endMs === null ? "Iniciado" : "Em andamento";
+  }
+}
+
+/** Uma frase com as horas do ciclo de vida, para dicas e cabeçalhos. */
+export function lifecycleDetail(lifecycle: WebinarLifecycle, timezone?: string | null) {
+  const at = (ms: number) => formatSessionStart(ms, timezone);
+  switch (lifecycle.kind) {
+    case "draft":
+      return "A sala está fechada até o webinar ser activado.";
+    case "on_demand":
+      return "Sem horário: cada pessoa vê desde o início. Não há uma sessão global que termine.";
+    case "jit":
+      return `Recomeça a cada ${lifecycle.intervalMinutes} minutos para quem chega. Não há um fim global: cada sessão com inscritos termina à sua hora.`;
+    case "session":
+      if (lifecycle.state === "scheduled")
+        return `Começa ${at(lifecycle.startMs)}.${lifecycle.lastEndedMs ? ` A anterior terminou ${at(lifecycle.lastEndedMs)}.` : ""}`;
+      if (lifecycle.state === "finished") return `Terminou ${at(lifecycle.endMs ?? lifecycle.startMs)}.`;
+      return lifecycle.endMs === null
+        ? `Começou ${at(lifecycle.startMs)}; sem duração nem hora de fim, não termina sozinha.`
+        : `Começou ${at(lifecycle.startMs)} e termina ${at(lifecycle.endMs)}.`;
+  }
 }
 
 export function formatSessionStart(ms: number, timezone?: string | null) {

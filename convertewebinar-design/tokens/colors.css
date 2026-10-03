@@ -1,0 +1,99 @@
+:root{
+/* Palette B · Azul-noite — vivid "live" orange + deep navy + light grays */
+--orange:#E8440C;
+--navy:#0F1B2D;
+--navy-soft:#1C2A40;
+--blue:#3B6FE0;
+--light-gray:#F1F3F6;
+--onyx:#0F1B2D;
+--mist:#E6EAF0;
+--silver:#C5CCD8;
+--slate:#8792A6;
+--graphite:#1C2A40;
+--black:#0F1B2D;
+--white:#FFFFFF;
+/* Fundo da aplicação (menu e conteúdo), separados só pela linha fina. */
+--paper:#FCFCFC;
+/* Live room (attendee view) */
+--live-red:#E5243B;
+
+/* Orange ramp — #E8440C + derived tints/shade */
+--accent:#E8440C;
+--accent-strong:#C93A08;
+--accent-soft:#FDE4D9;
+--accent-100:#FDE4D9;
+--accent-200:#F7B89C;
+--accent-300:#F28E63;
+--accent-400:#ED6936;
+--accent-500:#E8440C;
+--accent-600:#C93A08;
+--accent-700:#A82F05;
+--accent-deep:#8A2604;
+--button-primary:var(--accent);
+--button-primary-hover:var(--accent-strong);
+--gradient-accent:linear-gradient(140deg,#E8440C 0%,#C93A08 45%,#8A2604 100%); /* @kind color */
+
+/* Light grays (cool) → navy */
+--gray-50:#FAFBFC;
+--gray-100:#F4F6F9;
+--gray-150:#E6EAF0;
+--gray-200:#F1F3F6;
+--gray-250:#DCE1E8;
+--gray-300:#C5CCD8;
+--gray-400:#A5AEBE;
+--gray-500:#8792A6;
+--gray-600:#56627A;
+--gray-700:#34405A;
+--gray-800:#1C2A40;
+--gray-900:#0F1B2D;
+--ink-soft:#34405A;
+
+/* Semantic aliases
+   29/09: fundo da aplicação #FCFCFC (--paper), igual no menu e no conteúdo, e cartões no
+   cinza claro #F1F3F6, para os painéis e os textos se destacarem do fundo.
+   Dentro dos cartões, barras, pílulas e botões ficam brancos (como no estudo). */
+--bg-canvas:var(--paper);
+--surface-sidebar:var(--paper);
+--surface-card:var(--light-gray);
+--surface-card-raised:var(--white);
+--surface-chip:var(--mist);
+--surface-inverse:var(--navy);
+--surface-inverse-soft:var(--navy-soft);
+--surface-accent:var(--accent);
+--surface-accent-soft:var(--accent-soft);
+--surface-glass:rgba(255,255,255,.74);
+
+--text-primary:var(--navy);
+--text-secondary:#465166; /* 29/09: mais escuro para ler melhor sobre os cartões cinza */
+--text-tertiary:#8792A6;
+--text-on-inverse:var(--white);
+--text-on-accent:var(--white);
+--text-on-accent-large:var(--white);
+--text-accent:var(--accent);
+--text-info:var(--blue);
+
+--border-subtle:rgba(15,27,45,.06);
+--border-card:rgba(15,27,45,.08); /* aresta fina dos cartões sobre o fundo #FCFCFC */
+--border-hairline:#DCE1E8;
+--chart-line:#C5CCD8;
+--chart-hatch:#34405A; /* relevo do destaque mais marcado */
+--chart-bar:#C5CCD8; /* barras visíveis sobre o cartão cinza */
+--chart-marker:#56627A;
+
+--hover-dark:var(--navy-soft);
+--hover-ghost:rgba(15,27,45,.05);
+--overlay-light:rgba(255,255,255,.55);
+--overlay-on-inverse:rgba(255,255,255,.12);
+
+/* Estado operacional (extensão para a aplicação: execuções, pagamentos, erros).
+   Só em texto, pontos e selos pequenos — nunca como cor de superfície grande.
+   O vermelho de erro é distinto do Laranja live e do vermelho AO VIVO da sala. */
+--status-success:#1D8A5E;
+--status-success-soft:#DDF1E7;
+--status-warning:#A86400;
+--status-warning-soft:#FBEBCF;
+--status-danger:#CC2B3B;
+--status-danger-soft:#FBE1E3;
+--status-info:var(--blue);
+--status-info-soft:#E1E9FB;
+}

@@ -245,7 +245,7 @@ function StaffTab({
           description="Registe a primeira pessoa da equipa. Enquanto não houver ninguém, os casos ficam na fila do departamento."
         />
       ) : (
-        <div className="overflow-x-auto rounded-lg border bg-card">
+        <div className="overflow-x-auto rounded-card bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -686,7 +686,7 @@ function DepartmentsTab({
       <p className="max-w-2xl text-sm text-muted-foreground">
         Cada pedido vai para um departamento. O departamento geral recebe o que não cabe em mais nenhum.
       </p>
-      <ul className="divide-y rounded-lg border bg-card">
+      <ul className="divide-y rounded-card bg-card">
         {departments.map((department) => (
           <li key={department.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
             <Input
@@ -873,7 +873,7 @@ function RulesTab({
           capacidade, quem já atendeu o contacto, quem tem menos casos.
         </p>
       </div>
-      <div className="overflow-x-auto rounded-lg border bg-card">
+      <div className="overflow-x-auto rounded-card bg-card">
         <Table>
           <TableHeader>
             <TableRow>

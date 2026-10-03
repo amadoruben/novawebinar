@@ -1,14 +1,5 @@
-import {
-  Bar,
-  BarChart,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
+import { BarChart, ProgressRow } from "@/components/ds";
 import { CalendarDays, Filter, MapPin, MonitorSmartphone, Users } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { useAudienceInsights } from "@/lib/audience-insights";
@@ -27,12 +18,12 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className={cn("min-w-0 rounded-2xl border bg-card p-4 sm:p-5", className)}>
-      <header className="mb-4 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+    <section className={cn("min-w-0 rounded-card bg-card p-5 sm:p-6", className)}>
+      <header className="mb-5 flex items-start justify-between gap-3">
+        <h2 className="text-lg font-normal leading-tight tracking-[-0.025em] sm:text-xl">{title}</h2>
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-gray-700">
           <Icon className="size-4" />
         </span>
-        <h2 className="text-sm font-semibold">{title}</h2>
       </header>
       {children}
     </section>
@@ -40,6 +31,7 @@ function Panel({
 }
 
 const nf = new Intl.NumberFormat("pt-PT");
+const pf = new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 1 });
 
 export function AudienceInsights({
   organizationId,
@@ -58,9 +50,9 @@ export function AudienceInsights({
   const devices = data?.devices ?? { mobile: 0, desktop: 0, unknown: 0 };
   const deviceTotal = devices.mobile + devices.desktop + devices.unknown;
   const deviceData = [
-    { name: "Telemóvel", value: devices.mobile, color: "hsl(var(--primary))" },
-    { name: "Computador", value: devices.desktop, color: "hsl(var(--muted-foreground))" },
-    { name: "Sem registo", value: devices.unknown, color: "hsl(var(--muted))" },
+    { name: "Telemóvel", value: devices.mobile, color: "var(--orange)" },
+    { name: "Computador", value: devices.desktop, color: "var(--navy)" },
+    { name: "Sem registo", value: devices.unknown, color: "var(--gray-250)" },
   ].filter((slice) => slice.value > 0);
   const mobileShare = deviceTotal ? Math.round((devices.mobile / deviceTotal) * 100) : 0;
   const scheduledDates = (data?.scheduled ?? []).map((key) => {
@@ -72,51 +64,49 @@ export function AudienceInsights({
   return (
     <div className={cn("space-y-4", className)}>
       <Panel title="Funil de conversão" icon={Filter}>
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-x-3 gap-y-4">
-          {funnel.map((step) => (
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-x-3 gap-y-4">
+          {funnel.map((step, i) => (
             <div key={step.label}>
               <p className="text-xs text-muted-foreground">{step.label}</p>
-              <strong className="block text-xl font-semibold sm:text-2xl">{nf.format(step.value)}</strong>
-              <span className="text-xs text-muted-foreground">{step.share.toFixed(2)}%</span>
+              <strong
+                className={cn(
+                  "mt-1 block text-[28px] leading-none font-normal tracking-[var(--tracking-display)] tabular-nums",
+                  i === funnel.length - 1 && "text-primary",
+                )}
+              >
+                {nf.format(step.value)}
+              </strong>
+              <span className="mt-1 block text-xs text-muted-foreground">{pf.format(step.share)}%</span>
             </div>
           ))}
         </div>
-        <div className="mt-5 flex items-end gap-1">
-          {funnel.map((step, index) => {
-            const height = top ? Math.max(8, Math.round((step.value / top) * 100)) : 8;
-            return (
-              <div key={step.label} className="flex h-28 flex-1 items-end">
-                <div
-                  className="w-full rounded-md bg-primary transition-all"
-                  style={{ height: `${height}%`, opacity: 0.45 + index * 0.12 }}
-                />
-              </div>
-            );
-          })}
-        </div>
+        {top > 0 && (
+          <BarChart
+            className="mt-6"
+            data={funnel.map((step) => ({ label: "", value: step.value, title: `${step.label}: ${nf.format(step.value)}` }))}
+            highlight={funnel.length - 1}
+            tag={`${pf.format(funnel[funnel.length - 1]?.share ?? 0)}%`}
+            height={120}
+            showLabels={false}
+          />
+        )}
       </Panel>
 
       <div className="grid min-w-0 gap-4 min-[1200px]:grid-cols-[minmax(0,1.6fr)_minmax(280px,1fr)]">
         <Panel title="Participantes por dia" icon={Users}>
-          <div className="h-56 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data?.daily ?? []} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                <XAxis
-                  dataKey="label"
-                  tickLine={false}
-                  axisLine={false}
-                  interval="preserveStartEnd"
-                  tick={{ fontSize: 11 }}
-                />
-                <YAxis width={40} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
-                <Tooltip
-                  cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
-                  formatter={(value: number) => [nf.format(value), "Participantes"]}
-                />
-                <Bar dataKey="value" radius={[6, 6, 0, 0]} fill="hsl(var(--primary))" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {(data?.daily ?? []).some((d) => d.value > 0) ? (
+            <BarChart
+              data={(data?.daily ?? []).map((d) => ({ ...d, title: `${d.label}: ${nf.format(d.value)} participantes` }))}
+              tag={nf.format(Math.max(...(data?.daily ?? []).map((d) => d.value)))}
+              height={190}
+              gap={6}
+              labelEvery={(data?.daily ?? []).length > 10 ? 3 : 1}
+            />
+          ) : (
+            <p className="rounded-md bg-white px-4 py-10 text-center text-sm text-muted-foreground">
+              Sem entradas no período.
+            </p>
+          )}
         </Panel>
 
         <Panel title="Dispositivos" icon={MonitorSmartphone}>
@@ -154,7 +144,7 @@ export function AudienceInsights({
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                  <strong className="text-base font-semibold">{mobileShare}%</strong>
+                  <strong className="text-xl font-normal tracking-[-0.03em]">{mobileShare}%</strong>
                   <span className="text-[11px] text-muted-foreground">Telemóvel</span>
                 </div>
               </div>
@@ -168,31 +158,24 @@ export function AudienceInsights({
           {(data?.regions ?? []).length === 0 ? (
             <p className="text-sm text-muted-foreground">Ainda sem origens registadas.</p>
           ) : (
-            <ul className="space-y-3">
-              {data!.regions.map((region) => (
-                <li key={region.label}>
-                  <div className="mb-1 grid grid-cols-[minmax(0,1fr)_auto] gap-3 text-sm">
-                    <span className="truncate">{region.label}</span>
-                    <span className="shrink-0 text-muted-foreground">{nf.format(region.value)}</span>
-                  </div>
-                  <div className="h-2 rounded bg-muted">
-                    <div
-                      className="h-full rounded bg-primary"
-                      style={{
-                        width: `${regionTop ? Math.max(4, (region.value / regionTop) * 100) : 0}%`,
-                      }}
-                    />
-                  </div>
-                </li>
+            <div className="flex flex-col gap-1.5">
+              {data!.regions.map((region, i) => (
+                <ProgressRow
+                  key={region.label}
+                  label={region.label}
+                  value={regionTop ? (region.value / regionTop) * 100 : 0}
+                  display={nf.format(region.value)}
+                  highlight={i === 0}
+                />
               ))}
-            </ul>
+            </div>
           )}
         </Panel>
 
         <Panel title="Eventos agendados" icon={CalendarDays}>
           <Calendar
             mode="single"
-            className="mx-auto w-full max-w-[360px] overflow-hidden rounded-lg bg-background p-3 [--cell-size:2.25rem] sm:[--cell-size:2.5rem]"
+            className="mx-auto w-full max-w-[360px] overflow-hidden rounded-lg bg-white p-3 [--cell-size:2.25rem] sm:[--cell-size:2.5rem]"
             classNames={{
               root: "w-full",
               month: "flex w-full flex-col gap-3",
@@ -204,7 +187,7 @@ export function AudienceInsights({
             }}
             modifiers={{ agendado: scheduledDates }}
             modifiersClassNames={{
-              agendado: "bg-primary text-primary-foreground rounded-md font-semibold",
+              agendado: "bg-primary text-primary-foreground rounded-full",
             }}
           />
         </Panel>

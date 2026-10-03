@@ -1,0 +1,18 @@
+# O que não vai para o Vercel. Com este ficheiro, o .gitignore deixa de contar no envio: repetir aqui o essencial.
+# As pastas vão ancoradas à raiz (/x): sem a barra, "supabase" apanhava também src/integrations/supabase.
+.env
+.env.*
+node_modules
+/.output
+/.vercel
+/dist
+/.claude
+/.agents
+/.scratch
+/convertewebinar-design/uploads
+/convertewebinar-design/explorations
+/docs
+/drizzle
+/scripts
+/supabase
+*.log

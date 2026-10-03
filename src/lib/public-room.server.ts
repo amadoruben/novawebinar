@@ -6,6 +6,8 @@
  * chama, nunca "não existe" nem uma lista vazia. É isso que deixa a sala aberta
  * ficar como está e repetir o pedido.
  */
+import { createHmac, timingSafeEqual } from "node:crypto";
+
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { fetchAll } from "@/lib/fetch-all";
 import { PROVIDERS } from "@/lib/integrations";
@@ -250,6 +252,29 @@ export async function recordCta(data: {
   }
 
   return { ok: true };
+}
+
+/**
+ * Credencial da sala: o id da participação assinado pelo servidor. Só quem entra pela sala a
+ * recebe; saber o id (de um webhook, de uma resposta da API) não chega para ler ou escrever
+ * no chat privado de outra pessoa.
+ * ponytail: chave derivada da service role; trocá-la obriga quem está na sala a entrar outra vez.
+ */
+function roomSignature(participantId: string) {
+  const key = process.env["SUPABASE_SERVICE_ROLE_KEY"];
+  if (!key) throw new Error(UNAVAILABLE);
+  return createHmac("sha256", key).update(`room-access:${participantId}`).digest("base64url");
+}
+
+export const roomToken = (participantId: string) => `${participantId}.${roomSignature(participantId)}`;
+
+/** O id da participação de uma credencial emitida por este servidor; null em qualquer outro caso. */
+export function participantFromToken(token: string): string | null {
+  const [id, signature, extra] = token.split(".");
+  if (!id || !signature || extra !== undefined) return null;
+  const expected = Buffer.from(roomSignature(id));
+  const given = Buffer.from(signature);
+  return given.length === expected.length && timingSafeEqual(given, expected) ? id : null;
 }
 
 export async function loadRoomMessages(participantId: string) {

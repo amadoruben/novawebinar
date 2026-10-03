@@ -30,11 +30,12 @@ import { Switch } from "@/components/ui/switch";
 import { PageSkeleton } from "@/components/page-skeleton";
 import {
   publicOrigin,
-  statusLabels,
-  webinarStatusFromSchedule,
+  lifecycleOf,
+  statusFromLifecycle,
   type Webinar,
   type WebinarStatus,
 } from "@/lib/data";
+import { lifecycleDetail, lifecycleLabel } from "@/lib/schedule";
 
 export { CalendarDays, Clock3, MoreHorizontal, Play, Radio, Users };
 
@@ -50,23 +51,17 @@ export function Metric({
   icon?: typeof Users;
 }) {
   return (
-    <article className="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+    <article className="min-w-0 rounded-card bg-card p-5 sm:p-6">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <span className="block text-xs font-medium leading-relaxed text-muted-foreground sm:text-sm">
-            {label}
-          </span>
-          <strong className="mt-2 block break-words text-2xl font-semibold sm:text-[1.75rem]">
-            {value}
-          </strong>
-        </div>
-        <Icon className="size-5 shrink-0 text-muted-foreground" strokeWidth={1.75} />
+        <span className="block text-[15px] leading-tight tracking-[-0.01em]">{label}</span>
+        <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-muted-foreground">
+          <Icon className="size-4" strokeWidth={1.5} />
+        </span>
       </div>
-      {change && (
-        <div className="mt-3 flex items-center gap-2 border-t border-border/60 pt-2 sm:mt-4 sm:pt-3">
-          <span className="text-xs font-medium text-muted-foreground">{change}</span>
-        </div>
-      )}
+      <strong className="mt-4 block break-words text-[32px] leading-none font-normal tracking-[var(--tracking-display)] tabular-nums sm:text-[40px]">
+        {value}
+      </strong>
+      {change && <p className="mt-2 text-xs text-muted-foreground">{change}</p>}
     </article>
   );
 }
@@ -83,8 +78,8 @@ export function EmptySection({
   actionTo?: "/webinars/new" | "/library" | "/webinars";
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed bg-card px-6 py-14 text-center">
-      <h2 className="font-semibold">{title}</h2>
+    <div className="flex flex-col items-center justify-center rounded-card bg-card px-6 py-14 text-center">
+      <h2 className="text-lg font-normal tracking-[-0.02em]">{title}</h2>
       <p className="mt-2 max-w-md text-sm text-muted-foreground">{description}</p>
       {actionLabel && actionTo && (
         <Button className="mt-5" asChild>
@@ -105,13 +100,17 @@ export type WebinarRow = Webinar & {
   participantCount?: number;
 };
 
-export function StatusBadge({ status }: { status: WebinarStatus }) {
+/** O ciclo de vida do webinar agora, com as horas na dica. */
+export function LifecycleBadge({ webinar }: { webinar: WebinarRow }) {
+  const lifecycle = lifecycleOf(webinar);
+  const live = lifecycle.kind === "session" && lifecycle.state === "live";
   return (
     <Badge
-      variant={status === "live" ? "destructive" : status === "draft" ? "outline" : "secondary"}
+      variant={live ? "destructive" : lifecycle.kind === "draft" ? "outline" : "secondary"}
+      title={lifecycleDetail(lifecycle, webinar.timezone)}
     >
-      {status === "live" && <Radio className="mr-1 inline size-3" />}
-      {statusLabels[status]}
+      {live && <span className="size-1.5 animate-pulse rounded-full bg-current" aria-hidden />}
+      {lifecycleLabel(lifecycle)}
     </Badge>
   );
 }
@@ -120,7 +119,7 @@ export function ActivityBadge({ status }: { status: WebinarStatus }) {
   const active = status !== "draft";
   return (
     <Badge variant={active ? "success" : "outline"}>
-      {active && <Radio className="mr-1 inline size-3" />}
+      {active && <span className="size-1.5 rounded-full bg-current" aria-hidden />}
       {active ? "Ativo" : "Inativo"}
     </Badge>
   );
@@ -131,14 +130,11 @@ function ActiveSwitch({ webinar }: { webinar: WebinarRow }) {
   const active = webinar.status !== "draft";
   const toggle = useMutation({
     mutationFn: async (next: boolean) => {
-      // Ao ativar, o estado segue a data marcada: futura → agendado (sala de espera),
-      // sem data ou já iniciada → ao vivo; sem data marcada tratamos como "ao vivo".
-      const derived = webinarStatusFromSchedule(
-        webinar.scheduled_at,
-        webinar.duration_seconds,
-        webinar.replay_enabled,
-      );
-      const status = next ? (derived === "draft" ? "live" : derived) : "draft";
+      // Ao ativar, o estado segue o ciclo de vida: sessão futura → agendado (sala de
+      // espera), já iniciada → ao vivo; sem horário (sob demanda) ou just in time → ao vivo.
+      const status = next
+        ? statusFromLifecycle(lifecycleOf({ ...webinar, status: null }), webinar.replay_enabled)
+        : "draft";
       const { error } = await supabase.from("webinars").update({ status }).eq("id", webinar.id);
       if (error) throw error;
     },
@@ -263,10 +259,8 @@ function DeleteWebinarButton({ webinar }: { webinar: WebinarRow }) {
       await supabase.from("scheduled_comments").delete().eq("webinar_id", wid);
       await supabase.from("audience_configuration").delete().eq("webinar_id", wid);
       await supabase.from("social_proof_settings").delete().eq("webinar_id", wid);
-      await supabase.from("real_purchase_events").delete().eq("webinar_id", wid);
       await supabase.from("simulated_purchase_events").delete().eq("webinar_id", wid);
       await supabase.from("viewer_sessions").delete().eq("webinar_id", wid);
-      await supabase.from("webinar_sessions").delete().eq("webinar_id", wid);
       await supabase.from("participants").delete().eq("webinar_id", wid);
       const { error } = await supabase.from("webinars").delete().eq("id", wid);
       if (error) throw error;
@@ -311,11 +305,11 @@ export function WebinarTable({
 }) {
   const [selected, setSelected] = useState<WebinarRow | null>(null);
   return (
-    <div className="overflow-hidden rounded-lg border bg-card">
-      <div className="flex items-center justify-between border-b p-5">
+    <div className="overflow-hidden rounded-card bg-card">
+      <div className="flex items-center justify-between px-5 pt-5 pb-3 sm:px-6 sm:pt-6">
         <div>
-          <h2 className="font-semibold">{title}</h2>
-          <p className="text-xs text-muted-foreground">Acompanhe desempenho e sessões</p>
+          <h2 className="text-lg font-normal tracking-[-0.025em] sm:text-xl">{title}</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Acompanhe desempenho e sessões</p>
         </div>
       </div>
       {loading ? (
@@ -325,36 +319,39 @@ export function WebinarTable({
       ) : (
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="bg-muted/60 text-xs text-muted-foreground">
+            <thead className="text-xs text-muted-foreground">
               <tr>
-                <th className="px-5 py-3 font-medium">Webinar</th>
-                <th className="px-5 py-3 font-medium">Estado</th>
-                <th className="px-5 py-3 font-medium">Vídeo</th>
+                <th className="px-6 py-3 font-normal">Webinar</th>
+                <th className="px-5 py-3 font-normal">Estado</th>
+                <th className="px-5 py-3 font-normal">Vídeo</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {rows.map((w) => (
-                <tr key={w.id} className="border-t transition-colors hover:bg-muted/40">
-                  <td className="px-5 py-4 font-medium">
+                <tr key={w.id} className="border-t border-[var(--border-subtle)] transition-colors hover:bg-white">
+                  <td className="px-6 py-3.5">
                     <div className="flex items-center gap-3">
                       {w.registration_cover_url ? (
                         <img
                           src={w.registration_cover_url}
                           alt={`Capa de ${w.public_title || w.internal_name}`}
-                          className="size-11 shrink-0 rounded-md border object-cover"
+                          className="size-11 shrink-0 rounded-sm object-cover"
                           loading="lazy"
                         />
                       ) : (
-                        <span className="flex size-11 shrink-0 items-center justify-center rounded-md border bg-muted text-muted-foreground">
-                          <Play className="size-4" />
+                        <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-white text-gray-700">
+                          <Play className="size-4" strokeWidth={1.5} />
                         </span>
                       )}
                       <span className="min-w-0 truncate">{w.public_title || w.internal_name}</span>
                     </div>
                   </td>
                   <td className="px-5 py-4">
-                    <ActiveSwitch webinar={w} />
+                    <div className="flex flex-wrap items-center gap-3">
+                      <ActiveSwitch webinar={w} />
+                      <LifecycleBadge webinar={w} />
+                    </div>
                   </td>
                   <td className="px-5 py-4 text-muted-foreground">
                     {w.video_sources?.name ?? "Por definir"}
@@ -413,7 +410,7 @@ export function WebinarTable({
         </div>
       )}
       {!loading && rows.length > 0 && (
-        <div className="divide-y md:hidden">
+        <div className="divide-y divide-[var(--border-subtle)] md:hidden">
           {rows.map((w) => (
             <article key={w.id} className="p-4">
               <div className="flex items-start gap-3">
@@ -421,11 +418,11 @@ export function WebinarTable({
                   <img
                     src={w.registration_cover_url}
                     alt=""
-                    className="size-12 shrink-0 rounded-md border object-cover"
+                    className="size-12 shrink-0 rounded-sm object-cover"
                   />
                 ) : (
-                  <span className="flex size-12 shrink-0 items-center justify-center rounded-md border bg-muted text-muted-foreground">
-                    <Play className="size-4" />
+                  <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-white text-gray-700">
+                    <Play className="size-4" strokeWidth={1.5} />
                   </span>
                 )}
                 <div className="min-w-0 flex-1">
@@ -445,8 +442,11 @@ export function WebinarTable({
                   <MoreHorizontal />
                 </Button>
               </div>
-              <div className="mt-4 flex items-center justify-between gap-3 border-t pt-3">
-                <ActiveSwitch webinar={w} />
+              <div className="mt-4 flex items-center justify-between gap-3 border-t border-[var(--border-subtle)] pt-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <ActiveSwitch webinar={w} />
+                  <LifecycleBadge webinar={w} />
+                </div>
                 <Button variant="outline" size="sm" asChild>
                   <Link to="/webinars/$webinarId/edit" params={{ webinarId: w.id }}>
                     Editar

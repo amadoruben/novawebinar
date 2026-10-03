@@ -271,7 +271,7 @@ function SupportPage() {
       description="A IA responde primeiro. O que precisa de uma pessoa chega à equipa certa, com o contexto todo."
       action={
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-xs">
+          <div className="flex items-center gap-2 rounded-card bg-card px-3 py-1.5 text-xs">
             <Bot className="size-4 text-primary" aria-hidden />
             <span className="text-muted-foreground">IA hoje</span>
             <strong>{aiToday?.resolved ?? 0}</strong> resolvidas
@@ -312,7 +312,7 @@ function SupportPage() {
                 onClick={() => setWebinarId((current) => (current === w.id ? null : w.id))}
                 aria-pressed={webinarId === w.id}
                 className={cn(
-                  "flex w-72 shrink-0 items-center gap-3 rounded-lg border bg-card p-2.5 text-left transition-colors",
+                  "flex w-72 shrink-0 items-center gap-3 rounded-card bg-card p-2.5 text-left transition-colors",
                   webinarId === w.id ? "border-primary ring-1 ring-primary/30" : "hover:border-foreground/20",
                 )}
               >
@@ -375,7 +375,7 @@ function SupportPage() {
         <div className="grid min-h-0 gap-4 lg:h-[calc(100dvh-16.5rem)] lg:min-h-[34rem] lg:grid-cols-[21rem_minmax(0,1fr)] xl:grid-cols-[21rem_minmax(0,1fr)_23rem]">
           <aside
             className={cn(
-              "flex min-h-0 flex-col rounded-lg border bg-card",
+              "flex min-h-0 flex-col rounded-card bg-card",
               step !== "list" && "hidden lg:flex",
             )}
           >
@@ -479,7 +479,7 @@ function SupportPage() {
 
           <section
             className={cn(
-              "min-h-[30rem] overflow-hidden rounded-lg border bg-card lg:min-h-0",
+              "min-h-[30rem] overflow-hidden rounded-card bg-card lg:min-h-0",
               step === "chat" ? "block" : "hidden lg:block",
             )}
           >
@@ -504,7 +504,7 @@ function SupportPage() {
 
           <aside
             className={cn(
-              "min-h-[30rem] overflow-hidden rounded-lg border bg-card xl:block xl:min-h-0",
+              "min-h-[30rem] overflow-hidden rounded-card bg-card xl:block xl:min-h-0",
               step === "contact" ? "block lg:col-span-2 xl:col-span-1" : "hidden",
             )}
           >

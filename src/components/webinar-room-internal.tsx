@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { WebinarRoom } from "@/components/webinar-room";
 import { RoomSkeleton, getCachedRoomTheme, cacheRoomTheme } from "@/components/room-skeleton";
 import {
@@ -94,14 +93,6 @@ export function InternalWebinarRoom({
       socialProof={socialProof ?? null}
       purchases={simulatedPurchases}
       onSend={send}
-      onCtaClick={() => {
-        if (!workspace) return;
-        void supabase.from("cta_events").insert({
-          organization_id: workspace.organizationId,
-          webinar_id: webinar.id,
-          event_type: "click",
-        });
-      }}
       webinar={{
         id: webinar.id,
         public_title: webinar.public_title,

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/fetch-all";
 import { rangeKey, type DateRange } from "@/lib/date-range";
+import { FACT_COLUMNS, funnelSummary } from "@/lib/participant-facts";
 
 /**
  * Dados de audiência partilhados pelo painel inicial e pelo analítico:
@@ -42,51 +43,27 @@ export function useAudienceInsights(
         column: string,
       ) => (range ? q.gte(column, range.from).lt(column, range.to) : q);
 
-      const [people, ctaViews, purchasesRes, webinarsRes, sessionsRes] =
+      const [people, webinarsRes, sessionsRes] =
         await Promise.all([
           fetchAll((from, to) =>
             period(
               scope(
                 supabase
-                  .from("participants")
-                  .select(
-                    "id, webinar_id, joined_at, watched_seconds, cta_clicked, device, country, city",
-                    { count: "exact" },
-                  )
+                  .from("participant_facts")
+                  .select(`${FACT_COLUMNS}, joined_at, device, country`, {
+                    count: "exact",
+                  })
                   .eq("organization_id", organizationId!),
               ),
               "joined_at",
             )
               .order("joined_at", { ascending: false })
-              .order("id")
+              .order("participant_id")
               .range(from, to),
-          ),
-          fetchAll((from, to) =>
-            period(
-              scope(
-                supabase
-                  .from("cta_events")
-                  .select("participant_id", { count: "exact" })
-                  .eq("organization_id", organizationId!)
-                  .eq("event_type", "view"),
-              ),
-              "occurred_at",
-            )
-              .order("id")
-              .range(from, to),
-          ),
-          period(
-            scope(
-              supabase
-                .from("real_purchase_events")
-                .select("id", { count: "exact", head: true })
-                .eq("organization_id", organizationId!),
-            ),
-            "created_at",
           ),
           supabase
             .from("webinars")
-            .select("id, scheduled_at, pitch_seconds")
+            .select("id, scheduled_at")
             .eq("organization_id", organizationId!),
           supabase
             .from("webinar_sessions")
@@ -95,40 +72,33 @@ export function useAudienceInsights(
             .limit(2000),
         ]);
 
-      if (purchasesRes.error) throw purchasesRes.error;
-      const visits = people.length;
-      const watched = people.filter((p) => (p.watched_seconds ?? 0) > 0).length;
-      const sawOffer = new Set(
-        ctaViews.map((row) => row.participant_id).filter(Boolean),
-      ).size;
-      const clicked = people.filter((p) => p.cta_clicked).length;
-      const pitchByWebinar = new Map<string, number>();
-      for (const webinar of webinarsRes.data ?? []) {
-        if (webinar.pitch_seconds != null) pitchByWebinar.set(webinar.id, webinar.pitch_seconds);
-      }
-      const reachedPitch = people.filter((p) => {
-        const pitch = pitchByWebinar.get(p.webinar_id);
-        return pitch != null && (p.watched_seconds ?? 0) >= pitch;
-      }).length;
-      const bought = purchasesRes.count ?? 0;
-
+      // Pessoas, uma vez por webinar; depois de "Assistiram", cada passo só conta
+      // quem assistiu. Comprou = compra aprovada atribuída a esse webinar.
+      const f = funnelSummary(people);
+      const visits = f.registered;
       const share = (value: number) => (visits ? (value / visits) * 100 : 0);
       const funnel: FunnelStep[] = [
-        { label: "Visitas", value: visits, share: visits ? 100 : 0 },
-        { label: "Acedeu ao webinar", value: watched, share: share(watched) },
-        { label: "Chegou ao pitch", value: reachedPitch, share: share(reachedPitch) },
-        { label: "Chegou à oferta", value: sawOffer, share: share(sawOffer) },
-        { label: "Clicou na oferta", value: clicked, share: share(clicked) },
-        { label: "Comprou", value: bought, share: share(bought) },
+        { label: "Inscritos", value: visits, share: visits ? 100 : 0 },
+        { label: "Assistiram", value: f.attended, share: share(f.attended) },
+        { label: "Chegou ao pitch", value: f.reachedPitch, share: share(f.reachedPitch) },
+        { label: "Viram a oferta", value: f.sawOffer, share: share(f.sawOffer) },
+        { label: "Clicaram", value: f.clicked, share: share(f.clicked) },
+        { label: "Iniciaram o pagamento", value: f.checkout, share: share(f.checkout) },
+        { label: "Compraram", value: f.buyers, share: share(f.buyers) },
       ];
 
+      // Como no Painel: cada pessoa conta uma vez por webinar (dois aparelhos = uma pessoa).
       const days: { label: string; value: number }[] = [];
-      const counts = new Map<string, number>();
+      const perDay = new Map<string, Set<string>>();
+      const latest = new Map<string, (typeof people)[number]>();
       for (const person of people) {
+        const key = `${person.person_id}:${person.webinar_id}`;
+        if (!latest.has(key)) latest.set(key, person); // vêm da mais recente para a mais antiga
         if (!person.joined_at) continue;
-        const key = dayKey(person.joined_at);
-        counts.set(key, (counts.get(key) ?? 0) + 1);
+        const day = dayKey(person.joined_at);
+        perDay.set(day, (perDay.get(day) ?? new Set<string>()).add(key));
       }
+      const counts = new Map([...perDay].map(([day, set]) => [day, set.size]));
       const rangeStart = range ? new Date(range.from) : null;
       const rangeEnd = range ? new Date(range.to) : null;
       let spanDays = 15;
@@ -148,7 +118,7 @@ export function useAudienceInsights(
 
       const devices = { mobile: 0, desktop: 0, unknown: 0 };
       const regionCounts = new Map<string, number>();
-      for (const person of people) {
+      for (const person of latest.values()) {
         if (person.device === "mobile") devices.mobile += 1;
         else if (person.device === "desktop") devices.desktop += 1;
         else devices.unknown += 1;

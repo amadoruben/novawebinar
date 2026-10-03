@@ -27,6 +27,7 @@ export type Database = {
           occurred_at: string
           organization_id: string
           webinar_id: string | null
+          dedupe_key: string | null
         }
         Insert: {
           actor_kind: string
@@ -40,6 +41,7 @@ export type Database = {
           occurred_at?: string
           organization_id: string
           webinar_id?: string | null
+          dedupe_key?: string | null
         }
         Update: {
           actor_kind?: string
@@ -53,6 +55,7 @@ export type Database = {
           occurred_at?: string
           organization_id?: string
           webinar_id?: string | null
+          dedupe_key?: string | null
         }
         Relationships: [
           {
@@ -642,6 +645,323 @@ export type Database = {
           },
         ]
       }
+      automation_runs: {
+        Row: {
+          cursor: string | null
+          guards: Json
+          steps_log: Json
+          attempts: number
+          automation_id: string
+          contact_id: string
+          created_at: string
+          error: string | null
+          event_id: number
+          facts: Json
+          finished_at: string | null
+          id: string
+          locked_until: string | null
+          occurrence_key: string
+          organization_id: string
+          result: Json | null
+          scheduled_for: string
+          started_at: string | null
+          status: string
+          updated_at: string
+          webinar_id: string | null
+          webinar_session_id: string | null
+        }
+        Insert: {
+          cursor?: string | null
+          guards?: Json
+          steps_log?: Json
+          attempts?: number
+          automation_id: string
+          contact_id: string
+          created_at?: string
+          error?: string | null
+          event_id: number
+          facts?: Json
+          finished_at?: string | null
+          id?: string
+          locked_until?: string | null
+          occurrence_key: string
+          organization_id: string
+          result?: Json | null
+          scheduled_for: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          webinar_id?: string | null
+          webinar_session_id?: string | null
+        }
+        Update: {
+          cursor?: string | null
+          guards?: Json
+          steps_log?: Json
+          attempts?: number
+          automation_id?: string
+          contact_id?: string
+          created_at?: string
+          error?: string | null
+          event_id?: number
+          facts?: Json
+          finished_at?: string | null
+          id?: string
+          locked_until?: string | null
+          occurrence_key?: string
+          organization_id?: string
+          result?: Json | null
+          scheduled_for?: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          webinar_id?: string | null
+          webinar_session_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_runs_automation_fk"
+            columns: ["automation_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "automations"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "automation_runs_contact_fk"
+            columns: ["contact_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "automation_runs_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "activity_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_runs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_runs_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_runs_webinar_session_id_fkey"
+            columns: ["webinar_session_id"]
+            isOneToOne: false
+            referencedRelation: "webinar_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automation_workflows: {
+        Row: {
+          archived_at: string | null
+          canvas: Json
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          organization_id: string
+          updated_at: string
+          webinar_id: string | null
+        }
+        Insert: {
+          archived_at?: string | null
+          canvas?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          updated_at?: string
+          webinar_id?: string | null
+        }
+        Update: {
+          archived_at?: string | null
+          canvas?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          updated_at?: string
+          webinar_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_workflows_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_workflows_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automations: {
+        Row: {
+          steps: Json | null
+          workflow_id: string | null
+          action: string
+          active: boolean
+          archived_at: string | null
+          conditions: Json
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          organization_id: string
+          trigger_event: string
+          updated_at: string
+          wait_minutes: number
+          webinar_id: string | null
+        }
+        Insert: {
+          steps?: Json | null
+          workflow_id?: string | null
+          action?: string
+          active?: boolean
+          archived_at?: string | null
+          conditions?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          trigger_event?: string
+          updated_at?: string
+          wait_minutes?: number
+          webinar_id?: string | null
+        }
+        Update: {
+          steps?: Json | null
+          workflow_id?: string | null
+          action?: string
+          active?: boolean
+          archived_at?: string | null
+          conditions?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          trigger_event?: string
+          updated_at?: string
+          wait_minutes?: number
+          webinar_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automations_workflow_fk"
+            columns: ["workflow_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "automation_workflows"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "automations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automations_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      registration_forms: {
+        Row: {
+          active: boolean
+          allowed_origins: string[]
+          ask_phone: boolean
+          consent_text: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          organization_id: string
+          page_name: string | null
+          page_url: string | null
+          redirect_url: string | null
+          require_phone: boolean
+          success_message: string | null
+          updated_at: string
+          webinar_id: string
+        }
+        Insert: {
+          active?: boolean
+          allowed_origins?: string[]
+          ask_phone?: boolean
+          consent_text?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          page_name?: string | null
+          page_url?: string | null
+          redirect_url?: string | null
+          require_phone?: boolean
+          success_message?: string | null
+          updated_at?: string
+          webinar_id: string
+        }
+        Update: {
+          active?: boolean
+          allowed_origins?: string[]
+          ask_phone?: boolean
+          consent_text?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          page_name?: string | null
+          page_url?: string | null
+          redirect_url?: string | null
+          require_phone?: boolean
+          success_message?: string | null
+          updated_at?: string
+          webinar_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "registration_forms_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registration_forms_webinar_id_fkey"
+            columns: ["webinar_id"]
+            isOneToOne: false
+            referencedRelation: "webinars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       background_jobs: {
         Row: {
           attempts: number
@@ -825,20 +1145,26 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          kind: string
           name: string
           organization_id: string
+          rules: Json | null
         }
         Insert: {
           created_at?: string
           id?: string
+          kind?: string
           name: string
           organization_id: string
+          rules?: Json | null
         }
         Update: {
           created_at?: string
           id?: string
+          kind?: string
           name?: string
           organization_id?: string
+          rules?: Json | null
         }
         Relationships: []
       }
@@ -1026,6 +1352,27 @@ export type Database = {
         }
         Relationships: []
       }
+      intelligence_settings: {
+        Row: {
+          description: string
+          key: string
+          updated_at: string
+          value: number
+        }
+        Insert: {
+          description: string
+          key: string
+          updated_at?: string
+          value: number
+        }
+        Update: {
+          description?: string
+          key?: string
+          updated_at?: string
+          value?: number
+        }
+        Relationships: []
+      }
       integrations: {
         Row: {
           created_at: string
@@ -1064,7 +1411,15 @@ export type Database = {
           settings?: Json
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "integrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       job_runner_config: {
         Row: {
@@ -1122,6 +1477,7 @@ export type Database = {
           created_at: string
           created_by: string
           id: string
+          is_test: boolean
           name: string
           plan: string
           public_base_url: string | null
@@ -1133,6 +1489,7 @@ export type Database = {
           created_at?: string
           created_by: string
           id?: string
+          is_test?: boolean
           name: string
           plan?: string
           public_base_url?: string | null
@@ -1144,6 +1501,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           id?: string
+          is_test?: boolean
           name?: string
           plan?: string
           public_base_url?: string | null
@@ -1154,6 +1512,11 @@ export type Database = {
       }
       participants: {
         Row: {
+          utm_term: string | null
+          consent_at: string | null
+          form_id: string | null
+          registration_source: string | null
+          submission_id: string | null
           referrer: string | null
           utm_campaign: string | null
           utm_content: string | null
@@ -1175,9 +1538,19 @@ export type Database = {
           status: string
           viewing_mode: string
           watched_seconds: number
+          entry_seconds: number | null
+          actual_watch_seconds: number | null
+          last_progress_at: string | null
           webinar_id: string
+          webinar_session_id: string | null
+          first_progress_at: string | null
         }
         Insert: {
+          utm_term?: string | null
+          consent_at?: string | null
+          form_id?: string | null
+          registration_source?: string | null
+          submission_id?: string | null
           referrer?: string | null
           utm_campaign?: string | null
           utm_content?: string | null
@@ -1199,9 +1572,19 @@ export type Database = {
           status?: string
           viewing_mode?: string
           watched_seconds?: number
+          entry_seconds?: number | null
+          actual_watch_seconds?: number | null
+          last_progress_at?: string | null
           webinar_id: string
+          webinar_session_id?: string | null
+          first_progress_at?: string | null
         }
         Update: {
+          utm_term?: string | null
+          consent_at?: string | null
+          form_id?: string | null
+          registration_source?: string | null
+          submission_id?: string | null
           referrer?: string | null
           utm_campaign?: string | null
           utm_content?: string | null
@@ -1223,7 +1606,12 @@ export type Database = {
           status?: string
           viewing_mode?: string
           watched_seconds?: number
+          entry_seconds?: number | null
+          actual_watch_seconds?: number | null
+          last_progress_at?: string | null
           webinar_id?: string
+          webinar_session_id?: string | null
+          first_progress_at?: string | null
         }
         Relationships: [
           {
@@ -1434,6 +1822,9 @@ export type Database = {
           source: string
           status: string
           webinar_id: string | null
+          product_id: string | null
+          approved_at: string | null
+          status_at: string
         }
         Insert: {
           amount?: string
@@ -1451,6 +1842,9 @@ export type Database = {
           source?: string
           status?: string
           webinar_id?: string | null
+          product_id?: string | null
+          approved_at?: string | null
+          status_at?: string
         }
         Update: {
           amount?: string
@@ -1468,6 +1862,9 @@ export type Database = {
           source?: string
           status?: string
           webinar_id?: string | null
+          product_id?: string | null
+          approved_at?: string | null
+          status_at?: string
         }
         Relationships: [
           {
@@ -2345,6 +2742,7 @@ export type Database = {
           starts_at: string
           state: Database["public"]["Enums"]["webinar_status"]
           webinar_id: string
+          ended_at: string | null
         }
         Insert: {
           created_at?: string
@@ -2354,6 +2752,7 @@ export type Database = {
           starts_at: string
           state?: Database["public"]["Enums"]["webinar_status"]
           webinar_id: string
+          ended_at?: string | null
         }
         Update: {
           created_at?: string
@@ -2363,6 +2762,7 @@ export type Database = {
           starts_at?: string
           state?: Database["public"]["Enums"]["webinar_status"]
           webinar_id?: string
+          ended_at?: string | null
         }
         Relationships: [
           {
@@ -2762,6 +3162,8 @@ export type Database = {
     Views: {
       contact_summaries: {
         Row: {
+          checkout_abandoned: boolean | null
+          checkout_started: boolean | null
           clicked_offer: boolean | null
           created_at: string | null
           email: string | null
@@ -2776,6 +3178,7 @@ export type Database = {
           messages: number | null
           name: string | null
           organization_id: string | null
+          payment_failed: boolean | null
           phone: string | null
           purchases: number | null
           reached_offer: boolean | null
@@ -2783,6 +3186,63 @@ export type Database = {
           stage: string | null
           watched_seconds: number | null
           webinar_ids: string[] | null
+        }
+        Relationships: []
+      }
+      event_log: {
+        Row: {
+          contact_id: string | null
+          data: Json | null
+          name: string | null
+          occurred_at: string | null
+          organization_id: string | null
+          participant_id: string | null
+          session_id: string | null
+          source: string | null
+          source_id: string | null
+          video_second: number | null
+          webinar_id: string | null
+        }
+        Relationships: []
+      }
+      participant_facts: {
+        Row: {
+          actual_watch_seconds: number | null
+          attended: boolean | null
+          checkout_abandoned: boolean | null
+          checkout_started: boolean | null
+          clicked: boolean | null
+          city: string | null
+          contact_id: string | null
+          country: string | null
+          cta_clicked: boolean | null
+          device: string | null
+          duration_seconds: number | null
+          email: string | null
+          entry_seconds: number | null
+          joined_at: string | null
+          last_progress_at: string | null
+          name: string | null
+          offer_start_seconds: number | null
+          organization_id: string | null
+          payment_failed: boolean | null
+          participant_id: string | null
+          peak_seconds: number | null
+          person_id: string | null
+          phone: string | null
+          purchased: boolean | null
+          reached_offer: boolean | null
+          reached_pitch: boolean | null
+          refunded: boolean | null
+          saw_offer: boolean | null
+          viewing_mode: string | null
+          watch_measured: boolean | null
+          watch_ratio: number | null
+          watch_span_seconds: number | null
+          webinar_id: string | null
+          webinar_title: string | null
+          webinar_session_id: string | null
+          first_progress_at: string | null
         }
         Relationships: []
       }
@@ -2803,6 +3263,10 @@ export type Database = {
       ensure_support_setup: {
         Args: { _organization_id: string }
         Returns: Json
+      }
+      intelligence_setting: {
+        Args: { _key: string }
+        Returns: number
       }
       is_support_only: {
         Args: { _organization_id: string }
@@ -2836,6 +3300,10 @@ export type Database = {
         Args: { _organization_id: string; _user_id: string }
         Returns: Database["public"]["Tables"]["support_staff"]["Row"] | null
       }
+      sweep_webinar_sessions: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
       support_sla_sweep: {
         Args: Record<PropertyKey, never>
         Returns: number
@@ -2851,6 +3319,59 @@ export type Database = {
       organization_for_billing_email: {
         Args: { _email: string }
         Returns: string
+      }
+      record_participant_progress: {
+        Args: { _entry?: number; _participant_id: string; _played?: number; _position: number }
+        Returns: undefined
+      }
+      open_webinar_session: {
+        Args: { _ends_at?: string; _starts_at: string; _webinar_id: string }
+        Returns: string
+      }
+      automation_dispatch: {
+        Args: { _automation_id?: string; _event_id: number }
+        Returns: number
+      }
+      automation_runs_tick: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      claim_automation_runs: {
+        Args: { _limit?: number }
+        Returns: Database["public"]["Tables"]["automation_runs"]["Row"][]
+      }
+      advance_automation_run: {
+        Args: {
+          _cursor: string | null
+          _error: string | null
+          _guards: Json | null
+          _log: Json | null
+          _result: Json | null
+          _run_id: string
+          _scheduled_for: string | null
+          _status: string
+        }
+        Returns: string
+      }
+      automation_contact_facts: {
+        Args: { _contact_id: string; _webinar_id: string | null }
+        Returns: Json
+      }
+      automation_session_facts: {
+        Args: { _session_id: string }
+        Returns: { contact_id: string; facts: Json }[]
+      }
+      automation_apply_recent: {
+        Args: { _automation_id: string; _days?: number }
+        Returns: number
+      }
+      finish_automation_run: {
+        Args: { _error: string | null; _ok: boolean; _result: Json; _run_id: string; _transient: boolean }
+        Returns: string
+      }
+      purchase_attribution: {
+        Args: { _at?: string; _contact_id: string; _product_id: string }
+        Returns: { evidence: string; webinar_id: string }[]
       }
       record_credit_usage: {
         Args: {
@@ -2870,6 +3391,25 @@ export type Database = {
       }
       contact_stage_counts: {
         Args: { _list_id?: string; _organization_id: string; _webinar_id?: string }
+        Returns: Json
+      }
+      contact_list_member_ids: { Args: { _list_id: string }; Returns: string[] }
+      contact_segments: {
+        Args: { _contact_ids: string[] }
+        Returns: { contact_id: string; list_id: string }[]
+      }
+      contacts_in_list: {
+        Args: { _list_id: string }
+        Returns: Database["public"]["Views"]["contact_summaries"]["Row"][]
+        SetofOptions: {
+          from: "*"
+          to: "contact_summaries"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      segment_facts: {
+        Args: { _contact_id: string; _webinar_id: string }
         Returns: Json
       }
       import_contacts: {

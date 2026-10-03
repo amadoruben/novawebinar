@@ -31,9 +31,11 @@ import {
   Trash2,
   Upload,
   Users,
+  Workflow,
 } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
+import { WebinarAutomations } from "@/components/workflow/webinar-automations";
 import { PageSkeleton } from "@/components/page-skeleton";
 import {
   AiCommentsDialog,
@@ -78,7 +80,14 @@ import {
 import { getTranscriptInspection } from "@/lib/temporal/inspect.functions";
 import { buildAudienceCurve, curveBounds } from "@/lib/audience-curve";
 import { CTA_COLORS } from "@/lib/cta-colors";
-import { formatSessionStart, sessionWindow } from "@/lib/schedule";
+import {
+  formatSessionStart,
+  lifecycleDetail,
+  lifecycleLabel,
+  sessionWindow,
+  webinarLifecycle,
+} from "@/lib/schedule";
+import { WebinarPaymentsNotice } from "@/components/metricas/webinar-payments";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -120,7 +129,7 @@ import {
   providerLabels,
   publicOrigin,
   statusLabels,
-  webinarStatusFromSchedule,
+  statusFromLifecycle,
   useAudienceConfiguration,
   useInvalidate,
   useScheduledComments,
@@ -143,6 +152,8 @@ export const Route = createFileRoute("/webinars/$webinarId/edit")({
   // A sessão do organizador só existe no browser: sem isto o pedido corre no
   // servidor sem autorização e a página fica em branco.
   ssr: false,
+  validateSearch: (search: Record<string, unknown>): { step?: string | undefined } =>
+    typeof search["step"] === "string" ? { step: search["step"] } : {},
   head: () => ({
     meta: [
       { title: "Editar webinar | Convertewebinar" },
@@ -238,6 +249,13 @@ const STEPS = [
     hint: "Ligações com o exterior. O WhatsApp define como o link da sala aparece ao ser partilhado.",
   },
   {
+    id: "automacoes",
+    label: "Automações",
+    icon: Workflow,
+    title: "Automações do webinar",
+    hint: "A jornada de quem se inscreve: aquecimento, lembretes, recuperação e pós-compra, no workflow.",
+  },
+  {
     id: "timeline",
     label: "Linha de tempo",
     icon: GanttChartSquare,
@@ -254,6 +272,7 @@ const FULL_WIDTH_STEPS = [
   "agente",
   "vendas",
   "integracoes",
+  "automacoes",
   "timeline",
 ] as const;
 
@@ -288,7 +307,10 @@ function EditWebinar() {
   const { data: audience } = useAudienceConfiguration(webinarId);
   const { data: simulatedPurchases = [] } = useSimulatedPurchases(webinarId);
 
-  const [step, setStep] = useState<StepId>("inicio");
+  const initialStep = Route.useSearch().step;
+  const [step, setStep] = useState<StepId>(() =>
+    STEPS.some((s) => s.id === initialStep) ? (initialStep as StepId) : "inicio",
+  );
   const [form, setForm] = useState({
     internal_name: "",
     public_title: "",
@@ -1097,33 +1119,29 @@ function EditWebinar() {
   }, [linkDraft, selectedVideo?.source_url]);
   const previewDuration = selectedVideo?.duration_seconds ?? 0;
   const stepIndex = STEPS.findIndex((s) => s.id === step);
-  // Com repetição automática ou just in time o arranque não é uma data fixa:
-  // o estado segue a próxima sessão calculada.
-  const derivedStatus = webinarStatusFromSchedule(
-    form.recurrence_enabled || form.schedule_mode === "jit"
-      ? new Date(
-          sessionWindow(
-            {
-              schedule_mode: form.schedule_mode,
-              scheduled_at: null,
-              recurrence_enabled: form.recurrence_enabled,
-              recurrence_pattern: form.recurrence_pattern,
-              recurrence_weekday: Number(form.recurrence_weekday) || 0,
-              recurrence_start_time: form.recurrence_start_time,
-              recurrence_end_time: form.recurrence_end_time,
-              jit_interval_minutes: Number(form.jit_interval_minutes) || 15,
-              timezone: form.timezone,
-              duration_seconds: previewDuration,
-            },
-            Date.now(),
-          ).startMs ?? Date.now(),
-        ).toISOString()
-      : form.scheduled_at
-        ? new Date(form.scheduled_at).toISOString()
-        : null,
-    previewDuration,
-    form.replay_enabled,
+  // O ciclo de vida com o horário que está no formulário: a mesma regra das páginas e
+  // da base de dados. Um webinar sob demanda mantém-se inativo até ser activado.
+  const lifecycle = webinarLifecycle(
+    {
+      schedule_mode: form.schedule_mode,
+      scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
+      session_end_time: form.session_end_time || null,
+      recurrence_enabled: form.recurrence_enabled,
+      recurrence_pattern: form.recurrence_pattern,
+      recurrence_weekday: Number(form.recurrence_weekday) || 0,
+      recurrence_start_time: form.recurrence_start_time,
+      recurrence_end_time: form.recurrence_end_time,
+      jit_interval_minutes: Number(form.jit_interval_minutes) || 15,
+      timezone: form.timezone,
+      // Sem vídeo escolhido, a duração do webinar: a mesma regra de lifecycleOf e das métricas.
+      duration_seconds: previewDuration || webinar?.duration_seconds || 0,
+    },
+    Date.now(),
   );
+  const derivedStatus: WebinarStatus =
+    lifecycle.kind === "on_demand" && form.status === "draft"
+      ? "draft"
+      : statusFromLifecycle(lifecycle, form.replay_enabled);
   const fullWidth = (FULL_WIDTH_STEPS as readonly string[]).includes(step);
   const baseUrl = publicOrigin();
 
@@ -1177,7 +1195,7 @@ function EditWebinar() {
 
   return (
     <AppShell action={false} compact>
-      <div className="overflow-hidden rounded-2xl border bg-card shadow-[0_24px_48px_-28px_color-mix(in_oklab,var(--foreground)_28%,transparent)]">
+      <div className="overflow-hidden rounded-card bg-card shadow-[0_24px_48px_-28px_color-mix(in_oklab,var(--foreground)_28%,transparent)]">
         {/* Step rail */}
         <nav className="border-b px-3 py-3 sm:px-4 sm:py-4 xl:px-6">
           <ol className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -1237,7 +1255,7 @@ function EditWebinar() {
           >
 
             <header className="mb-5">
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+              <p className="text-xs text-muted-foreground">
                 Passo {stepIndex + 1} de {STEPS.length}
               </p>
               <h2 className="mt-1 text-xl font-bold">{activeStep.title}</h2>
@@ -1587,12 +1605,22 @@ function EditWebinar() {
                   )}
                 </div>
                 <p className="rounded-xl border bg-background px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-                  {nextSessionLabel ? (
+                  {lifecycle.kind === "session" && lifecycle.state === "finished" ? (
                     <>
-                      Próxima sessão:{" "}
-                      <strong className="text-foreground">{nextSessionLabel}</strong>. Termina ao
-                      fim da duração do vídeo e o estado é automático — neste momento está{" "}
-                      <strong className="text-foreground">{statusLabels[derivedStatus]}</strong>.
+                      Última sessão:{" "}
+                      <strong className="text-foreground">{nextSessionLabel}</strong>.{" "}
+                      {lifecycleDetail(lifecycle, form.timezone)} Para uma nova sessão, escolha
+                      outra data e hora ou active a repetição automática.
+                    </>
+                  ) : nextSessionLabel ? (
+                    <>
+                      {lifecycle.kind === "session" && lifecycle.state === "live"
+                        ? "Sessão em curso desde"
+                        : "Próxima sessão:"}{" "}
+                      <strong className="text-foreground">{nextSessionLabel}</strong>. Termina à
+                      hora de fim, se a definir, ou no fim do vídeo. O estado é automático e o
+                      sistema dá a sessão como terminada sozinho — neste momento:{" "}
+                      <strong className="text-foreground">{lifecycleLabel(lifecycle).toLowerCase()}</strong>.
                     </>
                   ) : (
                     <>
@@ -2411,7 +2439,7 @@ function EditWebinar() {
 
                 <div className="overflow-hidden rounded-2xl border bg-background">
                   <div className="flex items-center justify-between border-b px-5 py-3">
-                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {comments.length} comentário{comments.length === 1 ? "" : "s"} programado
                       {comments.length === 1 ? "" : "s"}
                     </p>
@@ -2553,7 +2581,7 @@ function EditWebinar() {
                   </div>
                   <div className="min-w-0 @3xl:sticky @3xl:top-4">
                     <div className="overflow-hidden rounded-2xl border bg-background">
-                      <p className="border-b px-5 py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                      <p className="border-b px-5 py-3 text-xs text-muted-foreground">
                         Simulação do chat
                       </p>
                       <div className="p-4">
@@ -2763,6 +2791,7 @@ function EditWebinar() {
 
             {step === "vendas" && (
               <div className="space-y-4">
+                <WebinarPaymentsNotice webinarId={webinarId} organizationId={workspace?.organizationId} />
                 <SocialProofEditor
                   webinarId={webinarId}
                   organizationId={workspace?.organizationId}
@@ -2830,7 +2859,7 @@ function EditWebinar() {
             )}
 
             {step === "integracoes" && openIntegration === null && (
-              <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6">
+              <section className="rounded-card bg-card p-5 sm:p-6">
                 <h3 className="text-lg font-bold">As suas integrações</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Escolha uma integração para configurar.
@@ -2897,7 +2926,7 @@ function EditWebinar() {
             )}
 
             {step === "integracoes" && openIntegration === "webhook" && (
-              <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6">
+              <section className="rounded-card bg-card p-5 sm:p-6">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -2939,11 +2968,11 @@ function EditWebinar() {
                     <Input
                       value={form.webhook_url}
                       onChange={(e) => setForm((p) => ({ ...p, webhook_url: e.target.value }))}
-                      placeholder="https://o-seu-sistema.com/novawebinar"
+                      placeholder="https://o-seu-sistema.com/webhook"
                     />
                   </Field>
                   <div className="rounded-xl border bg-muted/40 p-4">
-                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       Exemplo do que enviamos
                     </p>
                     <pre className="mt-2 overflow-x-auto text-xs leading-relaxed">
@@ -2979,7 +3008,7 @@ function EditWebinar() {
                   Voltar às integrações
                 </Button>
                 <div className="grid gap-6 @3xl:grid-cols-[1.05fr_1fr]">
-                  <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6">
+                  <section className="rounded-card bg-card p-5 sm:p-6">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <span className="grid size-10 place-items-center rounded-2xl bg-[#25D366]/12 text-[#128C7E]">
@@ -3090,7 +3119,7 @@ function EditWebinar() {
                     />
                   </section>
 
-                  <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6">
+                  <section className="rounded-card bg-card p-5 sm:p-6">
                     <h3 className="font-bold">Pré-visualização</h3>
                     <p className="mt-1 text-xs text-muted-foreground">
                       É assim que o link aparece numa conversa de WhatsApp.
@@ -3151,6 +3180,9 @@ function EditWebinar() {
               <AgentPanel webinarId={webinarId} onSeek={(seconds) => setTimelineCursor(seconds)} />
             )}
 
+            {step === "automacoes" && (
+              <WebinarAutomations webinarId={webinarId} title={form.public_title || form.internal_name || "Webinar"} />
+            )}
             {step === "timeline" && (
               <div className="space-y-4">
                 <WebinarTimeline
@@ -3199,7 +3231,7 @@ function EditWebinar() {
                 <IdentityPreview
                   title={form.public_title}
                   description={form.description}
-                  statusLabel={statusLabels[derivedStatus]}
+                  statusLabel={lifecycleLabel(lifecycle)}
                   scheduledAt={form.scheduled_at}
                   internalName={form.internal_name}
                 />
@@ -3313,7 +3345,7 @@ function EditWebinar() {
 
       {/* Ações suspensas no fim da página */}
       <div className="pointer-events-none fixed bottom-24 right-4 z-30 md:bottom-6 md:right-6">
-        <div className="pointer-events-auto flex items-center gap-2 rounded-full border bg-card/90 p-1.5 shadow-md backdrop-blur">
+        <div className="glass glass-edge pointer-events-auto flex items-center gap-1.5 rounded-pill p-1.5 shadow-pop">
 
           <Button variant="ghost" size="sm" className="rounded-full" asChild>
             <Link to="/live/$webinarId" params={{ webinarId }}>
@@ -3420,7 +3452,7 @@ function Field({
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
-      <Label className="text-[11px] font-extrabold uppercase tracking-widest text-muted-foreground">
+      <Label className="text-xs text-muted-foreground">
         {label}
       </Label>
       {children}

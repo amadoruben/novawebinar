@@ -1,0 +1,34 @@
+:root{
+--space-1:4px;
+--space-2:6px;
+--space-3:8px;
+--space-4:12px;
+--space-5:16px;
+--space-6:20px;
+--space-7:24px;
+--space-8:32px;
+--space-9:40px;
+--space-10:56px;
+
+--card-padding:24px;
+--grid-gap:12px;
+--page-padding:32px;
+
+--control-sm:32px;
+--control-md:40px;
+--control-lg:48px;
+
+/* 29/09: escala mais contida (painéis a 16px, como as referências de produto).
+   Botões, campos e separadores continuam em pílula. */
+--radius-xs:6px;
+--radius-sm:8px;
+--radius-md:10px;
+--radius-lg:12px;
+--radius-xl:16px;
+--radius-2xl:20px;
+--radius-pill:999px;
+
+--radius-card:var(--radius-xl);
+--radius-bar:var(--radius-sm);
+--radius-tag:var(--radius-xs);
+}

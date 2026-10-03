@@ -3,7 +3,7 @@
  * serviço: só é chamado depois de a conversa já ter sido validada.
  */
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import type { Participation } from "@/lib/contacts";
+import { PARTICIPATION_COLUMNS } from "@/lib/contacts";
 import {
   buildCommercialContext,
   EMPTY_CONTEXT,
@@ -17,17 +17,6 @@ export type LoadedContext = {
   context: CommercialContext;
 };
 
-type ParticipationRow = Omit<Participation, "webinars"> & {
-  webinars:
-    | (NonNullable<Participation["webinars"]> & {
-        video_sources: { duration_seconds: number | null } | null;
-      })
-    | null;
-};
-
-const PARTICIPATION_COLUMNS =
-  "id, webinar_id, joined_at, watched_seconds, cta_clicked, viewing_mode, webinars(public_title, duration_seconds, cta_start_seconds, video_sources(duration_seconds))";
-
 export async function loadContactContext(participantId: string | null): Promise<LoadedContext> {
   if (!participantId) return { contactId: null, name: null, context: EMPTY_CONTEXT };
   const { data: participant } = await supabaseAdmin
@@ -38,18 +27,18 @@ export async function loadContactContext(participantId: string | null): Promise<
   if (!participant) return { contactId: null, name: null, context: EMPTY_CONTEXT };
 
   const contactId = participant.contact_id;
-  const participationsQuery = supabaseAdmin.from("participants").select(PARTICIPATION_COLUMNS);
+  const participationsQuery = supabaseAdmin.from("participant_facts").select(PARTICIPATION_COLUMNS);
   const [participations, purchases, cases] = await Promise.all([
     (contactId
       ? participationsQuery.eq("contact_id", contactId)
-      : participationsQuery.eq("id", participant.id)
+      : participationsQuery.eq("participant_id", participant.id)
     )
       .order("joined_at", { ascending: false })
       .limit(100),
     contactId
       ? supabaseAdmin
           .from("real_purchase_events")
-          .select("id, created_at, product_name, amount, amount_value, currency, status, provider, webinar_id")
+          .select("id, created_at, status_at, product_name, amount, amount_value, currency, status, provider, webinar_id")
           .eq("contact_id", contactId)
           .order("created_at", { ascending: false })
           .limit(100)
@@ -64,19 +53,8 @@ export async function loadContactContext(participantId: string | null): Promise<
       : Promise.resolve({ data: [] }),
   ]);
 
-  // A duração certa pode estar no vídeo e não no webinar.
-  const rows = ((participations.data ?? []) as unknown as ParticipationRow[]).map((row) => ({
-    ...row,
-    webinars: row.webinars
-      ? {
-          public_title: row.webinars.public_title,
-          cta_start_seconds: row.webinars.cta_start_seconds,
-          duration_seconds:
-            row.webinars.video_sources?.duration_seconds || row.webinars.duration_seconds || 0,
-        }
-      : null,
-  }));
-  const ids = rows.map((row) => row.id);
+  const rows = participations.data ?? [];
+  const ids = rows.flatMap((row) => row.participant_id ?? []);
   const [clicks, messages] = ids.length
     ? await Promise.all([
         supabaseAdmin

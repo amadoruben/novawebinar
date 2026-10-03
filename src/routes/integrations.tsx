@@ -19,6 +19,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CHANNEL_ICON } from "@/components/workflow/flow-map";
+import { CHANNELS, channelStatus, type Channel } from "@/lib/workflow";
 import { supabase } from "@/integrations/supabase/client";
 import { relativeDays } from "@/lib/contacts";
 import {
@@ -29,6 +31,7 @@ import {
   useIntegrationEvents,
   useIntegrations,
   useInvalidate,
+  useRecentPayments,
   useWorkspace,
   type IntegrationRow,
 } from "@/lib/data";
@@ -53,6 +56,7 @@ export const Route = createFileRoute("/integrations")({
 });
 
 type Events = NonNullable<ReturnType<typeof useIntegrationEvents>["data"]>;
+type Payments = NonNullable<ReturnType<typeof useRecentPayments>["data"]>;
 
 const LOGOS: Partial<Record<ProviderId, string>> = {
   kambafy: kambafyLogo,
@@ -150,16 +154,59 @@ function StatusPill({ status }: { status: Status }) {
   );
 }
 
-/** Números de uma integração nos últimos 30 dias, a partir do que chegou de facto. */
-function statsFor(provider: string, events: Events) {
-  const since = Date.now() - 30 * 86_400_000;
-  const recent = events.filter((e) => e.provider === provider && Date.parse(e.received_at) >= since);
-  const sales = recent.filter((e) => e.status === "accepted" && e.purchase_id);
+/** Pagamentos de uma integração nos últimos 30 dias, cada um uma vez, pelo estado actual. */
+function statsFor(provider: string, payments: Payments) {
+  const mine = payments.filter((p) => p.provider === provider);
   return {
-    sales: sales.length,
-    attributed: sales.filter((e) => e.reason.startsWith("Atribuída")).length,
-    rejected: recent.filter((e) => e.status === "rejected").length,
+    sales: mine.filter((p) => p.status === "approved").length,
+    failed: mine.filter((p) => p.status === "failed").length,
   };
+}
+
+/** Os canais que as automações usam: configurado, simulado (conta de teste) ou sem fornecedor. */
+function AutomationChannels({ isTest, webhookReady }: { isTest: boolean; webhookReady: boolean }) {
+  const EXPLAIN: Record<Channel, string> = {
+    email: "Mensagens por email para o contacto (assunto e mensagem).",
+    whatsapp: "WhatsApp individual (para o número do contacto) ou em grupo (para um grupo indicado).",
+    sms: "SMS para o número do contacto.",
+    webhook: "Envia a pessoa, o webinar e o passo para o seu Zapier, Make, n8n ou CRM, assinado.",
+  };
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        {isTest
+          ? "Conta de teste: todos os canais são simulados. As execuções mostram a mensagem que teria saído e nada sai da plataforma."
+          : "Uma automação só pode ser activada quando todos os canais que usa têm fornecedor. Sem fornecedor, a configuração fica preparada e desligada."}
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {channelStatus(isTest, webhookReady).map((c) => {
+          const Icon = CHANNEL_ICON[c.channel];
+          return (
+            <article key={c.channel} className="rounded-card bg-card p-4">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2 font-semibold">
+                  <Icon className="size-4" aria-hidden /> {CHANNELS[c.channel].label}
+                </span>
+                <Badge variant={c.simulated ? "secondary" : c.ready ? "success" : "outline"}>
+                  {c.simulated ? "Simulado" : c.ready ? "✓ Configurado" : "✕ Não configurado"}
+                </Badge>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">{EXPLAIN[c.channel]}</p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {c.channel === "webhook"
+                  ? c.ready
+                    ? "Usa o webhook de saída (separador Enviar dados)."
+                    : "Ligue o webhook de saída no separador Enviar dados."
+                  : c.simulated
+                    ? "Simulado nesta conta."
+                    : "Ainda sem fornecedor na plataforma. Até lá, pode enviar pelo webhook para a sua ferramenta."}
+              </p>
+            </article>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function IntegrationsPage() {
@@ -167,14 +214,13 @@ function IntegrationsPage() {
   const orgId = workspace?.organizationId;
   const { data: rows = [], isLoading } = useIntegrations(orgId);
   const { data: events = [] } = useIntegrationEvents(orgId);
+  const { data: payments = [] } = useRecentPayments(orgId);
   const [open, setOpen] = useState<ProviderInfo | null>(null);
 
   const byProvider = new Map(rows.map((r) => [r.provider, r]));
   const connected = PROVIDERS.filter((p) => statusOf(p, byProvider.get(p.id)).tone === "on").length;
   const since = Date.now() - 30 * 86_400_000;
-  const salesMonth = events.filter(
-    (e) => e.status === "accepted" && e.purchase_id && Date.parse(e.received_at) >= since,
-  ).length;
+  const salesMonth = payments.filter((p) => p.status === "approved").length;
   const rejectedMonth = events.filter((e) => e.status === "rejected" && Date.parse(e.received_at) >= since).length;
 
   return (
@@ -200,6 +246,7 @@ function IntegrationsPage() {
               </TabsTrigger>
             );
           })}
+          <TabsTrigger value="channels">Canais das automações</TabsTrigger>
           <TabsTrigger value="activity">Actividade</TabsTrigger>
         </TabsList>
 
@@ -216,7 +263,7 @@ function IntegrationsPage() {
                       key={p.id}
                       info={p}
                       row={byProvider.get(p.id)}
-                      events={events}
+                      payments={payments}
                       onOpen={() => setOpen(p)}
                     />
                   ))}
@@ -225,6 +272,10 @@ function IntegrationsPage() {
             )}
           </TabsContent>
         ))}
+
+        <TabsContent value="channels" className="mt-6">
+          <AutomationChannels isTest={Boolean(workspace?.isTest)} webhookReady={Boolean(byProvider.get("outgoing_webhook")?.enabled)} />
+        </TabsContent>
 
         <TabsContent value="activity" className="mt-6">
           <Activity events={events} />
@@ -256,18 +307,18 @@ function Fact({ label, value }: { label: string; value: string }) {
 function ProviderCard({
   info,
   row,
-  events,
+  payments,
   onOpen,
 }: {
   info: ProviderInfo;
   row: IntegrationRow | undefined;
-  events: Events;
+  payments: Payments;
   onOpen: () => void;
 }) {
   const status = statusOf(info, row);
-  const stats = statsFor(info.id, events);
+  const stats = statsFor(info.id, payments);
   return (
-    <article className="flex flex-col rounded-xl border bg-card p-5 transition-shadow hover:shadow-[var(--shadow-raised)]">
+    <article className="flex flex-col rounded-card bg-card p-5 transition-shadow hover:shadow-[var(--shadow-raised)]">
       <div className="flex items-start justify-between gap-3">
         <Logo id={info.id} />
         <StatusPill status={status} />
@@ -279,7 +330,8 @@ function ProviderCard({
       <p className="mt-1 flex-1 text-sm text-muted-foreground">{info.blurb}</p>
       {row && info.group === "sales" && (
         <p className="mt-3 text-xs text-muted-foreground">
-          {stats.sales} vendas (30 dias) · último pedido{" "}
+          {stats.sales} vendas (30 dias)
+          {stats.failed ? ` · ${stats.failed} pagamentos falhados` : ""} · último pedido{" "}
           {row.last_event_at ? relativeDays(row.last_event_at) : "ainda nenhum"}
         </p>
       )}
@@ -618,7 +670,7 @@ function SetupSheet({
 function Activity({ events }: { events: Events }) {
   if (events.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed bg-card px-6 py-14 text-center">
+      <div className="rounded-card bg-card px-6 py-14 text-center">
         <Webhook className="mx-auto size-6 text-muted-foreground" aria-hidden />
         <h2 className="mt-3 font-semibold">Ainda não chegou nada</h2>
         <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
@@ -629,7 +681,7 @@ function Activity({ events }: { events: Events }) {
     );
   }
   return (
-    <div className="overflow-x-auto rounded-xl border bg-card">
+    <div className="overflow-x-auto rounded-card bg-card">
       <table className="w-full min-w-[760px] text-left text-sm">
         <thead className="bg-muted">
           <tr>

@@ -52,7 +52,7 @@ export const PROVIDERS: ProviderInfo[] = [
       "Na Kambafy, abra o produto que vende no webinar e entre em Integrações › Webhook.",
       { text: "Cole este endereço no campo URL.", show: "url" },
       { text: "Cole este segredo no campo Secret.", show: "secret" },
-      "Marque payment.success e order.completed. Se chegarem os dois, a venda conta uma vez.",
+      "Marque payment.success, order.completed, payment.failed e order.cancelled. Dois eventos da mesma venda contam uma vez.",
       "Carregue em Testar: o teste aparece em Actividade. Repita para cada produto dos seus webinars.",
       "No webinar, use o link de checkout do produto (pay.kambafy.com/checkout/…) no botão da oferta: é assim que a venda fica ligada ao webinar certo.",
     ],
@@ -62,7 +62,7 @@ export const PROVIDERS: ProviderInfo[] = [
     name: "Hotmart",
     group: "sales",
     category: "Pagamentos",
-    blurb: "Compras aprovadas, reembolsos e chargebacks entram sozinhos.",
+    blurb: "Compras, pagamentos recusados, boletos expirados, carrinhos abandonados e reembolsos.",
     secret: {
       label: "Hottok",
       help: "Está na página de Webhook da Hotmart (API e notificações).",
@@ -71,7 +71,7 @@ export const PROVIDERS: ProviderInfo[] = [
     steps: [
       "Na Hotmart, vá a Ferramentas › Webhook (API e notificações) › Cadastrar webhook.",
       { text: "Escolha o produto, use a versão 2.0.0 e cole este endereço.", show: "url" },
-      "Marque compra aprovada, compra reembolsada e chargeback.",
+      "Marque compra aprovada, cancelada, expirada, reembolsada, chargeback e abandono de carrinho.",
       { text: "Copie o Hottok da Hotmart e cole-o aqui.", show: "secret" },
     ],
   },
@@ -80,7 +80,7 @@ export const PROVIDERS: ProviderInfo[] = [
     name: "Kiwify",
     group: "sales",
     category: "Pagamentos",
-    blurb: "Vendas pagas, reembolsos e chargebacks da Kiwify.",
+    blurb: "Vendas pagas, compras recusadas, boletos e pix pendentes, reembolsos e chargebacks.",
     secret: {
       label: "Token do webhook",
       help: "Aparece na Kiwify ao criar o webhook.",
@@ -89,7 +89,7 @@ export const PROVIDERS: ProviderInfo[] = [
     steps: [
       "Na Kiwify, vá a Apps › Webhooks e crie um webhook.",
       { text: "Cole este endereço e escolha os produtos.", show: "url" },
-      "Marque compra aprovada, compra reembolsada e chargeback.",
+      "Marque compra aprovada, compra recusada, boleto gerado, pix gerado, reembolso e chargeback.",
       { text: "Copie o token do webhook e cole-o aqui.", show: "secret" },
     ],
   },
@@ -98,7 +98,7 @@ export const PROVIDERS: ProviderInfo[] = [
     name: "Eduzz",
     group: "sales",
     category: "Pagamentos",
-    blurb: "Faturas pagas, reembolsos e chargebacks da MyEduzz.",
+    blurb: "Faturas pagas, canceladas, expiradas e em recuperação, abandonos de carrinho e reembolsos.",
     secret: {
       label: "Chave de acesso",
       help: "Gerada na Eduzz em Console › Webhook › Segurança.",
@@ -107,7 +107,7 @@ export const PROVIDERS: ProviderInfo[] = [
     steps: [
       "Na Eduzz, abra Console › Webhook › Segurança e gere uma chave.",
       { text: "Crie uma configuração com este endereço e essa chave.", show: "url" },
-      "Marque fatura paga, reembolsada e chargeback, e active a configuração.",
+      "Marque fatura paga, cancelada, expirada, em recuperação, reembolsada, chargeback e abandono de carrinho, e active a configuração.",
       { text: "Cole aqui a mesma chave. O teste da Eduzz aparece em Actividade.", show: "secret" },
     ],
   },
@@ -116,7 +116,7 @@ export const PROVIDERS: ProviderInfo[] = [
     name: "Stripe",
     group: "sales",
     category: "Pagamentos",
-    blurb: "Pagamentos do Checkout e dos Payment Links, e reembolsos.",
+    blurb: "Pagamentos do Checkout e dos Payment Links, pagamentos falhados, sessões expiradas e reembolsos.",
     secret: {
       label: "Signing secret",
       help: "Começa por whsec_. Está no endpoint, em Revelar.",
@@ -125,7 +125,7 @@ export const PROVIDERS: ProviderInfo[] = [
     dashboardUrl: "https://dashboard.stripe.com/webhooks",
     steps: [
       { text: "No Stripe, vá a Webhooks e adicione um endpoint com este endereço.", show: "url" },
-      "Escolha checkout.session.completed, checkout.session.async_payment_succeeded e charge.refunded.",
+      "Escolha checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed, checkout.session.expired, payment_intent.payment_failed e charge.refunded.",
       { text: "Revele o signing secret (whsec_…) e cole-o aqui.", show: "secret" },
     ],
   },
@@ -143,7 +143,8 @@ export const PROVIDERS: ProviderInfo[] = [
     },
     steps: [
       { text: "Envie um POST em JSON para este endereço.", show: "url" },
-      'Campos: email, name, phone, product, amount, currency, status ("approved", "refunded" ou "pending") e id.',
+      'Campos: email, name, phone, product, product_id, amount, currency, status ("approved", "pending", "failed", "abandoned" ou "refunded") e id. O id é o do pagamento: o mesmo id em estados seguintes actualiza a venda; um pedido repetido conta uma vez.',
+      "Com product_id presente no link do botão da oferta, a venda fica ligada a esse webinar.",
       { text: "Envie este segredo no cabeçalho X-Webhook-Secret.", show: "secret" },
     ],
   },
@@ -220,7 +221,7 @@ export const PROVIDERS: ProviderInfo[] = [
     },
     steps: [
       { text: "Cole o endereço do Zapier, do Make, do n8n ou do seu CRM.", show: "setting" },
-      "Eventos enviados: contact.registered, offer.clicked, purchase.approved e purchase.refunded.",
+      "Eventos enviados: contact.registered, offer.clicked, purchase.pending, payment.failed, checkout.abandoned, purchase.approved, purchase.refunded e automation.run (as suas Automações).",
       { text: "Para confirmar que o pedido vem de nós, valide o X-Signature com esta chave.", show: "secret" },
     ],
   },
@@ -238,11 +239,17 @@ export function generateSecret() {
 
 /* ---------- Tradução das notificações de venda ---------- */
 
+/**
+ * Estado de um pagamento na plataforma. Iniciar o pagamento (pending) não é comprar;
+ * failed e abandoned são tentativas que não acabaram em compra.
+ */
+export type PaymentStatus = "pending" | "failed" | "abandoned" | "approved" | "refunded";
+
 export type NormalizedEvent =
   | {
       kind: "purchase";
       eventType: string;
-      status: "approved" | "refunded" | "pending";
+      status: PaymentStatus;
       email: string | null;
       name: string;
       phone: string | null;
@@ -294,7 +301,7 @@ function currencyCode(value: unknown) {
 
 function purchase(
   eventType: string,
-  status: "approved" | "refunded" | "pending",
+  status: PaymentStatus,
   fields: Omit<Extract<NormalizedEvent, { kind: "purchase" }>, "kind" | "eventType" | "status">,
 ): NormalizedEvent {
   const email = fields.email?.toLowerCase().trim() || null;
@@ -303,11 +310,45 @@ function purchase(
 
 const ignore = (eventType: string, reason: string): NormalizedEvent => ({ kind: "ignore", eventType, reason });
 
-function statusFrom(
-  map: Record<string, "approved" | "refunded" | "pending">,
-  key: string,
-): "approved" | "refunded" | "pending" | null {
+/** Id próprio quando a plataforma não dá transacção (ex.: abandono de carrinho). */
+const prefixed = (prefix: string, id: unknown) => (text(id) ? `${prefix}:${text(id)}` : null);
+
+function statusFrom(map: Record<string, PaymentStatus>, key: string): PaymentStatus | null {
   return map[key] ?? null;
+}
+
+const words = (raw: string) =>
+  raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter(Boolean);
+
+/**
+ * Estado dito por outra plataforma, por palavra inteira e com as palavras de falha
+ * primeiro: "unpaid", "nao_pago" e "incomplete" nunca passam por compra. Sem estado,
+ * ou com um estado intermédio (reembolso pedido, chargeback ganho), devolve null.
+ */
+export function webhookStatus(raw: string): PaymentStatus | null {
+  const w = words(raw);
+  const has = (...list: string[]) => list.some((word) => w.includes(word));
+  const phrase = ` ${w.join(" ")} `;
+  const refund = has("refund", "refunded", "reembolso", "reembolsado", "reembolsada", "chargeback", "estorno", "estornado", "estornada");
+  if (refund && has("pending", "requested", "request", "waiting", "won", "pedido", "solicitado", "ganho")) return null;
+  if (refund) return "refunded";
+  if (
+    has("unpaid", "failed", "failure", "fail", "declined", "refused", "rejected", "denied", "unsuccessful", "falhou", "falhado", "falhada", "recusado", "recusada", "negado", "negada", "desaprovado", "desaprovada") ||
+    /\s(not|nao)\s(paid|pago|paga|approved|aprovado|aprovada)\s/.test(phrase)
+  )
+    return "failed";
+  if (has("abandoned", "abandonado", "abandonada", "abandono", "expired", "expirado", "expirada", "canceled", "cancelled", "cancelado", "cancelada"))
+    return "abandoned";
+  if (has("pending", "waiting", "aguardando", "pendente", "processing", "incomplete", "created", "criado", "criada"))
+    return "pending";
+  if (has("approved", "aprovado", "aprovada", "paid", "pago", "paga", "success", "succeeded", "complete", "completed", "concluido", "concluida"))
+    return "approved";
+  return null;
 }
 
 export function normalizeEvent(provider: ProviderId, body: Body): NormalizedEvent {
@@ -323,6 +364,8 @@ export function normalizeEvent(provider: ProviderId, body: Body): NormalizedEven
           "refund.approved": "refunded",
           "order.pending": "pending",
           "order.created": "pending",
+          "payment.failed": "failed",
+          "order.cancelled": "abandoned",
         },
         eventType,
       );
@@ -347,6 +390,9 @@ export function normalizeEvent(provider: ProviderId, body: Body): NormalizedEven
           PURCHASE_REFUNDED: "refunded",
           PURCHASE_CHARGEBACK: "refunded",
           PURCHASE_BILLET_PRINTED: "pending",
+          PURCHASE_CANCELED: "failed",
+          PURCHASE_EXPIRED: "abandoned",
+          PURCHASE_OUT_OF_SHOPPING_CART: "abandoned",
         },
         eventType,
       );
@@ -361,13 +407,20 @@ export function normalizeEvent(provider: ProviderId, body: Body): NormalizedEven
         productId: text(pick(body, "data.product.id", "data.product.ucode")) || null,
         amountValue: parseAmount(pick(body, "data.purchase.price.value")),
         currency: currencyCode(pick(body, "data.purchase.price.currency_value")),
-        externalId: text(pick(body, "data.purchase.transaction")) || null,
+        // O abandono de carrinho não tem transacção: fica com o id do próprio evento.
+        externalId: text(pick(body, "data.purchase.transaction")) || prefixed("cart", pick(body, "id")),
       });
     }
     case "kiwify": {
       const eventType = text(pick(body, "webhook_event_type", "order_status"));
       const status = statusFrom(
-        { paid: "approved", refunded: "refunded", chargedback: "refunded", waiting_payment: "pending" },
+        {
+          paid: "approved",
+          refunded: "refunded",
+          chargedback: "refunded",
+          waiting_payment: "pending",
+          refused: "failed",
+        },
         text(pick(body, "order_status")),
       );
       if (!status) return ignore(eventType, "Evento que não altera vendas.");
@@ -386,6 +439,19 @@ export function normalizeEvent(provider: ProviderId, body: Body): NormalizedEven
     case "eduzz": {
       const eventType = text(pick(body, "event"));
       if (eventType === "ping") return ignore(eventType, "Teste recebido da Eduzz.");
+      if (eventType === "sun.cart_abandonment") {
+        const step = text(pick(body, "data.lastStep")).replace(/-/g, "_");
+        return purchase(eventType, step === "payment_failed" ? "failed" : "abandoned", {
+          email: text(pick(body, "data.customer.email")) || null,
+          name: text(pick(body, "data.customer.name")),
+          phone: text(pick(body, "data.customer.cellphone", "data.customer.phone")) || null,
+          product: text(pick(body, "data.productName", "data.product.name")),
+          productId: text(pick(body, "data.productId.0", "data.productId")) || null,
+          amountValue: null,
+          currency: null,
+          externalId: text(pick(body, "data.transactionId")) || prefixed("cart", pick(body, "id")),
+        });
+      }
       const status = statusFrom(
         {
           "myeduzz.invoice_paid": "approved",
@@ -393,6 +459,9 @@ export function normalizeEvent(provider: ProviderId, body: Body): NormalizedEven
           "myeduzz.invoice_chargeback": "refunded",
           "myeduzz.invoice_opened": "pending",
           "myeduzz.invoice_waiting_payment": "pending",
+          "myeduzz.invoice_recovering": "failed",
+          "myeduzz.invoice_canceled": "abandoned",
+          "myeduzz.invoice_expired": "abandoned",
         },
         eventType,
       );
@@ -402,6 +471,7 @@ export function normalizeEvent(provider: ProviderId, body: Body): NormalizedEven
         name: text(pick(body, "data.buyer.name")),
         phone: text(pick(body, "data.buyer.cellphone", "data.buyer.phone")) || null,
         product: text(pick(body, "data.items.0.name", "data.offer.name")),
+        productId: text(pick(body, "data.items.0.productId")) || null,
         amountValue: parseAmount(pick(body, "data.paid.value")),
         currency: currencyCode(pick(body, "data.paid.currency")),
         externalId: text(pick(body, "data.id")) || null,
@@ -415,21 +485,41 @@ export function normalizeEvent(provider: ProviderId, body: Body): NormalizedEven
         if (n === null) return null;
         return currency && ZERO_DECIMAL.has(currency.toLowerCase()) ? n : n / 100;
       };
-      if (
-        eventType === "checkout.session.completed" ||
-        eventType === "checkout.session.async_payment_succeeded"
-      ) {
+      const session: Record<string, PaymentStatus | "by_payment"> = {
+        "checkout.session.completed": "by_payment",
+        "checkout.session.async_payment_succeeded": "by_payment",
+        "checkout.session.async_payment_failed": "failed",
+        "checkout.session.expired": "abandoned",
+      };
+      const sessionStatus = session[eventType];
+      if (sessionStatus) {
         const paid = ["paid", "no_payment_required"].includes(text(pick(object, "payment_status")));
         const currency = currencyCode(pick(object, "currency"));
-        return purchase(eventType, paid ? "approved" : "pending", {
+        const status = sessionStatus !== "by_payment" ? sessionStatus : paid ? "approved" : "pending";
+        return purchase(eventType, status, {
           email: text(pick(object, "customer_details.email", "customer_email")) || null,
           name: text(pick(object, "customer_details.name")),
           phone: text(pick(object, "customer_details.phone")) || null,
           product: text(pick(object, "metadata.product", "metadata.product_name")) || "Stripe",
+          productId: text(pick(object, "metadata.product_id")) || null,
           amountValue: minor(pick(object, "amount_total"), currency),
           currency,
           // O payment_intent é o mesmo na venda e no reembolso.
           externalId: text(pick(object, "payment_intent", "id")) || null,
+        });
+      }
+      if (eventType === "payment_intent.payment_failed") {
+        // Uma tentativa recusada; o mesmo payment_intent pode ainda ser pago a seguir.
+        const currency = currencyCode(pick(object, "currency"));
+        return purchase(eventType, "failed", {
+          email:
+            text(pick(object, "receipt_email", "last_payment_error.payment_method.billing_details.email")) || null,
+          name: text(pick(object, "last_payment_error.payment_method.billing_details.name")),
+          phone: null,
+          product: text(pick(object, "metadata.product", "metadata.product_name", "description")) || "Stripe",
+          amountValue: minor(pick(object, "amount"), currency),
+          currency,
+          externalId: text(pick(object, "id")) || null,
         });
       }
       if (eventType === "charge.refunded") {
@@ -448,21 +538,20 @@ export function normalizeEvent(provider: ProviderId, body: Body): NormalizedEven
     }
     case "webhook": {
       const raw = text(pick(body, "status", "event")).toLowerCase();
-      const status: "approved" | "refunded" | "pending" | null = !raw
-        ? "approved"
-        : /refund|reembols|chargeback|estorn/.test(raw)
-          ? "refunded"
-          : /pend|wait|aguard/.test(raw)
-            ? "pending"
-            : /approv|aprov|paid|pago|success|complet/.test(raw)
-              ? "approved"
-              : null;
-      if (!status) return ignore(raw, "Estado desconhecido: use approved, refunded ou pending.");
+      const status = webhookStatus(raw);
+      if (!status)
+        return ignore(
+          raw || "sem estado",
+          raw
+            ? "Estado desconhecido ou intermédio: use approved, pending, failed, abandoned ou refunded."
+            : "Pedido sem estado: não é contado como venda. Envie status com approved, pending, failed, abandoned ou refunded.",
+        );
       return purchase(raw || "purchase", status, {
         email: text(pick(body, "email", "buyer_email", "customer.email")) || null,
         name: text(pick(body, "name", "buyer_name", "customer.name")),
         phone: text(pick(body, "phone", "customer.phone")) || null,
         product: text(pick(body, "product", "product_name")),
+        productId: text(pick(body, "product_id")) || null,
         amountValue: parseAmount(pick(body, "amount", "value", "price")),
         currency: currencyCode(pick(body, "currency")),
         externalId: text(pick(body, "id", "transaction_id", "order_id")) || null,

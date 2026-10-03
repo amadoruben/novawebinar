@@ -23,7 +23,12 @@ import { toast } from "sonner";
 type FilterKey =
   | "live"
   | "replay"
+  | "offer"
   | "cta"
+  | "checkout"
+  | "failed"
+  | "abandoned"
+  | "bought"
   | "pitch"
   | "atOffer"
   | "chat"
@@ -34,9 +39,14 @@ type FilterKey =
   | "m60";
 
 const FILTERS: { key: FilterKey; label: string; hint: string }[] = [
-  { key: "live", label: "Assistiu ao vivo", hint: "Entrou durante a sessão em direto" },
+  { key: "live", label: "Assistiu ao vivo", hint: "Viu a sessão em direto" },
   { key: "replay", label: "Assistiu ao replay", hint: "Viu depois, pela gravação" },
-  { key: "cta", label: "Clicou no botão da oferta", hint: "Seguiu para o pagamento" },
+  { key: "offer", label: "Viu a oferta", hint: "A oferta apareceu-lhe na sala (ou clicou nela)" },
+  { key: "cta", label: "Clicou no botão da oferta", hint: "Abriu a página de pagamento (não quer dizer que pagou)" },
+  { key: "checkout", label: "Iniciou o pagamento", hint: "A plataforma de pagamento registou a tentativa" },
+  { key: "failed", label: "Pagamento falhado", hint: "Tentou pagar, o pagamento falhou e não comprou depois" },
+  { key: "abandoned", label: "Abandonou o pagamento", hint: "Começou o pagamento e não o concluiu" },
+  { key: "bought", label: "Comprou", hint: "Compra aprovada atribuída a este webinar" },
   { key: "pitch", label: "Chegou ao pitch", hint: "Ainda estava na sala no momento do pitch" },
   { key: "atOffer", label: "Estava no momento da oferta", hint: "Ainda estava na sala quando a oferta abriu" },
   { key: "chat", label: "Enviou mensagem no chat", hint: "Escreveu pelo menos uma mensagem" },
@@ -51,14 +61,12 @@ export function ExportMomentsDialog({
   open,
   onOpenChange,
   metrics,
-  ctaStartSeconds,
   pitchSeconds,
   fileBase,
 }: {
   open: boolean;
   onOpenChange: (value: boolean) => void;
   metrics: WebinarMetrics | undefined;
-  ctaStartSeconds: number | null;
   pitchSeconds: number | null;
   fileBase: string;
 }) {
@@ -71,30 +79,41 @@ export function ExportMomentsDialog({
   const team = useMemo(() => new Set(metrics?.teamChatParticipantIds ?? []), [metrics]);
 
   const matches = (p: MetricsParticipant, key: FilterKey) => {
-    const watched = p.watched_seconds ?? 0;
+    // Os momentos do vídeo são posição (até onde chegou), não tempo visto.
+    const peak = p.peak_seconds ?? 0;
     switch (key) {
       case "live":
-        return p.viewing_mode !== "replay";
+        return Boolean(p.attended) && p.viewing_mode !== "replay";
       case "replay":
-        return p.viewing_mode === "replay";
+        return Boolean(p.attended) && p.viewing_mode === "replay";
+      case "offer":
+        return Boolean(p.saw_offer);
       case "cta":
-        return Boolean(p.cta_clicked);
+        return Boolean(p.clicked);
+      case "checkout":
+        return Boolean(p.checkout_started);
+      case "failed":
+        return Boolean(p.payment_failed);
+      case "abandoned":
+        return Boolean(p.checkout_abandoned);
+      case "bought":
+        return Boolean(p.purchased);
       case "pitch":
-        return pitchSeconds !== null && watched >= pitchSeconds;
+        return Boolean(p.reached_pitch);
       case "atOffer":
-        return ctaStartSeconds !== null && watched >= ctaStartSeconds;
+        return Boolean(p.reached_offer);
       case "chat":
-        return chat.has(p.id);
+        return chat.has(p.participant_id ?? "");
       case "team":
-        return team.has(p.id);
+        return team.has(p.participant_id ?? "");
       case "m15":
-        return watched >= 900;
+        return peak >= 900;
       case "m30":
-        return watched >= 1800;
+        return peak >= 1800;
       case "m45":
-        return watched >= 2700;
+        return peak >= 2700;
       case "m60":
-        return watched >= 3600;
+        return peak >= 3600;
     }
   };
 
@@ -104,7 +123,7 @@ export function ExportMomentsDialog({
   const people = useMemo(() => {
     const all = metrics?.participants ?? [];
     return all.filter((p) => {
-      const watched = p.watched_seconds ?? 0;
+      const watched = p.actual_watch_seconds ?? 0;
       if (watched < fromSeconds) return false;
       if (toSeconds !== null && watched > toSeconds) return false;
       if (!selected.length) return true;
@@ -112,7 +131,7 @@ export function ExportMomentsDialog({
         ? selected.every((key) => matches(p, key))
         : selected.some((key) => matches(p, key));
     });
-  }, [metrics, selected, mode, fromSeconds, toSeconds, chat, team, ctaStartSeconds, pitchSeconds]);
+  }, [metrics, selected, mode, fromSeconds, toSeconds, chat, team]);
 
   const toggle = (key: FilterKey) =>
     setSelected((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
@@ -126,14 +145,16 @@ export function ExportMomentsDialog({
     }
     const retention = (metrics?.retention ?? []).map((point) => ({
       ...point,
-      viewers: people.filter((p) => (p.watched_seconds ?? 0) >= point.second).length,
+      viewers: people.filter(
+        (p) => (p.entry_seconds ?? 0) <= point.second && (p.peak_seconds ?? 0) >= point.second,
+      ).length,
     }));
     const header = [
       ["Filtros aplicados", selected.length ? selected.map((k) => FILTERS.find((f) => f.key === k)!.label).join(" | ") : "Todos os participantes"],
       ["Combinação", selected.length > 1 ? (mode === "all" ? "Cumpre todos" : "Cumpre pelo menos um") : "—"],
       ["Intervalo de tempo assistido", `${clockLabel(fromSeconds)}${toSeconds !== null ? ` a ${clockLabel(toSeconds)}` : " até ao fim"}`],
       ["Momento do pitch", pitchSeconds === null ? "Por definir" : clockLabel(pitchSeconds)],
-      ["Participantes selecionados", people.length],
+      ["Participações selecionadas", people.length],
       [],
     ];
     const momentRows = retention.map((point) => [
@@ -143,18 +164,18 @@ export function ExportMomentsDialog({
       people.length ? `${((point.viewers / people.length) * 100).toFixed(1)}%` : "0%",
     ]);
     const peopleRows = people.map((p) => [
-      p.name,
+      p.name ?? "",
       p.email ?? "",
       p.phone ?? "",
-      clockLabel(p.watched_seconds ?? 0),
+      clockLabel(p.actual_watch_seconds ?? 0),
+      p.watch_measured ? "Medido" : "Estimado",
+      clockLabel(p.peak_seconds ?? 0),
       p.viewing_mode === "replay" ? "Replay" : "Ao vivo",
-      pitchSeconds === null
-        ? "—"
-        : (p.watched_seconds ?? 0) >= pitchSeconds
-          ? "Sim"
-          : "Não",
-      p.cta_clicked ? "Sim" : "Não",
-      chat.has(p.id) ? "Sim" : "Não",
+      pitchSeconds === null ? "—" : p.reached_pitch ? "Sim" : "Não",
+      ...[p.saw_offer, p.clicked, p.checkout_started, p.payment_failed, p.checkout_abandoned, p.purchased].map((fact) =>
+        fact ? "Sim" : "Não",
+      ),
+      chat.has(p.participant_id ?? "") ? "Sim" : "Não",
     ]);
 
     const content = [
@@ -167,9 +188,16 @@ export function ExportMomentsDialog({
           "Email",
           "Contacto",
           "Tempo assistido",
+          "Medição",
+          "Chegou até ao momento",
           "Modo",
           "Chegou ao pitch",
+          "Viu a oferta",
           "Clicou na oferta",
+          "Iniciou o pagamento",
+          "Pagamento falhado",
+          "Abandonou o pagamento",
+          "Comprou",
           "Falou no chat",
         ],
         peopleRows,
@@ -177,7 +205,7 @@ export function ExportMomentsDialog({
     ].join("\n");
 
     downloadCsv(`${fileBase}-por-momento.csv`, content);
-    toast.success(`Ficheiro criado com ${people.length} participantes.`);
+    toast.success(`Ficheiro criado com ${people.length} ${people.length === 1 ? "participação" : "participações"}.`);
     onOpenChange(false);
   };
 
@@ -190,7 +218,8 @@ export function ExportMomentsDialog({
             Exportar participantes por momento
           </DialogTitle>
           <DialogDescription>
-            Escolha quem quer no ficheiro. Sem filtros, entram todos os participantes.
+            Escolha quem quer no ficheiro. Sem filtros, entram todas as participações (quem entrou
+            duas vezes aparece duas vezes).
           </DialogDescription>
         </DialogHeader>
 
@@ -198,7 +227,7 @@ export function ExportMomentsDialog({
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-                Assistiu a partir de
+                Tempo assistido a partir de
               </p>
               <HmsInput value={from} onChange={setFrom} />
             </div>
@@ -260,8 +289,9 @@ export function ExportMomentsDialog({
           </div>
 
           <p className="text-sm text-muted-foreground">
-            <strong className="text-foreground">{people.length}</strong> participantes correspondem
-            a esta seleção.
+            <strong className="text-foreground">{people.length}</strong>{" "}
+            {people.length === 1 ? "participação corresponde" : "participações correspondem"} a esta
+            seleção.
           </p>
         </div>
 

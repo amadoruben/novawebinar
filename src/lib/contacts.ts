@@ -4,16 +4,18 @@
  * — o dono do webinar tem de perceber porquê, sem estatística.
  */
 import type { Database } from "@/integrations/supabase/types";
+import type { ParticipantFact } from "@/lib/participant-facts";
 
 export type ContactSummary = Database["public"]["Views"]["contact_summaries"]["Row"];
 
 /** A mesma ordem e os mesmos ids que a coluna `stage` da vista contact_summaries. */
 export const STAGES = [
-  { id: "new", label: "Sem eventos", hint: "Importados ou compraram sem assistir" },
-  { id: "no_show", label: "Não apareceram", hint: "Inscreveram-se e não entraram" },
-  { id: "watched", label: "Assistiram", hint: "Saíram antes da oferta" },
+  { id: "new", label: "Sem eventos", hint: "Ainda sem inscrições nem pagamentos" },
+  { id: "no_show", label: "Não apareceram", hint: "Inscreveram-se e não assistiram" },
+  { id: "watched", label: "Assistiram", hint: "Não viram a oferta" },
   { id: "reached_offer", label: "Viram a oferta", hint: "Não clicaram" },
-  { id: "clicked", label: "Clicaram", hint: "Ainda sem compra" },
+  { id: "clicked", label: "Clicaram", hint: "Não iniciaram o pagamento" },
+  { id: "checkout", label: "Iniciaram o pagamento", hint: "Pendente, falhado ou abandonado" },
   { id: "customer", label: "Compraram", hint: "Clientes" },
 ] as const;
 
@@ -67,8 +69,16 @@ export function contactInsight(c: ContactSummary, now = Date.now()): ContactInsi
   if (registered === 0) parts.push(c.source === "import" ? "Importado, ainda sem eventos" : "Ainda sem eventos");
   else if (attended === 0) parts.push(`Inscreveu-se em ${plural(registered, "evento", "eventos")} e não apareceu`);
   else parts.push(`Assistiu a ${attended} de ${plural(registered, "evento", "eventos")}`);
-  if (stage === "reached_offer") parts.push("chegou à oferta e não clicou");
-  if (stage === "clicked") parts.push("clicou na oferta e não comprou");
+  if (stage === "reached_offer") parts.push("viu a oferta e não clicou");
+  if (stage === "clicked") parts.push("clicou na oferta e não iniciou o pagamento");
+  if (stage === "checkout")
+    parts.push(
+      c.payment_failed
+        ? "o pagamento falhou"
+        : c.checkout_abandoned
+          ? "iniciou o pagamento e não concluiu"
+          : "tem um pagamento em curso",
+    );
   if (stage === "customer") parts.push(`comprou ${purchases === 1 ? "uma vez" : `${purchases} vezes`}`);
   const reason = `${parts.join(", ")}.`;
 
@@ -82,8 +92,26 @@ export function contactInsight(c: ContactSummary, now = Date.now()): ContactInsi
         message: `${hi}, obrigado pela confiança! Como está a correr até agora? A sua opinião ajuda muito outras pessoas.`,
       };
       break;
+    case "checkout":
+      // Tentou pagar: o sinal mais forte antes da compra.
+      temperature = idleDays > 21 ? "warm" : "hot";
+      action = c.payment_failed
+        ? {
+            label: "Ajudar a pagar: o pagamento falhou",
+            message: `${hi}, vi que o pagamento não passou. Quer que o ajude a concluir? Posso enviar outro link ou outra forma de pagamento.`,
+          }
+        : c.checkout_abandoned
+          ? {
+              label: "Recuperar o pagamento que ficou a meio",
+              message: `${hi}, vi que começou a inscrição mas não concluiu o pagamento. Ficou alguma dúvida que eu possa esclarecer?`,
+            }
+          : {
+              label: "Acompanhar o pagamento em curso",
+              message: `${hi}, vi que está a concluir a inscrição. Se precisar de ajuda com o pagamento, diga-me.`,
+            };
+      break;
     case "clicked":
-      // Clicar é o sinal mais forte; arrefece se passou tempo sem voltar.
+      // Clicar é um sinal forte; arrefece se passou tempo sem voltar.
       temperature = idleDays > 21 ? "warm" : "hot";
       action = {
         label: "Falar hoje: clicou e não comprou",
@@ -138,7 +166,9 @@ export function whatsappLink(phone: string | null | undefined, message = "") {
 
 export function relativeDays(iso: string | null | undefined, now = Date.now()) {
   if (!iso) return "—";
-  const days = Math.round((Date.parse(iso) - now) / DAY);
+  // Dias de calendário (hora local): ontem às 23h é "ontem" mesmo que tenham passado 2 horas.
+  const midnight = (t: number) => new Date(t).setHours(0, 0, 0, 0);
+  const days = Math.round((midnight(Date.parse(iso)) - midnight(now)) / DAY);
   if (days === 0) return "hoje";
   return new Intl.RelativeTimeFormat("pt-PT", { numeric: "auto" }).format(days, "day");
 }
@@ -238,23 +268,39 @@ export function leadSource(input: {
 
 /* ---------- Jornada: cada evento em que a pessoa entrou, e as compras ---------- */
 
-export type Participation = {
-  id: string;
-  webinar_id: string;
-  joined_at: string;
-  watched_seconds: number;
-  cta_clicked: boolean;
-  viewing_mode: string;
-  webinars: {
-    public_title: string;
-    duration_seconds: number | null;
-    cta_start_seconds: number | null;
-  } | null;
-};
+/** As colunas dos factos que a jornada lê; os três leitores do contacto usam estas. */
+export const PARTICIPATION_COLUMNS =
+  "participant_id, webinar_id, webinar_title, joined_at, viewing_mode, device, city, country, duration_seconds, offer_start_seconds, entry_seconds, peak_seconds, actual_watch_seconds, watch_measured, watch_ratio, attended, saw_offer, clicked, checkout_started, purchased, payment_failed, checkout_abandoned, refunded, webinar_session_id";
+
+export type Participation = Pick<
+  ParticipantFact,
+  | "participant_id"
+  | "webinar_id"
+  | "webinar_title"
+  | "joined_at"
+  | "viewing_mode"
+  | "duration_seconds"
+  | "offer_start_seconds"
+  | "entry_seconds"
+  | "peak_seconds"
+  | "actual_watch_seconds"
+  | "watch_measured"
+  | "watch_ratio"
+  | "attended"
+  | "saw_offer"
+  | "clicked"
+  | "checkout_started"
+  | "purchased"
+  | "payment_failed"
+  | "checkout_abandoned"
+  | "refunded"
+>;
 
 export type Purchase = {
   id: string;
   created_at: string;
+  /** Quando o estado actual começou (aprovada, falhada…). */
+  status_at: string;
   product_name: string;
   amount: string;
   amount_value: number | null;
@@ -270,9 +316,15 @@ export type JourneyStep =
       id: string;
       title: string;
       mode: string;
+      attended: boolean;
+      /** Tempo efectivamente visto; nas participações antigas, estimado pelo intervalo. */
       watchedSeconds: number;
+      watchMeasured: boolean;
+      /** Posição em que começou a ver e a mais avançada a que chegou. */
+      entrySeconds: number;
+      peakSeconds: number;
       durationSeconds: number;
-      /** 0–100, ou null quando o vídeo não tem duração conhecida. */
+      /** Tempo visto em percentagem do vídeo (0–100), ou null sem duração conhecida. */
       watchedPct: number | null;
       offerAtPct: number | null;
       reachedOffer: boolean;
@@ -291,32 +343,37 @@ export function buildJourney(input: {
   purchases: Purchase[];
 }): JourneyStep[] {
   const steps: JourneyStep[] = input.participations.map((p) => {
-    const duration = p.webinars?.duration_seconds ?? 0;
-    const offerAt = p.webinars?.cta_start_seconds ?? null;
+    const id = p.participant_id ?? "";
+    const duration = p.duration_seconds ?? 0;
+    const offerAt = p.offer_start_seconds;
     const click = input.clicks
-      .filter((c) => c.participant_id === p.id)
+      .filter((c) => c.participant_id === id)
       .sort((a, b) => a.occurred_at.localeCompare(b.occurred_at))[0];
     return {
       kind: "event",
-      at: p.joined_at,
-      id: p.id,
-      title: p.webinars?.public_title ?? "Webinar removido",
-      mode: p.viewing_mode,
-      watchedSeconds: p.watched_seconds,
+      at: p.joined_at ?? "",
+      id,
+      title: p.webinar_title ?? "Webinar removido",
+      mode: p.viewing_mode ?? "live",
+      attended: Boolean(p.attended),
+      watchedSeconds: p.actual_watch_seconds ?? 0,
+      watchMeasured: Boolean(p.watch_measured),
+      entrySeconds: p.entry_seconds ?? 0,
+      peakSeconds: p.peak_seconds ?? 0,
       durationSeconds: duration,
-      watchedPct: duration > 0 ? Math.min(100, Math.round((p.watched_seconds / duration) * 100)) : null,
+      watchedPct: p.watch_ratio === null ? null : Math.round(p.watch_ratio * 100),
       offerAtPct: duration > 0 && offerAt !== null ? Math.min(100, Math.round((offerAt / duration) * 100)) : null,
-      reachedOffer: offerAt !== null && p.watched_seconds >= offerAt,
-      clicked: p.cta_clicked || Boolean(click),
+      reachedOffer: Boolean(p.saw_offer),
+      clicked: Boolean(p.clicked) || Boolean(click),
       clickedAt: click?.occurred_at ?? null,
       clickedAtSecond: click?.video_second ?? null,
-      messages: input.messages.filter((m) => m.participant_id === p.id).length,
+      messages: input.messages.filter((m) => m.participant_id === id).length,
     };
   });
   for (const buy of input.purchases) {
     steps.push({
       kind: "purchase",
-      at: buy.created_at,
+      at: buy.status_at,
       id: buy.id,
       title: buy.product_name || "Compra",
       amount:
@@ -330,6 +387,96 @@ export function buildJourney(input: {
     });
   }
   return steps.sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/* ---------- Linha do tempo: o que aconteceu, pela ordem em que aconteceu ---------- */
+
+export type EventLogRow = Pick<
+  Database["public"]["Views"]["event_log"]["Row"],
+  "name" | "occurred_at" | "webinar_id" | "session_id" | "video_second" | "data"
+>;
+
+/** Os nomes da leitura única (event_log), ditos como aconteceram. */
+export const TIMELINE_LABEL: Record<string, string> = {
+  registered: "Inscreveu-se",
+  started_watching: "Começou a ver",
+  watch_progress: "Última vez a ver",
+  offer_viewed: "Viu a oferta",
+  offer_clicked: "Clicou na oferta",
+  message_sent: "Escreveu no chat",
+  checkout_started: "Iniciou o pagamento",
+  purchase_approved: "Compra aprovada",
+  payment_failed: "O pagamento falhou",
+  checkout_abandoned: "Não concluiu o pagamento",
+  purchase_refunded: "Compra reembolsada",
+  webinar_session_ended: "A sessão terminou",
+  automation_entered: "Entrou na automação",
+  automation_executed: "Automação executada",
+  automation_failed: "A automação falhou",
+  automation_cancelled: "Automação cancelada",
+};
+
+export type TimelineItem = {
+  name: string;
+  label: string;
+  at: string;
+  webinarId: string | null;
+  /** Momento do vídeo (oferta vista ou clicada, onde parou), quando existe. */
+  second: number | null;
+  /** Repetições seguidas juntas numa linha (ex.: a oferta vista a cada recarga). */
+  times: number;
+  /** O produto de um pagamento ou o nome da automação. */
+  detail: string | null;
+};
+
+const PENDING_RUN = new Set(["waiting", "ready", "running"]);
+
+/** O que acompanha o nome: o produto, ou a automação (e se ainda está à espera). */
+function timelineDetail(row: EventLogRow) {
+  const data = (row.data ?? {}) as { product?: unknown; automation?: unknown; status?: unknown };
+  if (typeof data.automation === "string") {
+    const waiting = row.name === "automation_entered" && PENDING_RUN.has(String(data.status));
+    return waiting ? `${data.automation} — a aguardar` : data.automation;
+  }
+  return typeof data.product === "string" && data.product ? data.product : null;
+}
+
+// Ordem lógica para eventos gravados no mesmo instante (ex.: o pagamento aprovado cria o
+// checkout, a compra e a entrada na automação na mesma transacção): a ordem de TIMELINE_LABEL.
+const TIMELINE_RANK = Object.keys(TIMELINE_LABEL);
+
+/** As linhas vêm da mais recente para a mais antiga. */
+export function timelineItems(rows: EventLogRow[]): TimelineItem[] {
+  const items: TimelineItem[] = [];
+  const rank = (name: string | null) => TIMELINE_RANK.indexOf(name ?? "");
+  const ordered = [...rows].sort(
+    (a, b) => (b.occurred_at ?? "").localeCompare(a.occurred_at ?? "") || rank(b.name) - rank(a.name),
+  );
+  for (const row of ordered) {
+    if (!row.name || !row.occurred_at) continue;
+    const last = items.at(-1);
+    const detail = timelineDetail(row);
+    if (
+      last &&
+      last.name === row.name &&
+      last.webinarId === row.webinar_id &&
+      last.detail === detail &&
+      row.name !== "webinar_session_ended"
+    ) {
+      last.times += 1;
+      continue;
+    }
+    items.push({
+      name: row.name,
+      label: TIMELINE_LABEL[row.name] ?? row.name,
+      at: row.occurred_at,
+      webinarId: row.webinar_id,
+      times: 1,
+      detail,
+      second: row.video_second ?? null,
+    });
+  }
+  return items;
 }
 
 /* ---------- Importação de folhas (CSV exportado do Excel, Google Sheets, CRM) ---------- */
@@ -428,4 +575,32 @@ export function parseContactsCsv(text: string): { rows: ImportRow[]; skipped: nu
     else rows.push(row);
   }
   return { rows, skipped };
+}
+
+/* ---------- Apresentação ---------- */
+
+/** "+244000000003" → "+244 000 000 003" (Angola e Portugal); o resto fica como veio. */
+export function formatPhone(phone: string | null | undefined) {
+  if (!phone) return null;
+  return phone.replace(/^\+(244|351)(\d{3})(\d{3})(\d{3})$/, "+$1 $2 $3 $4");
+}
+
+export const DEVICE_LABEL: Record<string, string> = {
+  mobile: "Telemóvel",
+  desktop: "Computador",
+  tablet: "Tablet",
+};
+
+/** O pagamento de um contacto numa palavra: o desfecho mais importante primeiro. */
+export function paymentState(c: {
+  purchases?: number | null;
+  payment_failed?: boolean | null;
+  checkout_abandoned?: boolean | null;
+  checkout_started?: boolean | null;
+}): { label: string; variant: "success" | "destructive" | "warning" | "secondary" } | null {
+  if ((c.purchases ?? 0) > 0) return { label: c.purchases! > 1 ? `Comprou (${c.purchases})` : "Comprou", variant: "success" };
+  if (c.payment_failed) return { label: "Pagamento falhou", variant: "destructive" };
+  if (c.checkout_abandoned) return { label: "Abandonou", variant: "warning" };
+  if (c.checkout_started) return { label: "Iniciou o pagamento", variant: "secondary" };
+  return null;
 }

@@ -60,7 +60,7 @@ export function TranscriptWords({
 
   return (
     <div className="space-y-3 border-t px-4 py-3">
-      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         {PRECISION_LABEL[inspection.precision]} · {inspection.provider} ·{" "}
         {inspection.words.length} palavras · clique numa palavra para ver o tempo exato
       </p>
@@ -141,7 +141,7 @@ export function TranscriptWords({
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="tabular-nums text-foreground">{value}</dd>
     </div>
   );

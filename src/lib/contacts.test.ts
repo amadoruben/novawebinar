@@ -5,7 +5,9 @@ import {
   contactInsight,
   leadSource,
   parseContactsCsv,
+  relativeDays,
   sourceVerdict,
+  timelineItems,
   whatsappLink,
   type ContactSummary,
 } from "./contacts";
@@ -35,6 +37,9 @@ function contact(over: Partial<ContactSummary>): ContactSummary {
     stage: "new",
     watched_seconds: 0,
     webinar_ids: [],
+    checkout_started: false,
+    payment_failed: false,
+    checkout_abandoned: false,
     ...over,
   };
 }
@@ -44,7 +49,7 @@ describe("contactInsight", () => {
     const c = contact({ stage: "clicked", events_registered: 2, events_attended: 2, phone: "+244923000000" });
     const hot = contactInsight(c, NOW);
     expect(hot.temperature).toBe("hot");
-    expect(hot.reason).toBe("Assistiu a 2 de 2 eventos, clicou na oferta e não comprou.");
+    expect(hot.reason).toBe("Assistiu a 2 de 2 eventos, clicou na oferta e não iniciou o pagamento.");
     expect(hot.nextAction.channel).toBe("whatsapp");
     expect(hot.nextAction.message).toContain("Olá Ana");
     const later = contactInsight({ ...c, last_seen_at: "2026-08-01T00:00:00Z" }, NOW);
@@ -160,18 +165,52 @@ describe("parseContactsCsv", () => {
   });
 });
 
+describe("contactInsight: pagamento", () => {
+  it("pagamento falhado pede ajuda para pagar, não um convite", () => {
+    const i = contactInsight(
+      contact({ stage: "checkout", events_registered: 1, events_attended: 1, checkout_started: true, payment_failed: true }),
+      NOW,
+    );
+    expect([i.stage, i.temperature]).toEqual(["checkout", "hot"]);
+    expect(i.reason).toBe("Assistiu a 1 de 1 evento, o pagamento falhou.");
+    expect(i.nextAction.label).toBe("Ajudar a pagar: o pagamento falhou");
+  });
+
+  it("pagamento abandonado pede para recuperar", () => {
+    const i = contactInsight(
+      contact({ stage: "checkout", events_registered: 1, events_attended: 1, checkout_started: true, checkout_abandoned: true }),
+      NOW,
+    );
+    expect(i.reason).toBe("Assistiu a 1 de 1 evento, iniciou o pagamento e não concluiu.");
+  });
+});
+
 describe("buildJourney", () => {
-  it("ordena do mais recente e calcula progresso, oferta e clique", () => {
+  it("ordena do mais recente e separa tempo visto de posição", () => {
     const steps = buildJourney({
       participations: [
         {
-          id: "p1",
+          // Entrou aos 20 min, chegou aos 50 min, mas só viu 15 min.
+          participant_id: "p1",
           webinar_id: "w1",
+          webinar_title: "Aula 1",
           joined_at: "2026-09-10T20:00:00Z",
-          watched_seconds: 1800,
-          cta_clicked: false,
           viewing_mode: "live",
-          webinars: { public_title: "Aula 1", duration_seconds: 3600, cta_start_seconds: 1500 },
+          duration_seconds: 3600,
+          offer_start_seconds: 1500,
+          entry_seconds: 1200,
+          peak_seconds: 3000,
+          actual_watch_seconds: 900,
+          watch_measured: true,
+          watch_ratio: 0.25,
+          attended: true,
+          saw_offer: true,
+          clicked: false,
+          checkout_started: false,
+          purchased: false,
+          payment_failed: false,
+          checkout_abandoned: false,
+          refunded: false,
         },
       ],
       clicks: [
@@ -183,6 +222,7 @@ describe("buildJourney", () => {
         {
           id: "b1",
           created_at: "2026-09-11T09:00:00Z",
+          status_at: "2026-09-11T09:00:00Z",
           product_name: "Curso",
           amount: "",
           amount_value: 97,
@@ -196,12 +236,61 @@ describe("buildJourney", () => {
     const event = steps[1];
     if (event?.kind !== "event") throw new Error("esperava um evento");
     expect([
+      event.attended,
+      event.watchedSeconds,
+      event.watchMeasured,
+      event.entrySeconds,
+      event.peakSeconds,
       event.watchedPct,
       event.offerAtPct,
       event.reachedOffer,
       event.clicked,
       event.clickedAtSecond,
       event.messages,
-    ]).toEqual([50, 42, true, true, 1560, 2]);
+    ]).toEqual([true, 900, true, 1200, 3000, 25, 42, true, true, 1560, 2]);
+  });
+});
+
+describe("linha do tempo", () => {
+  it("junta repetições seguidas e mantém o fim da sessão à parte", () => {
+    const row = (name: string, at: string, data: unknown = {}) => ({
+      name,
+      occurred_at: at,
+      webinar_id: "w1",
+      session_id: "s1",
+      video_second: null,
+      data: data as never,
+    });
+    const items = timelineItems([
+      row("webinar_session_ended", "2026-10-12T20:00:00Z"),
+      row("payment_failed", "2026-10-12T19:58:00Z", { product: "Curso" }),
+      row("checkout_started", "2026-10-12T19:55:00Z", { product: "Curso" }),
+      row("offer_viewed", "2026-10-12T19:50:00Z"),
+      row("offer_viewed", "2026-10-12T19:49:00Z"),
+      row("offer_viewed", "2026-10-12T19:48:00Z"),
+      row("registered", "2026-10-12T18:00:00Z"),
+    ]);
+    expect(items.map((i) => [i.label, i.times, i.detail])).toEqual([
+      ["A sessão terminou", 1, null],
+      ["O pagamento falhou", 1, "Curso"],
+      ["Iniciou o pagamento", 1, "Curso"],
+      ["Viu a oferta", 3, null],
+      ["Inscreveu-se", 1, null],
+    ]);
+  });
+
+  it("hoje e ontem são dias de calendário, não 12 horas", () => {
+    const now = new Date(2026, 8, 29, 6, 0).getTime();
+    expect(relativeDays(new Date(2026, 8, 28, 17, 50).toISOString(), now)).toBe("ontem");
+    expect(relativeDays(new Date(2026, 8, 28, 23, 59).toISOString(), now)).toBe("ontem");
+    expect(relativeDays(new Date(2026, 8, 29, 0, 5).toISOString(), now)).toBe("hoje");
+  });
+
+  it("no mesmo instante segue a ordem lógica: pagamento, compra, automação", () => {
+    const at = "2026-10-12T19:55:00.123Z";
+    const row = (name: string) => ({ name, occurred_at: at, webinar_id: "w1", session_id: "s1", video_second: null, data: {} as never });
+    const items = timelineItems([row("checkout_started"), row("automation_entered"), row("purchase_approved")]);
+    // Da mais recente para a mais antiga, como a ficha as recebe.
+    expect(items.map((i) => i.name)).toEqual(["automation_entered", "purchase_approved", "checkout_started"]);
   });
 });

@@ -100,7 +100,7 @@ export function CommentInspector({
         {comment ? (
           <div className="space-y-5 px-4 pb-8 text-sm">
             <div className="rounded-xl border bg-muted/30 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {comment.author_name} · {msClock(atMs)}
               </p>
               <p className="mt-1 text-foreground">{comment.message}</p>
@@ -143,7 +143,7 @@ export function CommentInspector({
 
             {comment.generation_reason ? (
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Motivo
                 </p>
                 <p className="mt-1 text-foreground/90">{comment.generation_reason}</p>
@@ -153,7 +153,7 @@ export function CommentInspector({
             {triggerText ? (
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     O que foi dito
                   </p>
                   {onSeek && comment.trigger_start_ms != null ? (
@@ -175,7 +175,7 @@ export function CommentInspector({
 
             {words.length > 0 ? (
               <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Palavra a palavra
                 </p>
                 <div className="flex flex-wrap gap-1">
@@ -214,7 +214,7 @@ export function CommentInspector({
 function Item({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <dt className="text-xs text-muted-foreground">
         {label}
       </dt>
       <dd className="mt-0.5 text-foreground">{value}</dd>

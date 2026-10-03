@@ -1,0 +1,21 @@
+<!-- @dsCard group="Componentes" viewport="700x400" name="Gráficos" subtitle="Barras, comparação, linha, heatmap" -->
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{padding:20px;margin:0}.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.col{display:flex;flex-direction:column;gap:14px}.lbl{font-size:11px;color:var(--text-tertiary);width:72px;flex:none}</style>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const NS = window.OrvionDesignSystem_1d6ac1;
+const { BarChart, RangeChart, LineChart, Heatmap, WidgetCard } = NS;
+const days=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+function Card(){return (<div style={{display:'grid',gridTemplateColumns:'1fr 1.3fr',gap:12}}>
+<WidgetCard padding={18}><BarChart height={120} highlight={4} tag="12.464" data={[18,32,28,48,80,52,44].map((v,i)=>({label:days[i],value:v}))}/></WidgetCard>
+<WidgetCard padding={18}><RangeChart upperLabel="2026" lowerLabel="2025" highlight={3} tag="+9%" upper={[40,38,52,56,60,70]} lower={[22,16,24,18,40,54]} labels={days.slice(0,6)} height={120}/></WidgetCard>
+<WidgetCard padding={18}><LineChart values={[20,24,38,30,56,46,72]} highlight={3} tag="3.453" labels={days} height={110}/></WidgetCard>
+<WidgetCard padding={18}><Heatmap cell={20} labelWidth={72} rows={[{label:'Facebook',lines:[[null,null,null,0,0,2,0],[null,null,1,0,2,4,1]]},{label:'Instagram',lines:[[1,1,4,4,4,4,2],[null,0,2,2,4,3,0]]},{label:'TikTok',lines:[[null,null,0,1,3,0,null]]}]}/></WidgetCard>
+</div>);}
+ReactDOM.createRoot(document.getElementById('root')).render(<Card />);
+</script></body></html>

@@ -2,7 +2,7 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { Participation } from "@/lib/contacts";
+import { PARTICIPATION_COLUMNS } from "@/lib/contacts";
 import type { AgentSource } from "@/lib/ai-agent/defaults";
 import { buildCommercialContext, type ContextPurchase } from "./context";
 import {
@@ -134,7 +134,7 @@ export async function setMyStatus(organizationId: string, status: StaffStatus) {
 /* ---------- Conversas ---------- */
 
 const CONVERSATION_COLUMNS =
-  "*, participants(name, email, phone, contact_id, watched_seconds, cta_clicked), webinars(public_title)";
+  "*, participants(name, email, phone, contact_id), webinars(public_title)";
 
 export function useSupportConversations(organizationId: string | undefined) {
   return useQuery({
@@ -286,33 +286,20 @@ export function caseAlerts(c: CaseRow, now = Date.now()) {
 
 /* ---------- Contexto comercial ---------- */
 
-type ParticipationRow = Omit<Participation, "webinars"> & {
-  device: string | null;
-  city: string | null;
-  country: string | null;
-  webinars:
-    | (NonNullable<Participation["webinars"]> & {
-        video_sources: { duration_seconds: number | null } | null;
-      })
-    | null;
-};
-
 export function useContactContext(contactId: string | null | undefined, participantId?: string | null) {
   return useQuery({
     queryKey: ["support", "context", contactId ?? null, contactId ? null : (participantId ?? null)],
     enabled: Boolean(contactId || participantId),
     queryFn: async () => {
-      const columns =
-        "id, webinar_id, joined_at, watched_seconds, cta_clicked, viewing_mode, device, city, country, webinars(public_title, duration_seconds, cta_start_seconds, video_sources(duration_seconds))";
-      const base = supabase.from("participants").select(columns);
+      const base = supabase.from("participant_facts").select(PARTICIPATION_COLUMNS);
       const [participations, purchases, cases, lists] = await Promise.all([
-        (contactId ? base.eq("contact_id", contactId) : base.eq("id", participantId!))
+        (contactId ? base.eq("contact_id", contactId) : base.eq("participant_id", participantId!))
           .order("joined_at", { ascending: false })
           .limit(100),
         contactId
           ? supabase
               .from("real_purchase_events")
-              .select("id, created_at, product_name, amount, amount_value, currency, status, provider, webinar_id")
+              .select("id, created_at, status_at, product_name, amount, amount_value, currency, status, provider, webinar_id")
               .eq("contact_id", contactId)
               .order("created_at", { ascending: false })
               .limit(100)
@@ -331,24 +318,8 @@ export function useContactContext(contactId: string | null | undefined, particip
       ]);
       if (participations.error) throw participations.error;
 
-      const raw = (participations.data ?? []) as unknown as ParticipationRow[];
-      const rows: Participation[] = raw.map((row) => ({
-        id: row.id,
-        webinar_id: row.webinar_id,
-        joined_at: row.joined_at,
-        watched_seconds: row.watched_seconds,
-        cta_clicked: row.cta_clicked,
-        viewing_mode: row.viewing_mode,
-        webinars: row.webinars
-          ? {
-              public_title: row.webinars.public_title,
-              cta_start_seconds: row.webinars.cta_start_seconds,
-              duration_seconds:
-                row.webinars.video_sources?.duration_seconds || row.webinars.duration_seconds || 0,
-            }
-          : null,
-      }));
-      const ids = rows.map((row) => row.id);
+      const rows = participations.data ?? [];
+      const ids = rows.flatMap((row) => row.participant_id ?? []);
       const [clicks, messages] = ids.length
         ? await Promise.all([
             supabase
@@ -366,7 +337,7 @@ export function useContactContext(contactId: string | null | undefined, particip
           ])
         : [{ data: [] }, { data: [] }];
 
-      const latest = raw[0];
+      const latest = rows[0];
       return {
         context: buildCommercialContext({
           participations: rows,

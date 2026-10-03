@@ -65,7 +65,7 @@ export function IdentityPreview({
 
   return (
     <div className="mx-auto w-full max-w-xl space-y-4">
-      <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+      <div className="overflow-hidden rounded-card bg-card">
         <div className="flex items-center justify-between gap-3 border-b bg-muted/50 px-5 py-3">
           <span className="rounded-full bg-primary px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-widest text-primary-foreground">
             {statusLabel}
@@ -105,7 +105,7 @@ export function IdentityPreview({
             { label: "Horas", value: hours },
             { label: "Minutos", value: minutes },
           ].map((item) => (
-            <div key={item.label} className="rounded-xl border bg-card py-4 text-center">
+            <div key={item.label} className="rounded-card bg-card py-4 text-center">
               <p className="text-2xl font-black tabular-nums">
                 {String(item.value).padStart(2, "0")}
               </p>
@@ -151,7 +151,7 @@ export function ChatPreview({
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
       {hasVideo ? (
-        <div className="overflow-hidden rounded-2xl border bg-card">
+        <div className="overflow-hidden rounded-card bg-card">
           <VideoPlayer
             url={videoUrl ?? null}
             provider={videoProvider ?? null}
@@ -168,12 +168,12 @@ export function ChatPreview({
           </div>
         </div>
       ) : (
-        <div className="rounded-2xl border bg-card p-5 text-sm text-muted-foreground">
+        <div className="rounded-card bg-card p-5 text-sm text-muted-foreground">
           Escolha o vídeo no passo Vídeo para acompanhar o chat sincronizado com a fala.
         </div>
       )}
 
-      <div className="flex h-[520px] flex-col overflow-hidden rounded-2xl border bg-card">
+      <div className="flex h-[520px] flex-col overflow-hidden rounded-card bg-card">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <p className="flex items-center gap-2 text-xs font-bold">
             <MessageSquare className="size-3.5 text-primary" />
@@ -309,7 +309,7 @@ export function OfferPreview({
         </div>
       </div>
 
-      <div className="rounded-2xl border bg-card p-5">
+      <div className="rounded-card bg-card p-5">
         <p className="mb-3 text-[10px] font-extrabold uppercase tracking-widest text-muted-foreground">
           Janela da oferta na linha temporal
         </p>
@@ -374,7 +374,7 @@ export function AudienceChartPreview({
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-4">
-      <div className="rounded-2xl border bg-card p-5">
+      <div className="rounded-card bg-card p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-[10px] font-extrabold uppercase tracking-widest text-muted-foreground">
@@ -446,7 +446,7 @@ export function AudienceChartPreview({
 
           {hoverPoint && hoverValue !== undefined && hoverValue !== null && (
             <div
-              className="pointer-events-none absolute -translate-x-1/2 -translate-y-full rounded-xl border bg-card px-3 py-2 text-center shadow-lg"
+              className="pointer-events-none absolute -translate-x-1/2 -translate-y-full rounded-card bg-card px-3 py-2 text-center shadow-lg"
               style={{
                 left: `${(hoverPoint[0] / width) * 100}%`,
                 top: `${Math.max(8, (hoverPoint[1] / height) * 100 - 6)}%`,
@@ -569,7 +569,7 @@ export function RegistrationPreview({
             </div>
           )}
         </div>
-        <span className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-6 py-3 text-base font-semibold text-white hover:bg-emerald-500">
+        <span className="flex w-full items-center justify-center gap-2 rounded-pill bg-primary px-6 py-3 text-base font-semibold text-white hover:bg-accent-strong">
           {buttonText || "Entrar na sala"}
           <ArrowRight className="size-5" />
         </span>
@@ -619,7 +619,7 @@ function AudienceStat({
 }) {
   return (
     <div
-      className={cn("rounded-xl border bg-card p-4", highlight && "border-primary/40 bg-accent")}
+      className={cn("rounded-card bg-card p-4", highlight && "border-primary/40 bg-accent")}
     >
       <p className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-muted-foreground">
         <Icon className="size-3" />
@@ -756,7 +756,7 @@ export function RoomDesignPreview({
                   WhatsApp
                 </div>
               </div>
-              <div className="flex h-12 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-center text-base font-semibold text-white hover:bg-emerald-500">
+              <div className="flex h-12 items-center justify-center gap-2 rounded-pill bg-primary px-4 text-center text-base font-semibold text-white hover:bg-accent-strong">
                 {buttonText || "Entrar na sala"}
                 <ArrowRight className="size-5" />
               </div>

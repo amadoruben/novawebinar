@@ -31,15 +31,18 @@ const joinSchema = z.object({
   referrer: z.string().trim().max(200).optional(),
 });
 
+/** A credencial que joinPublicRoom entrega: o id da participação assinado pelo servidor. */
+const viewerToken = z.string().min(1).max(200);
+
 const messageSchema = z.object({
-  participantId: z.string().uuid(),
+  token: viewerToken,
   body: z.string().trim().min(1).max(1000),
   /** Instante real do participante no vídeo (live ou replay), em segundos. */
   sessionSeconds: z.number().int().nonnegative().optional(),
 });
 
 const ctaSchema = z.object({
-  participantId: z.string().uuid(),
+  token: viewerToken,
   eventType: z.enum(["view", "click"]),
   /** Segundo do vídeo em que a pessoa viu ou clicou na oferta. */
   videoSecond: z
@@ -50,16 +53,33 @@ const ctaSchema = z.object({
     .optional(),
 });
 
+const second = z
+  .number()
+  .int()
+  .min(0)
+  .max(60 * 60 * 24);
+
 const watchedSchema = z.object({
-  participantId: z.string().uuid(),
-  watchedSeconds: z
-    .number()
-    .int()
-    .min(0)
-    .max(60 * 60 * 24),
+  token: viewerToken,
+  /** Posição mais avançada no conteúdo. */
+  watchedSeconds: second,
+  /** Posição em que a pessoa começou a ver. */
+  entrySeconds: second.optional(),
+  /** Segundos vistos desde o último envio; a base de dados limita a 120 por sinal. */
+  playedSeconds: z.number().int().min(0).max(120).optional(),
 });
 
 const UNAVAILABLE = "Serviço temporariamente indisponível. Tente novamente.";
+/** A sala reconhece esta mensagem e pede para entrar outra vez. */
+export const VIEWER_EXPIRED = "A sua entrada na sala expirou. Entre outra vez.";
+
+/** Quem está a pedir: só a credencial emitida pelo servidor diz qual é a participação. */
+async function participantOf(token: string) {
+  const { participantFromToken } = await import("@/lib/public-room.server");
+  const id = participantFromToken(token);
+  if (!id) throw new Error(VIEWER_EXPIRED);
+  return id;
+}
 
 export const getPublicRoom = createServerFn({ method: "GET" })
   .inputValidator((data: unknown) => slugSchema.parse(data))
@@ -69,121 +89,69 @@ export const getPublicRoom = createServerFn({ method: "GET" })
   });
 
 /** Deduz dispositivo e localização a partir do pedido quando o navegador não os envia. */
-async function requestAudienceMeta(): Promise<{
-  device: "mobile" | "desktop" | null;
-  city: string | null;
-  country: string | null;
-  countryCode: string | null;
-}> {
+async function requestAudienceMeta() {
   try {
     const { getRequest } = await import("@tanstack/react-start/server");
-    const headers = getRequest().headers;
-    const ua = headers.get("user-agent") ?? "";
-    const mobileHint = headers.get("sec-ch-ua-mobile");
-    const isMobile =
-      mobileHint === "?1" || /Android|iPhone|iPad|iPod|Mobile|Opera Mini|IEMobile/i.test(ua);
-    const code = (headers.get("cf-ipcountry") ?? headers.get("x-vercel-ip-country") ?? "")
-      .trim()
-      .toUpperCase();
-    const rawCity =
-      headers.get("cf-ipcity") ?? headers.get("x-vercel-ip-city") ?? headers.get("x-geo-city");
-    const city = rawCity ? decodeURIComponent(rawCity).trim() : "";
-    return {
-      device: ua ? (isMobile ? "mobile" : "desktop") : null,
-      city: city || null,
-      country: code && code !== "XX" ? countryNameFromIso(code) : null,
-      countryCode: code && code !== "XX" ? code : null,
-    };
+    const { audienceMetaFromHeaders } = await import("@/lib/registration.server");
+    return audienceMetaFromHeaders(getRequest().headers);
   } catch {
     return { device: null, city: null, country: null, countryCode: null };
-  }
-}
-
-/** Nome do país a partir do código ISO, com recurso ao próprio código. */
-function countryNameFromIso(code: string): string {
-  try {
-    const dn = new Intl.DisplayNames(["pt-PT"], { type: "region" });
-    return dn.of(code) ?? code;
-  } catch {
-    return code;
   }
 }
 
 export const joinPublicRoom = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => joinSchema.parse(data))
   .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { loadRegistrationWebinar, openRegistrationSession, createRegistration } = await import(
+      "@/lib/registration.server"
+    );
     const fallback = await requestAudienceMeta();
 
-    const { data: webinar } = await supabaseAdmin
-      .from("webinars")
-      .select("id, organization_id, status, public_title, webhook_url, webhook_enabled")
-      .eq("id", data.webinarId)
-      .maybeSingle();
+    const webinar = await loadRegistrationWebinar(data.webinarId).catch(() => null);
     if (!webinar) throw new Error("Webinar indisponível.");
     if (webinar.status === "draft" && !data.teste) throw new Error("Webinar indisponível.");
 
-    const { data: participant, error } = await supabaseAdmin
-      .from("participants")
-      .insert({
-        webinar_id: webinar.id,
-        organization_id: webinar.organization_id,
-        name: data.name,
-        email: data.email,
-        phone: data.phone ?? null,
-        viewing_mode: data.mode,
-        device: data.device ?? fallback.device,
-        city: data.city ?? fallback.city,
-        country: data.country ?? fallback.country,
-        country_code: data.countryCode ?? fallback.countryCode,
-        utm_source: data.utmSource ?? null,
-        utm_medium: data.utmMedium ?? null,
-        utm_campaign: data.utmCampaign ?? null,
-        utm_content: data.utmContent ?? null,
-        referrer: data.referrer ?? null,
-      })
-      .select("id, name")
-      .single();
-
-    if (error) throw new Error("Não foi possível entrar na sala.");
-
-    const { notifyWebhook } = await import("@/lib/public-room.server");
-    await notifyWebhook(webinar.webhook_url, data.teste ? false : webinar.webhook_enabled, {
-      event: "registration",
-      webinar_id: webinar.id,
-      webinar: webinar.public_title,
-      participant_id: participant.id,
-      name: data.name,
-      email: data.email,
-      phone: data.phone ?? null,
-      mode: data.mode,
-    });
-    if (!data.teste && !data.email.endsWith("@sala.local")) {
-      const { notifyOutgoing } = await import("@/lib/integrations.server");
-      await notifyOutgoing(webinar.organization_id, "contact.registered", {
-        webinar_id: webinar.id,
-        webinar: webinar.public_title,
+    // Inscrição ao vivo num webinar com horário: fica ligada à sessão global, com a
+    // mesma janela que a sala mostra (o mesmo caminho da captura externa).
+    const sessionId = await openRegistrationSession(webinar, data.mode, Boolean(data.teste));
+    const { participant, error } = await createRegistration(
+      webinar,
+      {
         name: data.name,
         email: data.email,
         phone: data.phone ?? null,
         mode: data.mode,
-        utm_source: data.utmSource ?? null,
-        utm_campaign: data.utmCampaign ?? null,
-      });
-    }
-
-    return { participantId: participant.id, name: participant.name };
+        device: data.device ?? fallback.device,
+        city: data.city ?? fallback.city,
+        country: data.country ?? fallback.country,
+        countryCode: data.countryCode ?? fallback.countryCode,
+        utm: {
+          ...(data.utmSource ? { utm_source: data.utmSource } : {}),
+          ...(data.utmMedium ? { utm_medium: data.utmMedium } : {}),
+          ...(data.utmCampaign ? { utm_campaign: data.utmCampaign } : {}),
+          ...(data.utmContent ? { utm_content: data.utmContent } : {}),
+        },
+        referrer: data.referrer ?? null,
+        source: "room",
+        teste: Boolean(data.teste),
+      },
+      sessionId,
+    );
+    if (error || !participant) throw new Error("Não foi possível entrar na sala.");
+    const { roomToken } = await import("@/lib/public-room.server");
+    return { token: roomToken(participant.id), name: participant.name };
   });
 
 export const sendPublicRoomMessage = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => messageSchema.parse(data))
   .handler(async ({ data }) => {
+    const participantId = await participantOf(data.token);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: participant, error: participantError } = await supabaseAdmin
       .from("participants")
       .select("id, name, webinar_id, organization_id")
-      .eq("id", data.participantId)
+      .eq("id", participantId)
       .maybeSingle();
     if (participantError) throw new Error(UNAVAILABLE);
     if (!participant) throw new Error("Participante desconhecido.");
@@ -272,29 +240,33 @@ export const sendPublicRoomMessage = createServerFn({ method: "POST" })
 export const trackPublicRoomCta = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => ctaSchema.parse(data))
   .handler(async ({ data }) => {
+    const participantId = await participantOf(data.token);
     const { recordCta } = await import("@/lib/public-room.server");
-    return recordCta(data);
+    return recordCta({ participantId, eventType: data.eventType, videoSecond: data.videoSecond });
   });
 
 export const trackPublicRoomProgress = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => watchedSchema.parse(data))
   .handler(async ({ data }) => {
+    const participantId = await participantOf(data.token);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    // Só avança: um envio atrasado ou fora de ordem nunca apaga progresso.
-    const { error } = await supabaseAdmin
-      .from("participants")
-      .update({ watched_seconds: data.watchedSeconds })
-      .eq("id", data.participantId)
-      .lt("watched_seconds", data.watchedSeconds);
-    // A sala volta a enviar este progresso no próximo avanço.
+    // O pico só avança e o tempo visto só soma: um envio atrasado nunca apaga progresso.
+    const { error } = await supabaseAdmin.rpc("record_participant_progress", {
+      _participant_id: participantId,
+      _position: data.watchedSeconds,
+      ...(data.entrySeconds !== undefined ? { _entry: data.entrySeconds } : {}),
+      _played: data.playedSeconds ?? 0,
+    });
+    // A sala volta a enviar este progresso no próximo sinal.
     if (error) throw new Error(UNAVAILABLE);
     return { ok: true };
   });
 
 /** Mensagens privadas de um participante, incluindo as respostas da equipa de suporte. */
 export const getPublicRoomMessages = createServerFn({ method: "GET" })
-  .inputValidator((data: unknown) => z.object({ participantId: z.string().uuid() }).parse(data))
+  .inputValidator((data: unknown) => z.object({ token: viewerToken }).parse(data))
   .handler(async ({ data }) => {
+    const participantId = await participantOf(data.token);
     const { loadRoomMessages } = await import("@/lib/public-room.server");
-    return loadRoomMessages(data.participantId);
+    return loadRoomMessages(participantId);
   });

@@ -19,7 +19,7 @@ import {
   phoneCountryForIso,
   type PhoneCountry,
 } from "@/lib/phone-countries";
-import { WebinarRoom } from "@/components/webinar-room";
+import { WebinarRoom, type RoomProgressOptions } from "@/components/webinar-room";
 import { RoomSkeleton, getCachedRoomTheme, cacheRoomTheme } from "@/components/room-skeleton";
 import whatsappIcon from "@/assets/local/whatsapp-icon.webp";
 import {
@@ -29,6 +29,7 @@ import {
   sendPublicRoomMessage,
   trackPublicRoomCta,
   trackPublicRoomProgress,
+  VIEWER_EXPIRED,
 } from "@/lib/public-room.functions";
 
 export const Route = createFileRoute("/w/$slug")({
@@ -87,7 +88,8 @@ function PublicRoomRoute() {
 }
 
 type Viewer = {
-  participantId: string;
+  /** Credencial da sala emitida pelo servidor ao entrar (não é só o id da participação). */
+  token: string;
   name: string;
   /** Última posição do vídeo desta pessoa (relógio de conteúdo). */
   position?: number;
@@ -207,7 +209,12 @@ export function PublicRoom({
     if (!stored) return;
     try {
       const parsed = JSON.parse(stored) as Viewer;
-      if (parsed?.participantId && parsed?.name) {
+      // Entradas antigas guardavam só o id da participação: já não servem, a pessoa entra outra vez.
+      if (!parsed?.token) {
+        window.localStorage.removeItem(storageKey(slug));
+        return;
+      }
+      if (parsed.name) {
         setViewer(parsed);
         // Com a sincronização desligada, o vídeo retoma a posição guardada.
         if (typeof parsed.position === "number" && parsed.position > 0) {
@@ -223,12 +230,18 @@ export function PublicRoom({
   }, [slug]);
 
   // As respostas da equipa de suporte chegam por sondagem, de 5 em 5 segundos.
-  const { data: privateThread, refetch: refetchThread } = useQuery({
-    queryKey: ["public-room-messages", viewer?.participantId],
-    enabled: Boolean(viewer?.participantId),
+  const { data: privateThread, refetch: refetchThread, error: threadError } = useQuery({
+    queryKey: ["public-room-messages", viewer?.token],
+    enabled: Boolean(viewer?.token),
     refetchInterval: 5000,
-    queryFn: () => fetchMessages({ data: { participantId: viewer!.participantId } }),
+    queryFn: () => fetchMessages({ data: { token: viewer!.token } }),
   });
+  // Credencial recusada pelo servidor: volta ao formulário em vez de falhar de 5 em 5 segundos.
+  useEffect(() => {
+    if (threadError?.message !== VIEWER_EXPIRED) return;
+    window.localStorage.removeItem(storageKey(slug));
+    setViewer(null);
+  }, [threadError, slug]);
 
   // Instante real desta pessoa no vídeo: o assistente nunca pode revelar
   // conteúdo que ela ainda não viu, mesmo num replay.
@@ -245,7 +258,7 @@ export function PublicRoom({
       if (!viewer) return;
       await sendMessage({
         data: {
-          participantId: viewer.participantId,
+          token: viewer.token,
           body,
           sessionSeconds: Math.max(0, Math.round(positionRef.current)),
         },
@@ -262,7 +275,7 @@ export function PublicRoom({
     (eventType: "view" | "click") => {
       if (!viewer) return;
       const data = {
-        participantId: viewer.participantId,
+        token: viewer.token,
         eventType,
         videoSecond: Math.max(0, Math.round(positionRef.current)),
       };
@@ -294,7 +307,7 @@ export function PublicRoom({
             ...audienceMeta(),
           },
         });
-        const next = { participantId: result.participantId, name: result.name };
+        const next = { token: result.token, name: result.name };
         window.localStorage.setItem(storageKey(slug), JSON.stringify(next));
         setViewer(next);
       } catch {
@@ -304,8 +317,10 @@ export function PublicRoom({
   }, [data, shouldAutoJoin, viewer, join, roomMode, slug, testMode, audienceMeta]);
 
   const lastSentPeakRef = useRef(0);
+  // Segundos vistos que ainda não chegaram ao servidor: se um envio falha, seguem no próximo.
+  const pendingPlayedRef = useRef(0);
   const onProgress = useCallback(
-    (seconds: number, peakSeconds?: number, options?: { final?: boolean }) => {
+    (seconds: number, peakSeconds?: number, options?: RoomProgressOptions) => {
       positionRef.current = seconds;
       const peak = Math.max(peakSeconds ?? seconds, peakPositionRef.current);
       peakPositionRef.current = peak;
@@ -317,7 +332,7 @@ export function PublicRoom({
           const stored = window.localStorage.getItem(storageKey(slug));
           if (stored) {
             const parsed = JSON.parse(stored) as Viewer;
-            if (parsed?.participantId) {
+            if (parsed?.token) {
               window.localStorage.setItem(
                 storageKey(slug),
                 JSON.stringify({ ...parsed, position: seconds, maxPosition: peak }),
@@ -329,15 +344,25 @@ export function PublicRoom({
         }
       }
       if (!viewer) return;
-      // Só grava quando o pico avançou, para não repetir pedidos iguais.
-      if (peak <= lastSentPeakRef.current) return;
+      pendingPlayedRef.current += options?.played ?? 0;
+      // O servidor soma no máximo 120 s por sinal; o resto segue no próximo.
+      const played = Math.min(pendingPlayedRef.current, 120);
+      // Só grava quando o pico avançou ou houve tempo visto, para não repetir pedidos iguais.
+      if (peak <= lastSentPeakRef.current && played === 0) return;
       const previous = lastSentPeakRef.current;
-      lastSentPeakRef.current = peak;
-      const data = { participantId: viewer.participantId, watchedSeconds: peak };
+      lastSentPeakRef.current = Math.max(previous, peak);
+      pendingPlayedRef.current -= played;
+      const data = {
+        token: viewer.token,
+        watchedSeconds: peak,
+        ...(options?.entry != null ? { entrySeconds: options.entry } : {}),
+        playedSeconds: played,
+      };
       // Ao esconder ou fechar a página, keepalive deixa o pedido terminar sem bloquear.
       const keepalive: typeof fetch = (input, init) => fetch(input, { ...init, keepalive: true });
       void trackProgress(options?.final ? { data, fetch: keepalive } : { data }).catch(() => {
         if (lastSentPeakRef.current === peak) lastSentPeakRef.current = previous;
+        pendingPlayedRef.current += played;
       });
     },
     [trackProgress, viewer, slug],
@@ -470,7 +495,7 @@ export function PublicRoom({
             ...audienceMeta(),
           },
         });
-        const next = { participantId: result.participantId, name: result.name };
+        const next = { token: result.token, name: result.name };
         window.localStorage.setItem(storageKey(slug), JSON.stringify(next));
         if (!testMode) trackPixels("lead");
         setViewer(next);
@@ -542,7 +567,7 @@ export function PublicRoom({
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   placeholder="Como quer ser tratado"
-                  className="h-11 rounded-lg border-room-line bg-room-surface px-3.5 text-sm text-room-text placeholder:text-room-subtle"
+                  className="h-11 rounded-pill border-room-line bg-room-surface px-4 text-sm text-room-text placeholder:text-room-subtle hover:border-room-subtle focus-visible:border-primary"
                 />
               </div>
               <div className="grid gap-1.5">
@@ -554,7 +579,7 @@ export function PublicRoom({
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   placeholder="onde enviamos o acesso"
-                  className="h-11 rounded-lg border-room-line bg-room-surface px-3.5 text-sm text-room-text placeholder:text-room-subtle"
+                  className="h-11 rounded-pill border-room-line bg-room-surface px-4 text-sm text-room-text placeholder:text-room-subtle hover:border-room-subtle focus-visible:border-primary"
                 />
               </div>
               {webinar.registration_collect_phone && (
@@ -575,7 +600,7 @@ export function PublicRoom({
                         <button
                           type="button"
                           aria-label="Escolher o indicativo do país"
-                          className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-room-line bg-room-surface px-3 text-sm text-room-text"
+                          className="flex h-11 shrink-0 items-center gap-1.5 rounded-pill border border-room-line bg-room-surface px-3.5 text-sm text-room-text"
                         >
                           <span className="text-lg leading-none">{phoneCountry.flag}</span>
                           <span className="font-semibold tabular-nums">{phoneCountry.dial}</span>
@@ -615,7 +640,7 @@ export function PublicRoom({
                       }
                       inputMode="tel"
                       placeholder="900 000 000"
-                      className="h-11 min-w-0 rounded-lg border-room-line bg-room-surface px-3.5 text-sm text-room-text placeholder:text-room-subtle"
+                      className="h-11 min-w-0 rounded-pill border-room-line bg-room-surface px-4 text-sm text-room-text placeholder:text-room-subtle hover:border-room-subtle focus-visible:border-primary"
                     />
                   </div>
                 </div>
@@ -627,7 +652,7 @@ export function PublicRoom({
             <Button
               type="submit"
               disabled={entering}
-              className="h-12 w-full rounded-lg bg-emerald-600 text-base font-semibold text-white hover:bg-emerald-500"
+              className="h-12 w-full rounded-pill bg-primary text-[15px] font-medium text-white hover:bg-accent-strong"
             >
               {entering && <Loader2 className="animate-spin" />}
               {webinar.registration_button_text || "Entrar na sala"}

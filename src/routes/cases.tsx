@@ -204,12 +204,12 @@ function CasesPage() {
           description="Um caso abre-se sozinho quando a IA não consegue resolver um pedido, ou quando alguém da equipa assume uma conversa."
         />
       ) : rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed bg-card px-6 py-10 text-center text-sm text-muted-foreground">
+        <p className="rounded-card bg-card px-6 py-10 text-center text-sm text-muted-foreground">
           Nenhum caso neste filtro.
         </p>
       ) : (
         <>
-          <div className="hidden overflow-hidden rounded-lg border bg-card md:block">
+          <div className="hidden overflow-hidden rounded-card bg-card md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -300,7 +300,7 @@ function CasesPage() {
                 <button
                   type="button"
                   onClick={() => open(c.id)}
-                  className="w-full rounded-lg border bg-card p-3 text-left"
+                  className="w-full rounded-card bg-card p-3 text-left"
                 >
                   <span className="flex items-center justify-between gap-2">
                     <span className="truncate font-medium">

@@ -20,7 +20,8 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useParticipants, useWebinars, useWorkspace } from "@/lib/data";
+import { lifecycleOf, useParticipants, useWebinars, useWorkspace } from "@/lib/data";
+import { formatSessionStart } from "@/lib/schedule";
 import { AI_JOB_STAGES, useAiJobs } from "@/lib/ai-comment-jobs";
 import { useSyncJobs } from "@/lib/sync-jobs";
 import { friendlyError } from "@/lib/friendly-error";
@@ -135,9 +136,56 @@ function useCaseNotices(organizationId: string | undefined, enabled: boolean): N
   }, [open, setup?.staffId]);
 }
 
+/** Sessões que a base de dados deu como terminadas nas últimas 24 horas. */
+function useEndedSessions(organizationId: string | undefined) {
+  return useQuery({
+    queryKey: ["webinar-sessions", "ended", organizationId],
+    enabled: Boolean(organizationId),
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("webinar_sessions")
+        .select("id, webinar_id, ends_at, ended_at, webinars(public_title, internal_name, timezone)")
+        .eq("organization_id", organizationId!)
+        .gte("ended_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString())
+        .order("ended_at", { ascending: false })
+        .limit(5);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+/**
+ * Automações que pedem atenção: execuções falhadas nas últimas 24 horas e execuções
+ * prontas há mais de 5 minutos sem ninguém as executar (o servidor não está a correr).
+ */
+function useAutomationAlerts(organizationId: string | undefined) {
+  return useQuery({
+    queryKey: ["automation-runs", "alerts", organizationId],
+    enabled: Boolean(organizationId),
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      const stale = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from("automation_runs")
+        .select("id, status, error, finished_at, automations(name)")
+        .eq("organization_id", organizationId!)
+        .or(`and(status.eq.failed,finished_at.gte.${dayAgo}),and(status.eq.ready,scheduled_for.lt.${stale})`)
+        .order("updated_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
 function useNotices() {
   const { data: workspace } = useWorkspace();
   const { data: webinars } = useWebinars(workspace?.organizationId);
+  const { data: ended = [] } = useEndedSessions(workspace?.organizationId);
+  const { data: automationAlerts = [] } = useAutomationAlerts(workspace?.organizationId);
   const { data: participants } = useParticipants(workspace?.organizationId);
   const aiJobs = useAiJobs();
   const syncJobs = useSyncJobs();
@@ -223,10 +271,50 @@ function useNotices() {
       });
     }
 
-    // Webinar a começar em breve
+    // Sessões que terminaram: o registo é da base de dados, feito à hora prevista.
+    for (const session of ended) {
+      const title = session.webinars?.public_title || session.webinars?.internal_name || "O webinar";
+      notices.push({
+        id: `session-ended-${session.id}`,
+        icon: "calendar",
+        title: "A sessão terminou",
+        body: `“${title}” terminou ${formatSessionStart(Date.parse(session.ends_at ?? session.ended_at!), session.webinars?.timezone)}. Veja quem assistiu e quem comprou.`,
+        to: `/webinars/${session.webinar_id}/metrics`,
+      });
+    }
+
+    // Automações: o que falhou e o que ficou pronto sem ninguém o executar.
+    const failedRuns = automationAlerts.filter((r) => r.status === "failed");
+    if (failedRuns.length > 0) {
+      const last = failedRuns[0]!;
+      notices.push({
+        id: `automations-failed-${last.id}`,
+        icon: "tip",
+        title:
+          failedRuns.length === 1
+            ? "Uma execução de automação falhou"
+            : `${failedRuns.length} execuções de automações falharam`,
+        body: `${last.automations?.name ?? "Automação"}: ${last.error ?? "sem resposta do destino"}`,
+        to: "/automations",
+      });
+    }
+    const stuck = automationAlerts.filter((r) => r.status === "ready").length;
+    if (stuck > 0) {
+      notices.push({
+        id: "automations-stuck",
+        icon: "tip",
+        title: "Automações à espera do servidor",
+        body: `${stuck === 1 ? "Uma execução está pronta" : `${stuck} execuções estão prontas`} há mais de 5 minutos e ainda não foi executada. O servidor da aplicação tem de estar a correr.`,
+        to: "/automations",
+        live: true,
+      });
+    }
+
+    // Webinar a começar em breve (data única ou repetição, pelo ciclo de vida)
     for (const w of webinars) {
-      if (w.status === "draft" || !w.scheduled_at) continue;
-      const start = new Date(w.scheduled_at).getTime();
+      const lifecycle = lifecycleOf(w);
+      if (lifecycle.kind !== "session" || lifecycle.state !== "scheduled") continue;
+      const start = lifecycle.startMs;
       const diff = start - now;
       if (diff > 0 && diff < 24 * 3600 * 1000) {
         const hours = Math.max(1, Math.round(diff / 3600000));
@@ -266,10 +354,19 @@ function useNotices() {
       });
     }
     return notices.slice(0, 8);
-  }, [workspace, webinars, participants, aiJobs, syncJobs, caseNotices]);
+  }, [workspace, webinars, participants, aiJobs, syncJobs, caseNotices, ended, automationAlerts]);
 }
 
-export function NotificationsBell() {
+export function NotificationsBell({
+  quiet = false,
+  side = "bottom",
+  align = "end",
+}: {
+  /** Na barra lateral: botão discreto (sem fundo), menu a abrir para cima. */
+  quiet?: boolean;
+  side?: "top" | "bottom" | "right";
+  align?: "start" | "end";
+} = {}) {
   const navigate = useNavigate();
   const notices = useNotices();
   const [dismissed, setDismissed] = useState<string[]>([]);
@@ -299,16 +396,24 @@ export function NotificationsBell() {
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Notificações" className="relative">
-          <Bell />
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Notificações"
+          className={cn(
+            "relative data-[state=open]:bg-navy data-[state=open]:text-white",
+            quiet ? "size-9 text-gray-700 hover:bg-[var(--hover-ghost)]" : "bg-white hover:bg-gray-100",
+          )}
+        >
+          <Bell strokeWidth={1.5} />
           {unread > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+            <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-white ring-2 ring-canvas">
               {unread > 9 ? "9+" : unread}
             </span>
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[min(92vw,380px)] p-0">
+      <DropdownMenuContent side={side} align={align} className="w-[min(92vw,380px)] p-0">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <p className="text-sm font-semibold">Notificações</p>
           {unread > 0 && (

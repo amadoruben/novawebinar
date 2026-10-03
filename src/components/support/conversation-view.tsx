@@ -281,7 +281,7 @@ export function ConversationView({
             </dl>
             {suggestion && (
               <div className="mt-3 space-y-2.5 border-t border-primary/15 pt-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                <p className="text-xs text-muted-foreground">
                   Resposta preparada pela IA
                 </p>
                 <p className="whitespace-pre-line rounded-md bg-card px-3 py-2">{suggestion.answer}</p>

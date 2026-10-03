@@ -1,6 +1,6 @@
 /**
  * Empurra a fila de trabalhos a partir do próprio servidor, para a geração do
- * chat e a sincronização continuarem com o separador fechado.
+ * chat, a sincronização e as automações continuarem com o separador fechado.
  *
  * Várias instâncias podem correr ao mesmo tempo: cada trabalho é reservado por
  * uma escrita condicional (`locked_until`), por isso só uma o avança.
@@ -12,19 +12,27 @@
 const TICK_MS = 15_000;
 const slot = globalThis as { __jobTicker?: ReturnType<typeof setInterval> };
 
+/**
+ * Duas passagens independentes: um trabalho longo de IA não atrasa as automações.
+ * As automações prontas vêm da base de dados (automation_runs_tick); aqui só se executam.
+ */
+const PASSES = {
+  jobs: () => import("@/lib/job-runner.server").then(({ runPendingJobs }) => runPendingJobs(50_000)),
+  automations: () => import("@/lib/automations.server").then(({ runDueAutomations }) => runDueAutomations()),
+};
+
 export function startJobTicker() {
   // JOB_TICKER=off desliga-o onde a fila já é empurrada por uma chamada agendada.
   if (slot.__jobTicker || process.env["JOB_TICKER"] === "off") return;
-  let running = false;
+  const running = new Set<string>();
   slot.__jobTicker = setInterval(() => {
-    if (running) return;
-    running = true;
-    void import("@/lib/job-runner.server")
-      .then(({ runPendingJobs }) => runPendingJobs(50_000))
-      .catch((error: unknown) => console.error("[jobs] passagem falhada", error))
-      .finally(() => {
-        running = false;
-      });
+    for (const [name, pass] of Object.entries(PASSES)) {
+      if (running.has(name)) continue;
+      running.add(name);
+      void pass()
+        .catch((error: unknown) => console.error(`[${name}] passagem falhada`, error))
+        .finally(() => running.delete(name));
+    }
   }, TICK_MS);
   // Não segura o processo aberto quando o servidor quer terminar.
   slot.__jobTicker.unref?.();

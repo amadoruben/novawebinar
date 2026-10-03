@@ -1,0 +1,21 @@
+<!-- @dsCard group="Componentes" viewport="700x310" name="Controlos base" subtitle="Botões, botões de ícone, chips, etiquetas, campo" -->
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{padding:20px;margin:0}.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.col{display:flex;flex-direction:column;gap:14px}.lbl{font-size:11px;color:var(--text-tertiary);width:72px;flex:none}</style>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const NS = window.OrvionDesignSystem_1d6ac1;
+const { Button, IconButton, Chip, Tag, Input } = NS;
+function Card(){return (<div className="col">
+<div className="row"><span className="lbl">Botão</span><Button variant="accent" icon="plus">Novo webinar</Button><Button variant="dark">Pré-visualizar</Button><Button>Criar relatório</Button><Button variant="white" iconRight="arrow-up-right">Exportar CSV</Button><Button variant="accent" disabled>Desativado</Button></div>
+<div className="row"><span className="lbl">Tamanhos</span><Button variant="accent" size="sm">Pequeno</Button><Button variant="accent">Médio</Button><Button variant="accent" size="lg">Grande</Button></div>
+<div className="row"><span className="lbl">Ícone</span><IconButton icon="sliders-vertical" variant="accent"/><IconButton icon="message-circle-more"/><IconButton icon="arrow-up-right"/><IconButton icon="search" variant="white"/><IconButton icon="calendar" variant="dark"/><IconButton icon="x" variant="white" size={32}/><IconButton icon="bell-ring" variant="white" size={48}/></div>
+<div className="row"><span className="lbl">Chip</span><Chip label="Hoje · 20:00"/><Chip label="Mensal" size="sm" variant="chip"/><Chip caption="Data" label="18 jan – 29 jan 2026" icon="calendar" knob/><Chip label="Funil" icon="sliders-horizontal" knob/></div>
+<div className="row"><span className="lbl">Etiqueta · campo</span><Tag>+9%</Tag><Tag size="md">1.284</Tag><Tag variant="soft" size="md">Replay</Tag><Tag variant="dark" size="md" pill>1.ª sessão</Tag><Input placeholder="Pesquisar webinars"/></div>
+</div>);}
+ReactDOM.createRoot(document.getElementById('root')).render(<Card />);
+</script></body></html>

@@ -222,19 +222,42 @@ describe("acções e acessos", () => {
 });
 
 describe("contexto comercial", () => {
-  const webinar = (title: string, duration: number) => ({ public_title: title, duration_seconds: duration, cta_start_seconds: 600 });
+  // Uma linha dos factos como a base de dados a devolve: vídeo de 1000 s, oferta aos 600 s.
+  const fact = (id: string, webinarId: string, title: string, joinedAt: string, watched: number, clicked = false) => ({
+    participant_id: id,
+    webinar_id: webinarId,
+    webinar_title: title,
+    joined_at: joinedAt,
+    viewing_mode: "live",
+    duration_seconds: 1000,
+    offer_start_seconds: 600,
+    entry_seconds: 0,
+    peak_seconds: watched,
+    actual_watch_seconds: watched,
+    watch_measured: true,
+    watch_ratio: watched / 1000,
+    attended: watched >= 60,
+    saw_offer: watched >= 600,
+    clicked,
+    // Como na base de dados: só as compras aprovadas atribuídas a este webinar.
+    checkout_started: webinarId === "w1",
+    purchased: webinarId === "w1",
+    payment_failed: false,
+    checkout_abandoned: false,
+    refunded: false,
+  });
   const context = buildCommercialContext({
     participations: [
-      { id: "p1", webinar_id: "w1", joined_at: "2026-08-12T10:00:00Z", watched_seconds: 1000, cta_clicked: true, viewing_mode: "live", webinars: webinar("Fórmula Digital", 1000) },
-      { id: "p2", webinar_id: "w2", joined_at: "2026-09-10T10:00:00Z", watched_seconds: 780, cta_clicked: false, viewing_mode: "live", webinars: webinar("Tráfego para Negócios Físicos", 1000) },
-      { id: "p3", webinar_id: "w3", joined_at: "2026-09-16T10:00:00Z", watched_seconds: 0, cta_clicked: false, viewing_mode: "live", webinars: webinar("Mentoria Acelera-C", 1000) },
+      fact("p1", "w1", "Fórmula Digital", "2026-08-12T10:00:00Z", 1000, true),
+      fact("p2", "w2", "Tráfego para Negócios Físicos", "2026-09-10T10:00:00Z", 780),
+      fact("p3", "w3", "Mentoria Acelera-C", "2026-09-16T10:00:00Z", 0),
     ],
     clicks: [],
     messages: [{ participant_id: "p2", created_at: "2026-09-16T14:32:00Z" }],
     purchases: [
-      { id: "b1", created_at: "2026-08-12T10:15:00Z", product_name: "Fórmula Digital", amount: "", amount_value: 750000, currency: "AOA", status: "approved", provider: "kambafy", webinar_id: "w1" },
-      { id: "b2", created_at: "2026-09-15T14:20:00Z", product_name: "Mentoria", amount: "", amount_value: 497000, currency: "AOA", status: "approved", provider: "kambafy", webinar_id: null },
-      { id: "b3", created_at: "2026-09-15T15:00:00Z", product_name: "Extra", amount: "", amount_value: 100, currency: "AOA", status: "refunded", provider: "kambafy", webinar_id: null },
+      { id: "b1", created_at: "2026-08-12T10:15:00Z", status_at: "2026-08-12T10:15:00Z", product_name: "Fórmula Digital", amount: "", amount_value: 750000, currency: "AOA", status: "approved", provider: "kambafy", webinar_id: "w1" },
+      { id: "b2", created_at: "2026-09-15T14:20:00Z", status_at: "2026-09-15T14:20:00Z", product_name: "Mentoria", amount: "", amount_value: 497000, currency: "AOA", status: "approved", provider: "kambafy", webinar_id: null },
+      { id: "b3", created_at: "2026-09-15T15:00:00Z", status_at: "2026-09-15T15:00:00Z", product_name: "Extra", amount: "", amount_value: 100, currency: "AOA", status: "refunded", provider: "kambafy", webinar_id: null },
     ],
     cases: [{ id: "c1", number: 3, intent: "payment", status: "resolved", created_at: "2026-09-01T00:00:00Z", resolved_at: "2026-09-01T01:00:00Z" }],
   });
@@ -260,8 +283,22 @@ describe("contexto comercial", () => {
   it("descreve o contacto em frases", () => {
     const facts = contextFacts(context, "w2");
     expect(facts[0]).toBe("Já comprou 2 vezes: Mentoria; Fórmula Digital.");
-    expect(facts[1]).toBe("Neste webinar (Tráfego para Negócios Físicos): assistiu a 78%, viu a oferta.");
-    expect(facts[2]).toBe("Outros webinars: Fórmula Digital (100%).");
-    expect(facts[3]).toBe("Casos anteriores: Pagamento.");
+    // O reembolso não conta como compra, mas quem atende tem de o saber.
+    expect(facts[1]).toBe("A última compra foi reembolsada (Extra).");
+    expect(facts[2]).toBe("Neste webinar (Tráfego para Negócios Físicos): assistiu a 78%, viu a oferta.");
+    expect(facts[3]).toBe("Outros webinars: Fórmula Digital (100%).");
+    expect(facts[4]).toBe("Casos anteriores: Pagamento.");
+  });
+
+  it("quem entrou há pouco não aparece como quem nunca assistiu", () => {
+    const now = buildCommercialContext({
+      participations: [fact("p9", "w9", "Aula ao vivo", "2026-09-20T10:00:00Z", 40)],
+      clicks: [],
+      messages: [],
+      purchases: [],
+      cases: [],
+    });
+    expect(now.attended).toBe(0);
+    expect(contextFacts(now, "w9")[1]).toBe("Neste webinar (Aula ao vivo): viu pouco até agora.");
   });
 });

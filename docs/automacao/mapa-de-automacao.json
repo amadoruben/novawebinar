@@ -1,0 +1,1548 @@
+{
+  "versao": 2,
+  "nome": "Mapa de automação · Funil de webinar",
+  "descricao": "Modelo genérico de funil de webinar com segmentação pós-evento, upsell e downsell. Nós (o que existe), arestas (como o contato se move) e segmentos (como o sistema decide).",
+  "convencoes": {
+    "FONTE": "está no mapa de referência",
+    "PROPOSTA": "decisão sugerida para a plataforma"
+  },
+  "tipos_de_no": {
+    "origem": {
+      "nome": "Origem",
+      "descricao": "Fonte de tráfego. Define utm_source do lead."
+    },
+    "pagina": {
+      "nome": "Página",
+      "descricao": "Página do funil com uma ação única. Emite visita e conversão."
+    },
+    "link_whatsapp": {
+      "nome": "Redirect",
+      "descricao": "Link rotativo que distribui contatos entre grupos de WhatsApp."
+    },
+    "automacao_individual": {
+      "nome": "Automação individual",
+      "descricao": "Sequência enviada a um contato por vez. Respeita segmento e eventos de saída."
+    },
+    "automacao_grupo": {
+      "nome": "Automação em grupos",
+      "descricao": "Mensagens publicadas no grupo inteiro. Não segmenta."
+    },
+    "condicao": {
+      "nome": "Condição",
+      "descricao": "Ponto de decisão. Cada contato segue um único ramo."
+    },
+    "sala_webinario": {
+      "nome": "Sala de webinar",
+      "descricao": "Transmissão ao vivo ou automática. Fonte dos eventos de presença, oferta e compra."
+    },
+    "anuncio": {
+      "nome": "Anúncio",
+      "descricao": "Público de remarketing alimentado pelo funil."
+    }
+  },
+  "tipos_de_aresta": {
+    "navegacao": "O contato vai de um lugar a outro por clique ou redirecionamento.",
+    "evento": "O sistema reage a um evento e aciona o próximo nó.",
+    "ramo": "Saída de uma condição. O rótulo é o valor do ramo.",
+    "retorno": "Link que leva de volta à compra. Oculta no mapa; aparece como selo no nó."
+  },
+  "fases": [
+    {
+      "id": "trafego",
+      "nome": "Tráfego",
+      "col_inicio": 0,
+      "col_fim": 0
+    },
+    {
+      "id": "captacao",
+      "nome": "Captação",
+      "col_inicio": 1,
+      "col_fim": 2
+    },
+    {
+      "id": "comunidade",
+      "nome": "Comunidade",
+      "col_inicio": 3,
+      "col_fim": 3
+    },
+    {
+      "id": "webinar",
+      "nome": "Webinar",
+      "col_inicio": 4,
+      "col_fim": 5
+    },
+    {
+      "id": "followup",
+      "nome": "Follow-up e ofertas",
+      "col_inicio": 6,
+      "col_fim": 9
+    },
+    {
+      "id": "entrega",
+      "nome": "Entrega",
+      "col_inicio": 10,
+      "col_fim": 11
+    }
+  ],
+  "segmentos": {
+    "nao_acessou": {
+      "regra": "inscrito AND NOT webinar.entrou durante a sessão"
+    },
+    "saiu_antes_pitch": {
+      "regra": "webinar.entrou AND webinar.saiu antes de oferta.exibida AND NOT compra.aprovada"
+    },
+    "assistiu_pitch": {
+      "regra": "presente em oferta.exibida AND NOT compra.aprovada"
+    },
+    "precedencia": [
+      "comprou",
+      "assistiu_pitch",
+      "saiu_antes_pitch",
+      "nao_acessou"
+    ],
+    "avaliado_em": "webinar.encerrado",
+    "reavaliacao": "Se o contato assistir à gravação, sobe de segmento e troca de sequência no passo equivalente."
+  },
+  "nos": [
+    {
+      "id": "src_facebook",
+      "tipo": "origem",
+      "titulo": "Facebook",
+      "subtitulo": "Anúncios e orgânico",
+      "fase": "trafego",
+      "col": 0,
+      "row": 2,
+      "descricao": "Origem de tráfego. O lead chega à landing page com utm_source=facebook.",
+      "emite": [
+        "utm_source=facebook"
+      ],
+      "origem": "FONTE",
+      "por_que": "Cada origem tem custo e qualidade de lead diferentes. Separar por utm permite saber de onde vêm os compradores, não só os inscritos.",
+      "metricas": [
+        "visitas",
+        "custo por lead",
+        "taxa de compra por origem"
+      ]
+    },
+    {
+      "id": "src_instagram",
+      "tipo": "origem",
+      "titulo": "Instagram",
+      "subtitulo": "Anúncios e orgânico",
+      "fase": "trafego",
+      "col": 0,
+      "row": 3,
+      "descricao": "Origem de tráfego. utm_source=instagram.",
+      "emite": [
+        "utm_source=instagram"
+      ],
+      "origem": "FONTE",
+      "por_que": "Mesmo motivo do Facebook: medir custo por lead e taxa de compra por origem.",
+      "metricas": [
+        "visitas",
+        "custo por lead",
+        "taxa de compra por origem"
+      ]
+    },
+    {
+      "id": "src_youtube",
+      "tipo": "origem",
+      "titulo": "YouTube",
+      "subtitulo": "Anúncios e orgânico",
+      "fase": "trafego",
+      "col": 0,
+      "row": 4,
+      "descricao": "Origem de tráfego. utm_source=youtube.",
+      "emite": [
+        "utm_source=youtube"
+      ],
+      "origem": "FONTE",
+      "por_que": "Lead de YouTube costuma chegar com mais contexto (já assistiu vídeo). Medir à parte mostra se vale mais investimento.",
+      "metricas": [
+        "visitas",
+        "custo por lead",
+        "taxa de compra por origem"
+      ]
+    },
+    {
+      "id": "pg_landing",
+      "tipo": "pagina",
+      "titulo": "Landing page",
+      "subtitulo": "Inscrição no webinar",
+      "fase": "captacao",
+      "col": 1,
+      "row": 3,
+      "descricao": "Página de inscrição com uma ação: deixar nome, e-mail e WhatsApp. O envio cria o lead e inicia o aquecimento.",
+      "emite": [
+        "lead.criado"
+      ],
+      "origem": "FONTE",
+      "por_que": "Uma página com uma única ação converte mais. É o ponto onde o visitante vira contato e onde toda a automação começa.",
+      "metricas": [
+        "visitas",
+        "inscrições",
+        "taxa de conversão da página"
+      ]
+    },
+    {
+      "id": "ai_aquecimento",
+      "tipo": "automacao_individual",
+      "titulo": "E-mails de aquecimento",
+      "subtitulo": "E-mail · 5 envios",
+      "fase": "captacao",
+      "col": 2,
+      "row": 5,
+      "descricao": "Sequência individual entre a inscrição e o webinar. Todos os e-mails convidam para o grupo de WhatsApp e lembram a data.",
+      "gatilho": "lead.criado",
+      "regra": "Sem envio retroativo: quem se inscreve perto do webinar recebe só os passos que ainda estão no futuro.",
+      "passos": [
+        {
+          "canal": "E-mail",
+          "objetivo": "Confirmação da inscrição e convite para o grupo",
+          "quando": "Logo após a inscrição"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Convite para o grupo",
+          "quando": "1 dia após a inscrição"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Contagem regressiva: faltam 7 dias",
+          "quando": "D-7"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Contagem regressiva: faltam 3 dias",
+          "quando": "D-3"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "É amanhã: data, hora e link de acesso",
+          "quando": "D-1"
+        }
+      ],
+      "saida": [
+        "webinar.encerrado"
+      ],
+      "origem": "FONTE (5 envios) · PROPOSTA (conteúdo e horários)",
+      "por_que": "Nem todo inscrito entra no grupo. O e-mail garante que todos recebem o convite para o grupo e o link de acesso, e mantém o evento na memória até a data.",
+      "metricas": [
+        "taxa de abertura",
+        "cliques no convite do grupo",
+        "cliques no link de acesso"
+      ]
+    },
+    {
+      "id": "lk_redirect",
+      "tipo": "link_whatsapp",
+      "titulo": "Redirect",
+      "subtitulo": "Rotador de grupos",
+      "fase": "comunidade",
+      "col": 2,
+      "row": 3,
+      "descricao": "Página ou link que redireciona para o grupo de WhatsApp com vaga. Quando um grupo enche, o próximo assume.",
+      "regra": "Enviar ao primeiro grupo ativo com membros abaixo do limite.",
+      "emite": [
+        "lead.entrou_grupo"
+      ],
+      "origem": "FONTE (redirect + 3 grupos) · PROPOSTA (regra)",
+      "por_que": "Um único link para vários grupos. O WhatsApp limita o tamanho do grupo, e o redirect evita trocar links nas páginas e nos e-mails quando um grupo enche.",
+      "metricas": [
+        "cliques",
+        "entradas por grupo"
+      ]
+    },
+    {
+      "id": "grp_1",
+      "tipo": "automacao_grupo",
+      "titulo": "Grupo de WhatsApp 1",
+      "subtitulo": "Automação em grupos",
+      "fase": "comunidade",
+      "col": 3,
+      "row": 2,
+      "descricao": "Recebe as mensagens do lançamento publicadas para todos os grupos ao mesmo tempo. Não segmenta.",
+      "passos": [
+        {
+          "canal": "WhatsApp grupo",
+          "objetivo": "Boas-vindas e regras do grupo",
+          "quando": "Entrada no grupo"
+        },
+        {
+          "canal": "WhatsApp grupo",
+          "objetivo": "Contagem regressiva",
+          "quando": "D-7 a D-1"
+        },
+        {
+          "canal": "WhatsApp grupo",
+          "objetivo": "É hoje e Estamos ao vivo, com o link de acesso",
+          "quando": "D0"
+        }
+      ],
+      "origem": "FONTE",
+      "por_que": "O WhatsApp tem leitura muito maior que o e-mail. Os lembretes no grupo são o principal motor de comparecimento.",
+      "metricas": [
+        "membros",
+        "saídas do grupo"
+      ]
+    },
+    {
+      "id": "grp_2",
+      "tipo": "automacao_grupo",
+      "titulo": "Grupo de WhatsApp 2",
+      "subtitulo": "Automação em grupos",
+      "fase": "comunidade",
+      "col": 3,
+      "row": 3,
+      "descricao": "Igual ao grupo 1. Abre quando o grupo 1 atinge o limite.",
+      "origem": "FONTE",
+      "por_que": "Capacidade extra: mesma automação do grupo 1.",
+      "metricas": [
+        "membros",
+        "saídas do grupo"
+      ]
+    },
+    {
+      "id": "grp_3",
+      "tipo": "automacao_grupo",
+      "titulo": "Grupo de WhatsApp 3",
+      "subtitulo": "Automação em grupos",
+      "fase": "comunidade",
+      "col": 3,
+      "row": 4,
+      "descricao": "Igual ao grupo 1. Abre quando o grupo 2 atinge o limite.",
+      "origem": "FONTE",
+      "por_que": "Capacidade extra: mesma automação do grupo 1.",
+      "metricas": [
+        "membros",
+        "saídas do grupo"
+      ]
+    },
+    {
+      "id": "pg_acesso",
+      "tipo": "pagina",
+      "titulo": "Acesso ao webinar",
+      "subtitulo": "Página de entrada",
+      "fase": "webinar",
+      "col": 4,
+      "row": 3,
+      "descricao": "Página com o botão de entrada na sala. Destino de todos os links de acesso (e-mail e grupos).",
+      "emite": [
+        "acesso.visitado"
+      ],
+      "origem": "FONTE",
+      "por_que": "Um link estável para todos os canais. Permite trocar a sala sem editar mensagens, identificar quem clicou e medir a intenção de assistir.",
+      "metricas": [
+        "visitas",
+        "cliques em entrar"
+      ]
+    },
+    {
+      "id": "sala",
+      "tipo": "sala_webinario",
+      "titulo": "Webinar",
+      "subtitulo": "Sala ao vivo ou automática",
+      "fase": "webinar",
+      "col": 5,
+      "row": 3,
+      "descricao": "Transmissão com chat, oferta agendada e botão de compra. Registra entrada, saída e o minuto em que a oferta (pitch) começa.",
+      "regra": "oferta.exibida no minuto configurado do pitch.",
+      "emite": [
+        "webinar.entrou",
+        "webinar.saiu",
+        "oferta.exibida",
+        "oferta.clicada",
+        "compra.aprovada",
+        "webinar.encerrado"
+      ],
+      "origem": "FONTE · PROPOSTA (eventos)",
+      "por_que": "É onde a venda acontece e onde nascem os dados que decidem tudo o que vem depois: quem entrou, até quando ficou e se viu a oferta.",
+      "metricas": [
+        "comparecimento (entrou ÷ inscritos)",
+        "retenção até o pitch",
+        "cliques na oferta",
+        "vendas na sala"
+      ]
+    },
+    {
+      "id": "cond_nao_comprou",
+      "tipo": "condicao",
+      "titulo": "Não comprou",
+      "subtitulo": "Segmentar por comportamento",
+      "fase": "followup",
+      "col": 6,
+      "row": 1,
+      "descricao": "No fim do webinar, cada inscrito sem compra entra em um único segmento.",
+      "regra": "Precedência: assistiu o pitch > acessou e saiu antes do pitch > não acessou.",
+      "avaliado_em": "webinar.encerrado",
+      "origem": "FONTE (3 ramos) · PROPOSTA (regra)",
+      "por_que": "Quem não comprou não é um grupo só. Quem não apareceu, quem saiu cedo e quem viu a oferta precisam de mensagens diferentes.",
+      "metricas": [
+        "tamanho de cada segmento"
+      ]
+    },
+    {
+      "id": "cond_comprou",
+      "tipo": "condicao",
+      "titulo": "Comprou",
+      "subtitulo": "Compra na oferta principal",
+      "fase": "followup",
+      "col": 6,
+      "row": 5,
+      "descricao": "Compra aprovada da oferta principal, dentro ou fora da sala.",
+      "regra": "compra.aprovada da oferta principal.",
+      "origem": "FONTE",
+      "por_que": "A compra muda o papel do contato: deixa de receber venda da oferta principal e passa a receber ofertas complementares.",
+      "metricas": []
+    },
+    {
+      "id": "rmkt_facebook",
+      "tipo": "anuncio",
+      "titulo": "Facebook",
+      "subtitulo": "Remarketing para quem não comprou",
+      "fase": "followup",
+      "col": 7,
+      "row": 0,
+      "descricao": "Público de remarketing com os inscritos que não compraram. Recebe anúncios da oferta enquanto ela estiver aberta.",
+      "gatilho": "webinar.encerrado",
+      "saida": [
+        "compra.aprovada"
+      ],
+      "origem": "FONTE",
+      "retorna_para": "cond_comprou",
+      "por_que": "Anúncio alcança quem não abre e-mail. Reforça a mesma mensagem das sequências enquanto a oferta estiver aberta.",
+      "metricas": [
+        "alcance",
+        "cliques",
+        "vendas atribuídas"
+      ]
+    },
+    {
+      "id": "seq_nao_acessou",
+      "tipo": "automacao_individual",
+      "titulo": "Não acessou",
+      "subtitulo": "E-mail · 8 envios",
+      "fase": "followup",
+      "col": 7,
+      "row": 1,
+      "descricao": "Inscrito que nunca entrou na sala. O objetivo dos primeiros envios é fazê-lo assistir à gravação.",
+      "gatilho": "segmento = nao_acessou",
+      "passos": [
+        {
+          "canal": "E-mail",
+          "objetivo": "Gravação disponível",
+          "quando": "+1h"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Gravação: o que você perdeu",
+          "quando": "+1d"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Principais pontos da aula",
+          "quando": "+1d 20h"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Apresentação da oferta",
+          "quando": "+2d"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Prova: resultados de alunos",
+          "quando": "+2d 20h"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Garantia",
+          "quando": "+3d"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Encerra hoje",
+          "quando": "dia do fechamento"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Última chamada",
+          "quando": "dia do fechamento, 20h"
+        }
+      ],
+      "saida": [
+        "compra.aprovada"
+      ],
+      "origem": "FONTE (8 envios) · PROPOSTA (conteúdo e horários)",
+      "retorna_para": "cond_comprou",
+      "por_que": "Essa pessoa ainda não viu nada. Vender antes de mostrar o conteúdo não funciona; primeiro ela precisa assistir à gravação.",
+      "metricas": [
+        "assistiram à gravação",
+        "vendas"
+      ]
+    },
+    {
+      "id": "seq_saiu_antes",
+      "tipo": "automacao_individual",
+      "titulo": "Acessou e saiu antes do pitch",
+      "subtitulo": "E-mail · 8 envios",
+      "fase": "followup",
+      "col": 7,
+      "row": 2,
+      "descricao": "Viu parte do conteúdo e não chegou à oferta. O objetivo é apresentar a oferta que não viu.",
+      "gatilho": "segmento = saiu_antes_pitch",
+      "passos": [
+        {
+          "canal": "E-mail",
+          "objetivo": "Você saiu antes da melhor parte",
+          "quando": "+1h"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Gravação a partir do pitch",
+          "quando": "+1d"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Apresentação da oferta",
+          "quando": "+1d 20h"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Bônus",
+          "quando": "+2d"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Prova: resultados de alunos",
+          "quando": "+2d 20h"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Garantia",
+          "quando": "+3d"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Encerra hoje",
+          "quando": "dia do fechamento"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Última chamada",
+          "quando": "dia do fechamento, 20h"
+        }
+      ],
+      "saida": [
+        "compra.aprovada"
+      ],
+      "origem": "FONTE (8 envios) · PROPOSTA (conteúdo e horários)",
+      "retorna_para": "cond_comprou",
+      "por_que": "Ela confiou no conteúdo, mas não chegou à oferta. O que falta é apresentar a oferta, não repetir a aula.",
+      "metricas": [
+        "viram a oferta",
+        "vendas"
+      ]
+    },
+    {
+      "id": "seq_assistiu",
+      "tipo": "automacao_individual",
+      "titulo": "Assistiu o pitch",
+      "subtitulo": "E-mail · 8 envios",
+      "fase": "followup",
+      "col": 7,
+      "row": 3,
+      "descricao": "Viu a oferta e não comprou. O objetivo é responder objeções.",
+      "gatilho": "segmento = assistiu_pitch",
+      "passos": [
+        {
+          "canal": "E-mail",
+          "objetivo": "Resumo da oferta e link de compra",
+          "quando": "+1h"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Objeção 1",
+          "quando": "+1d"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Objeção 2",
+          "quando": "+1d 20h"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Objeção 3",
+          "quando": "+2d"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Bônus",
+          "quando": "+2d 20h"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Garantia",
+          "quando": "+3d"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Encerra hoje",
+          "quando": "dia do fechamento"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Última chamada",
+          "quando": "dia do fechamento, 20h"
+        }
+      ],
+      "saida": [
+        "compra.aprovada"
+      ],
+      "origem": "FONTE (8 envios) · PROPOSTA (conteúdo e horários)",
+      "retorna_para": "cond_comprou",
+      "por_que": "Ela conhece a oferta e decidiu não comprar por enquanto. O que impede a compra são objeções; cada e-mail responde uma.",
+      "metricas": [
+        "cliques por objeção",
+        "vendas"
+      ]
+    },
+    {
+      "id": "pg_upsell",
+      "tipo": "pagina",
+      "titulo": "Upsell",
+      "subtitulo": "Oferta complementar",
+      "fase": "followup",
+      "col": 7,
+      "row": 5,
+      "descricao": "Exibida logo após a compra, na mesma sessão, com compra em 1 clique.",
+      "emite": [
+        "upsell.aceito",
+        "upsell.recusado"
+      ],
+      "origem": "FONTE · PROPOSTA (1 clique)",
+      "por_que": "O momento de maior propensão de compra é logo após comprar. Uma oferta complementar em 1 clique aproveita esse momento.",
+      "metricas": [
+        "taxa de aceite"
+      ]
+    },
+    {
+      "id": "cond_upsell",
+      "tipo": "condicao",
+      "titulo": "Comprou o upsell?",
+      "subtitulo": "Decide o próximo passo",
+      "fase": "followup",
+      "col": 8,
+      "row": 5,
+      "descricao": "Aceitou: vai para o obrigado. Recusou: vê o downsell e entra na sequência de upsell.",
+      "origem": "FONTE",
+      "por_que": "Separa quem aceitou de quem recusou para não oferecer de novo o que já foi comprado.",
+      "metricas": []
+    },
+    {
+      "id": "pg_downsell",
+      "tipo": "pagina",
+      "titulo": "Downsell",
+      "subtitulo": "Versão menor ou mais barata",
+      "fase": "followup",
+      "col": 9,
+      "row": 6.3,
+      "descricao": "Oferta alternativa para quem recusou o upsell.",
+      "emite": [
+        "downsell.aceito",
+        "downsell.recusado"
+      ],
+      "origem": "FONTE",
+      "por_que": "Quem recusou o upsell pode aceitar uma versão menor. Recupera parte do valor sem pressionar.",
+      "metricas": [
+        "taxa de aceite"
+      ]
+    },
+    {
+      "id": "seq_upsell",
+      "tipo": "automacao_individual",
+      "titulo": "Upsell por e-mail",
+      "subtitulo": "E-mail · 4 envios",
+      "fase": "followup",
+      "col": 9,
+      "row": 7.5,
+      "descricao": "Sequência para quem recusou o upsell na página.",
+      "gatilho": "upsell.recusado",
+      "passos": [
+        {
+          "canal": "E-mail",
+          "objetivo": "Lembrete da oferta complementar",
+          "quando": "+1h"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Benefício principal",
+          "quando": "+1d"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Prova",
+          "quando": "+2d"
+        },
+        {
+          "canal": "E-mail",
+          "objetivo": "Último aviso",
+          "quando": "+3d"
+        }
+      ],
+      "saida": [
+        "upsell.aceito",
+        "downsell.aceito"
+      ],
+      "origem": "FONTE (4 envios) · PROPOSTA (conteúdo e horários)",
+      "retorna_para": "pg_obrigado",
+      "por_que": "Algumas pessoas recusam no impulso e decidem depois. A sequência dá uma segunda chance sem repetir a página.",
+      "metricas": [
+        "vendas do upsell por e-mail"
+      ]
+    },
+    {
+      "id": "pg_obrigado",
+      "tipo": "pagina",
+      "titulo": "Obrigado",
+      "subtitulo": "Confirmação da compra",
+      "fase": "entrega",
+      "col": 10,
+      "row": 5,
+      "descricao": "Confirma a compra e orienta o acesso ao produto. Destino de quem comprou o upsell ou o downsell.",
+      "emite": [
+        "obrigado.visitado"
+      ],
+      "origem": "FONTE",
+      "por_que": "Confirma a compra, reduz ansiedade e orienta o primeiro acesso. É o fim do funil de venda e o início da entrega.",
+      "metricas": [
+        "visitas"
+      ]
+    },
+    {
+      "id": "ai_upsell_pos",
+      "tipo": "automacao_individual",
+      "titulo": "Upsell",
+      "subtitulo": "E-mail · próxima oferta",
+      "fase": "entrega",
+      "col": 11,
+      "row": 5,
+      "descricao": "E-mail com a próxima oferta para quem já é cliente.",
+      "gatilho": "obrigado.visitado",
+      "passos": [
+        {
+          "canal": "E-mail",
+          "objetivo": "Próxima oferta",
+          "quando": "alguns dias após a compra"
+        }
+      ],
+      "origem": "FONTE (1 envio) · PROPOSTA (conteúdo e horário)",
+      "por_que": "O cliente satisfeito é o público mais barato para a próxima venda.",
+      "metricas": [
+        "vendas da próxima oferta"
+      ]
+    }
+  ],
+  "arestas": [
+    {
+      "de": "src_facebook",
+      "para": "pg_landing",
+      "tipo": "navegacao",
+      "rotulo": "",
+      "explicacao": ""
+    },
+    {
+      "de": "src_instagram",
+      "para": "pg_landing",
+      "tipo": "navegacao",
+      "rotulo": "",
+      "explicacao": ""
+    },
+    {
+      "de": "src_youtube",
+      "para": "pg_landing",
+      "tipo": "navegacao",
+      "rotulo": "",
+      "explicacao": ""
+    },
+    {
+      "de": "pg_landing",
+      "para": "lk_redirect",
+      "tipo": "navegacao",
+      "rotulo": "após inscrição",
+      "explicacao": "Logo após a inscrição o navegador é redirecionado para o grupo. É o momento de maior interesse; pedir a entrada no grupo depois perde muita gente."
+    },
+    {
+      "de": "pg_landing",
+      "para": "ai_aquecimento",
+      "tipo": "evento",
+      "rotulo": "lead.criado",
+      "explicacao": "O mesmo envio do formulário inicia a sequência de e-mails. As duas trilhas correm em paralelo."
+    },
+    {
+      "de": "lk_redirect",
+      "para": "grp_1",
+      "tipo": "ramo",
+      "rotulo": "grupo 1",
+      "explicacao": ""
+    },
+    {
+      "de": "lk_redirect",
+      "para": "grp_2",
+      "tipo": "ramo",
+      "rotulo": "grupo 2",
+      "explicacao": ""
+    },
+    {
+      "de": "lk_redirect",
+      "para": "grp_3",
+      "tipo": "ramo",
+      "rotulo": "grupo 3",
+      "explicacao": ""
+    },
+    {
+      "de": "ai_aquecimento",
+      "para": "grp_1",
+      "tipo": "navegacao",
+      "rotulo": "convite",
+      "explicacao": "Todo e-mail de aquecimento traz o link do redirect para quem ainda não entrou no grupo."
+    },
+    {
+      "de": "ai_aquecimento",
+      "para": "pg_acesso",
+      "tipo": "navegacao",
+      "rotulo": "link de acesso",
+      "explicacao": "No dia, o e-mail leva à página de acesso."
+    },
+    {
+      "de": "grp_1",
+      "para": "pg_acesso",
+      "tipo": "navegacao",
+      "rotulo": "",
+      "explicacao": ""
+    },
+    {
+      "de": "grp_2",
+      "para": "pg_acesso",
+      "tipo": "navegacao",
+      "rotulo": "link de acesso",
+      "explicacao": ""
+    },
+    {
+      "de": "grp_3",
+      "para": "pg_acesso",
+      "tipo": "navegacao",
+      "rotulo": "",
+      "explicacao": ""
+    },
+    {
+      "de": "pg_acesso",
+      "para": "sala",
+      "tipo": "navegacao",
+      "rotulo": "entrar",
+      "explicacao": "O botão leva à sala com o identificador do contato, para registrar presença."
+    },
+    {
+      "de": "sala",
+      "para": "cond_nao_comprou",
+      "tipo": "evento",
+      "rotulo": "webinar.encerrado",
+      "explicacao": "No fim da sessão o sistema avalia todos os inscritos que não compraram."
+    },
+    {
+      "de": "sala",
+      "para": "cond_comprou",
+      "tipo": "evento",
+      "rotulo": "compra.aprovada",
+      "explicacao": "A compra é tratada no momento em que acontece, sem esperar o fim do webinar."
+    },
+    {
+      "de": "cond_nao_comprou",
+      "para": "rmkt_facebook",
+      "tipo": "evento",
+      "rotulo": "público",
+      "explicacao": "Quem não comprou entra no público de remarketing."
+    },
+    {
+      "de": "cond_nao_comprou",
+      "para": "seq_nao_acessou",
+      "tipo": "ramo",
+      "rotulo": "não acessou",
+      "explicacao": ""
+    },
+    {
+      "de": "cond_nao_comprou",
+      "para": "seq_saiu_antes",
+      "tipo": "ramo",
+      "rotulo": "saiu antes do pitch",
+      "explicacao": ""
+    },
+    {
+      "de": "cond_nao_comprou",
+      "para": "seq_assistiu",
+      "tipo": "ramo",
+      "rotulo": "assistiu o pitch",
+      "explicacao": ""
+    },
+    {
+      "de": "cond_comprou",
+      "para": "pg_upsell",
+      "tipo": "ramo",
+      "rotulo": "comprou",
+      "explicacao": "Após o pagamento aprovado, o comprador vê o upsell antes do obrigado."
+    },
+    {
+      "de": "pg_upsell",
+      "para": "cond_upsell",
+      "tipo": "evento",
+      "rotulo": "",
+      "explicacao": ""
+    },
+    {
+      "de": "cond_upsell",
+      "para": "pg_obrigado",
+      "tipo": "ramo",
+      "rotulo": "comprou",
+      "explicacao": ""
+    },
+    {
+      "de": "cond_upsell",
+      "para": "pg_downsell",
+      "tipo": "ramo",
+      "rotulo": "não comprou",
+      "explicacao": "Recusou o upsell: vê o downsell na mesma sessão."
+    },
+    {
+      "de": "cond_upsell",
+      "para": "seq_upsell",
+      "tipo": "ramo",
+      "rotulo": "não comprou",
+      "explicacao": "Recusou o upsell: também entra na sequência de e-mails do upsell."
+    },
+    {
+      "de": "pg_downsell",
+      "para": "pg_obrigado",
+      "tipo": "ramo",
+      "rotulo": "comprou",
+      "explicacao": "Comprou o downsell: segue para o obrigado e sai da sequência de upsell."
+    },
+    {
+      "de": "pg_obrigado",
+      "para": "ai_upsell_pos",
+      "tipo": "evento",
+      "rotulo": "visitou",
+      "explicacao": "A visita ao obrigado agenda o e-mail da próxima oferta."
+    },
+    {
+      "de": "seq_nao_acessou",
+      "para": "cond_comprou",
+      "tipo": "retorno",
+      "rotulo": "compra",
+      "oculta_no_mapa": true,
+      "explicacao": ""
+    },
+    {
+      "de": "seq_saiu_antes",
+      "para": "cond_comprou",
+      "tipo": "retorno",
+      "rotulo": "compra",
+      "oculta_no_mapa": true,
+      "explicacao": ""
+    },
+    {
+      "de": "seq_assistiu",
+      "para": "cond_comprou",
+      "tipo": "retorno",
+      "rotulo": "compra",
+      "oculta_no_mapa": true,
+      "explicacao": ""
+    },
+    {
+      "de": "rmkt_facebook",
+      "para": "cond_comprou",
+      "tipo": "retorno",
+      "rotulo": "compra",
+      "oculta_no_mapa": true,
+      "explicacao": ""
+    },
+    {
+      "de": "seq_upsell",
+      "para": "pg_obrigado",
+      "tipo": "retorno",
+      "rotulo": "comprou",
+      "oculta_no_mapa": true,
+      "explicacao": ""
+    }
+  ],
+  "passo_a_passo": [
+    {
+      "titulo": "Origem do tráfego",
+      "nos": [
+        "src_facebook",
+        "src_instagram",
+        "src_youtube"
+      ],
+      "o_que_acontece": "O visitante clica num anúncio ou conteúdo do Facebook, Instagram ou YouTube e chega à landing page.",
+      "por_que": "Separar as origens mostra quanto custa cada inscrito e, mais tarde, cada comprador, por canal.",
+      "como_o_sistema_executa": [
+        "Lê utm_source, utm_medium, utm_campaign e utm_content da URL.",
+        "Guarda a primeira origem (first touch) e a última (last touch) no contato.",
+        "Sem utm, marca a origem como \"direto\"."
+      ],
+      "dados": [
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "utm_content"
+      ],
+      "casos_limite": [
+        "O mesmo contato vem de duas origens: manter as duas, atribuir a compra à última."
+      ],
+      "papel_na_logica": "É o primeiro carimbo do contato. Não executa automação, mas tudo o que mede retorno por canal depende deste registo.",
+      "contato_chega": "Visitante anónimo",
+      "contato_sai": "Visitante com origem registada",
+      "depende_de": [],
+      "alimenta": [
+        2
+      ],
+      "o_que_decide": "Nada. Só regista.",
+      "exemplo": "Maria vê um anúncio no Instagram e clica. A URL traz utm_source=instagram&utm_campaign=webinar-out. O sistema guarda isso num cookie por 30 dias.",
+      "se_falhar": "As compras ficam sem origem e não é possível saber que canal paga o investimento.",
+      "regra_em_codigo": "on page_view(landing):\n  visitor.utm = parse_utm(url)\n  cookie.set('utm', visitor.utm, 30d)"
+    },
+    {
+      "titulo": "Inscrição na landing page",
+      "nos": [
+        "pg_landing"
+      ],
+      "o_que_acontece": "O visitante preenche nome, e-mail e WhatsApp e se inscreve no webinar.",
+      "por_que": "É o momento em que o visitante vira contato. Tudo o que vem depois depende deste registo.",
+      "como_o_sistema_executa": [
+        "Valida e-mail e telefone.",
+        "Procura o contato pelo e-mail; se existir, atualiza, se não, cria.",
+        "Inscreve o contato neste webinar.",
+        "Emite lead.criado, que inicia os passos 3 e 5 ao mesmo tempo."
+      ],
+      "dados": [
+        "nome",
+        "email",
+        "whatsapp",
+        "consentimento",
+        "webinar_id"
+      ],
+      "casos_limite": [
+        "Inscrição repetida no mesmo webinar: não duplica e não reinicia a sequência.",
+        "Telefone inválido: inscreve na mesma, mas o contato só recebe e-mail."
+      ],
+      "papel_na_logica": "É a porta de entrada. Cria a identidade do contato e dispara, ao mesmo tempo, as duas trilhas: grupo (passo 3) e e-mail (passo 5).",
+      "contato_chega": "Visitante com origem",
+      "contato_sai": "Contato no estado inscrito",
+      "depende_de": [
+        1
+      ],
+      "alimenta": [
+        3,
+        5
+      ],
+      "o_que_decide": "Se o contato é novo ou já existe.",
+      "exemplo": "Maria preenche o formulário. O sistema cria o contato #123, copia a utm do cookie, inscreve-o no webinar e emite lead.criado.",
+      "se_falhar": "Nada a seguir acontece: sem lead.criado não há grupo, e-mail nem segmentação.",
+      "regra_em_codigo": "on form_submit:\n  c = upsert_contact(email)\n  c.utm ||= cookie.utm\n  enroll(c, webinar)\n  emit('lead.criado', c)"
+    },
+    {
+      "titulo": "Redirect para os grupos",
+      "nos": [
+        "lk_redirect",
+        "grp_1",
+        "grp_2",
+        "grp_3"
+      ],
+      "o_que_acontece": "Logo após a inscrição o navegador é redirecionado para um grupo de WhatsApp com vaga.",
+      "por_que": "O interesse é máximo no segundo da inscrição. O redirect usa esse momento e distribui as pessoas entre vários grupos sem trocar o link.",
+      "como_o_sistema_executa": [
+        "Escolhe o primeiro grupo ativo com membros abaixo do limite.",
+        "Regista o clique no contato.",
+        "Quando o grupo atinge o limite, passa para o seguinte."
+      ],
+      "dados": [
+        "lista de grupos",
+        "limite por grupo",
+        "link de convite de cada grupo"
+      ],
+      "casos_limite": [
+        "Todos os grupos cheios: abrir um novo grupo ou mostrar a página de acesso com aviso.",
+        "Não é possível confirmar a entrada sem integração com o WhatsApp: tratar o clique como entrada provável."
+      ],
+      "papel_na_logica": "Transforma o interesse do momento num canal de alto alcance. Entrar no grupo é o primeiro pequeno compromisso do contato.",
+      "contato_chega": "Inscrito",
+      "contato_sai": "Inscrito com grupo atribuído",
+      "depende_de": [
+        2
+      ],
+      "alimenta": [
+        4
+      ],
+      "o_que_decide": "Qual grupo recebe o contato.",
+      "exemplo": "O grupo 1 tem 1.000 membros (limite). Maria é enviada para o grupo 2.",
+      "se_falhar": "O comparecimento cai. Os e-mails do passo 5 continuam como rede de segurança.",
+      "regra_em_codigo": "g = groups.find(g => g.active && g.members < g.limit) ?? create_group()\nlog_click(c, g)\nredirect(g.invite_url)"
+    },
+    {
+      "titulo": "Automação nos grupos",
+      "nos": [
+        "grp_1",
+        "grp_2",
+        "grp_3"
+      ],
+      "o_que_acontece": "Os grupos recebem as mesmas mensagens ao mesmo tempo: boas-vindas, contagem regressiva e link de acesso no dia.",
+      "por_que": "O WhatsApp é lido por quase todos. Os lembretes no grupo são o que mais aumenta o comparecimento.",
+      "como_o_sistema_executa": [
+        "Agenda cada mensagem em relação à data e hora do webinar.",
+        "Publica em todos os grupos ativos.",
+        "O grupo fica fechado: só administradores enviam mensagens."
+      ],
+      "dados": [
+        "data e hora do webinar",
+        "mensagens do grupo",
+        "link da página de acesso"
+      ],
+      "casos_limite": [
+        "O grupo não segmenta: compradores também veem as mensagens seguintes.",
+        "Um grupo criado depois (grupo 3) recebe só as mensagens futuras."
+      ],
+      "papel_na_logica": "É a trilha coletiva de lembrete. O relógio é a data do webinar: a mesma mensagem sai para todos os grupos ao mesmo tempo.",
+      "contato_chega": "Membro de um grupo",
+      "contato_sai": "Lembrado; clica no link de acesso no dia",
+      "depende_de": [
+        3
+      ],
+      "alimenta": [
+        6
+      ],
+      "o_que_decide": "Nada por contato. O grupo não segmenta.",
+      "exemplo": "Na véspera às 19h, os três grupos recebem \"É amanhã\". No dia, recebem \"É hoje\" e \"Estamos ao vivo\" com o link de acesso.",
+      "se_falhar": "Menos pessoas aparecem no webinar.",
+      "regra_em_codigo": "for msg in group_schedule:\n  at(webinar.start + msg.offset):\n    for g in groups.active: post(g, render(msg))"
+    },
+    {
+      "titulo": "E-mails de aquecimento",
+      "nos": [
+        "ai_aquecimento"
+      ],
+      "o_que_acontece": "Em paralelo aos grupos, o inscrito recebe 5 e-mails até o dia do webinar.",
+      "por_que": "Garante que quem não entrou no grupo também é lembrado. Cada e-mail repete o convite para o grupo e o link de acesso.",
+      "como_o_sistema_executa": [
+        "Inicia com lead.criado.",
+        "Calcula a data de cada envio a partir da data do webinar.",
+        "Não envia passos que já ficaram no passado.",
+        "Para no fim do webinar."
+      ],
+      "dados": [
+        "data e hora do webinar",
+        "link do redirect",
+        "link da página de acesso"
+      ],
+      "casos_limite": [
+        "Inscrição na véspera: recebe só o e-mail de confirmação e o \"é amanhã\" ou \"é hoje\".",
+        "Descadastro: para a sequência e todas as seguintes."
+      ],
+      "papel_na_logica": "É a trilha individual, paralela ao grupo. Garante que quem não entrou no grupo é convidado e lembrado.",
+      "contato_chega": "Inscrito",
+      "contato_sai": "Inscrito que recebeu o link de acesso",
+      "depende_de": [
+        2
+      ],
+      "alimenta": [
+        3,
+        6
+      ],
+      "o_que_decide": "Que passos ainda estão no futuro e se ainda deve convidar para o grupo.",
+      "exemplo": "Maria inscreve-se a D-4. Recebe a confirmação, salta o e-mail de D-7 (já passou) e recebe os de D-3 e D-1.",
+      "se_falhar": "Quem não está no grupo não fica a saber da data nem recebe o link.",
+      "regra_em_codigo": "on lead.criado(c):\n  for p in seq_aquecimento.passos:\n    t = resolve(p.quando, webinar)\n    if t > now: schedule(c, p, t)"
+    },
+    {
+      "titulo": "Página de acesso ao webinar",
+      "nos": [
+        "pg_acesso"
+      ],
+      "o_que_acontece": "No dia, todos os links (grupo e e-mail) levam a uma página com o botão de entrada na sala.",
+      "por_que": "Um link estável para todos os canais. A sala pode mudar sem editar mensagens, e o sistema sabe quem tentou entrar.",
+      "como_o_sistema_executa": [
+        "O link de cada contato leva um identificador (?c=).",
+        "Regista acesso.visitado.",
+        "Encaminha para a sala com o mesmo identificador."
+      ],
+      "dados": [
+        "URL da sala",
+        "identificador do contato"
+      ],
+      "casos_limite": [
+        "Link aberto sem identificador (vindo do grupo): pedir o e-mail antes de entrar."
+      ],
+      "papel_na_logica": "É onde as duas trilhas se encontram. Liga a identidade do contato à sua presença na sala.",
+      "contato_chega": "Inscrito com link de acesso",
+      "contato_sai": "Contato com intenção registada, a caminho da sala identificado",
+      "depende_de": [
+        4,
+        5
+      ],
+      "alimenta": [
+        7
+      ],
+      "o_que_decide": "Se o contato já é conhecido pelo link ou se é preciso pedir o e-mail.",
+      "exemplo": "Maria clica no e-mail (link com ?c=123) e entra identificada. Pedro clica no link do grupo, que não tem identificador, e escreve o e-mail antes de entrar.",
+      "se_falhar": "A presença fica anónima e a segmentação do passo 9 não é possível.",
+      "regra_em_codigo": "on visit(acesso):\n  c = by_token(query.c) ?? ask_email()\n  emit('acesso.visitado', c)\n  redirect(sala_url + '?c=' + c.id)"
+    },
+    {
+      "titulo": "Webinar",
+      "nos": [
+        "sala"
+      ],
+      "o_que_acontece": "O inscrito assiste à aula. Num minuto definido começa a oferta (pitch), com botão de compra.",
+      "por_que": "É onde acontece a venda e onde nascem os dados que decidem os passos seguintes.",
+      "como_o_sistema_executa": [
+        "Regista webinar.entrou e webinar.saiu com o minuto.",
+        "Emite oferta.exibida no minuto do pitch para quem está presente.",
+        "Emite oferta.clicada e compra.aprovada.",
+        "No fim da sessão emite webinar.encerrado."
+      ],
+      "dados": [
+        "minuto do pitch",
+        "link de compra",
+        "duração"
+      ],
+      "casos_limite": [
+        "O contato entra e sai várias vezes: considerar o tempo total e se esteve presente no pitch."
+      ],
+      "papel_na_logica": "É o centro do funil. Além de vender, produz os dados que dividem todo o resto.",
+      "contato_chega": "Contato identificado",
+      "contato_sai": "Contato com presença, minuto de saída, pitch visto ou não, e compra ou não",
+      "depende_de": [
+        6
+      ],
+      "alimenta": [
+        8,
+        9
+      ],
+      "o_que_decide": "Nada. Só regista eventos.",
+      "exemplo": "Maria entra às 20h02. O pitch começa às 20h55. Ela sai às 21h10 sem comprar: fica marcada como presente em oferta.exibida.",
+      "se_falhar": "Sem presença registada todos caem em não acessou e recebem a mensagem errada.",
+      "regra_em_codigo": "on join(c): presence.open(c, minute)\non leave(c): presence.close(c, minute)\nat pitch_minute: for c in present: emit('oferta.exibida', c)"
+    },
+    {
+      "titulo": "Decisão: comprou ou não comprou",
+      "nos": [
+        "cond_comprou",
+        "cond_nao_comprou"
+      ],
+      "o_que_acontece": "O funil divide-se em dois caminhos.",
+      "por_que": "Comprador e não comprador precisam de mensagens opostas: um recebe ofertas complementares, o outro continua a receber a oferta principal.",
+      "como_o_sistema_executa": [
+        "Comprou: tratado no instante de compra.aprovada, sem esperar o fim.",
+        "Não comprou: avaliado em webinar.encerrado para todos os inscritos sem compra."
+      ],
+      "dados": [
+        "eventos de compra",
+        "lista de inscritos"
+      ],
+      "casos_limite": [
+        "Compra depois do fim do webinar: sai do caminho \"não comprou\" e entra no \"comprou\"."
+      ],
+      "papel_na_logica": "É a bifurcação principal. Separa a trilha de venda (converter) da trilha de cliente (aumentar o valor do pedido).",
+      "contato_chega": "Participante ou inscrito",
+      "contato_sai": "Comprador ou não comprador",
+      "depende_de": [
+        7
+      ],
+      "alimenta": [
+        9,
+        11
+      ],
+      "o_que_decide": "Comprou ou não. A compra é tratada em tempo real; os restantes, no fim da sessão.",
+      "exemplo": "João compra às 20h58 e vê o upsell no mesmo instante. Maria não comprou e é avaliada às 21h30, quando a sessão termina.",
+      "se_falhar": "Compradores continuam a receber chamadas de venda do que já compraram.",
+      "regra_em_codigo": "on compra.aprovada(c, oferta_principal):\n  c.estado = 'comprador'; cancel_sales(c); goto(upsell, c)\non webinar.encerrado:\n  for c in inscritos where !c.comprou: goto(segmentar, c)"
+    },
+    {
+      "titulo": "Segmentar quem não comprou",
+      "nos": [
+        "cond_nao_comprou",
+        "rmkt_facebook"
+      ],
+      "o_que_acontece": "Quem não comprou é colocado em um de três segmentos e entra também no público de remarketing do Facebook.",
+      "por_que": "Não acessou, saiu cedo e viu a oferta são situações diferentes. A mensagem certa para cada uma vende mais que uma mensagem igual para todos.",
+      "como_o_sistema_executa": [
+        "Não acessou: nunca entrou na sala.",
+        "Saiu antes do pitch: entrou e saiu antes de oferta.exibida.",
+        "Assistiu o pitch: estava presente em oferta.exibida.",
+        "Precedência: assistiu > saiu antes > não acessou.",
+        "Envia a lista ao público de remarketing."
+      ],
+      "dados": [
+        "presença por contato",
+        "minuto do pitch"
+      ],
+      "casos_limite": [
+        "Assistiu à gravação depois: reavaliar e subir de segmento."
+      ],
+      "papel_na_logica": "É a personalização. Transforma comportamento observado em mensagem certa.",
+      "contato_chega": "Não comprador",
+      "contato_sai": "Não comprador com um segmento e no público de remarketing",
+      "depende_de": [
+        7,
+        8
+      ],
+      "alimenta": [
+        10
+      ],
+      "o_que_decide": "O segmento, pela ordem de precedência.",
+      "exemplo": "Maria estava presente no pitch: assistiu_pitch. Ana entrou às 20h05 e saiu às 20h30: saiu_antes_pitch. Rui nunca entrou: nao_acessou.",
+      "se_falhar": "Todos recebem a mesma sequência, e quem não viu nada recebe objeções de uma oferta que não conhece.",
+      "regra_em_codigo": "seg = viu_pitch(c) ? 'assistiu_pitch'\n    : entrou(c) ? 'saiu_antes_pitch'\n    : 'nao_acessou'\nc.segmento = seg\naudience.add('remarketing', c)"
+    },
+    {
+      "titulo": "Sequências de follow-up",
+      "nos": [
+        "seq_nao_acessou",
+        "seq_saiu_antes",
+        "seq_assistiu"
+      ],
+      "o_que_acontece": "Cada segmento recebe 8 e-mails até o fim da oferta.",
+      "por_que": "Cada sequência resolve o que falta para aquela pessoa: assistir, ver a oferta ou superar uma objeção.",
+      "como_o_sistema_executa": [
+        "Não acessou: primeiro a gravação, depois a oferta.",
+        "Saiu antes: apresentar a oferta que não viu.",
+        "Assistiu: um e-mail por objeção, bônus e garantia.",
+        "As três terminam com \"encerra hoje\" e \"última chamada\".",
+        "Saem na hora em que acontece compra.aprovada."
+      ],
+      "dados": [
+        "prazo da oferta",
+        "link de compra",
+        "objeções principais"
+      ],
+      "casos_limite": [
+        "Mudança de segmento: continuar na nova sequência a partir do passo equivalente, sem repetir."
+      ],
+      "papel_na_logica": "É a última oportunidade de venda da oferta principal. Cada sequência remove a barreira específica do seu segmento.",
+      "contato_chega": "Não comprador com segmento",
+      "contato_sai": "Comprador (volta ao passo 8 pelo ramo comprou) ou fim do prazo",
+      "depende_de": [
+        9
+      ],
+      "alimenta": [
+        8
+      ],
+      "o_que_decide": "Antes de cada envio: se continua, se comprou, se mudou de segmento.",
+      "exemplo": "Maria recebe o e-mail da objeção 1 e da objeção 2. Compra no 3.º dia. A sequência é cancelada e ela segue para a trilha de cliente.",
+      "se_falhar": "Perde-se a venda de quem precisava de mais tempo.",
+      "regra_em_codigo": "before_send(c, passo):\n  if c.comprou or c.descadastrado: cancel(); return\n  if c.segmento != seq.segmento: switch(c, equivalente(passo))"
+    },
+    {
+      "titulo": "Upsell após a compra",
+      "nos": [
+        "cond_comprou",
+        "pg_upsell",
+        "cond_upsell"
+      ],
+      "o_que_acontece": "Quem comprou vê logo uma oferta complementar, com compra em 1 clique.",
+      "por_que": "Logo após comprar, a pessoa está mais disposta a comprar de novo e não precisa voltar a digitar o cartão.",
+      "como_o_sistema_executa": [
+        "Mostra a página de upsell depois do pagamento aprovado.",
+        "Emite upsell.aceito ou upsell.recusado."
+      ],
+      "dados": [
+        "oferta de upsell",
+        "pagamento em 1 clique"
+      ],
+      "casos_limite": [
+        "Pagamento por boleto: mostrar o upsell só depois de pago, ou por e-mail."
+      ],
+      "papel_na_logica": "Abre a trilha de cliente. O objetivo deixa de ser converter e passa a ser aumentar o valor do pedido.",
+      "contato_chega": "Comprador",
+      "contato_sai": "Comprador que aceitou ou recusou o upsell",
+      "depende_de": [
+        8
+      ],
+      "alimenta": [
+        12,
+        13
+      ],
+      "o_que_decide": "Nada; mostra a oferta e regista a resposta.",
+      "exemplo": "João vê o upsell em 1 clique logo após pagar e recusa.",
+      "se_falhar": "O ticket médio fica no valor da oferta principal.",
+      "regra_em_codigo": "on compra.aprovada(c):\n  show(upsell, one_click = c.payment_token)\non answer: emit(aceitou ? 'upsell.aceito' : 'upsell.recusado', c)"
+    },
+    {
+      "titulo": "Recusou o upsell: downsell e e-mails",
+      "nos": [
+        "pg_downsell",
+        "seq_upsell"
+      ],
+      "o_que_acontece": "Quem recusa vê o downsell e entra numa sequência de 4 e-mails sobre o upsell.",
+      "por_que": "O downsell recupera parte do valor no momento. Os e-mails dão uma segunda chance para quem recusou por impulso.",
+      "como_o_sistema_executa": [
+        "Mostra o downsell na mesma sessão.",
+        "Inicia a sequência de upsell por e-mail.",
+        "Comprar o downsell ou o upsell cancela a sequência."
+      ],
+      "dados": [
+        "oferta de downsell",
+        "oferta de upsell"
+      ],
+      "casos_limite": [
+        "Recusou o downsell também: segue para o obrigado e mantém a sequência de upsell."
+      ],
+      "papel_na_logica": "É a recuperação do valor perdido no upsell. Duas tentativas em paralelo: uma imediata (downsell) e outra ao longo dos dias (e-mails).",
+      "contato_chega": "Comprador que recusou o upsell",
+      "contato_sai": "Cliente com downsell ou upsell, ou cliente só com a oferta principal",
+      "depende_de": [
+        11
+      ],
+      "alimenta": [
+        13
+      ],
+      "o_que_decide": "Cancelar a sequência quando houver qualquer aceite.",
+      "exemplo": "João recusa também o downsell. Recebe os e-mails de upsell e compra no 2.º. A sequência para.",
+      "se_falhar": "O cliente que hesitou não recebe uma segunda oportunidade.",
+      "regra_em_codigo": "on upsell.recusado(c): show(downsell); start(seq_upsell, c)\non upsell.aceito(c) or downsell.aceito(c): cancel(seq_upsell, c)"
+    },
+    {
+      "titulo": "Obrigado e próxima oferta",
+      "nos": [
+        "pg_obrigado",
+        "ai_upsell_pos"
+      ],
+      "o_que_acontece": "O comprador chega ao obrigado, recebe as orientações de acesso e, dias depois, um e-mail com a próxima oferta.",
+      "por_que": "Confirmar a compra reduz pedidos de reembolso. O cliente satisfeito é o público mais barato para a próxima venda.",
+      "como_o_sistema_executa": [
+        "Regista obrigado.visitado.",
+        "Agenda o e-mail da próxima oferta."
+      ],
+      "dados": [
+        "instruções de acesso",
+        "próxima oferta"
+      ],
+      "casos_limite": [
+        "Reembolso: cancelar o e-mail da próxima oferta."
+      ],
+      "papel_na_logica": "Fecha a venda e inicia a relação. Aqui o contato passa a ser cliente.",
+      "contato_chega": "Comprador",
+      "contato_sai": "Cliente com a próxima oferta agendada",
+      "depende_de": [
+        11,
+        12
+      ],
+      "alimenta": [],
+      "o_que_decide": "Quando enviar a próxima oferta.",
+      "exemplo": "João chega ao obrigado, recebe as instruções de acesso e, dias depois, o e-mail da próxima oferta.",
+      "se_falhar": "Mais pedidos de suporte e de reembolso, e nenhuma venda seguinte.",
+      "regra_em_codigo": "on obrigado.visitado(c):\n  c.estado = 'cliente'\n  schedule(c, proxima_oferta, now + N dias)"
+    },
+    {
+      "titulo": "Regras que valem para todo o funil",
+      "nos": [],
+      "o_que_acontece": "Regras gerais que o motor aplica em todos os passos.",
+      "por_que": "Evitam mensagens erradas, duplicadas ou fora de hora.",
+      "como_o_sistema_executa": [
+        "Compra encerra todas as sequências de venda daquela oferta.",
+        "Descadastro encerra todos os e-mails.",
+        "Cada envio é verificado no momento de sair: se a condição mudou, não envia.",
+        "Um evento recebido duas vezes não gera dois envios.",
+        "Envios por WhatsApp individual respeitam um horário de silêncio."
+      ],
+      "dados": [],
+      "casos_limite": [],
+      "papel_na_logica": "É a camada que protege todos os passos. O motor aplica estas regras antes de cada envio.",
+      "contato_chega": "Qualquer envio agendado",
+      "contato_sai": "Envio feito, suprimido ou cancelado",
+      "depende_de": [],
+      "alimenta": [],
+      "o_que_decide": "Se o envio ainda faz sentido no instante de sair.",
+      "exemplo": "Maria tinha a \"Última chamada\" agendada para as 20h. Comprou às 19h50. Às 20h o motor verifica, vê que comprou e não envia.",
+      "se_falhar": "Mensagens erradas, duplicadas ou fora de hora, e perda de confiança.",
+      "regra_em_codigo": "send(d):\n  c = load(d.contato)\n  if !condicao(d, c): return suppress(d)\n  if already_sent(d.chave): return\n  deliver(d)"
+    }
+  ],
+  "modelo_mental": {
+    "resumo": "O funil é uma máquina de estados do contato. Cada nó lê o estado atual do contato, faz uma coisa e muda o estado. O tempo agenda as mensagens; os eventos (sobretudo a compra) decidem quem continua a recebê-las.",
+    "principios": [
+      {
+        "titulo": "Máquina de estados",
+        "texto": "Cada contato tem um estado (visitante, inscrito, no grupo, presente, comprador, cliente…). Todo nó existe para mudar esse estado. Para entender um nó, pergunte: em que estado o contato chega e em que estado sai?"
+      },
+      {
+        "titulo": "Duas trilhas antes do webinar",
+        "texto": "A trilha coletiva (grupos de WhatsApp) e a trilha individual (e-mails) correm em paralelo e convergem na página de acesso. O grupo dá alcance; o e-mail garante que ninguém fica de fora."
+      },
+      {
+        "titulo": "O webinar é o sensor",
+        "texto": "A sala não só vende: mede. Entrada, saída e presença no pitch são os dados que decidem tudo o que vem depois. Sem identificar o contato na sala, a segmentação deixa de existir."
+      },
+      {
+        "titulo": "Uma bifurcação principal",
+        "texto": "Depois do webinar o funil divide-se em dois objetivos opostos. Não comprou: converter na oferta principal. Comprou: aumentar o valor do pedido (upsell, downsell) e iniciar a relação de cliente."
+      },
+      {
+        "titulo": "O tempo agenda, o evento decide",
+        "texto": "Os envios são agendados em relação à data do webinar ou a um evento. Mas qualquer evento de compra corta de imediato as sequências de venda daquela oferta, mesmo as já agendadas."
+      },
+      {
+        "titulo": "Um lugar por trilha",
+        "texto": "Um contato está numa única sequência por trilha. Se muda de segmento, troca de sequência no passo equivalente, sem repetir nem acumular mensagens."
+      },
+      {
+        "titulo": "Decidir no envio",
+        "texto": "A condição de cada envio é verificada no instante de enviar, não quando foi agendado. O estado pode ter mudado entretanto."
+      }
+    ],
+    "estados": [
+      {
+        "id": "visitante",
+        "de": "—",
+        "evento": "page_view com utm"
+      },
+      {
+        "id": "inscrito",
+        "de": "visitante",
+        "evento": "lead.criado"
+      },
+      {
+        "id": "no_grupo",
+        "de": "inscrito",
+        "evento": "lead.entrou_grupo (ou clique no redirect)"
+      },
+      {
+        "id": "com_intencao",
+        "de": "inscrito | no_grupo",
+        "evento": "acesso.visitado"
+      },
+      {
+        "id": "presente",
+        "de": "com_intencao",
+        "evento": "webinar.entrou"
+      },
+      {
+        "id": "viu_pitch",
+        "de": "presente",
+        "evento": "oferta.exibida"
+      },
+      {
+        "id": "comprador",
+        "de": "qualquer",
+        "evento": "compra.aprovada"
+      },
+      {
+        "id": "nao_comprador:<segmento>",
+        "de": "inscrito | presente | viu_pitch",
+        "evento": "webinar.encerrado sem compra"
+      },
+      {
+        "id": "cliente",
+        "de": "comprador",
+        "evento": "obrigado.visitado"
+      }
+    ]
+  }
+}

@@ -143,7 +143,7 @@ function CreditsPage() {
               )}
 
               <section className="grid gap-4 lg:grid-cols-3">
-                <div className="rounded-xl border bg-card p-5 lg:col-span-2">
+                <div className="rounded-card bg-card p-5 lg:col-span-2">
                   <p className="text-sm text-muted-foreground">Saldo disponível</p>
                   <p className="mt-1 text-4xl font-semibold tabular-nums">{formatUsd(balance)}</p>
                   <dl className="mt-5 grid gap-4 border-t pt-4 text-sm sm:grid-cols-3">
@@ -179,7 +179,7 @@ function CreditsPage() {
                   )}
                 </div>
 
-                <div className="rounded-xl border bg-card p-5">
+                <div className="rounded-card bg-card p-5">
                   <p className="text-sm text-muted-foreground">Retorno este mês</p>
                   <p className="mt-1 text-sm">
                     A IA custou <strong className="tabular-nums">{formatUsd(spent)}</strong>.
@@ -208,7 +208,7 @@ function CreditsPage() {
                 </div>
               </section>
 
-              <section className="rounded-xl border bg-card">
+              <section className="rounded-card bg-card">
                 <h2 className="border-b px-5 py-3 font-semibold">Em que foi gasto este mês</h2>
                 {byAction.size === 0 ? (
                   <p className="px-5 py-6 text-sm text-muted-foreground">
@@ -248,11 +248,11 @@ function CreditsPage() {
 
         <TabsContent value="history" className="mt-6">
           {ledger.length === 0 ? (
-            <p className="rounded-xl border border-dashed bg-card px-6 py-12 text-center text-sm text-muted-foreground">
+            <p className="rounded-card bg-card px-6 py-12 text-center text-sm text-muted-foreground">
               Ainda sem movimentos.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-xl border bg-card">
+            <div className="overflow-x-auto rounded-card bg-card">
               <table className="w-full min-w-[680px] text-left text-sm">
                 <thead className="bg-muted">
                   <tr>
@@ -291,7 +291,7 @@ function CreditsPage() {
         </TabsContent>
 
         <TabsContent value="how" className="mt-6 grid gap-5 lg:grid-cols-2">
-          <section className="space-y-3 rounded-xl border bg-card p-5 text-sm">
+          <section className="space-y-3 rounded-card bg-card p-5 text-sm">
             <h2 className="font-semibold">Paga o custo real, não um preço inventado</h2>
             <p className="text-muted-foreground">
               Cada vez que a IA trabalha, medimos o que ela gastou de facto no fornecedor (texto lido e
@@ -313,7 +313,7 @@ function CreditsPage() {
               sua equipa, com o motivo.
             </p>
           </section>
-          <section className="space-y-3 rounded-xl border bg-card p-5 text-sm">
+          <section className="space-y-3 rounded-card bg-card p-5 text-sm">
             <h2 className="font-semibold">Sempre grátis</h2>
             <ul className="list-disc space-y-1.5 pl-5 text-muted-foreground">
               {ALWAYS_FREE.map((f) => (

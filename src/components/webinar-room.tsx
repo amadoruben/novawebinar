@@ -8,7 +8,6 @@ import {
   MessagesSquare,
   Pin,
   Play,
-  Radio,
   Settings,
   ShoppingCart,
   Volume2,
@@ -22,6 +21,16 @@ import { ctaButtonClass } from "@/lib/cta-colors";
 import { useAudienceCount } from "@/components/audience-counter";
 import { cn, isHttpUrl } from "@/lib/utils";
 import { PreliveCountdown, unlockPreliveAudio } from "@/components/prelive-countdown";
+import { watchedStep } from "@/lib/participant-facts";
+
+/** O que a sala envia com cada sinal de progresso. */
+export type RoomProgressOptions = {
+  final?: boolean;
+  /** Posição em que a pessoa começou a ver; null até começar. */
+  entry?: number | null;
+  /** Segundos vistos desde o sinal anterior. */
+  played?: number;
+};
 
 type Mode = "live" | "replay";
 type Tab = "chat" | "support" | "offer";
@@ -96,14 +105,9 @@ function initials(name: string) {
 
 // Tom fixo por nome: cada pessoa tem sempre a mesma cor de avatar na sala.
 function avatarTone(name: string) {
-  const palette = [
-    "bg-blue-500/15 text-blue-500",
-    "bg-emerald-500/15 text-emerald-600",
-    "bg-amber-500/15 text-amber-600",
-    "bg-rose-500/15 text-rose-500",
-    "bg-violet-500/15 text-violet-500",
-    "bg-sky-500/15 text-sky-600",
-  ];
+  // Referência da sala: avatares neutros (--room-avatar); só o apresentador leva laranja.
+  // Dois tons próximos mantêm pessoas distinguíveis sem sair da paleta.
+  const palette = ["bg-room-raised text-room-text", "bg-room-line text-room-text"];
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
   return palette[Math.abs(hash) % palette.length];
@@ -225,7 +229,7 @@ export function WebinarRoom({
   supportMessages?: { id: string; body: string; sender_kind: string; created_at: string }[];
   onCtaView?: () => void;
   onCtaClick?: () => void;
-  onProgress?: (seconds: number, peakSeconds?: number, options?: { final?: boolean }) => void;
+  onProgress?: (seconds: number, peakSeconds?: number, options?: RoomProgressOptions) => void;
 }) {
   const [seconds, setSeconds] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -478,11 +482,40 @@ export function WebinarRoom({
   onProgressRef.current = onProgress;
   const contentSecondsRef = useRef(contentSeconds);
   contentSecondsRef.current = contentSeconds;
+
+  // Tempo efectivamente visto: só conta o avanço natural do conteúdo, com a sala
+  // visível ou, no vídeo próprio, com o som ligado. Sem vídeo, ou com vídeo
+  // embutido (a sala não sabe a posição), conta o relógio da sessão com a sala visível.
+  const ownVideo = Boolean(webinar.video_url) && !embedLike;
+  const watchClockRef = useRef(0);
+  watchClockRef.current = ownVideo ? videoSeconds : timeline;
+  const listeningRef = useRef(false);
+  listeningRef.current = ownVideo && soundOn && volume > 0;
+  const playedRef = useRef(0);
+  const entryRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!onProgress) return;
+    let previous: number | null = null;
+    const timer = window.setInterval(() => {
+      const clock = watchClockRef.current;
+      const present = document.visibilityState === "visible" || listeningRef.current;
+      const step = watchedStep(previous, clock, present);
+      if (step > 0) {
+        entryRef.current ??= Math.max(0, Math.round(clock - step));
+        playedRef.current += step;
+      }
+      previous = clock;
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [onProgress]);
+
   const flushProgress = useCallback((options?: { final?: boolean }) => {
+    const played = Math.floor(playedRef.current);
+    playedRef.current -= played;
     onProgressRef.current?.(
       Math.round(contentSecondsRef.current),
       Math.round(contentPeakRef.current),
-      options,
+      { ...options, entry: entryRef.current, played },
     );
   }, []);
   // Batimento fixo de 15 s (não reinicia com o tempo do vídeo), mais uma
@@ -733,16 +766,24 @@ export function WebinarRoom({
 
   const overlay = (
     <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex items-start justify-between gap-2">
-      <span className="flex items-center overflow-hidden rounded-lg shadow-lg shadow-black/25">
+      {/* Selo da referência: vermelho só para AO VIVO; replay a azul; resto neutro. */}
+      <span className="flex items-center gap-1.5">
         {prelive ? null : (
-          <span className="flex items-center gap-1 bg-destructive px-2 py-1 text-[11px] font-semibold text-destructive-foreground">
-            <Radio className="size-3 shrink-0 animate-pulse" aria-hidden />
-            {waiting ? "Em breve" : finished ? "Terminou" : mode === "live" ? "Ao Vivo" : "Replay"}
+          <span
+            className={cn(
+              "inline-flex h-[26px] items-center gap-1.5 rounded-xs px-2.5 text-[11px] font-bold tracking-[0.04em] text-white uppercase",
+              waiting || finished ? "bg-[var(--room-overlay)]" : mode === "live" ? "bg-live" : "bg-info",
+            )}
+          >
+            {mode === "live" && !waiting && !finished && (
+              <span className="size-[7px] animate-pulse rounded-full bg-white" aria-hidden />
+            )}
+            {waiting ? "Em breve" : finished ? "Terminou" : mode === "live" ? "Ao vivo" : "Replay"}
           </span>
         )}
         {!finished ? (
-          <span className="flex items-center gap-1 bg-card px-2 py-1 text-[11px] font-semibold tabular-nums text-foreground">
-            <Eye className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+          <span className="inline-flex h-[26px] items-center gap-1.5 rounded-xs bg-[var(--room-overlay)] px-2.5 text-xs font-medium tabular-nums text-white backdrop-blur-sm">
+            <Eye className="size-3.5 shrink-0" strokeWidth={1.5} aria-hidden />
             {(prelive ? preliveViewers : viewers).toLocaleString("pt-PT")}
           </span>
         ) : null}
@@ -1109,13 +1150,13 @@ export function WebinarRoom({
               item.purchase ? (
                 <div
                   key={item.key}
-                  className="flex items-center gap-2.5 rounded-xl bg-emerald-500/10 px-3 py-2 ring-1 ring-emerald-500/30"
+                  className="flex items-center gap-2.5 rounded-md bg-primary/10 px-3 py-2 ring-1 ring-primary/25"
                 >
-                  <span className="grid size-7 shrink-0 place-items-center rounded-full bg-emerald-500/20 text-emerald-500">
+                  <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary/20 text-primary">
                     <ShoppingCart className="size-3.5" />
                   </span>
                   <p className="min-w-0 break-words text-[14px] leading-snug text-room-text">
-                    <span className="mr-1.5 font-semibold text-emerald-500">{item.author}</span>
+                    <span className="mr-1.5 font-semibold text-primary">{item.author}</span>
                     {item.message}
                   </p>
                 </div>
@@ -1284,9 +1325,9 @@ export function WebinarRoom({
   const chatPin =
     tab === "chat" && !pinDismissed ? (
       offerPinActive ? (
-        <div className="mx-4 mt-4 flex items-center justify-between gap-3 rounded-xl bg-destructive/10 px-3 py-2 ring-1 ring-destructive/25">
+        <div className="mx-4 mt-4 flex items-center justify-between gap-3 rounded-md bg-primary/10 px-3.5 py-2.5 ring-1 ring-primary/30">
           <div className="flex min-w-0 items-center gap-2">
-            <Pin className="size-3.5 shrink-0 text-destructive" />
+            <Pin className="size-3.5 shrink-0 text-primary" />
             <p className="truncate text-sm font-semibold text-room-text">
               {webinar.offer_pin_title?.trim() || "Vagas abertas :"}
             </p>
@@ -1311,8 +1352,8 @@ export function WebinarRoom({
           </button>
         </div>
       ) : webinar.chat_pin_message ? (
-        <div className="mx-4 mt-4 flex items-start gap-3 rounded-2xl bg-destructive/10 px-4 py-3.5 ring-1 ring-destructive/25">
-          <Pin className="mt-0.5 size-4 shrink-0 text-destructive" />
+        <div className="mx-4 mt-4 flex items-start gap-3 rounded-md bg-room-raised px-4 py-3.5 ring-1 ring-room-line">
+          <Pin className="mt-0.5 size-4 shrink-0 text-room-subtle" />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-room-text">
               {webinar.chat_pin_title || "Participe no chat!"}
@@ -1399,7 +1440,7 @@ export function WebinarRoom({
           onClick={sendHeart}
           aria-label="Enviar coração"
           title="Enviar coração"
-          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-room-raised text-rose-500 ring-1 ring-room-line transition hover:scale-110 hover:bg-rose-500/15 active:scale-95"
+          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-room-raised text-primary ring-1 ring-room-line transition hover:scale-110 hover:bg-primary/15 active:scale-95"
         >
           <Heart className="size-5 fill-current" />
         </button>
@@ -1430,7 +1471,7 @@ export function WebinarRoom({
               {hearts.map((heart) => (
                 <Heart
                   key={heart.id}
-                  className="nw-heart absolute bottom-0 left-1/2 size-7 fill-rose-500 text-rose-500 drop-shadow"
+                  className="nw-heart absolute bottom-0 left-1/2 size-7 fill-primary text-primary drop-shadow"
                   style={{ marginLeft: `${heart.offset}px` }}
                 />
               ))}

@@ -19,7 +19,10 @@ import worldMapLight from "@/assets/world-map-light.jpg";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { useWorkspace } from "@/lib/data";
+import { lifecycleOf, useWebinars, useWorkspace } from "@/lib/data";
+import { lifecycleDetail, lifecycleLabel } from "@/lib/schedule";
+import { fetchAll } from "@/lib/fetch-all";
+import { FACT_COLUMNS, funnelSummary } from "@/lib/participant-facts";
 import { useLiveViewers, type LiveViewer } from "@/lib/live-presence";
 import { cn } from "@/lib/utils";
 
@@ -33,12 +36,12 @@ export const Route = createFileRoute("/live-view")({
       {
         name: "description",
         content:
-          "Veja em tempo real quem está nas suas salas, de onde assiste e quem está a comprar.",
+          "Veja em tempo real quem está nas suas salas, de onde assiste e quem clica na oferta.",
       },
       { property: "og:title", content: "Vista ao vivo | Convertewebinar" },
       {
         property: "og:description",
-        content: "Audiência ao minuto, mapa de origem e compras em curso.",
+        content: "Audiência ao minuto, mapa de origem, cliques na oferta e compras.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -105,9 +108,13 @@ function LiveViewPage() {
     () => (webinar ? allViewers.filter((v) => v.webinarId === webinar) : allViewers),
     [allViewers, webinar],
   );
+  const { data: webinars = [] } = useWebinars(organizationId);
+  const selected = webinar ? webinars.find((w) => w.id === webinar) : undefined;
   const webinarTitle = webinar
-    ? (allViewers.find((v) => v.webinarId === webinar)?.webinarTitle ?? null)
+    ? (selected?.public_title ?? allViewers.find((v) => v.webinarId === webinar)?.webinarTitle ?? null)
     : null;
+  // O estado da sessão vem do ciclo de vida canónico, não de quem está na sala.
+  const lifecycle = selected ? lifecycleOf(selected) : null;
   const feed = useActivityFeed(viewers);
   const [, setTick] = useState(0);
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -131,22 +138,18 @@ function LiveViewPage() {
     queryFn: async () => {
       const scope = <T extends { eq: (col: string, val: string) => T }>(q: T) =>
         webinar ? q.eq("webinar_id", webinar) : q;
-      const [access, clicks] = await Promise.all([
+      // Os mesmos números do Painel e das Métricas: pessoas, uma vez por webinar.
+      const facts = await fetchAll((from, to) =>
         scope(
           supabase
-            .from("participants")
-            .select("id", { count: "exact", head: true })
+            .from("participant_facts")
+            .select(FACT_COLUMNS, { count: "exact" })
             .eq("organization_id", organizationId!),
-        ),
-        scope(
-          supabase
-            .from("cta_events")
-            .select("id", { count: "exact", head: true })
-            .eq("organization_id", organizationId!)
-            .eq("event_type", "click"),
-        ),
-      ]);
-      return { access: access.count ?? 0, clicks: clicks.count ?? 0 };
+        )
+          .order("participant_id")
+          .range(from, to),
+      );
+      return funnelSummary(facts);
     },
   });
 
@@ -202,17 +205,18 @@ function LiveViewPage() {
   const maxSpot = spots[0]?.count ?? 1;
   const funnel = [
     { label: "Na sala", value: viewers.length, tone: "bg-sky-400" },
-    { label: "Na oferta", value: checkout.length, tone: "bg-amber-400" },
-    { label: "A comprar", value: checkout.length, tone: "bg-emerald-400" },
+    { label: "Clicaram na oferta", value: checkout.length, tone: "bg-amber-400" },
   ];
 
   return (
     <AppShell
       title={webinarTitle ? `Vista ao vivo — ${webinarTitle}` : "Vista ao vivo"}
       description={
-        webinar
-          ? "Métricas em tempo real deste webinar: quem está na sala, de onde assiste e quem está a comprar."
-          : "Quem está nas suas salas neste momento, de onde assiste e quem está a comprar."
+        lifecycle
+          ? `${lifecycleLabel(lifecycle)} · ${lifecycleDetail(lifecycle, selected?.timezone)}`
+          : webinar
+            ? "Métricas em tempo real deste webinar: quem está na sala, de onde assiste e quem clicou na oferta."
+            : "Quem está nas suas salas neste momento, de onde assiste e quem clicou na oferta."
       }
       action={
         <Button
@@ -305,11 +309,18 @@ function LiveViewPage() {
               <Tile icon={Clapperboard} label="Replay" value={replay.length} theme={theme} />
               <Tile icon={Smartphone} label="Telemóvel" value={onMobile.length} theme={theme} />
               <Tile icon={Monitor} label="Computador" value={onDesktop.length} theme={theme} />
-              <Tile icon={Users} label="Acessos totais" value={totals?.access ?? 0} theme={theme} />
+              <Tile icon={Users} label="Inscritos" value={totals?.registered ?? 0} theme={theme} />
               <Tile
                 icon={MousePointerClick}
-                label="Cliques na oferta"
-                value={totals?.clicks ?? 0}
+                label="Clicaram na oferta"
+                value={totals?.clicked ?? 0}
+                theme={theme}
+              />
+              <Tile icon={Users} label="Compraram" value={totals?.buyers ?? 0} theme={theme} />
+              <Tile
+                icon={MousePointerClick}
+                label="Conversão"
+                value={`${(totals?.conversion ?? 0).toFixed(1)}%`}
                 theme={theme}
               />
             </div>
@@ -447,7 +458,7 @@ function LiveViewPage() {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm">
                     <strong className="font-semibold">{item.name}</strong>{" "}
-                    {item.kind === "checkout" ? "abriu a oferta" : "entrou na sala"}
+                    {item.kind === "checkout" ? "clicou na oferta" : "entrou na sala"}
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">
                     {item.place} · {clockLabel(item.at)}
@@ -471,7 +482,7 @@ function LiveViewPage() {
                     {session.count}
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">{session.checkout} na oferta</p>
+                <p className="mt-1 text-xs text-muted-foreground">{session.checkout} clicaram na oferta</p>
               </li>
             ))}
           </ul>
@@ -496,7 +507,7 @@ function LiveViewPage() {
                 </span>
                 {viewer.checkout ? (
                   <span className="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-bold text-emerald-600">
-                    A comprar
+                    Clicou na oferta
                   </span>
                 ) : (
                   <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
@@ -518,7 +529,7 @@ function Tile({
 }: {
   icon: typeof Eye;
   label: string;
-  value: number;
+  value: number | string;
   theme: "dark" | "light";
 }) {
   return (
@@ -549,7 +560,7 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border bg-card p-5 shadow-sm">
+    <section className="rounded-card bg-card p-5">
       <h2 className="flex items-center gap-2 font-semibold">
         <span className="grid size-8 place-items-center rounded-xl bg-primary/10 text-primary">
           <Icon className="size-4" />

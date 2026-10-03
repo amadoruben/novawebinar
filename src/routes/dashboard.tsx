@@ -1,16 +1,42 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Clapperboard, MousePointerClick, Radio, TrendingUp } from "lucide-react";
-import dashboardBanner from "@/assets/local/nova-dashboard-banner-desktop-v5.jpg";
+import { useMemo } from "react";
+import {
+  ArrowRight,
+  Contact,
+  Radio,
+  ShoppingBag,
+  Users,
+  Workflow,
+} from "lucide-react";
 import { AiJobsOverview, SyncJobsOverview } from "@/components/ai-job-banner";
 import { AppShell } from "@/components/app-shell";
-import { AudienceInsights } from "@/components/audience-insights";
-import { Metric, WebinarTable } from "@/components/page-primitives";
+import {
+  Funnel,
+  OpenLink,
+  PanelHeader,
+  RecentActivity,
+  StatTile,
+} from "@/components/dashboard/panels";
+import { revenueLabel } from "@/components/dashboard/model";
+import { Spheres } from "@/components/ds/imagery";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { PageSkeleton } from "@/components/page-skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/fetch-all";
-import { formatDateTime, useWebinars, useWorkspace, watchLabel } from "@/lib/data";
+import {
+  lifecycleOf,
+  switchWorkspace,
+  useAutomationStats,
+  useAutomations,
+  useContactStageCounts,
+  useMonthRevenue,
+  useWebinars,
+  useWorkspace,
+  watchLabel,
+} from "@/lib/data";
+import { formatSessionStart, lifecycleDetail } from "@/lib/schedule";
+import { FACT_COLUMNS, funnelSummary } from "@/lib/participant-facts";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
@@ -29,55 +55,88 @@ export const Route = createFileRoute("/dashboard")({
   component: Dashboard,
 });
 
+const nf = new Intl.NumberFormat("pt-PT");
+const pct = (part: number, whole: number) =>
+  new Intl.NumberFormat("pt-PT", { style: "percent", maximumFractionDigits: 1 }).format(whole ? part / whole : 0);
+
 function Dashboard() {
   const { data: workspace } = useWorkspace();
   const organizationId = workspace?.organizationId;
   const { data: webinars = [], isLoading } = useWebinars(organizationId);
 
-  const { data: stats } = useQuery({
-    queryKey: ["dashboard-stats", organizationId],
+  const factsQuery = useQuery({
+    queryKey: ["dashboard-facts", organizationId],
     enabled: Boolean(organizationId),
-    queryFn: async () => {
-      if (!organizationId)
-        return { participantCount: 0, ctaClicks: 0, averageWatch: 0, conversion: 0 };
-      const [people, ctaClicks] = await Promise.all([
-        fetchAll((from, to) =>
-          supabase
-            .from("participants")
-            .select("id, watched_seconds", { count: "exact" })
-            .eq("organization_id", organizationId)
-            .order("id")
-            .range(from, to),
-        ),
+    queryFn: () =>
+      fetchAll((from, to) =>
         supabase
-          .from("cta_events")
-          .select("id", { count: "exact", head: true })
-          .eq("organization_id", organizationId)
-          .eq("event_type", "click"),
-      ]);
-      if (ctaClicks.error) throw ctaClicks.error;
-      const watchers = people.filter((p) => (p.watched_seconds ?? 0) > 0);
-      const watched = watchers.reduce((sum, p) => sum + (p.watched_seconds ?? 0), 0);
-      const participantCount = people.length;
-      return {
-        participantCount,
-        ctaClicks: ctaClicks.count ?? 0,
-        averageWatch: watchers.length ? Math.round(watched / watchers.length) : 0,
-        conversion: participantCount ? ((ctaClicks.count ?? 0) / participantCount) * 100 : 0,
-      };
-    },
+          .from("participant_facts")
+          .select(`${FACT_COLUMNS}, joined_at, device, country, watch_measured`, { count: "exact" })
+          .eq("organization_id", organizationId!)
+          .order("joined_at", { ascending: false })
+          .order("participant_id")
+          .range(from, to),
+      ),
   });
+  const facts = factsQuery.data;
+  const factsLoading = factsQuery.isLoading || !organizationId;
 
-  const upcomingWebinars = webinars
-    .filter((w) => w.scheduled_at && new Date(w.scheduled_at).getTime() > Date.now())
-    .sort(
-      (a, b) => new Date(a.scheduled_at ?? 0).getTime() - new Date(b.scheduled_at ?? 0).getTime(),
-    );
-  const upcoming = upcomingWebinars[0];
-  const live = webinars.find((w) => w.status === "live");
+  const view = useMemo(() => {
+    const rows = facts ?? [];
+    // Uma linha por pessoa e webinar (quem entrou em dois aparelhos conta uma vez).
+    const people = new Map<string, (typeof rows)[number]>();
+    const estimated = new Set<string>();
+    for (const f of rows) {
+      const key = `${f.person_id}:${f.webinar_id}`;
+      if (!people.has(key)) people.set(key, f);
+      if (f.attended && f.watch_measured === false) estimated.add(key);
+    }
+    return {
+      stats: funnelSummary(rows),
+      people: [...people.values()],
+      estimated: estimated.size,
+      webinarCount: new Set(rows.map((f) => f.webinar_id)).size,
+    };
+  }, [facts]);
+  const { stats } = view;
+
+  const contacts = useContactStageCounts(organizationId, null, null);
+  const revenue = useMonthRevenue(organizationId);
+  const automations = useAutomations(organizationId);
+  const runs = useAutomationStats(organizationId);
+  const activeAutomations = (automations.data ?? []).filter((a) => a.active && !a.archived_at).length;
+  const runTotals = runs.data?.totals;
+
+  // O ciclo de vida calculado (data única, repetição, just in time), não o estado guardado.
+  const sessions = webinars.flatMap((w) => {
+    const lifecycle = lifecycleOf(w);
+    return lifecycle.kind === "session" ? [{ webinar: w, lifecycle }] : [];
+  });
+  const upcomingWebinars = sessions
+    .filter((s) => s.lifecycle.state === "scheduled")
+    .sort((a, b) => a.lifecycle.startMs - b.lifecycle.startMs);
+  const upcoming = upcomingWebinars[0]?.webinar;
+  const live = sessions.find((s) => s.lifecycle.state === "live")?.webinar;
   const highlight = live ?? upcoming ?? webinars[0];
+  const highlightLifecycle = highlight ? lifecycleOf(highlight) : null;
+  const finished = highlightLifecycle?.kind === "session" && highlightLifecycle.state === "finished";
+  const highlightStats = highlight
+    ? funnelSummary((facts ?? []).filter((f) => f.webinar_id === highlight.id))
+    : null;
+  const stage = live
+    ? "A decorrer agora"
+    : upcoming
+      ? "Próxima sessão"
+      : finished
+        ? "Última sessão"
+        : highlight
+          ? "Operação"
+          : "Comece aqui";
 
+  // A conta aberta por omissão pode não ser a de demonstração: diz-se onde estão os dados.
+  const testOrg = workspace && !workspace.isTest ? workspace.organizations.find((o) => o.isTest) : undefined;
   const firstName = (workspace?.fullName ?? "").split(" ")[0] ?? "";
+
 
   return (
     <AppShell
@@ -87,127 +146,232 @@ function Dashboard() {
       <AiJobsOverview className="mb-4" />
       <SyncJobsOverview className="mb-4" />
 
-      {!isLoading && (
-        <section className="relative mb-6 min-h-44 overflow-hidden rounded-lg bg-foreground px-5 py-6 text-background sm:min-h-52 sm:px-7 sm:py-8">
-          <img
-            src={dashboardBanner}
-            alt=""
-            className="pointer-events-none absolute inset-y-0 right-0 h-full w-auto max-w-none object-cover opacity-90"
-            aria-hidden="true"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-foreground via-foreground/95 to-foreground/40 sm:to-foreground/20" aria-hidden="true" />
-          <div className="relative z-10 flex h-full min-h-[10rem] flex-col justify-center sm:min-h-[13rem]">
-            <div className="min-w-0 max-w-xl">
-              <div className="flex items-center gap-2 text-xs font-medium text-background/60">
-                <Radio className="size-4 text-primary" />
-                Estúdio Convertewebinar
-              </div>
-              <h2 className="mt-3 text-2xl font-semibold leading-tight sm:text-3xl">
-                Transforme audiência em vendas
-              </h2>
-              <p className="mt-2 max-w-lg text-sm leading-relaxed text-background/65">
-                Prepare a próxima sessão e mantenha vídeo, interações e oferta alinhados.
-              </p>
-              <Button asChild size="sm" className="mt-5">
-                {highlight ? (
-                  <Link to="/webinars/$webinarId/edit" params={{ webinarId: highlight.id }}>
-                    Continuar configuração <ArrowRight />
-                  </Link>
-                ) : (
-                  <Link to="/webinars/new">
-                    Criar webinar <ArrowRight />
-                  </Link>
+      {testOrg && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-card bg-info-soft px-5 py-3 text-sm">
+          <p className="min-w-0">
+            <span>Está na conta {workspace?.organizationName}.</span>{" "}
+            <span className="text-muted-foreground">Os dados de demonstração estão em {testOrg.name}.</span>
+          </p>
+          <Button size="sm" variant="outline" onClick={() => switchWorkspace(testOrg.id)}>
+            Abrir conta de teste <ArrowRight />
+          </Button>
+        </div>
+      )}
+
+      {/* Bento: 12 colunas no ecrã largo, uma no telemóvel, gap de 12px. */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+        {/* O webinar em destaque, como o cartão "Pro Version" da referência:
+            esferas de marca e, por cima, o painel de vidro (liquid gray) com os
+            números reais da sessão. */}
+        <section className="relative grid min-w-0 overflow-hidden rounded-card bg-card md:col-span-2 xl:col-span-8 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+          <div className="relative z-10 flex min-w-0 flex-col justify-between gap-6 p-6 sm:p-7">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 ${live ? "bg-primary text-white" : "bg-white text-foreground"}`}
+                >
+                  <Radio className="size-3.5" strokeWidth={1.5} />
+                  {stage}
+                </span>
+                {workspace?.isTest && (
+                  <Badge variant="warning" className="uppercase">
+                    Conta de teste
+                  </Badge>
                 )}
-              </Button>
+              </div>
+              {isLoading ? (
+                <div className="mt-4 h-9 w-72 max-w-full animate-pulse rounded-sm bg-chip" />
+              ) : (
+                <h2 className="mt-4 text-[26px] leading-[1.15] font-normal tracking-[-0.03em] sm:text-[30px]">
+                  {highlight ? highlight.public_title || highlight.internal_name : "Transforme audiência em vendas"}
+                </h2>
+              )}
+              <p className="mt-2 text-sm text-muted-foreground">
+                {highlight && highlightLifecycle
+                  ? lifecycleDetail(highlightLifecycle, highlight.timezone)
+                  : "Crie o primeiro webinar: vídeo, agenda, interações e oferta no estúdio."}
+              </p>
+            </div>
+            {!isLoading && (
+              <div className="flex flex-wrap gap-2">
+                {highlight ? (
+                  <>
+                    {finished && (
+                      <Button asChild>
+                        <Link to="/webinars/$webinarId/metrics" params={{ webinarId: highlight.id }}>
+                          Ver resultados <ArrowRight />
+                        </Link>
+                      </Button>
+                    )}
+                    <Button asChild variant={finished ? "outline" : "default"}>
+                      <Link to="/live/$webinarId" params={{ webinarId: highlight.id }}>
+                        Testar sala
+                      </Link>
+                    </Button>
+                    <Button asChild variant="outline">
+                      <Link to="/webinars/$webinarId/edit" params={{ webinarId: highlight.id }}>
+                        Editar
+                      </Link>
+                    </Button>
+                    {!finished && (
+                      <Button asChild variant="outline">
+                        <Link to="/webinars/$webinarId/metrics" params={{ webinarId: highlight.id }}>
+                          Resultados
+                        </Link>
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <Button asChild>
+                    <Link to="/webinars/new">
+                      Criar webinar <ArrowRight />
+                    </Link>
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="relative min-h-[250px] sm:min-h-[340px]">
+            <Spheres className="absolute -top-8 -right-6 h-[78%] w-[88%]" />
+            <div className="glass glass-edge absolute inset-x-2 bottom-2 flex flex-col gap-4 rounded-lg p-5 sm:top-[42%]">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[15px] tracking-[-0.01em]">Esta sessão</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">Inscrição, presença e compra</p>
+                </div>
+                {highlight && (
+                  <OpenLink label="Resultados do webinar">
+                    <Link to="/webinars/$webinarId/metrics" params={{ webinarId: highlight.id }} />
+                  </OpenLink>
+                )}
+              </div>
+              {highlightStats && highlightStats.registered > 0 ? (
+                <div className="grid flex-1 grid-cols-3 items-end gap-1.5">
+                  {[
+                    { label: "inscritos", value: highlightStats.registered, accent: false },
+                    { label: "assistiram", value: highlightStats.attended, accent: false },
+                    { label: "compraram", value: highlightStats.buyers, accent: true },
+                  ].map((bar) => (
+                    <div
+                      key={bar.label}
+                      className={`flex min-h-[64px] flex-col justify-between rounded-md p-3 ${
+                        bar.accent ? "bg-primary text-white" : "bg-white/80 text-foreground"
+                      }`}
+                      style={{
+                        height: `${Math.max(34, (bar.value / highlightStats.registered) * 100)}%`,
+                      }}
+                    >
+                      <span className="text-[22px] leading-none tracking-[var(--tracking-display)] tabular-nums">
+                        {nf.format(bar.value)}
+                      </span>
+                      <span className={`text-[10px] ${bar.accent ? "text-white/80" : "text-muted-foreground"}`}>
+                        {bar.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Os números aparecem aqui quando as primeiras pessoas se inscreverem.
+                </p>
+              )}
             </div>
           </div>
         </section>
-      )}
 
-      {isLoading ? (
-        <PageSkeleton variant="cards" />
-      ) : (
-        <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-          <Metric label="Participantes reais" value={String(stats?.participantCount ?? 0)} />
-          <Metric label="Webinars criados" value={String(webinars.length)} icon={Clapperboard} />
-          <Metric
-            label="Tempo médio assistido"
-            value={watchLabel(stats?.averageWatch ?? 0)}
-            icon={TrendingUp}
+        <section className="flex min-w-0 flex-col gap-4 rounded-card bg-card p-5 sm:p-6 md:col-span-2 xl:col-span-4">
+          <PanelHeader
+            title="Agenda"
+            description={upcomingWebinars.length ? `${nf.format(upcomingWebinars.length)} sessões marcadas` : undefined}
+            action={<OpenLink label="Ver calendário"><Link to="/calendar" /></OpenLink>}
           />
-          <Metric
-            label="Conversão no CTA"
-            value={`${(stats?.conversion ?? 0).toFixed(1)}%`}
-            change={`${stats?.ctaClicks ?? 0} cliques`}
-            icon={MousePointerClick}
-          />
-        </section>
-      )}
-
-      <section className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
-        <div className="rounded-lg border bg-card p-5 sm:p-6">
-          <p className="text-xs font-medium uppercase text-muted-foreground">
-            {live ? "A decorrer agora" : upcoming ? "Próxima sessão" : "Operação"}
-          </p>
-          <h2 className="mt-2 text-xl font-semibold">
-            {highlight?.public_title ?? "Crie o seu primeiro webinar"}
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {highlight
-              ? formatDateTime(highlight.scheduled_at)
-              : "Configure vídeo, agenda, interações e oferta no estúdio."}
-          </p>
-          <div className="mt-5 flex flex-wrap gap-2">
-            {highlight ? (
-              <>
-                <Button asChild>
-                  <Link to="/live/$webinarId" params={{ webinarId: highlight.id }}>
-                    Testar sala
-                  </Link>
-                </Button>
-                <Button variant="outline" asChild>
-                  <Link to="/webinars/$webinarId/edit" params={{ webinarId: highlight.id }}>
-                    Editar
-                  </Link>
-                </Button>
-              </>
-            ) : (
-              <Button asChild>
-                <Link to="/webinars/new">Criar webinar</Link>
-              </Button>
-            )}
-          </div>
-        </div>
-        <div className="rounded-lg border bg-card p-5 sm:p-6">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold">Agenda</h2>
-            <Link to="/calendar" className="text-sm font-medium text-primary hover:underline">
-              Ver calendário
-            </Link>
-          </div>
-          {upcomingWebinars.length ? (
-            <ol className="mt-4 divide-y">
-              {upcomingWebinars.slice(0, 3).map((w) => (
-                <li key={w.id} className="py-3 first:pt-0">
-                  <p className="truncate text-sm font-medium">
-                    {w.public_title || w.internal_name}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {formatDateTime(w.scheduled_at)}
+          {isLoading ? (
+            <div className="h-10 animate-pulse rounded-sm bg-chip" />
+          ) : upcomingWebinars.length ? (
+            <ol className="flex flex-col gap-2">
+              {upcomingWebinars.slice(0, 3).map(({ webinar: w, lifecycle }, i) => (
+                <li
+                  key={w.id}
+                  className={`rounded-md px-4 py-3 ${i === 0 ? "bg-accent" : "bg-white"}`}
+                >
+                  <p className="truncate text-sm">{w.public_title || w.internal_name}</p>
+                  <p className={`mt-0.5 text-xs ${i === 0 ? "text-accent-700" : "text-muted-foreground"}`}>
+                    {formatSessionStart(lifecycle.startMs, w.timezone)}
                   </p>
                 </li>
               ))}
             </ol>
           ) : (
-            <p className="mt-4 text-sm text-muted-foreground">Nenhuma sessão futura agendada.</p>
+            <p className="rounded-md bg-white px-4 py-4 text-sm text-muted-foreground">
+              Nenhuma sessão futura agendada. Marque a próxima data na agenda do webinar.
+            </p>
           )}
+        </section>
+
+        <div className="xl:col-span-3">
+          <StatTile
+            label="Contactos"
+            icon={Contact}
+            to="/contacts"
+            loading={contacts.isLoading || !organizationId}
+            error={contacts.isError}
+            value={nf.format(contacts.data?.all ?? 0)}
+            sub={`${nf.format(contacts.data?.customer ?? 0)} clientes · ${nf.format(contacts.data?.checkout ?? 0)} em checkout`}
+          />
         </div>
-      </section>
+        <div className="xl:col-span-3">
+          <StatTile
+            label="Participantes"
+            icon={Users}
+            to="/participants"
+            loading={factsLoading}
+            error={factsQuery.isError}
+            value={nf.format(stats.registered)}
+            sub={`${pct(stats.attended, stats.registered)} assistiram · ${watchLabel(stats.averageWatchSeconds)} em média${
+              view.estimated ? ` (${nf.format(view.estimated)} estimados)` : ""
+            }`}
+          />
+        </div>
+        <div className="xl:col-span-3">
+          <StatTile
+            label="Compras"
+            icon={ShoppingBag}
+            loading={factsLoading}
+            error={factsQuery.isError}
+            value={nf.format(stats.buyers)}
+            sub={
+              revenue.isLoading
+                ? "A calcular vendas…"
+                : revenue.data?.length
+                  ? `${revenueLabel(revenue.data)} em vendas este mês${stats.refunded ? ` · ${nf.format(stats.refunded)} reembolsados` : ""}`
+                  : `Sem vendas aprovadas este mês${stats.refunded ? ` · ${nf.format(stats.refunded)} reembolsados` : ""}`
+            }
+          />
+        </div>
+        <div className="xl:col-span-3">
+          <StatTile
+            label="Automações activas"
+            icon={Workflow}
+            to="/automations"
+            loading={automations.isLoading || runs.isLoading || !organizationId}
+            error={automations.isError || runs.isError}
+            value={nf.format(activeAutomations)}
+            alert={(runTotals?.failed ?? 0) > 0}
+            sub={`${nf.format(runTotals?.runs ?? 0)} execuções · ${nf.format(runTotals?.failed ?? 0)} falharam${
+              runTotals?.pending ? ` · ${nf.format(runTotals.pending)} a aguardar` : ""
+            }`}
+          />
+        </div>
 
-      <AudienceInsights organizationId={organizationId} className="mt-6" />
-
-      <div className="mt-6 mb-28 md:mb-0">
-        <WebinarTable rows={webinars.slice(0, 6)} loading={isLoading} />
+        {/* O essencial: onde as pessoas ficam no funil e o que acabou de acontecer.
+            Entradas por dia e audiência estão em Análises; a lista em Webinars. */}
+        <div className="md:col-span-2 xl:col-span-5">
+          <Funnel stats={stats} loading={factsLoading} error={factsQuery.isError} />
+        </div>
+        <div className="mb-28 md:col-span-2 md:mb-0 xl:col-span-7">
+          <RecentActivity organizationId={organizationId} />
+        </div>
       </div>
     </AppShell>
   );

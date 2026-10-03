@@ -48,8 +48,8 @@ export default defineConfig(({ command, mode }) => {
         server: { entry: "server" },
       }),
       // Nitro só no build, como antes: em dev o TanStack Start serve directamente.
-      // Preset explícito e neutro; muda-se aqui quando o alvo de deploy for decidido.
-      ...(command === "build" ? [nitro({ preset: "node-server" })] : []),
+      // No Vercel (VERCEL=1 no build) sai no formato dele; fora dele, servidor Node.
+      ...(command === "build" ? [nitro({ preset: process.env["VERCEL"] ? "vercel" : "node-server" })] : []),
       viteReact(),
     ],
   };

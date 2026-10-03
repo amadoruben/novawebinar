@@ -64,7 +64,7 @@ function CalendarPage() {
 
   return (
     <AppShell title="Calendário" description="Planeie as próximas sessões e replays.">
-      <div className="rounded-lg border bg-card p-4 sm:p-5">
+      <div className="rounded-card bg-card p-4 sm:p-5">
         <div className="mb-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <CalendarDays className="text-primary" />

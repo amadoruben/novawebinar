@@ -1,5 +1,13 @@
 import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
+
+// Nomes dos tokens do design system (src/styles.css): sem isto, "rounded-md"
+// passado por className não substituía o "rounded-pill" de base.
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: { radius: ["card", "pill"], shadow: ["pop", "float"] },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

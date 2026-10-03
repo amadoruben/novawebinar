@@ -1,94 +1,85 @@
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/fetch-all";
 import type { DateRange } from "@/lib/date-range";
+import { clockLabel } from "@/lib/engagement-analysis";
+import {
+  buildDropOff,
+  buildRetention,
+  factsDuration,
+  funnelSummary,
+  type DropOffPoint,
+  type ParticipantFact,
+} from "@/lib/participant-facts";
 
-export type MetricsParticipant = {
-  id: string;
-  name: string;
-  email: string | null;
-  phone: string | null;
-  joined_at: string;
-  watched_seconds: number;
-  viewing_mode: string;
-  cta_clicked: boolean;
-  status: string;
-};
+export { clockLabel };
+export type { DropOffPoint };
 
-export type DropOffPoint = {
-  second: number;
-  endSecond: number;
-  label: string;
-  range: string;
-  exits: number;
-  watching: number;
-  /** Percentagem de quem ainda estava na sala e saiu neste intervalo. */
-  rate: number;
-};
+/** Uma participação, lida dos factos: tempo visto, posição e presença canónicos. */
+export type MetricsParticipant = Pick<
+  ParticipantFact,
+  | "participant_id"
+  | "person_id"
+  | "contact_id"
+  | "webinar_id"
+  | "name"
+  | "email"
+  | "phone"
+  | "joined_at"
+  | "viewing_mode"
+  | "attended"
+  | "actual_watch_seconds"
+  | "watch_measured"
+  | "entry_seconds"
+  | "peak_seconds"
+  | "reached_pitch"
+  | "reached_offer"
+  | "duration_seconds"
+  | "saw_offer"
+  | "clicked"
+  | "checkout_started"
+  | "purchased"
+  | "payment_failed"
+  | "checkout_abandoned"
+  | "refunded"
+  | "webinar_session_id"
+>;
+
+const PARTICIPANT_COLUMNS =
+  "participant_id, person_id, contact_id, webinar_id, name, email, phone, joined_at, viewing_mode, attended, actual_watch_seconds, watch_measured, entry_seconds, peak_seconds, reached_pitch, reached_offer, duration_seconds, saw_offer, clicked, checkout_started, purchased, payment_failed, checkout_abandoned, refunded, webinar_session_id";
 
 export type WebinarMetrics = {
   participants: MetricsParticipant[];
+  /** Pessoas inscritas (cada pessoa conta uma vez). */
   registered: number;
-  live: number;
-  replay: number;
-  ctaClicks: number;
-  ctaViews: number;
+  attended: number;
+  attendedLive: number;
+  attendedReplay: number;
+  reachedPitch: number;
+  /** Funil da oferta: pessoas que assistiram, uma vez cada. */
+  sawOffer: number;
+  clicked: number;
+  checkout: number;
+  buyers: number;
+  paymentFailed: number;
+  abandoned: number;
+  /** Compraram e foram reembolsados: não contam como compras. */
+  refunded: number;
+  /** Compraram ÷ assistiram, em percentagem. */
+  conversion: number;
+  /** Pagamentos aprovados das pessoas deste período, somados por moeda. */
+  revenue: { currency: string; amount: number }[];
+  approvedPayments: number;
   chatAuthors: number;
   chatMessages: number;
   durationSeconds: number;
   retention: { second: number; label: string; viewers: number }[];
   dropOff: DropOffPoint[];
+  /** Tempo visto médio de quem assistiu. */
   averageWatchSeconds: number;
-  medianWatchSeconds: number;
   milestones: { label: string; value: number }[];
   chatParticipantIds: string[];
   teamChatParticipantIds: string[];
 };
-
-
-export function clockLabel(seconds: number) {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  const mm = String(m).padStart(2, "0");
-  const ss = String(s).padStart(2, "0");
-  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
-}
-
-export function buildRetention(watched: number[], durationSeconds: number, steps = 40) {
-  const total = Math.max(durationSeconds, 60);
-  const stride = Math.max(30, Math.round(total / steps / 30) * 30 || 30);
-  const points: { second: number; label: string; viewers: number }[] = [];
-  for (let second = 0; second <= total; second += stride) {
-    points.push({
-      second,
-      label: clockLabel(second),
-      viewers: watched.filter((value) => value >= second).length,
-    });
-  }
-  return points;
-}
-
-/** Quantas pessoas abandonaram em cada intervalo do vídeo. */
-export function buildDropOff(watched: number[], durationSeconds: number, steps = 40) {
-  const total = Math.max(durationSeconds, 60);
-  const stride = Math.max(30, Math.round(total / steps / 30) * 30 || 30);
-  const points: DropOffPoint[] = [];
-  for (let second = 0; second < total; second += stride) {
-    const end = Math.min(second + stride, total);
-    const watching = watched.filter((value) => value >= second).length;
-    const exits = watched.filter((value) => value >= second && value < end).length;
-    points.push({
-      second,
-      endSecond: end,
-      label: clockLabel(second),
-      range: `${clockLabel(second)} – ${clockLabel(end)}`,
-      exits,
-      watching,
-      rate: watching ? (exits / watching) * 100 : 0,
-    });
-  }
-  return points;
-}
 
 export type WebinarInsight = {
   tone: "alerta" | "atencao" | "bom";
@@ -100,13 +91,14 @@ export type WebinarInsight = {
 export function buildInsights(
   metrics: Pick<
     WebinarMetrics,
-    "dropOff" | "registered" | "durationSeconds" | "averageWatchSeconds" | "ctaViews" | "ctaClicks"
+    "dropOff" | "attended" | "durationSeconds" | "averageWatchSeconds" | "sawOffer" | "clicked"
   >,
   options: { pitchSeconds?: number | null; ctaStartSeconds?: number | null } = {},
 ): WebinarInsight[] {
   const insights: WebinarInsight[] = [];
-  const { dropOff, registered, durationSeconds, averageWatchSeconds } = metrics;
-  if (!registered) return insights;
+  // A curva e as saídas contam só quem assistiu; as percentagens também.
+  const { dropOff, attended, durationSeconds, averageWatchSeconds } = metrics;
+  if (!attended) return insights;
 
   const ranked = [...dropOff].filter((p) => p.exits > 0).sort((a, b) => b.exits - a.exits);
   const top = ranked[0];
@@ -121,10 +113,10 @@ export function buildInsights(
   const firstMinutes = dropOff.filter((p) => p.second < 300);
   const earlyExits = firstMinutes.reduce((sum, p) => sum + p.exits, 0);
   if (earlyExits) {
-    const share = (earlyExits / registered) * 100;
+    const share = (earlyExits / attended) * 100;
     insights.push({
       tone: share >= 30 ? "alerta" : share >= 15 ? "atencao" : "bom",
-      title: `${share.toFixed(0)}% saem nos primeiros 5 minutos`,
+      title: `${share.toFixed(0)}% de quem assistiu sai nos primeiros 5 minutos`,
       detail:
         share >= 15
           ? "A abertura não está a prender. Diga logo no primeiro minuto o que a pessoa vai levar do webinar e quando chega a parte prática."
@@ -137,7 +129,7 @@ export function buildInsights(
     const before = dropOff.filter((p) => p.endSecond > pitch - 300 && p.second < pitch);
     const exitsBefore = before.reduce((sum, p) => sum + p.exits, 0);
     if (exitsBefore) {
-      const share = (exitsBefore / registered) * 100;
+      const share = (exitsBefore / attended) * 100;
       insights.push({
         tone: share >= 15 ? "alerta" : "atencao",
         title: `${exitsBefore} pessoas saem nos 5 minutos antes do pitch (${clockLabel(pitch)})`,
@@ -152,7 +144,7 @@ export function buildInsights(
       insights.push({
         tone: "atencao",
         title: `${afterPitch} saídas durante a oferta`,
-        detail: `Só ${metrics.ctaClicks} clicaram depois de ${metrics.ctaViews} verem a oferta. Teste reforçar preço, garantia e prazo logo nos primeiros minutos do pitch.`,
+        detail: `Só ${metrics.clicked} clicaram de ${metrics.sawOffer} que viram a oferta. Teste reforçar preço, garantia e prazo logo nos primeiros minutos do pitch.`,
       });
     }
   }
@@ -183,40 +175,19 @@ export async function fetchWebinarMetrics(
     column: string,
   ) => (range ? q.gte(column, range.from).lt(column, range.to) : q);
 
-  const [participantRows, ctaClicksRes, ctaViewsRes, messageRows] = await Promise.all([
+  const [participantRows, messageRows, purchaseRows] = await Promise.all([
     fetchAll((from, to) =>
       period(
         supabase
-          .from("participants")
-          .select(
-            "id, name, email, phone, joined_at, watched_seconds, viewing_mode, cta_clicked, status",
-            { count: "exact" },
-          )
+          .from("participant_facts")
+          .select(PARTICIPANT_COLUMNS, { count: "exact" })
           .eq("organization_id", organizationId)
           .eq("webinar_id", webinarId),
         "joined_at",
       )
         .order("joined_at", { ascending: false })
-        .order("id")
+        .order("participant_id")
         .range(from, to),
-    ),
-    period(
-      supabase
-        .from("cta_events")
-        .select("id", { count: "exact", head: true })
-        .eq("organization_id", organizationId)
-        .eq("webinar_id", webinarId)
-        .eq("event_type", "click"),
-      "occurred_at",
-    ),
-    period(
-      supabase
-        .from("cta_events")
-        .select("id", { count: "exact", head: true })
-        .eq("organization_id", organizationId)
-        .eq("webinar_id", webinarId)
-        .eq("event_type", "view"),
-      "occurred_at",
     ),
     // Só as mensagens dos participantes deste webinar, não as da organização inteira.
     fetchAll((from, to) =>
@@ -230,44 +201,59 @@ export async function fetchWebinarMetrics(
         .order("id")
         .range(from, to),
     ),
+    fetchAll((from, to) =>
+      supabase
+        .from("real_purchase_events")
+        .select("id, contact_id, amount_value, currency", { count: "exact" })
+        .eq("organization_id", organizationId)
+        .eq("webinar_id", webinarId)
+        .eq("status", "approved")
+        .order("id")
+        .range(from, to),
+    ),
   ]);
-  if (ctaClicksRes.error) throw new Error(ctaClicksRes.error.message);
-  if (ctaViewsRes.error) throw new Error(ctaViewsRes.error.message);
 
   const participants = participantRows as MetricsParticipant[];
-  const ids = new Set(participants.map((p) => p.id));
+  const ids = new Set(participants.map((p) => p.participant_id));
   const messages = messageRows.filter((m) => m.participant_id && ids.has(m.participant_id));
-  const watched = participants.map((p) => p.watched_seconds ?? 0);
-  // A duração configurada pode estar desatualizada: usa também o maior tempo assistido.
-  const span = Math.max(durationSeconds, ...watched, 60);
-
-  const milestoneAt = (minutes: number) =>
-    watched.filter((value) => value >= minutes * 60).length;
+  const summary = funnelSummary(participants);
+  // A mesma regra dos factos: só conta a compra de um contacto que participou (no período).
+  const contacts = new Set(participants.map((p) => p.contact_id).filter(Boolean));
+  const approved = purchaseRows.filter((r) => r.contact_id && contacts.has(r.contact_id));
+  // A duração configurada pode faltar ou estar desactualizada: usa também a posição mais avançada.
+  const span = Math.max(
+    factsDuration(participants) || durationSeconds,
+    ...participants.map((p) => p.peak_seconds ?? 0),
+    60,
+  );
 
   return {
     participants,
-    registered: participants.length,
-    live: participants.filter((p) => p.viewing_mode !== "replay").length,
-    replay: participants.filter((p) => p.viewing_mode === "replay").length,
-    ctaClicks: ctaClicksRes.count ?? 0,
-    ctaViews: ctaViewsRes.count ?? 0,
+    registered: summary.registered,
+    attended: summary.attended,
+    attendedLive: summary.attendedLive,
+    attendedReplay: summary.attendedReplay,
+    reachedPitch: summary.reachedPitch,
+    sawOffer: summary.sawOffer,
+    clicked: summary.clicked,
+    checkout: summary.checkout,
+    buyers: summary.buyers,
+    paymentFailed: summary.paymentFailed,
+    abandoned: summary.abandoned,
+    refunded: summary.refunded,
+    conversion: summary.conversion,
+    revenue: sumByCurrency(approved),
+    approvedPayments: approved.length,
     chatAuthors: new Set(messages.map((m) => m.participant_id)).size,
     chatMessages: messages.length,
     durationSeconds: span,
-    retention: buildRetention(watched, span),
-    dropOff: buildDropOff(watched, span),
-    averageWatchSeconds: watched.length
-      ? Math.round(watched.reduce((sum, v) => sum + v, 0) / watched.length)
-      : 0,
-    medianWatchSeconds: watched.length
-      ? [...watched].sort((a, b) => a - b)[Math.floor(watched.length / 2)]!
-      : 0,
-    milestones: [
-      { label: "Chegou aos 15 min", value: milestoneAt(15) },
-      { label: "Chegou aos 30 min", value: milestoneAt(30) },
-      { label: "Chegou aos 45 min", value: milestoneAt(45) },
-      { label: "Chegou aos 60 min", value: milestoneAt(60) },
-    ],
+    retention: buildRetention(summary.attendedPeople, span),
+    dropOff: buildDropOff(summary.attendedPeople, span),
+    averageWatchSeconds: summary.averageWatchSeconds,
+    milestones: summary.milestones.map((m) => ({
+      label: `Chegou aos ${m.minutes} min`,
+      value: m.value,
+    })),
     chatParticipantIds: Array.from(
       new Set(messages.filter((m) => m.sender_kind !== "team").map((m) => m.participant_id!)),
     ),
@@ -275,7 +261,111 @@ export async function fetchWebinarMetrics(
       new Set(messages.filter((m) => m.sender_kind === "team").map((m) => m.participant_id!)),
     ),
   };
+}
 
+export function sumByCurrency(rows: { amount_value: number | null; currency: string | null }[]) {
+  const totals = new Map<string, number>();
+  for (const r of rows) {
+    if (r.amount_value === null || !r.currency) continue;
+    totals.set(r.currency, (totals.get(r.currency) ?? 0) + Number(r.amount_value));
+  }
+  return [...totals].map(([currency, amount]) => ({ currency, amount }));
+}
+
+/** A moeda vem da plataforma de pagamento tal como chega: um código que não é ISO ("R$", "EURO") fica escrito ao lado. */
+export function moneyLabel({ currency, amount }: { currency: string; amount: number }) {
+  try {
+    return new Intl.NumberFormat("pt-PT", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 2 }).format(amount)} ${currency}`;
+  }
+}
+
+/** Onde cada pessoa ficou no percurso, do mais avançado para o menos. */
+export const PERSON_STATUS = {
+  bought: { label: "Comprou", variant: "success" },
+  refunded: { label: "Reembolsado", variant: "outline" },
+  failed: { label: "Pagamento falhado", variant: "destructive" },
+  abandoned: { label: "Abandonou o pagamento", variant: "warning" },
+  checkout: { label: "Iniciou o pagamento", variant: "info" },
+  clicked: { label: "Clicou na oferta", variant: "info" },
+  offer: { label: "Viu a oferta", variant: "secondary" },
+  attended: { label: "Assistiu", variant: "secondary" },
+  absent: { label: "Não assistiu", variant: "outline" },
+} as const;
+export type PersonStatus = keyof typeof PERSON_STATUS;
+const STATUS_ORDER = Object.keys(PERSON_STATUS) as PersonStatus[];
+
+export type MetricsPerson = {
+  personId: string;
+  contactId: string | null;
+  name: string;
+  email: string;
+  phone: string;
+  visits: number;
+  attended: boolean;
+  replay: boolean;
+  watchSeconds: number;
+  watchMeasured: boolean;
+  peakSeconds: number;
+  status: PersonStatus;
+};
+
+/**
+ * Uma linha por pessoa, com a mesma regra do funil: várias entradas contam uma vez,
+ * o tempo visto é o maior e cada facto basta numa das entradas.
+ */
+export function metricsPeople(participants: MetricsParticipant[]): MetricsPerson[] {
+  const groups = new Map<string, MetricsParticipant[]>();
+  for (const p of participants) {
+    const key = p.person_id ?? p.participant_id ?? "";
+    groups.set(key, [...(groups.get(key) ?? []), p]);
+  }
+  return [...groups]
+    .map(([personId, rows]) => {
+      const any = (fact: (p: MetricsParticipant) => boolean | null) => rows.some((p) => Boolean(fact(p)));
+      const best = rows.reduce((a, b) => ((b.actual_watch_seconds ?? 0) > (a.actual_watch_seconds ?? 0) ? b : a));
+      const status: PersonStatus = any((p) => p.purchased)
+        ? "bought"
+        : any((p) => p.refunded)
+          ? "refunded"
+        : any((p) => p.payment_failed)
+          ? "failed"
+          : any((p) => p.checkout_abandoned)
+            ? "abandoned"
+            : any((p) => p.checkout_started)
+              ? "checkout"
+              : any((p) => p.clicked)
+                ? "clicked"
+                : any((p) => p.saw_offer)
+                  ? "offer"
+                  : any((p) => p.attended)
+                    ? "attended"
+                    : "absent";
+      return {
+        personId,
+        contactId: rows.find((p) => p.contact_id)?.contact_id ?? null,
+        name: rows.find((p) => p.name)?.name ?? "",
+        email: rows.find((p) => p.email)?.email ?? "",
+        phone: rows.find((p) => p.phone)?.phone ?? "",
+        visits: rows.length,
+        attended: any((p) => p.attended),
+        replay: !any((p) => p.attended && p.viewing_mode !== "replay") && any((p) => p.viewing_mode === "replay"),
+        watchSeconds: best.actual_watch_seconds ?? 0,
+        watchMeasured: Boolean(best.watch_measured),
+        peakSeconds: Math.max(...rows.map((p) => p.peak_seconds ?? 0)),
+        status,
+      };
+    })
+    .sort(
+      (a, b) =>
+        STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) || b.watchSeconds - a.watchSeconds,
+    );
 }
 
 function escapeCsv(value: unknown) {
