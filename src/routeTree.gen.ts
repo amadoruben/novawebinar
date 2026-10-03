@@ -30,7 +30,6 @@ import { Route as AuthRegisterRouteImport } from './routes/auth.register'
 import { Route as AuthResetRouteImport } from './routes/auth.reset'
 import { Route as AuthWelcomeRouteImport } from './routes/auth.welcome'
 import { Route as AutomationsIndexRouteImport } from './routes/automations.index'
-import { Route as AutomationsAutomationIdRouteImport } from './routes/automations.$automationId'
 import { Route as AutomationsNewRouteImport } from './routes/automations.new'
 import { Route as FuncionalidadesIndexRouteImport } from './routes/funcionalidades.index'
 import { Route as FuncionalidadesSlugRouteImport } from './routes/funcionalidades.$slug'
@@ -156,11 +155,6 @@ const AutomationsIndexRoute = AutomationsIndexRouteImport.update({
   path: '/automations/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AutomationsAutomationIdRoute = AutomationsAutomationIdRouteImport.update({
-  id: '/automations/$automationId',
-  path: '/automations/$automationId',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AutomationsNewRoute = AutomationsNewRouteImport.update({
   id: '/automations/new',
   path: '/automations/new',
@@ -282,7 +276,6 @@ export interface FileRoutesByFullPath {
   '/auth/register': typeof AuthRegisterRoute
   '/auth/reset': typeof AuthResetRoute
   '/auth/welcome': typeof AuthWelcomeRoute
-  '/automations/$automationId': typeof AutomationsAutomationIdRoute
   '/automations/new': typeof AutomationsNewRoute
   '/funcionalidades/$slug': typeof FuncionalidadesSlugRoute
   '/legal/cookies': typeof LegalCookiesRoute
@@ -325,7 +318,6 @@ export interface FileRoutesByTo {
   '/auth/register': typeof AuthRegisterRoute
   '/auth/reset': typeof AuthResetRoute
   '/auth/welcome': typeof AuthWelcomeRoute
-  '/automations/$automationId': typeof AutomationsAutomationIdRoute
   '/automations/new': typeof AutomationsNewRoute
   '/funcionalidades/$slug': typeof FuncionalidadesSlugRoute
   '/legal/cookies': typeof LegalCookiesRoute
@@ -369,7 +361,6 @@ export interface FileRoutesById {
   '/auth/register': typeof AuthRegisterRoute
   '/auth/reset': typeof AuthResetRoute
   '/auth/welcome': typeof AuthWelcomeRoute
-  '/automations/$automationId': typeof AutomationsAutomationIdRoute
   '/automations/new': typeof AutomationsNewRoute
   '/funcionalidades/$slug': typeof FuncionalidadesSlugRoute
   '/legal/cookies': typeof LegalCookiesRoute
@@ -414,7 +405,6 @@ export interface FileRouteTypes {
     | '/auth/register'
     | '/auth/reset'
     | '/auth/welcome'
-    | '/automations/$automationId'
     | '/automations/new'
     | '/funcionalidades/$slug'
     | '/legal/cookies'
@@ -457,7 +447,6 @@ export interface FileRouteTypes {
     | '/auth/register'
     | '/auth/reset'
     | '/auth/welcome'
-    | '/automations/$automationId'
     | '/automations/new'
     | '/funcionalidades/$slug'
     | '/legal/cookies'
@@ -500,7 +489,6 @@ export interface FileRouteTypes {
     | '/auth/register'
     | '/auth/reset'
     | '/auth/welcome'
-    | '/automations/$automationId'
     | '/automations/new'
     | '/funcionalidades/$slug'
     | '/legal/cookies'
@@ -544,7 +532,6 @@ export interface RootRouteChildren {
   AuthRegisterRoute: typeof AuthRegisterRoute
   AuthResetRoute: typeof AuthResetRoute
   AuthWelcomeRoute: typeof AuthWelcomeRoute
-  AutomationsAutomationIdRoute: typeof AutomationsAutomationIdRoute
   AutomationsNewRoute: typeof AutomationsNewRoute
   FuncionalidadesSlugRoute: typeof FuncionalidadesSlugRoute
   LegalCookiesRoute: typeof LegalCookiesRoute
@@ -716,13 +703,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AutomationsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/automations/$automationId': {
-      id: '/automations/$automationId'
-      path: '/automations/$automationId'
-      fullPath: '/automations/$automationId'
-      preLoaderRoute: typeof AutomationsAutomationIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/automations/new': {
       id: '/automations/new'
       path: '/automations/new'
@@ -880,7 +860,6 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRegisterRoute: AuthRegisterRoute,
   AuthResetRoute: AuthResetRoute,
   AuthWelcomeRoute: AuthWelcomeRoute,
-  AutomationsAutomationIdRoute: AutomationsAutomationIdRoute,
   AutomationsNewRoute: AutomationsNewRoute,
   FuncionalidadesSlugRoute: FuncionalidadesSlugRoute,
   LegalCookiesRoute: LegalCookiesRoute,

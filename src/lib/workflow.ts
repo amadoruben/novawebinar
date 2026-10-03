@@ -637,12 +637,6 @@ export function newId(steps: Steps, prefix = "p") {
   return `${prefix}${i}`;
 }
 
-export function emptyNode(kind: StepNode["kind"], id: string): StepNode {
-  if (kind === "wait") return { id, kind, mode: "delay", minutes: 60, next: null };
-  if (kind === "branch") return { id, kind, condition: { fact: "purchased", value: true }, yes: null, no: null };
-  return { id, kind, label: "Mensagem", sends: [{ channel: "email", target: "contact" }], next: null };
-}
-
 /** Insere um passo novo depois de `after` (ou no início), mantendo a ligação seguinte. */
 export function insertAfter(steps: Steps, after: string | null, node: StepNode, branch: "yes" | "no" = "yes"): Steps {
   const nodes = steps.nodes.map((n) => ({ ...n })) as StepNode[];
@@ -835,9 +829,30 @@ const CLICKED = "Vi que você abriu a página da oferta. Ficou alguma dúvida? R
 const DAY = 1440;
 
 /**
+ * Depois do webinar, quem não comprou segue uma de três sequências, conforme o que viu
+ * (docs/automacao/mapa-de-automacao, passos 9 e 10 [FONTE]): não acessou, saiu antes do pitch, assistiu o pitch.
+ * Oito mensagens cada, nos tempos da proposta do mapa; o fecho fica no 4.º dia [PROPOSTA].
+ * A compra faz deixar de cumprir a entrada, e o resto não sai. Sem modelo do utilizador, a mensagem nasce por escrever.
+ */
+const FOLLOW_UP_WAITS: [minutes: number, time?: string][] = [[60], [DAY, "09:00"], [DAY, "20:00"], [2 * DAY, "09:00"], [2 * DAY, "20:00"], [3 * DAY, "09:00"], [4 * DAY, "09:00"], [4 * DAY, "20:00"]];
+type FollowUpMessage = [label: string, sends: Send[]];
+const draft = (label: string): FollowUpMessage => [label, [empty("email")]];
+function followUp(key: string, name: string, segment: Condition[], messages: FollowUpMessage[]): BaseAutomation {
+  const closing: FollowUpMessage[] = [
+    ["Encerra hoje", [tpl("email", "l_email_encerra_hoje"), tpl("whatsapp", "l_wpp_encerra_hoje")]],
+    ["Última chamada", [tpl("email", "l_email_ultima_chamada"), tpl("whatsapp", "l_wpp_ultima_chamada")]],
+  ];
+  const nodes = [...messages, ...closing].flatMap(([label, sends], i): StepNode[] => {
+    const [minutes, time] = FOLLOW_UP_WAITS[i]!;
+    return [wait(`p${2 * i + 1}`, "after_session", minutes, time), act(`p${2 * i + 2}`, label, sends)];
+  });
+  return { key, name, trigger_event: "webinar_session_ended", conditions: [...segment, { fact: "purchased", value: false }], steps: chain(nodes) };
+}
+
+/**
  * As automações prontas de um fluxo, pela ordem do lançamento do utilizador (docs/automacao):
  * obrigado e pesquisa, convite para o grupo, faltam 7 e 4 dias, amanhã, hoje, 1 hora, 15 minutos,
- * ao vivo, replay, «só o filé», encerra hoje, última chamada, carrinho, pagamento, boas-vindas.
+ * ao vivo, as três sequências de quem não comprou, carrinho, pagamento, boas-vindas.
  * Nascem desligadas, com os textos dos modelos; o que o motor não preenche vai entre parênteses rectos.
  */
 export function baseWorkflow(): BaseAutomation[] {
@@ -902,33 +917,30 @@ export function baseWorkflow(): BaseAutomation[] {
         ],
       },
     },
-    {
-      // Quem não comprou até ao fim recebe o replay, «só o filé» e o fecho do carrinho; a compra cancela o resto.
-      key: "pos-webinar",
-      name: "Pós-webinar",
-      trigger_event: "webinar_session_ended",
-      conditions: [],
-      steps: {
-        start: "p1",
-        nodes: [
-          { id: "p1", kind: "branch", label: "Comprou?", condition: { fact: "purchased", value: true }, yes: null, no: "p2" },
-          ...chain([
-            wait("p2", "after_session", DAY, "09:00"),
-            act("p3", "Replay disponível", [tpl("email", "l_email_replay"), tpl("whatsapp", "l_wpp_replay_1")]),
-            wait("p4", "delay", 6 * 60),
-            act("p5", "Replay · segunda chamada", [tpl("whatsapp", "l_wpp_replay_2")]),
-            wait("p6", "after_session", 2 * DAY, "09:00"),
-            act("p7", "Só o filé", [tpl("email", "l_email_so_o_file"), tpl("whatsapp", "l_wpp_so_o_file_1")]),
-            wait("p8", "delay", 6 * 60),
-            act("p9", "Só o filé · segunda chamada", [tpl("whatsapp", "l_wpp_so_o_file_2")]),
-            wait("p10", "after_session", 3 * DAY, "09:00"),
-            act("p11", "Encerra hoje", [tpl("email", "l_email_encerra_hoje"), tpl("whatsapp", "l_wpp_encerra_hoje")]),
-            wait("p12", "after_session", 3 * DAY, "20:00"),
-            act("p13", "Última chamada", [tpl("email", "l_email_ultima_chamada"), tpl("whatsapp", "l_wpp_ultima_chamada")]),
-          ]).nodes,
-        ],
-      },
-    },
+    followUp("nao-acessou", "Não acessou", [{ fact: "entered", value: false }], [
+      ["Gravação disponível", [tpl("email", "l_email_replay"), tpl("whatsapp", "l_wpp_replay_1")]],
+      ["Gravação: o que você perdeu", [tpl("whatsapp", "l_wpp_replay_2")]],
+      ["Principais pontos da aula", [tpl("email", "l_email_so_o_file"), tpl("whatsapp", "l_wpp_so_o_file_1")]],
+      draft("Apresentação da oferta"),
+      draft("Prova: resultados de alunos"),
+      draft("Garantia"),
+    ]),
+    followUp("saiu-antes", "Saiu antes do pitch", [{ fact: "entered", value: true }, { fact: "reached_offer", value: false }], [
+      draft("Você saiu antes da melhor parte"),
+      ["Gravação a partir do pitch", [tpl("email", "l_email_replay"), tpl("whatsapp", "l_wpp_replay_1")]],
+      draft("Apresentação da oferta"),
+      draft("Bônus"),
+      draft("Prova: resultados de alunos"),
+      draft("Garantia"),
+    ]),
+    followUp("assistiu", "Assistiu o pitch", [{ fact: "reached_offer", value: true }], [
+      draft("Resumo da oferta e link de compra"),
+      draft("Objeção 1"),
+      draft("Objeção 2"),
+      draft("Objeção 3"),
+      draft("Bônus"),
+      draft("Garantia"),
+    ]),
     {
       // Começou a pagar e, 15 minutos depois, ainda não comprou (modelo do utilizador).
       key: "abandono",

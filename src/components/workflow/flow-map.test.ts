@@ -33,7 +33,8 @@ describe("buildFlow", () => {
     expect(ys).toEqual([...new Set(ys)].sort((a, b) => a - b));
 
     const lanes = out.filter((n) => n.type === "lane").sort((a, b) => a.position.y - b.position.y);
-    expect(lanes).toHaveLength(9);
+    // Cada automação pronta tem o seu início no desenho.
+    expect(lanes).toHaveLength(baseWorkflow().length);
     expect(lanes.every((n) => n.position.x === 300)).toBe(true);
     // Nenhum passo de uma automação desce até à automação seguinte.
     lanes.slice(0, -1).forEach((lane, i) => {

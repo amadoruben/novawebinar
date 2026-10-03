@@ -12,12 +12,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AutomationEditor } from "@/components/workflow/automation-editor";
 import { CapturePanel } from "@/components/workflow/capture-panel";
 import { FlowMap, type FlowComponent, type XY } from "@/components/workflow/flow-map";
 import { SettingsPanel } from "@/components/workflow/flow-tools";
 import { PALETTE } from "@/components/workflow/step-panel";
-import { StepSettings } from "@/components/workflow/step-settings";
+import { AutomationSettings, StepSettings } from "@/components/workflow/step-settings";
 import type { Json } from "@/integrations/supabase/types";
 import {
   addWorkflowAutomation,
@@ -44,6 +43,7 @@ import {
   CHANNELS,
   channelStatus,
   endOfMain,
+  executedNodes,
   insertAfter,
   newId,
   nodeMap,
@@ -228,7 +228,7 @@ function WorkflowPage() {
   };
   const stepOpen = open?.kind === "step" ? automations.find((a) => a.id === open.automationId) : undefined;
   const stepNode = open?.kind === "step" && stepOpen ? nodeMap(readSteps(stepOpen.steps) ?? { start: null, nodes: [] }).get(open.nodeId) : undefined;
-  const onMap = tab === "fluxo" && !selected;
+  const onMap = tab === "fluxo";
   const settings =
     open?.kind === "canvas" ? (
       <SettingsPanel
@@ -259,11 +259,30 @@ function WorkflowPage() {
           automation={stepOpen}
           nodeId={open.nodeId}
           status={status}
+          executed={executedNodes(runs.filter((r) => r.automation_id === stepOpen.id)).has(open.nodeId)}
           onDone={() => setOpen(null)}
-          onOpenEditor={() => {
+          onOpenStep={(nodeId) => setOpen({ kind: "step", automationId: stepOpen.id, nodeId })}
+          onOpenAutomation={() => {
             setOpen(null);
             go({ a: stepOpen.id });
           }}
+        />
+      </SettingsPanel>
+    ) : selected ? (
+      <SettingsPanel
+        docked={onMap}
+        title={selected.name}
+        kicker={`Automação · Quando: ${triggerTitle(selected.trigger_event)}`}
+        onClose={() => go({ a: undefined })}
+      >
+        <AutomationSettings
+          key={`${selected.id}:${selected.updated_at}`}
+          automation={selected}
+          status={status}
+          blocked={blocked}
+          runs={runs.filter((r) => r.automation_id === selected.id).length}
+          onOpenRuns={() => go({ tab: "execucoes", a: undefined })}
+          onDone={() => go({ a: undefined })}
         />
       </SettingsPanel>
     ) : null;
@@ -311,19 +330,7 @@ function WorkflowPage() {
         />
       </div>
 
-      {tab === "fluxo" &&
-        (selected ? (
-          <AutomationEditor
-            automation={selected}
-            siblings={automations}
-            runs={runs.filter((r) => r.automation_id === selected.id)}
-            status={status}
-            blocked={blocked}
-            onBack={() => go({ a: undefined })}
-            onSwitch={(id) => go({ a: id })}
-            onOpenRuns={() => go({ tab: "execucoes", a: undefined })}
-          />
-        ) : (
+      {tab === "fluxo" && (
           <div>
             <ul className="mb-3 flex flex-wrap gap-1.5" aria-label="Pronto para ligar?">
               {checks.map((c) => {
@@ -358,10 +365,20 @@ function WorkflowPage() {
                 webinar={workflow.webinars}
                 counts={counts.data ?? null}
                 stats={statsOf}
-                onOpenAutomation={(id) => go({ a: id })}
-                onOpenStep={(automationId, nodeId) => setOpen({ kind: "step", automationId, nodeId })}
+                focusId={search.a ? `auto:${search.a}` : undefined}
+                onOpenAutomation={(id) => {
+                  setOpen(null);
+                  go({ a: id });
+                }}
+                onOpenStep={(automationId, nodeId) => {
+                  go({ a: undefined });
+                  setOpen({ kind: "step", automationId, nodeId });
+                }}
                 onAddAutomation={(trigger) => void addAutomation(trigger)}
-                onEditCanvasNode={(node) => setOpen({ kind: "canvas", node })}
+                onEditCanvasNode={(node) => {
+                  go({ a: undefined });
+                  setOpen({ kind: "canvas", node });
+                }}
                 onOpenCapture={() => go({ tab: "configuracao" })}
                 onPickWebinar={() => go({ tab: "configuracao" })}
                 onAddComponent={(component, at, automationId) => void addComponent(component, at, automationId)}
@@ -375,7 +392,7 @@ function WorkflowPage() {
               {settings}
             </div>
           </div>
-        ))}
+        )}
 
       {tab === "execucoes" && (
         <RunsTable

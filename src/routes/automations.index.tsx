@@ -31,8 +31,6 @@ function AutomationsPage() {
   const { data: workflows = [], isLoading } = useWorkflows(orgId);
   const { data: stats } = useAutomationStats(orgId);
   const { data: linkedRun } = useAutomationRun(search.run);
-  // Automações antigas, criadas fora de um fluxo: continuam acessíveis, sem ocupar a página.
-  const loose = automations.filter((a) => !a.workflow_id && !a.archived_at);
 
   return (
     <AppShell
@@ -48,27 +46,6 @@ function AutomationsPage() {
     >
       <WorkflowList workflows={workflows} automations={automations} stats={stats} loading={isLoading} />
 
-      {loose.length > 0 && (
-        <section className="mt-8" aria-labelledby="avulsas">
-          <h2 id="avulsas" className="mb-2 text-sm font-medium text-muted-foreground">
-            Automações avulsas, fora de um fluxo
-          </h2>
-          <ul className="divide-y divide-[var(--border-subtle)] overflow-hidden rounded-card bg-card">
-            {loose.map((a) => (
-              <li key={a.id}>
-                <Link
-                  to="/automations/$automationId"
-                  params={{ automationId: a.id }}
-                  className="flex items-center justify-between gap-4 px-5 py-3 text-sm transition-colors hover:bg-white"
-                >
-                  <span className="truncate">{a.name}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">{a.active ? "Ligada" : "Desligada"}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
 
       <RunSheet run={linkedRun ?? null} onClose={() => void navigate({ search: { run: undefined }, replace: true })} />
     </AppShell>

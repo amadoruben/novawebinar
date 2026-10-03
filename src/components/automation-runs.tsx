@@ -291,21 +291,15 @@ function RunDetail({
             Abrir o contacto
           </Link>
         </Button>
-        {canOpenAutomations && (
+        {canOpenAutomations && run.automations?.workflow_id && (
           <Button asChild variant="outline" size="sm">
-            {run.automations?.workflow_id ? (
               <Link
                 to="/automations/workflows/$workflowId"
                 params={{ workflowId: run.automations.workflow_id }}
                 search={{ a: run.automation_id }}
               >
-                Abrir no workflow
+                Abrir no fluxo
               </Link>
-            ) : (
-              <Link to="/automations/$automationId" params={{ automationId: run.automation_id }}>
-                Abrir a automação
-              </Link>
-            )}
           </Button>
         )}
       </div>

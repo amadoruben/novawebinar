@@ -6,6 +6,9 @@ Antes de criar ou alterar qualquer parte do motor de automação (eventos, sequ�
 2. `mapa-de-automacao.json`: o mesmo grafo em dados. Use-o como seed e como fonte única do funil padrão.
 3. `modelo-de-disparo.md` e `modelo-de-disparo.json`: motor de disparos. Contém fluxos, agendamento, estados do disparo, idempotência e os modelos de mensagem.
 4. `engenharia-de-lancamentos.md`: entidades (oferta, avatar, objeções), fórmulas de planeamento e páginas.
+5. `correspondencia-motor.md`: como os ids do mapa se ligam aos nomes do produto e do motor, e o que ainda não existe.
+
+As palavras do produto (fluxo, automação, passo, disparo, momento, origem, segmento) estão em `GLOSSARY.md`, na raiz. Use-as no ecrã, no código novo e nos testes.
 
 ## Regras
 
@@ -14,4 +17,5 @@ Antes de criar ou alterar qualquer parte do motor de automação (eventos, sequ�
 - A condição de cada envio é avaliada no momento do envio, não no agendamento.
 - Grupos de WhatsApp não segmentam; e-mail e WhatsApp individual sim.
 - Um contato está numa única sequência por trilha.
-- Nomes de eventos, segmentos e nós seguem exatamente os ids do `mapa-de-automacao.json`.
+- Os ids do `mapa-de-automacao.json` são a referência do funil. O motor e o produto têm os seus próprios nomes; a ligação entre uns e outros está em `correspondencia-motor.md`. Ao criar ou renomear um gatilho, um facto ou uma automação pronta, actualize essa tabela.
+- Toda a automação vive dentro de um fluxo, e edita-se no desenho do fluxo. Não criar outro ecrã de edição nem automações soltas.

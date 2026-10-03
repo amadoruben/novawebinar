@@ -81,7 +81,6 @@ export const TRIGGER_LABEL = {
   purchase_refunded: "Compra reembolsada",
 } as const;
 export type TriggerEvent = keyof typeof TRIGGER_LABEL;
-export const TRIGGERS = Object.keys(TRIGGER_LABEL) as TriggerEvent[];
 
 export const TRIGGER_GROUPS: { title: string; triggers: TriggerEvent[] }[] = [
   { title: "Antes do webinar", triggers: ["webinar_registered"] },
@@ -126,55 +125,6 @@ export function triggerOfOccurrence(occurrenceKey: string): TriggerEvent | null 
   return name in TRIGGER_LABEL ? name : null;
 }
 
-/* ---------- Modelos: automações reais, prontas a usar ---------- */
-
-export type AutomationTemplate = {
-  key: string;
-  name: string;
-  description: string;
-  trigger_event: TriggerEvent;
-  conditions: Condition[];
-  wait_minutes: number;
-};
-
-export const TEMPLATES: AutomationTemplate[] = [
-  {
-    key: "recuperacao",
-    name: "Recuperação pós-webinar",
-    description: "Quem assistiu e não comprou recebe a mensagem de recuperação 2 horas depois do fim.",
-    trigger_event: "webinar_session_ended",
-    conditions: [
-      { fact: "attended", value: true },
-      { fact: "purchased", value: false },
-    ],
-    wait_minutes: 120,
-  },
-  {
-    key: "abandono",
-    name: "Checkout abandonado",
-    description: "Quem não concluiu o pagamento recebe logo a ajuda para terminar.",
-    trigger_event: "checkout_abandoned",
-    conditions: [],
-    wait_minutes: 0,
-  },
-  {
-    key: "falha",
-    name: "Pagamento falhou",
-    description: "Quem teve o pagamento recusado recebe logo outra forma de pagar.",
-    trigger_event: "payment_failed",
-    conditions: [],
-    wait_minutes: 0,
-  },
-  {
-    key: "pos-compra",
-    name: "Pós-compra",
-    description: "Quem comprou recebe as boas-vindas e o acesso.",
-    trigger_event: "purchase_approved",
-    conditions: [],
-    wait_minutes: 0,
-  },
-];
-
 export const ACTION_LABEL = { outgoing_webhook: "Enviar para o webhook de saída" } as const;
 /** Nome do evento que o webhook de saída recebe em cada execução. */
 export const AUTOMATION_EVENT = "automation.run";
@@ -201,50 +151,6 @@ export function conditionLabel(condition: Condition) {
 /** "Assistiu e não comprou": a lista de condições numa frase. */
 export function conditionsSentence(conditions: Condition[]) {
   return conditions.map((c, i) => (i === 0 ? conditionLabel(c) : conditionLabel(c).toLowerCase())).join(" e ");
-}
-
-/* ---------- Formulário ↔ condições ---------- */
-
-export type Choice = "any" | "yes" | "no";
-type NumericChoice = { op: "any" | "gte" | "lt"; minutes: number };
-export type ConditionsForm = Record<BooleanFact, Choice> & { watch: NumericChoice; entry: NumericChoice };
-
-export const EMPTY_CONDITIONS: ConditionsForm = {
-  entered: "any",
-  attended: "any",
-  no_show: "any",
-  replay: "any",
-  reached_pitch: "any",
-  reached_offer: "any",
-  left_early: "any",
-  saw_offer: "any",
-  clicked: "any",
-  checkout_started: "any",
-  purchased: "any",
-  payment_failed: "any",
-  checkout_abandoned: "any",
-  watch: { op: "any", minutes: 10 },
-  entry: { op: "any", minutes: 10 },
-};
-
-export function conditionsFromForm(form: ConditionsForm): Condition[] {
-  const conditions: Condition[] = BOOLEAN_FACTS.filter((f) => form[f.fact] !== "any").map((f) => ({
-    fact: f.fact,
-    value: form[f.fact] === "yes",
-  }));
-  for (const [fact, choice] of [["actual_watch_seconds", form.watch], ["entry_seconds", form.entry]] as const) {
-    if (choice.op !== "any") conditions.push({ fact, op: choice.op, value: Math.max(0, Math.round(choice.minutes)) * 60 });
-  }
-  return conditions;
-}
-
-export function formFromConditions(conditions: Condition[]): ConditionsForm {
-  const form: ConditionsForm = { ...EMPTY_CONDITIONS, watch: { ...EMPTY_CONDITIONS.watch }, entry: { ...EMPTY_CONDITIONS.entry } };
-  for (const c of conditions) {
-    if ("op" in c) form[c.fact === "entry_seconds" ? "entry" : "watch"] = { op: c.op, minutes: Math.round(c.value / 60) };
-    else form[c.fact] = c.value ? "yes" : "no";
-  }
-  return form;
 }
 
 /* ---------- Execuções ---------- */

@@ -49,7 +49,9 @@ describe("automação base", () => {
       "Lembretes",
       "Sessão começou",
       "Clicou e não comprou",
-      "Pós-webinar",
+      "Não acessou",
+      "Saiu antes do pitch",
+      "Assistiu o pitch",
       "Checkout abandonado",
       "Pagamento falhou",
       "Pós-compra",
@@ -127,16 +129,29 @@ describe("percurso de uma execução", () => {
     expect(r.log.filter((l) => l.outcome.includes("já tinha passado"))).toHaveLength(5);
   });
 
-  it("ramo: não comprou até ao fim → replay no dia seguinte às 9, com a condição do caminho guardada", () => {
-    const r = walk(find("pos-webinar").steps, "p1", { now, facts: { purchased: false }, session, guards: [] });
+  it("ramo: começou a pagar e ainda não comprou → sai a ajuda, com a condição do caminho guardada", () => {
+    const r = walk(find("abandono").steps, "p2", { now, facts: { purchased: false }, session, guards: [] });
     expect(r.cursor).toBe("p3");
-    expect(r.scheduledFor.toISOString()).toBe("2026-10-02T09:00:00.000Z");
+    expect(r.scheduledFor.toISOString()).toBe(now.toISOString());
     expect(r.guards).toEqual([{ fact: "purchased", value: false }]);
   });
 
   it("ramo: comprou → a jornada termina", () => {
-    const r = walk(find("pos-webinar").steps, "p1", { now, facts: { purchased: true }, session, guards: [] });
+    const r = walk(find("abandono").steps, "p2", { now, facts: { purchased: true }, session, guards: [] });
     expect(r.status).toBe("done");
+  });
+
+  it("quem não acessou recebe a gravação uma hora depois de a sessão terminar", () => {
+    const r = walk(find("nao-acessou").steps, "p1", { now, facts: { entered: false, purchased: false }, session, guards: [] });
+    expect(r.cursor).toBe("p2");
+    expect(r.scheduledFor.toISOString()).toBe("2026-10-01T22:00:00.000Z");
+  });
+
+  it("o fecho do carrinho é no 4.º dia: «encerra hoje» às 9 e «última chamada» às 20", () => {
+    const steps = find("assistiu").steps;
+    const at = (wait: string) => walk(steps, wait, { now, facts: { reached_offer: true, purchased: false }, session, guards: [] });
+    expect(at("p13")).toMatchObject({ cursor: "p14", scheduledFor: new Date("2026-10-05T09:00:00.000Z") });
+    expect(at("p15")).toMatchObject({ cursor: "p16", scheduledFor: new Date("2026-10-05T20:00:00.000Z") });
   });
 
   it("cancelamento depois da compra: as condições do caminho deixam de se verificar", () => {
@@ -219,12 +234,12 @@ describe("edição", () => {
   it("próxima acção de uma execução em espera", () => {
     const next = nextAction({
       status: "waiting",
-      cursor: "p5",
+      cursor: "p4",
       scheduled_for: "2026-10-01T20:00:00Z",
       steps_log: [],
-      automations: { name: "Pós-webinar", trigger_event: "webinar_session_ended", steps: find("pos-webinar").steps },
+      automations: { name: "Não acessou", trigger_event: "webinar_session_ended", steps: find("nao-acessou").steps },
     });
-    expect(next).toEqual({ label: "Replay · segunda chamada", channels: "WhatsApp · individual", at: "2026-10-01T20:00:00Z" });
+    expect(next).toEqual({ label: "Gravação: o que você perdeu", channels: "WhatsApp · individual", at: "2026-10-01T20:00:00Z" });
   });
 });
 
@@ -337,16 +352,59 @@ describe("lembretes fora de horas", () => {
   });
 
   it("uma mensagem que não vem de uma espera antes da sessão nunca é 'fora de horas'", () => {
-    expect(lateReminder(find("pos-webinar").steps, "p5", new Date("2030-01-01T00:00:00Z"), session)).toBe(false);
+    expect(lateReminder(find("nao-acessou").steps, "p4", new Date("2030-01-01T00:00:00Z"), session)).toBe(false);
+  });
+});
+
+describe("depois do webinar: quem não comprou segue uma de três sequências", () => {
+  const sequences = ["nao-acessou", "saiu-antes", "assistiu"].map(find);
+  // Os exemplos do mapa de automação (passo 9): Rui nunca entrou, Ana entrou e saiu antes da oferta, Maria estava presente no pitch.
+  const rui = { entered: false, reached_offer: false, purchased: false };
+  const ana = { entered: true, reached_offer: false, purchased: false };
+  const maria = { entered: true, reached_offer: true, purchased: false };
+  const entersIn = (facts: Record<string, boolean>) => sequences.filter((a) => conditionsHold(a.conditions, facts)).map((a) => a.name);
+
+  it("cada pessoa entra numa só, pela que lhe corresponde", () => {
+    expect(entersIn(rui)).toEqual(["Não acessou"]);
+    expect(entersIn(ana)).toEqual(["Saiu antes do pitch"]);
+    expect(entersIn(maria)).toEqual(["Assistiu o pitch"]);
+  });
+
+  it("quem comprou não entra em nenhuma, e a compra a meio faz deixar de cumprir a entrada", () => {
+    for (const person of [rui, ana, maria]) expect(entersIn({ ...person, purchased: true })).toEqual([]);
+  });
+
+  it("as três começam quando a sessão termina e levam oito mensagens até ao fecho", () => {
+    for (const a of sequences) {
+      expect(a.trigger_event, a.name).toBe("webinar_session_ended");
+      const labels = a.steps.nodes.filter((n) => n.kind === "action").map((n) => (n as ActionNode).label);
+      expect(labels, a.name).toHaveLength(8);
+      expect(labels.slice(-2), a.name).toEqual(["Encerra hoje", "Última chamada"]);
+    }
   });
 });
 
 describe("audiences", () => {
   const steps = (key: string) => baseWorkflow().find((a) => a.key === key)!.steps;
 
-  it("quem não comprou recebe o replay, «só o filé» e o fecho do carrinho; quem comprou não recebe nada", () => {
-    expect(audiences(steps("pos-webinar"))).toEqual([
-      { who: [{ fact: "purchased", value: false }], channels: ["email", "whatsapp"], messages: 6 },
+  it("checkout abandonado: só quem não comprou recebe as três mensagens de recuperação", () => {
+    expect(audiences(steps("abandono"))).toEqual([
+      { who: [{ fact: "purchased", value: false }], channels: expect.arrayContaining(["email", "whatsapp"]), messages: 3 },
+    ]);
+  });
+
+  it("uma sequência de quem não comprou diz para quem é: o segmento e sem compra", () => {
+    const a = find("saiu-antes");
+    expect(audiences(a.steps, a.conditions)).toEqual([
+      {
+        who: [
+          { fact: "entered", value: true },
+          { fact: "reached_offer", value: false },
+          { fact: "purchased", value: false },
+        ],
+        channels: expect.arrayContaining(["email", "whatsapp"]),
+        messages: 8,
+      },
     ]);
   });
 
@@ -359,16 +417,16 @@ describe("stepLayout", () => {
   const steps = (key: string) => baseWorkflow().find((a) => a.key === key)!.steps;
 
   it("põe cada ramo na sua linha e as esperas nas legendas", () => {
-    const { items, edges, rows } = stepLayout(steps("pos-webinar"));
+    const { items, edges, rows } = stepLayout(steps("abandono"));
     const at = (id: string) => items.find((i) => i.node.id === id);
-    // «Comprou → nada» não ocupa linha: o replay fica na mesma linha do «Comprou?».
+    // «Comprou → nada» não ocupa linha: a ajuda fica na mesma linha do «Comprou?».
     expect(rows).toBe(1);
-    expect(at("p1")).toMatchObject({ col: 0, row: 0 });
+    expect(at("p2")).toMatchObject({ col: 0, row: 0 });
     expect(at("p3")).toMatchObject({ col: 1, row: 0 });
     expect(at("p5")).toMatchObject({ col: 2, row: 0 });
-    const toReplay = edges.find((e) => e.from === "p1" && e.to === "p3");
-    expect(toReplay).toMatchObject({ handle: "no", label: "Não comprou" });
-    expect(toReplay?.wait).toContain("09:00");
+    expect(edges.find((e) => e.from === "p2" && e.to === "p3")).toMatchObject({ handle: "no", label: "Não comprou" });
+    // A espera de 45 minutos vai na legenda da ligação, não num cartão.
+    expect(edges.find((e) => e.to === "p5")?.wait).toContain("45");
     expect(items.some((i) => i.node.kind === ("wait" as string))).toBe(false);
   });
 

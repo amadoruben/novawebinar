@@ -1,15 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * Cenários do /code-review (2026-10-01). Duplicar uma automação de workflow mantém-na no
- * workflow, com os passos. As estatísticas das automações não descarregam a
+ * Cenários do /code-review (2026-10-01). As estatísticas das automações não descarregam a
  * tabela automation_runs inteira de 15 em 15 segundos. A primeira leitura (e uma a cada
  * 5 min) é completa e paginada por id; as seguintes trazem só o que mudou (updated_at).
  */
 type Row = { id: string; automation_id: string; contact_id: string; status: string; scheduled_for: string; finished_at: string | null; updated_at: string };
 let table: Row[];
 let reads: { since: string | null; order: string | null }[];
-let inserted: Record<string, unknown> | null = null;
 
 vi.mock("@/integrations/supabase/client", () => {
   const from = () => {
@@ -18,14 +16,11 @@ vi.mock("@/integrations/supabase/client", () => {
     let range: [number, number] = [0, 999];
     const chain = {
       select: () => chain,
-      single: () => chain,
-      insert: (row: Record<string, unknown>) => ((inserted = row), chain),
       eq: () => chain,
       gte: (_: string, value: string) => ((since = value), chain),
       order: (column: string) => ((order = column), chain),
       range: (a: number, b: number) => ((range = [a, b]), chain),
       then: (ok: (value: unknown) => unknown) => {
-        if (inserted) return Promise.resolve({ data: { id: "copia-1" }, error: null }).then(ok);
         reads.push({ since, order });
         const rows = table.filter((r) => !since || r.updated_at >= since).sort((a, b) => a.id.localeCompare(b.id));
         return Promise.resolve({ data: rows.slice(range[0], range[1] + 1), error: null, count: rows.length }).then(ok);
@@ -36,7 +31,7 @@ vi.mock("@/integrations/supabase/client", () => {
   return { supabase: { from } };
 });
 
-const { duplicateAutomation, statsRows } = await import("./data");
+const { statsRows } = await import("./data");
 
 const row = (id: string, status: string, updated: string): Row => ({
   id,
@@ -78,39 +73,5 @@ describe("estatísticas das automações", () => {
     table = [table[1]!];
     expect((await statsRows(org)).map((r) => r.id)).toEqual(["2"]);
     expect(reads.at(-1)!.since).toBeNull();
-  });
-});
-
-describe("duplicar uma automação", () => {
-  it("a cópia de uma automação de workflow continua no workflow, com os passos, e nasce desligada", async () => {
-    inserted = null;
-    const steps = { start: "p1", nodes: [{ id: "p1", kind: "action", sends: [{ channel: "webhook", target: "webhook" }], next: null }] };
-    const original = {
-      id: "a-1",
-      organization_id: "org-1",
-      name: "Pós-webinar",
-      active: true,
-      archived_at: null,
-      trigger_event: "webinar_session_ended",
-      webinar_id: "web-1",
-      workflow_id: "wf-1",
-      action: "outgoing_webhook",
-      conditions: [],
-      wait_minutes: 0,
-      steps,
-      created_at: "",
-      created_by: null,
-      updated_at: "",
-    };
-    expect(await duplicateAutomation(original)).toBe("copia-1");
-    expect(inserted).toMatchObject({
-      name: "Pós-webinar (cópia)",
-      active: false,
-      workflow_id: "wf-1",
-      webinar_id: "web-1",
-      trigger_event: "webinar_session_ended",
-      steps,
-    });
-    inserted = null;
   });
 });

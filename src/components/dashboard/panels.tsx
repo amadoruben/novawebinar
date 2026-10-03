@@ -458,13 +458,13 @@ export function ActiveAutomations({ organizationId }: { organizationId: string |
               <li key={a.id} className="flex items-start gap-3 py-2.5">
                 <span className="mt-1.5 size-2 shrink-0 rounded-full bg-success" aria-hidden />
                 <div className="min-w-0 flex-1">
-                <Link
-                  to="/automations/$automationId"
-                  params={{ automationId: a.id }}
-                  className="block truncate text-sm hover:underline"
-                >
-                  {a.name}
-                </Link>
+                {a.workflow_id ? (
+                  <Link to="/automations/workflows/$workflowId" params={{ workflowId: a.workflow_id }} search={{ a: a.id }} className="block truncate text-sm hover:underline">
+                    {a.name}
+                  </Link>
+                ) : (
+                  <span className="block truncate text-sm">{a.name}</span>
+                )}
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {s ? `${nf.format(s.runs)} execuções` : "—"}
                   {s && s.failed > 0 && (

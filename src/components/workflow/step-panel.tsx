@@ -9,6 +9,7 @@ import {
   MessageSquare,
   Plus,
   Search,
+  Send as SendIcon,
 
   Users,
   Webhook,
@@ -53,7 +54,17 @@ import {
   type Steps,
   type WaitNode,
 } from "@/lib/workflow";
-import { KIND_STYLE, type InsertPoint } from "./step-builder";
+import { FLOW_KIND } from "@/components/ds/flow";
+
+/** Onde entra um passo novo: depois de que passo e, numa condição, em que caminho. */
+export type InsertPoint = { after: string | null; branch?: "yes" | "no" };
+
+/** Tipos de passo com a linguagem do fluxo (ds/flow): esperar = relevo, condição = cinza, mensagem = laranja suave. */
+const KIND_STYLE: Record<StepNode["kind"], { icon: LucideIcon; tile: string; name: string }> = {
+  wait: { icon: Clock, tile: FLOW_KIND.wait.tile, name: "Esperar" },
+  branch: { icon: GitFork, tile: FLOW_KIND.condition.tile, name: "Condição" },
+  action: { icon: SendIcon, tile: FLOW_KIND.action.tile, name: "Mensagem" },
+};
 
 /* ---------- Biblioteca de passos ---------- */
 

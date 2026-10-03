@@ -630,17 +630,6 @@ export function useAutomationRuns(
   });
 }
 
-export function useAutomation(id: string) {
-  return useQuery({
-    queryKey: ["automations", "one", id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("automations").select("*").eq("id", id).maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-  });
-}
-
 /** Uma execução pelo id (ligações da ficha do contacto e do Atendimento). */
 export function useAutomationRun(id: string | undefined) {
   return useQuery({
@@ -654,32 +643,6 @@ export function useAutomationRun(id: string | undefined) {
   });
 }
 
-export async function saveAutomation(
-  input: Pick<Automation, "name" | "active" | "trigger_event" | "webinar_id" | "conditions" | "wait_minutes"> & {
-    id?: string;
-    organization_id: string;
-  },
-) {
-  const { id, organization_id, ...changes } = input;
-  if (id) {
-    const { error } = await supabase.from("automations").update(changes).eq("id", id);
-    if (error) throw error;
-    return id;
-  }
-  const { data, error } = await supabase
-    .from("automations")
-    .insert({ organization_id, ...changes })
-    .select("id")
-    .single();
-  if (error) throw error;
-  return data.id;
-}
-
-export async function setAutomationActive(id: string, active: boolean) {
-  const { error } = await supabase.from("automations").update({ active }).eq("id", id);
-  if (error) throw error;
-}
-
 /** Arquivar desliga e tira da lista; as execuções ficam. Restaurar volta a mostrar, desligada. */
 export async function setAutomationArchived(id: string, archived: boolean) {
   const { error } = await supabase
@@ -687,28 +650,6 @@ export async function setAutomationArchived(id: string, archived: boolean) {
     .update(archived ? { archived_at: new Date().toISOString(), active: false } : { archived_at: null })
     .eq("id", id);
   if (error) throw error;
-}
-
-/** Uma cópia desligada, para ajustar antes de activar. A de um workflow continua no workflow, com os passos. */
-export async function duplicateAutomation(automation: Automation) {
-  const { data, error } = await supabase
-    .from("automations")
-    .insert({
-      organization_id: automation.organization_id,
-      name: `${automation.name} (cópia)`.slice(0, 120),
-      active: false,
-      trigger_event: automation.trigger_event,
-      webinar_id: automation.webinar_id,
-      workflow_id: automation.workflow_id,
-      action: automation.action,
-      conditions: automation.conditions,
-      wait_minutes: automation.wait_minutes,
-      steps: automation.steps,
-    })
-    .select("id")
-    .single();
-  if (error) throw error;
-  return data.id;
 }
 
 /* ---------- Workflows (0063): automações de um webinar, captura e canvas ---------- */

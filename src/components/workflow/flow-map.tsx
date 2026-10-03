@@ -342,13 +342,15 @@ function LaneNode({ data }: NodeProps<Node<LaneData>>) {
           icon={<Zap className="size-4" strokeWidth={1.75} aria-hidden />}
           kicker={`Quando: ${triggerTitle(a.trigger_event)}`}
           title={a.name}
-          right={<RunState active={a.active} />}
         />
-        <p className="truncate px-3.5 text-[11px] tabular-nums text-muted-foreground">
-          {s.pending > 0 && <span className="text-primary">{s.pending} em curso · </span>}
-          {s.done} {s.done === 1 ? "feita" : "feitas"}
-          {s.failed > 0 && <span className="text-destructive"> · {s.failed} {s.failed === 1 ? "falha" : "falhas"}</span>}
-        </p>
+        <div className="flex items-center justify-between gap-2 px-3.5">
+          <p className="truncate text-[11px] tabular-nums text-muted-foreground">
+            {s.pending > 0 && <span className="text-primary">{s.pending} em curso · </span>}
+            {s.done} {s.done === 1 ? "feita" : "feitas"}
+            {s.failed > 0 && <span className="text-destructive"> · {s.failed} {s.failed === 1 ? "falha" : "falhas"}</span>}
+          </p>
+          <RunState active={a.active} />
+        </div>
         <Side type="source" position={Position.Right} top={HEADER_H / 2} />
       </div>
     </Card>
@@ -361,7 +363,7 @@ function SendRow({ send }: { send: Send }) {
   const preview = (send.channel === "email" ? send.subject || send.message : send.message)?.trim();
   const title = look === "whatsapp_group" && send.group?.trim() ? `Grupo «${send.group.trim()}»` : LOOK[look].label;
   return (
-    <div className="flex items-center gap-2.5 rounded-xl bg-gray-50 px-2.5" style={{ height: SEND_H }}>
+    <div className="flex min-w-0 items-center gap-2.5 rounded-xl bg-gray-50 px-2.5" style={{ height: SEND_H }}>
       <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-lg", LOOK[look].tile)}>
         <Glyph look={look} className="size-3.5" />
       </span>
@@ -603,10 +605,10 @@ export function buildFlow(input: {
           position: { x: 0, y: 0 },
           data: {
             name: "Replay",
-            url: `/replay/${w.id}`,
+            url: `/w/${w.slug}?replay=1`,
             pageType: "replay",
             image: w.cover_url,
-            onClick: () => window.open(`/replay/${w.id}`, "_blank", "noopener"),
+            onClick: () => window.open(`/w/${w.slug}?replay=1`, "_blank", "noopener"),
           } satisfies PageData,
         });
     }
@@ -790,6 +792,8 @@ export function FlowMap(
     /** Ecrã inteiro: o mapa ocupa a janela toda para se trabalhar à vontade. */
     full?: boolean | undefined;
     onToggleFull?: (() => void) | undefined;
+    /** Nó a mostrar ao abrir (quem chega por uma ligação a uma automação). */
+    focusId?: string | undefined;
     /** Sentido do desenho: de cima para baixo ou da esquerda para a direita. As posições arrastadas recomeçam. */
     onSetOrientation?: ((orientation: Orientation) => void) | undefined;
   },
@@ -843,6 +847,8 @@ export function FlowMap(
           onInit={(instance) => {
             flow.current = instance;
             home(0);
+            const focus = props.focusId;
+            if (focus) window.setTimeout(() => void instance.fitView({ nodes: [{ id: focus }], padding: 0.6, maxZoom: 0.9 }), 150);
           }}
           onNodeClick={(_, node) => {
             lastAutomation.current = automationOf(node.id) ?? lastAutomation.current;

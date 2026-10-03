@@ -1,40 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   conditionLabel,
-  conditionsFromForm,
-  EMPTY_CONDITIONS,
   factsLabel,
-  formFromConditions,
   runOutcome,
   triggerOfOccurrence,
   waitLabel,
-  type Condition,
 } from "./automations";
 
 describe("condições da automação", () => {
-  it("o formulário e as condições gravadas são a mesma coisa, nos dois sentidos", () => {
-    const conditions: Condition[] = [
-      { fact: "attended", value: true },
-      { fact: "purchased", value: false },
-      { fact: "actual_watch_seconds", op: "gte", value: 600 },
-    ];
-    const form = formFromConditions(conditions);
-    expect(form.attended).toBe("yes");
-    expect(form.purchased).toBe("no");
-    expect(form.payment_failed).toBe("any");
-    expect(form.watch).toEqual({ op: "gte", minutes: 10 });
-    expect(conditionsFromForm(form)).toEqual(conditions);
-  });
-
-  it("'tanto faz' não é condição: sem nada escolhido entram todos", () => {
-    expect(conditionsFromForm(EMPTY_CONDITIONS)).toEqual([]);
-  });
-
-  it("minutos negativos não passam para a base de dados", () => {
-    const form = { ...EMPTY_CONDITIONS, watch: { op: "lt" as const, minutes: -5 } };
-    expect(conditionsFromForm(form)).toEqual([{ fact: "actual_watch_seconds", op: "lt", value: 0 }]);
-  });
-
   it("cada condição tem o nome que a interface mostra", () => {
     expect(conditionLabel({ fact: "attended", value: true })).toBe("Assistiu");
     expect(conditionLabel({ fact: "attended", value: false })).toBe("Não assistiu");

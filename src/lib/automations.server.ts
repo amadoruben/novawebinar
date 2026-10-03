@@ -114,7 +114,8 @@ async function payloadFor(run: Run) {
     offer: w?.cta_url ? { url: w.cta_url, price: w.cta_price_now || null } : null,
     group_url: group?.kind === "group" ? group.url : null,
     room_url: w ? `${APP_URL}/w/${w.slug}` : null,
-    replay_url: w?.replay_enabled ? `${APP_URL}/replay/${w.id}` : null,
+    // O replay público é a sala com ?replay=1; /replay/<id> é a pré-visualização da equipa.
+    replay_url: w?.replay_enabled ? `${APP_URL}/w/${w.slug}?replay=1` : null,
     session: s ? { id: s.id, starts_at: s.starts_at, ends_at: s.ends_at } : null,
     contact: { id: c.id, name: c.name, email: c.email, phone: c.phone },
     facts: run.facts,
