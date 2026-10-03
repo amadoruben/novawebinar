@@ -19,9 +19,12 @@ import {
   CreditCard,
   DollarSign,
   FileText,
+  Focus,
   GitFork,
   Maximize2,
   Minimize2,
+  MoveHorizontal,
+  MoveVertical,
   PlayCircle,
   Plus,
   Send as SendIcon,
@@ -54,6 +57,7 @@ import {
   type CanvasNode,
   type Channel,
   type LaidStep,
+  type Orientation,
   type PageType,
   type Send,
   type Stage,
@@ -114,8 +118,9 @@ export type JourneyCounts = {
 /* ---------- Linguagem visual do mapa (estilo ManyChat) ---------- */
 
 const handleClass = "!size-2.5 !border-2 !border-gray-300 !bg-white";
-const Side = ({ type, position, top }: { type: "source" | "target"; position: Position; top?: number }) => (
-  <Handle type={type} position={position} className={handleClass} isConnectable={false} style={top === undefined ? undefined : { top }} />
+/** Um ponto de ligação. Sem `id` é o da esquerda/direita (desenho horizontal); com `id` ("t" cima, "b" baixo, "l" esquerda) serve o desenho vertical. */
+const Side = ({ type, position, top, id }: { type: "source" | "target"; position: Position; top?: number; id?: string }) => (
+  <Handle id={id ?? null} type={type} position={position} className={handleClass} isConnectable={false} style={top === undefined ? undefined : { top }} />
 );
 
 // Medidas fixas dos cartões: a disposição precisa de saber a altura antes de desenhar.
@@ -210,6 +215,7 @@ function OriginNode({ data }: NodeProps<Node<OriginData>>) {
     <Card onClick={data.onClick} className="w-[220px]">
       <Header tile="bg-white ring-1 ring-gray-200" icon={icon} kicker={kicker} title={originTitle(data)} />
       <Side type="source" position={Position.Right} />
+      <Side id="b" type="source" position={Position.Bottom} />
     </Card>
   );
 }
@@ -264,6 +270,8 @@ function PageNode({ data }: NodeProps<Node<PageData>>) {
       </div>
       {data.stat && <p className="-mt-1 px-3.5 pb-3 text-[11px] tabular-nums text-muted-foreground">{data.stat}</p>}
       <Side type="source" position={Position.Right} top={HEADER_H / 2} />
+      <Side id="t" type="target" position={Position.Top} />
+      <Side id="b" type="source" position={Position.Bottom} />
     </Card>
   );
 }
@@ -274,6 +282,8 @@ function GroupNode({ data }: NodeProps<Node<GroupData>>) {
       <Side type="target" position={Position.Left} />
       <Header tile={LOOK.whatsapp_group.tile} icon={<Glyph look="whatsapp_group" />} kicker="Grupo de WhatsApp" title={data.name} />
       <Side type="source" position={Position.Right} />
+      <Side id="t" type="target" position={Position.Top} />
+      <Side id="b" type="source" position={Position.Bottom} />
     </Card>
   );
 }
@@ -308,6 +318,7 @@ function HubNode({ data }: NodeProps<Node<HubData>>) {
       )}
       <Side type="source" position={Position.Right} top={HEADER_H / 2} />
       <Handle id="down" type="source" position={Position.Bottom} className={handleClass} isConnectable={false} />
+      <Side id="t" type="target" position={Position.Top} />
     </div>
   );
 }
@@ -325,6 +336,7 @@ function LaneNode({ data }: NodeProps<Node<LaneData>>) {
     <Card onClick={data.onOpen} dim={!a.active} className="w-[260px]">
       <div style={{ height: LANE_H }}>
         <Handle type="target" position={Position.Top} className={handleClass} isConnectable={false} />
+        <Side id="l" type="target" position={Position.Left} top={HEADER_H / 2} />
         <Header
           tile="bg-accent text-accent-700"
           icon={<Zap className="size-4" strokeWidth={1.75} aria-hidden />}
@@ -449,6 +461,10 @@ const STEP_COL = CARD_W + 90;
 const LANE_GAP = 40;
 const ROW_GAP = 28;
 const LANE_TOP = 230;
+/** Desenho vertical: as automações à direita da espinha, e a altura prevista de cada nó da espinha. */
+const LANE_X = 300;
+const SPINE_GAP = 56;
+const NODE_H: Record<string, number> = { origin: 60, page: 206, group: 60, hub: 100 };
 
 /** O que se mostra no momento: as pessoas que lá chegaram. */
 function hubCount(key: HubKey, c: JourneyCounts | null) {
@@ -481,6 +497,7 @@ export function buildFlow(input: {
 }) {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
+  const vertical = input.canvas.orientation !== "horizontal";
   const pages = input.canvas.nodes.filter((n): n is Extract<CanvasNode, { kind: "page" }> => n.kind === "page");
   const origins = input.canvas.nodes.filter((n): n is Extract<CanvasNode, { kind: "origin" }> => n.kind === "origin");
   const groups = input.canvas.nodes.filter((n): n is Extract<CanvasNode, { kind: "group" }> => n.kind === "group");
@@ -489,53 +506,34 @@ export function buildFlow(input: {
   const cover = w?.registration_cover_url || w?.cover_url || null;
   const edge = (source: string, target: string, extra: Partial<Edge> = {}) =>
     edges.push({ id: `${source}->${target}${extra.sourceHandle ?? ""}`, source, target, type: "default", style: line(true), ...extra });
+  // No desenho vertical a espinha liga por baixo e por cima; no horizontal, pela direita e pela esquerda.
+  const down = (from: Node): Partial<Edge> => (vertical ? { sourceHandle: from.type === "hub" ? "down" : "b", targetHandle: "t" } : {});
 
   // A posição que a pessoa escolheu (arrastando) vale mais do que a disposição automática.
   const pos = (id: string, x: number, y: number) => input.canvas.positions[id] ?? { x, y };
 
-  // As automações não se sobrepõem: cada uma desce até haver espaço livre na sua faixa horizontal.
-  const lanes: { x0: number; x1: number; y0: number; y1: number }[] = [];
-  const fitLane = (x0: number, x1: number, height: number) => {
-    let y = LANE_TOP;
-    for (let moved = true; moved; ) {
-      moved = false;
-      for (const r of lanes)
-        if (x0 < r.x1 && r.x0 < x1 && y < r.y1 && r.y0 < y + height) {
-          y = r.y1 + LANE_GAP;
-          moved = true;
-        }
-    }
-    lanes.push({ x0, x1, y0: y, y1: y + height });
-    return y;
-  };
-
-  // A espinha, pela ordem de um lançamento: tráfego → inscrição → obrigado → grupo → momentos do webinar → venda.
-  const spine: string[] = [];
-  let x = 0;
+  // A espinha, pela ordem de um lançamento, e as automações penduradas em cada momento. As posições calculam-se no fim, conforme o sentido.
+  type Lane = { a: Automation; layout: ReturnType<typeof stepLayout>; waits: Map<string, string>; rowY: number[]; height: number; cols: number };
+  const spine: { node: Node; lanes: Lane[] }[] = [];
   const place = (node: Node) => {
-    nodes.push({ ...node, position: pos(node.id, x, 0) });
-    spine.push(node.id);
-    x += COL;
+    const entry = { node, lanes: [] as Lane[] };
+    spine.push(entry);
+    return entry;
   };
 
-  // Origens: empilhadas à esquerda, todas a convergir na página de inscrição; o "+" no fim da coluna.
-  const column = origins.length + 1;
-  const originY = (i: number) => (i - (column - 1) / 2) * 72 + 30;
-  origins.forEach((o, i) =>
-    nodes.push({
-      id: `origin:${o.id}`,
-      type: "origin",
-      position: pos(`origin:${o.id}`, 0, originY(i)),
-      data: { source: o.source, placement: o.placement, onClick: () => input.onEditCanvasNode(o) } satisfies OriginData,
-    }),
-  );
-  nodes.push({
+  // Origens: todas a convergir na página de inscrição; o "+" no fim.
+  const originNodes: Node[] = origins.map((o) => ({
+    id: `origin:${o.id}`,
+    type: "origin",
+    position: { x: 0, y: 0 },
+    data: { source: o.source, placement: o.placement, onClick: () => input.onEditCanvasNode(o) } satisfies OriginData,
+  }));
+  originNodes.push({
     id: "origin:add",
     type: "addOrigin",
-    position: pos("origin:add", 0, originY(origins.length)),
+    position: { x: 0, y: 0 },
     data: { onClick: () => input.onEditCanvasNode({ id: `origem-${Date.now().toString(36)}`, kind: "origin", source: "Meta" }) },
   });
-  x += COL;
 
   // A página de inscrição: a do formulário ou, sem página própria, a do webinar na plataforma.
   const inscription = input.forms[0];
@@ -552,7 +550,6 @@ export function buildFlow(input: {
       onClick: input.onOpenCapture,
     } satisfies PageData,
   });
-  for (const o of origins) edge(`origin:${o.id}`, "page:inscricao");
 
   const pageNode = (p: Extract<CanvasNode, { kind: "page" }>) =>
     place({ id: `page:${p.id}`, type: "page", position: { x: 0, y: 0 }, data: { name: p.name, url: p.url, pageType: p.pageType, onClick: () => input.onEditCanvasNode(p) } satisfies PageData });
@@ -563,10 +560,9 @@ export function buildFlow(input: {
 
   for (const hub of HUBS) {
     if (hub.key === "checkout") [...pagesOf("vendas"), ...pagesOf("checkout")].forEach(pageNode);
-    const hubX = x;
     // O webinar configurado vê-se no momento: o ícone da plataforma, o título e a data.
     const live = hub.key === "webinar" && w;
-    place({
+    const entry = place({
       id: `hub:${hub.key}`,
       type: "hub",
       position: { x: 0, y: 0 },
@@ -585,7 +581,7 @@ export function buildFlow(input: {
       } satisfies HubData,
     });
 
-    // As automações deste momento, penduradas por baixo e desenhadas para a direita.
+    // As automações deste momento: o início e, à direita, os passos em colunas; cada ramo numa linha.
     for (const a of input.automations.filter((a) => hub.triggers.includes(a.trigger_event))) {
       const layout = stepLayout(readSteps(a.steps));
       const waits = new Map(layout.edges.filter((e) => e.wait).map((e) => [e.to, e.wait!]));
@@ -594,30 +590,7 @@ export function buildFlow(input: {
       for (const it of layout.items) rowH[it.row] = Math.max(rowH[it.row]!, stepHeight(it.node, waits.has(it.node.id)));
       const rowY = rowH.map((_, r) => rowH.slice(0, r).reduce((sum, h) => sum + h + ROW_GAP, 0));
       const cols = layout.items.length ? Math.max(...layout.items.map((i) => i.col)) + 1 : 0;
-      const x0 = hubX - (CARD_W - 220) / 2;
-      const height = rowY.at(-1)! + rowH.at(-1)!;
-      const lane = pos(`auto:${a.id}`, x0, fitLane(x0, x0 + STEP_COL * (cols + 1), height));
-      const onOpen = () => input.onOpenAutomation(a.id);
-
-      nodes.push({ id: `auto:${a.id}`, type: "lane", position: lane, data: { automation: a, stats: input.stats(a.id), onOpen } satisfies LaneData });
-      edge(`hub:${hub.key}`, `auto:${a.id}`, { sourceHandle: "down", type: "smoothstep", animated: a.active, style: line(a.active) });
-      for (const it of layout.items)
-        nodes.push({
-          id: `step:${a.id}:${it.node.id}`,
-          type: it.node.kind === "branch" ? "condition" : "message",
-          // Os passos seguem o início da automação, salvo se a pessoa os arrastou.
-          position: pos(`step:${a.id}:${it.node.id}`, lane.x + STEP_COL * (it.col + 1), lane.y + rowY[it.row]!),
-          data: { node: it.node, wait: waits.get(it.node.id), onOpen: () => input.onOpenStep(a.id, it.node.id) } satisfies StepData,
-        });
-      for (const e of layout.edges)
-        edges.push({
-          id: `${a.id}:${e.from ?? "in"}->${e.to}:${e.handle ?? ""}`,
-          source: e.from ? `step:${a.id}:${e.from}` : `auto:${a.id}`,
-          target: `step:${a.id}:${e.to}`,
-          ...(e.handle ? { sourceHandle: e.handle } : {}),
-          type: "default",
-          style: line(a.active),
-        });
+      entry.lanes.push({ a, layout, waits, rowY, height: rowY.at(-1)! + rowH.at(-1)!, cols });
     }
 
     if (hub.key === "fim") {
@@ -640,7 +613,79 @@ export function buildFlow(input: {
     if (hub.key === "compra") [...pagesOf("upsell"), ...pagesOf("downsell"), ...pagesOf("obrigado")].forEach(pageNode);
   }
   pagesOf("outro").forEach(pageNode);
-  for (let i = 0; i < spine.length - 1; i += 1) edge(spine[i]!, spine[i + 1]!);
+
+  /* ---- Posições ---- */
+
+  const laneNodes = (lane: Lane, x: number, y: number, hubId: string) => {
+    const { a } = lane;
+    const at = pos(`auto:${a.id}`, x, y);
+    const onOpen = () => input.onOpenAutomation(a.id);
+    nodes.push({ id: `auto:${a.id}`, type: "lane", position: at, data: { automation: a, stats: input.stats(a.id), onOpen } satisfies LaneData });
+    edge(hubId, `auto:${a.id}`, { ...(vertical ? { targetHandle: "l" } : { sourceHandle: "down" }), type: "smoothstep", animated: a.active, style: line(a.active) });
+    for (const it of lane.layout.items)
+      nodes.push({
+        id: `step:${a.id}:${it.node.id}`,
+        type: it.node.kind === "branch" ? "condition" : "message",
+        // Os passos seguem o início da automação, salvo se a pessoa os arrastou.
+        position: pos(`step:${a.id}:${it.node.id}`, at.x + STEP_COL * (it.col + 1), at.y + lane.rowY[it.row]!),
+        data: { node: it.node, wait: lane.waits.get(it.node.id), onOpen: () => input.onOpenStep(a.id, it.node.id) } satisfies StepData,
+      });
+    for (const e of lane.layout.edges)
+      edges.push({
+        id: `${a.id}:${e.from ?? "in"}->${e.to}:${e.handle ?? ""}`,
+        source: e.from ? `step:${a.id}:${e.from}` : `auto:${a.id}`,
+        target: `step:${a.id}:${e.to}`,
+        ...(e.handle ? { sourceHandle: e.handle } : {}),
+        type: "default",
+        style: line(a.active),
+      });
+  };
+
+  const column = originNodes.length;
+  if (!vertical) {
+    // Da esquerda para a direita: origens empilhadas, a espinha numa linha, as automações penduradas por baixo de cada momento.
+    const originY = (i: number) => (i - (column - 1) / 2) * 72 + 30;
+    originNodes.forEach((n, i) => nodes.push({ ...n, position: pos(n.id, 0, originY(i)) }));
+    // As automações não se sobrepõem: cada uma desce até haver espaço livre na sua faixa horizontal.
+    const taken: { x0: number; x1: number; y0: number; y1: number }[] = [];
+    const fitLane = (x0: number, x1: number, height: number) => {
+      let y = LANE_TOP;
+      for (let moved = true; moved; ) {
+        moved = false;
+        for (const r of taken)
+          if (x0 < r.x1 && r.x0 < x1 && y < r.y1 && r.y0 < y + height) {
+            y = r.y1 + LANE_GAP;
+            moved = true;
+          }
+      }
+      taken.push({ x0, x1, y0: y, y1: y + height });
+      return y;
+    };
+    spine.forEach((entry, i) => {
+      const x = COL * (i + 1);
+      nodes.push({ ...entry.node, position: pos(entry.node.id, x, 0) });
+      for (const lane of entry.lanes) {
+        const x0 = x - (CARD_W - 220) / 2;
+        laneNodes(lane, x0, fitLane(x0, x0 + STEP_COL * (lane.cols + 1), lane.height), entry.node.id);
+      }
+    });
+  } else {
+    // De cima para baixo (como no Sellflux): origens lado a lado no topo; cada momento numa linha, com as suas automações à direita.
+    originNodes.forEach((n, i) => nodes.push({ ...n, position: pos(n.id, (i - (column - 1) / 2) * 240, 0) }));
+    let y = 140;
+    for (const entry of spine) {
+      nodes.push({ ...entry.node, position: pos(entry.node.id, 0, y) });
+      let laneY = y;
+      for (const lane of entry.lanes) {
+        laneNodes(lane, LANE_X, laneY, entry.node.id);
+        laneY += lane.height + LANE_GAP;
+      }
+      y = Math.max(y + (NODE_H[entry.node.type ?? "hub"] ?? 100), laneY) + SPINE_GAP;
+    }
+  }
+
+  for (const o of originNodes) if (o.id !== "origin:add") edge(o.id, "page:inscricao", vertical ? { sourceHandle: "b", targetHandle: "t" } : {});
+  for (let i = 0; i < spine.length - 1; i += 1) edge(spine[i]!.node.id, spine[i + 1]!.node.id, down(spine[i]!.node));
   return { nodes, edges };
 }
 
@@ -731,20 +776,28 @@ export type FlowComponent =
 
 /* ---------- O mapa ---------- */
 
+/** Vista inicial: legível, com o início da jornada à direita do menu de componentes. */
+const HOME_ZOOM = 0.8;
+const HOME_LEFT = 388;
+const HOME_TOP = 76;
+const BTN = "inline-flex h-9 items-center gap-1.5 rounded-pill bg-white px-4 text-sm shadow-pop ring-1 ring-gray-200 hover:bg-gray-50";
+
 export function FlowMap(
   props: Parameters<typeof buildFlow>[0] & {
-    /** `automationId`: a automação onde o componente foi largado (ou a última onde se clicou). */
     onAddComponent: (component: FlowComponent, at?: XY, automationId?: string) => void;
     onMoveNodes: (moves: Record<string, XY>) => void;
     onResetLayout: () => void;
     /** Ecrã inteiro: o mapa ocupa a janela toda para se trabalhar à vontade. */
     full?: boolean | undefined;
     onToggleFull?: (() => void) | undefined;
+    /** Sentido do desenho: de cima para baixo ou da esquerda para a direita. As posições arrastadas recomeçam. */
+    onSetOrientation?: ((orientation: Orientation) => void) | undefined;
   },
 ) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const built = useMemo(() => buildFlow(props), [props]);
+  const vertical = props.canvas.orientation !== "horizontal";
   // Os nós movem-se com o rato; ao largar, a posição grava-se e volta pelo canvas.
   const [nodes, setNodes, onNodesChange] = useNodesState(built.nodes);
   const dragging = useRef(false);
@@ -755,8 +808,29 @@ export function FlowMap(
   // A última automação onde se clicou: um disparo clicado no menu entra nela.
   const lastAutomation = useRef<string | undefined>(undefined);
   const automationOf = (nodeId: string | undefined) => (nodeId && /^(auto|step):/.test(nodeId) ? nodeId.split(":")[1] : undefined);
-  // Abre legível no início da jornada (tráfego → webinar ao vivo); o resto vê-se a deslizar.
-  const start = useMemo(() => built.nodes.filter((n) => n.position.x < 5.5 * COL && n.position.y < 700).map((n) => ({ id: n.id })), [built]);
+  // Abre legível no início da jornada, ao lado do menu; o resto vê-se a deslizar (roda do rato) ou a arrastar o fundo.
+  const builtRef = useRef(built);
+  builtRef.current = built;
+  const home = (duration = 300) => {
+    const all = builtRef.current.nodes;
+    if (!flow.current || !all.length) return;
+    const left = Math.min(...all.map((n) => n.position.x));
+    const top = Math.min(...all.map((n) => n.position.y));
+    void flow.current.setViewport({ x: HOME_LEFT - left * HOME_ZOOM, y: HOME_TOP - top * HOME_ZOOM, zoom: HOME_ZOOM }, { duration });
+  };
+  /** Volta ao início da jornada; com atraso quando as posições ainda estão a mudar. */
+  const fit = (delay = 0) => window.setTimeout(() => home(), delay);
+  // Um elemento novo (clicado no menu ou largado) fica à vista: o mapa desliza até ele.
+  const seen = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const ids = new Set(built.nodes.map((n) => n.id));
+    const before = seen.current;
+    seen.current = ids;
+    if (!before) return;
+    const added = built.nodes.filter((n) => !before.has(n.id) && n.id !== "origin:add").map((n) => ({ id: n.id }));
+    if (!added.length) return;
+    window.setTimeout(() => void flow.current?.fitView({ nodes: added, padding: 0.4, maxZoom: Math.max(0.9, flow.current?.getZoom() ?? 0), duration: 400 }), 120);
+  }, [built]);
   if (!mounted) return <div className="h-full w-full animate-pulse rounded-card bg-chip/60" />;
   return (
     <>
@@ -768,6 +842,7 @@ export function FlowMap(
           onNodesChange={onNodesChange}
           onInit={(instance) => {
             flow.current = instance;
+            home(0);
           }}
           onNodeClick={(_, node) => {
             lastAutomation.current = automationOf(node.id) ?? lastAutomation.current;
@@ -793,9 +868,11 @@ export function FlowMap(
             const hit = flow.current.getIntersectingNodes({ ...at, width: 1, height: 1 }).find((n) => automationOf(n.id));
             props.onAddComponent(JSON.parse(raw) as FlowComponent, at, automationOf(hit?.id));
           }}
-          fitView
-          fitViewOptions={{ nodes: start, padding: 0.1, maxZoom: 1 }}
-          minZoom={0.15}
+          // A roda do rato desliza o desenho (como numa página); amplia-se com Ctrl/Cmd + roda, o toque de pinça ou os botões.
+          panOnScroll
+          zoomOnScroll={false}
+          zoomOnDoubleClick={false}
+          minZoom={0.35}
           maxZoom={1.5}
           nodesConnectable={false}
           proOptions={{ hideAttribution: true }}
@@ -805,26 +882,58 @@ export function FlowMap(
           <Controls showInteractive={false} position="bottom-right" className="!overflow-hidden !rounded-xl !border-0 !shadow-pop" />
         </ReactFlow>
         <ToolsPanel onAdd={(c) => props.onAddComponent(c, undefined, lastAutomation.current)} />
-        <div className="absolute top-3 right-3 z-10 flex gap-2">
+        <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
+          {props.onSetOrientation && (
+            <div className="inline-flex h-9 overflow-hidden rounded-pill bg-white shadow-pop ring-1 ring-gray-200" role="group" aria-label="Sentido do desenho">
+              <button
+                type="button"
+                aria-pressed={vertical}
+                title="De cima para baixo"
+                onClick={() => {
+                  props.onSetOrientation?.("vertical");
+                  fit(350);
+                }}
+                className={cn("px-3", vertical ? "bg-navy text-white" : "hover:bg-gray-50")}
+              >
+                <MoveVertical className="size-4" aria-hidden />
+                <span className="sr-only">De cima para baixo</span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={!vertical}
+                title="Da esquerda para a direita"
+                onClick={() => {
+                  props.onSetOrientation?.("horizontal");
+                  fit(350);
+                }}
+                className={cn("px-3", !vertical ? "bg-navy text-white" : "hover:bg-gray-50")}
+              >
+                <MoveHorizontal className="size-4" aria-hidden />
+                <span className="sr-only">Da esquerda para a direita</span>
+              </button>
+            </div>
+          )}
+          <button type="button" onClick={() => fit()} title="Centrar o desenho" className={cn(BTN, "w-9 justify-center px-0")}>
+            <Focus className="size-4" aria-hidden />
+            <span className="sr-only">Centrar</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              props.onResetLayout();
+              fit(350);
+            }}
+            title="Volta a pôr tudo no sítio automático"
+            className={BTN}
+          >
+            Organizar
+          </button>
           {props.onToggleFull && (
-            <button
-              type="button"
-              onClick={props.onToggleFull}
-              title={props.full ? "Sair do ecrã inteiro (Esc)" : "Trabalhar em ecrã inteiro"}
-              className="inline-flex h-9 items-center gap-1.5 rounded-pill bg-white px-4 text-sm shadow-pop ring-1 ring-gray-200 hover:bg-gray-50"
-            >
+            <button type="button" onClick={props.onToggleFull} title={props.full ? "Sair do ecrã inteiro (Esc)" : "Trabalhar em ecrã inteiro"} className={BTN}>
               {props.full ? <Minimize2 className="size-4" aria-hidden /> : <Maximize2 className="size-4" aria-hidden />}
               {props.full ? "Sair" : "Ecrã inteiro"}
             </button>
           )}
-          <button
-            type="button"
-            onClick={props.onResetLayout}
-            title="Volta a pôr tudo no sítio automático"
-            className="inline-flex h-9 items-center rounded-pill bg-white px-4 text-sm shadow-pop ring-1 ring-gray-200 hover:bg-gray-50"
-          >
-            Organizar
-          </button>
         </div>
       </div>
       <JourneyList {...props} />

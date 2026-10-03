@@ -347,7 +347,8 @@ function WorkflowPage() {
                 );
               })}
             </ul>
-            <div className={cn(full ? "fixed inset-0 z-50 bg-card p-3" : "relative h-[calc(100dvh-15rem)] min-h-[32rem] rounded-card bg-card")}>
+            {/* A altura deixa o mapa inteiro dentro da janela: os botões de zoom ficam sempre à vista, sem scroll da página. */}
+            <div className={cn(full ? "fixed inset-0 z-50 bg-card p-3" : "relative h-[calc(100dvh-17.5rem)] min-h-[25rem] rounded-card bg-card")}>
               <FlowMap
                 full={full}
                 onToggleFull={() => setFull((f) => !f)}
@@ -366,6 +367,10 @@ function WorkflowPage() {
                 onAddComponent={(component, at, automationId) => void addComponent(component, at, automationId)}
                 onMoveNodes={(moves) => void saveCanvas({ ...canvas, positions: { ...canvas.positions, ...moves } })}
                 onResetLayout={() => void saveCanvas({ ...canvas, positions: {} })}
+                // Mudar o sentido recomeça as posições: as arrastadas num sentido não servem no outro.
+                onSetOrientation={(orientation) => {
+                  if ((canvas.orientation ?? "vertical") !== orientation) void saveCanvas({ ...canvas, orientation, positions: {} });
+                }}
               />
               {settings}
             </div>

@@ -30,14 +30,15 @@ function NewFlowPage() {
   const { data: workflows = [] } = useWorkflows(orgId);
   const destination = useWebhookDestination(orgId);
   const invalidate = useInvalidate();
-  const [webinarId, setWebinarId] = useState(NONE);
+  const [chosen, setWebinarId] = useState<string>();
   const [name, setName] = useState("");
   const [groupUrl, setGroupUrl] = useState("");
   const [withBase, setWithBase] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  // Um fluxo por webinar: os que já têm fluxo não aparecem.
+  // Um fluxo por webinar: os que já têm fluxo não aparecem. Sem escolha, fica o mais recente ainda livre.
   const free = webinars.filter((w) => !workflows.some((f) => f.webinar_id === w.id));
+  const webinarId = chosen ?? free[0]?.id ?? NONE;
   const webinar = webinars.find((w) => w.id === webinarId);
   const title = webinar ? webinar.public_title || webinar.internal_name : "";
   const status = channelStatus(Boolean(workspace?.isTest), destination.ready);

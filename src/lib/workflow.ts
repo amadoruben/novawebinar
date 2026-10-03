@@ -589,11 +589,24 @@ export type CanvasNode =
   | { id: string; kind: "page"; name: string; url: string; pageType: PageType }
   /** Grupo de WhatsApp para onde a página de obrigado leva (link de convite). Só representação. */
   | { id: string; kind: "group"; name: string; url: string };
-export type Canvas = { nodes: CanvasNode[]; positions: Record<string, { x: number; y: number }> };
+/** Sentido do desenho: a jornada de cima para baixo (como no Sellflux) ou da esquerda para a direita. */
+export type Orientation = "vertical" | "horizontal";
+export type Canvas = {
+  nodes: CanvasNode[];
+  positions: Record<string, { x: number; y: number }>;
+  /** Por omissão, vertical. */
+  orientation?: Orientation | undefined;
+};
 
 export function readCanvas(value: unknown): Canvas {
   const v = (value ?? {}) as Partial<Canvas>;
-  return { nodes: Array.isArray(v.nodes) ? v.nodes : [], positions: v.positions && typeof v.positions === "object" ? v.positions : {} };
+  const known = v.orientation === "vertical" || v.orientation === "horizontal";
+  return {
+    nodes: Array.isArray(v.nodes) ? v.nodes : [],
+    // Fluxos de antes de haver sentido: lêem-se na vertical, e as posições arrastadas (que eram do desenho horizontal) recomeçam.
+    positions: known && v.positions && typeof v.positions === "object" ? v.positions : {},
+    orientation: v.orientation === "horizontal" ? "horizontal" : "vertical",
+  };
 }
 
 export function readSteps(value: unknown): Steps | null {
@@ -987,6 +1000,7 @@ export function baseCanvas(): Canvas {
       { id: "obrigado", kind: "page", name: "Página de obrigado", url: "", pageType: "obrigado" },
     ],
     positions: {},
+    orientation: "vertical",
   };
 }
 
