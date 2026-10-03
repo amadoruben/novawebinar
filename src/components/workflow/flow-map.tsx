@@ -41,7 +41,6 @@ import {
   audiences,
   negate,
   nodeTitle,
-  ORIGIN_LABEL,
   originParts,
   originTitle,
   PAGE_TYPE_LABEL,
@@ -55,7 +54,6 @@ import {
   type CanvasNode,
   type Channel,
   type LaidStep,
-  type OriginPlatform,
   type PageType,
   type Send,
   type Stage,
@@ -178,10 +176,8 @@ function WaitStrip({ text }: { text: string }) {
 
 /* ---------- Nós da jornada ---------- */
 
-/** Versões em avaliação (3/10): 1 plataforma primeiro · 2 pago e orgânico · 3 sítio escolhido na paleta. */
-export type OriginStyle = 1 | 2 | 3;
-type OriginData = { source: string; placement?: string | undefined; style?: OriginStyle | undefined; onClick: () => void };
-const NETWORK_LOGOS = new Set(["Facebook", "Instagram", "YouTube", "TikTok"]);
+type OriginData = { source: string; placement?: string | undefined; onClick: () => void };
+const NETWORK_LOGOS = new Set(["Facebook", "Instagram", "YouTube", "TikTok", "LinkedIn"]);
 type PageData = { name: string; url: string; pageType: PageType; image?: string | null; stat?: string | undefined; onClick: () => void };
 type GroupData = { name: string; onClick: () => void };
 type HubData = {
@@ -195,35 +191,24 @@ type HubData = {
   pick?: (() => void) | undefined;
 };
 
+/** A plataforma manda (Meta, Google, TikTok); o sítio onde anuncia é um selo pequeno no canto e vai no título. */
 function OriginNode({ data }: NodeProps<Node<OriginData>>) {
   const parts = originParts(data);
   const paid = PAID_ORIGINS.has(parts.platform);
-  const platform = ORIGIN_LABEL[parts.platform as OriginPlatform] ?? parts.platform;
-  const style = data.style ?? 1;
-  let icon = <BrandLogo name={parts.platform} className="size-[18px]" />;
-  let kicker = `${paid ? "Tráfego pago" : "Tráfego"}${parts.placement ? "" : " · clique para dizer onde"}`;
-  let title = originTitle(data);
-  if (style === 2) {
-    // A plataforma manda; o sítio é um selo pequeno no canto.
-    icon = (
-      <span className="relative flex">
-        <BrandLogo name={parts.platform} className="size-[18px]" />
-        {parts.placement && NETWORK_LOGOS.has(parts.placement) && (
-          <span className="absolute -right-2.5 -bottom-2.5 flex size-4 items-center justify-center rounded-full bg-white ring-1 ring-gray-200">
-            <BrandLogo name={parts.placement} className="size-2.5" />
-          </span>
-        )}
-      </span>
-    );
-  } else if (style === 3) {
-    // O sítio é a cara do nó; a plataforma fica na legenda.
-    icon = <BrandLogo name={parts.placement && NETWORK_LOGOS.has(parts.placement) ? parts.placement : parts.platform} className="size-[18px]" />;
-    kicker = `${platform}${paid ? " · pago" : ""}`;
-    title = parts.placement ?? platform;
-  }
+  const kicker = `${paid ? "Tráfego pago" : "Tráfego"}${parts.placement ? "" : " · clique para dizer onde"}`;
+  const icon = (
+    <span className="relative flex">
+      <BrandLogo name={parts.platform} className="size-[18px]" />
+      {parts.placement && NETWORK_LOGOS.has(parts.placement) && (
+        <span className="absolute -right-2.5 -bottom-2.5 flex size-4 items-center justify-center rounded-full bg-white ring-1 ring-gray-200">
+          <BrandLogo name={parts.placement} className="size-2.5" />
+        </span>
+      )}
+    </span>
+  );
   return (
     <Card onClick={data.onClick} className="w-[220px]">
-      <Header tile="bg-white ring-1 ring-gray-200" icon={icon} kicker={kicker} title={title} />
+      <Header tile="bg-white ring-1 ring-gray-200" icon={icon} kicker={kicker} title={originTitle(data)} />
       <Side type="source" position={Position.Right} />
     </Card>
   );
@@ -493,8 +478,6 @@ export function buildFlow(input: {
   onOpenCapture: () => void;
   /** Sem webinar: o momento «Webinar ao vivo» leva à configuração. */
   onPickWebinar?: (() => void) | undefined;
-  /** Versão em avaliação da organização do tráfego (paleta e nó). */
-  originStyle?: OriginStyle | undefined;
 }) {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -543,7 +526,7 @@ export function buildFlow(input: {
       id: `origin:${o.id}`,
       type: "origin",
       position: pos(`origin:${o.id}`, 0, originY(i)),
-      data: { source: o.source, placement: o.placement, style: input.originStyle, onClick: () => input.onEditCanvasNode(o) } satisfies OriginData,
+      data: { source: o.source, placement: o.placement, onClick: () => input.onEditCanvasNode(o) } satisfies OriginData,
     }),
   );
   nodes.push({
@@ -821,7 +804,7 @@ export function FlowMap(
           <Background variant={BackgroundVariant.Dots} gap={22} size={1.4} color="#D5D9E0" />
           <Controls showInteractive={false} position="bottom-right" className="!overflow-hidden !rounded-xl !border-0 !shadow-pop" />
         </ReactFlow>
-        <ToolsPanel variant={props.originStyle ?? 1} onAdd={(c) => props.onAddComponent(c, undefined, lastAutomation.current)} />
+        <ToolsPanel onAdd={(c) => props.onAddComponent(c, undefined, lastAutomation.current)} />
         <div className="absolute top-3 right-3 z-10 flex gap-2">
           {props.onToggleFull && (
             <button

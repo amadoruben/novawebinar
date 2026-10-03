@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { AutomationEditor } from "@/components/workflow/automation-editor";
 import { CapturePanel } from "@/components/workflow/capture-panel";
-import { FlowMap, type FlowComponent, type OriginStyle, type XY } from "@/components/workflow/flow-map";
+import { FlowMap, type FlowComponent, type XY } from "@/components/workflow/flow-map";
 import { SettingsPanel } from "@/components/workflow/flow-tools";
 import { PALETTE } from "@/components/workflow/step-panel";
 import { StepSettings } from "@/components/workflow/step-settings";
@@ -66,8 +66,7 @@ import {
 
 type Tab = "fluxo" | "execucoes" | "configuracao";
 const TEMPLATES = baseWorkflow();
-type Search = { a?: string | undefined; tab?: Tab | undefined; run?: string | undefined; paleta?: "1" | "2" | "3" | undefined };
-const PALETA_LABEL = { 1: "Plataforma primeiro", 2: "Pago e orgânico", 3: "Sítio na paleta" } as const;
+type Search = { a?: string | undefined; tab?: Tab | undefined; run?: string | undefined };
 /** O elemento com as definições abertas: um nó do canvas (página, grupo, origem) ou um passo de uma automação. */
 type Selected = { kind: "canvas"; node: CanvasNode } | { kind: "step"; automationId: string; nodeId: string };
 const TABS: { key: Tab; label: string }[] = [
@@ -83,7 +82,6 @@ export const Route = createFileRoute("/automations/workflows/$workflowId")({
     ...(typeof s["a"] === "string" ? { a: s["a"] } : {}),
     ...(typeof s["tab"] === "string" && TABS.some((t) => t.key === s["tab"]) ? { tab: s["tab"] as Tab } : {}),
     ...(typeof s["run"] === "string" ? { run: s["run"] } : {}),
-    ...(s["paleta"] === "1" || s["paleta"] === "2" || s["paleta"] === "3" ? { paleta: s["paleta"] } : {}),
   }),
   head: () => ({ meta: [{ title: "Fluxo | Convertewebinar" }] }),
   component: WorkflowPage,
@@ -114,7 +112,6 @@ function WorkflowPage() {
   }, [full]);
   const queryClient = useQueryClient();
   const tab = search.tab ?? "fluxo";
-  const originStyle = (Number(search.paleta ?? "1") as OriginStyle) || 1;
   const status = channelStatus(Boolean(workspace?.isTest), destination.ready);
 
   const go = (patch: Partial<Search>) =>
@@ -366,27 +363,11 @@ function WorkflowPage() {
                 onEditCanvasNode={(node) => setOpen({ kind: "canvas", node })}
                 onOpenCapture={() => go({ tab: "configuracao" })}
                 onPickWebinar={() => go({ tab: "configuracao" })}
-                originStyle={originStyle}
                 onAddComponent={(component, at, automationId) => void addComponent(component, at, automationId)}
                 onMoveNodes={(moves) => void saveCanvas({ ...canvas, positions: { ...canvas.positions, ...moves } })}
                 onResetLayout={() => void saveCanvas({ ...canvas, positions: {} })}
               />
               {settings}
-            </div>
-            {/* Versões em avaliação (3/10): como se organiza o tráfego na paleta e no nó. Sai quando o utilizador escolher. */}
-            <div className="fixed bottom-4 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-1 rounded-pill bg-navy/90 p-1 text-white shadow-pop backdrop-blur">
-              <span className="px-3 text-xs text-white/70">Tráfego</span>
-              {([1, 2, 3] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => go({ paleta: String(v) as "1" | "2" | "3" })}
-                  className={cn("h-8 min-w-8 rounded-pill px-3 text-sm font-medium", originStyle === v ? "bg-white text-navy" : "text-white/80 hover:bg-white/10")}
-                >
-                  {v}
-                </button>
-              ))}
-              <span className="pr-3 text-xs text-white/70">{PALETA_LABEL[originStyle]}</span>
             </div>
           </div>
         ))}
