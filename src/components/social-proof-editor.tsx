@@ -365,7 +365,8 @@ export function SocialProofEditor({
       toast.error("Não foi possível identificar o seu espaço de trabalho.");
       return;
     }
-    const base = Number(form.start_seconds) || 0;
+    // Os exemplos começam depois de a oferta aparecer: antes dela uma compra parece falsa.
+    const base = offerStartSeconds;
     const rows = exampleNames.map((name, index) => ({
       webinar_id: webinarId,
       organization_id: organizationId,
@@ -564,14 +565,6 @@ export function SocialProofEditor({
           </div>
 
         </div>
-
-        <label className="flex items-center justify-between gap-4 rounded-xl border bg-background p-4 sm:col-span-2">
-          <span className="text-sm font-medium">Som ao aparecer</span>
-          <Switch
-            checked={form.sound_enabled}
-            onCheckedChange={(v) => setForm({ ...form, sound_enabled: v })}
-          />
-        </label>
       </div>
 
       <p className="text-xs text-muted-foreground">
@@ -803,8 +796,8 @@ export function SocialProofEditor({
       <div className="space-y-2 rounded-2xl border bg-muted/30 p-4">
         <h3 className="text-sm font-bold">Compras reais</h3>
         <p className="text-xs text-muted-foreground">
-          Ligue a sua plataforma de pagamento a este endereço para as compras reais aparecerem na
-          sala e nos relatórios.
+          Ligue a sua plataforma de pagamento a este endereço para as compras reais aparecerem nas
+          métricas e nos relatórios.
         </p>
         <div className="flex items-center gap-2">
           <Input readOnly value={webhookUrl} className="bg-background text-xs" />

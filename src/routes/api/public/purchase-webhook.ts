@@ -24,7 +24,12 @@ export const Route = createFileRoute("/api/public/purchase-webhook")({
           return new Response("Pedido inválido.", { status: 400 });
         }
 
-        const secret = request.headers.get("x-novawebinar-secret") ?? payload.secret ?? "";
+        // O cabeçalho antigo continua aceite para não partir quem já o configurou.
+        const secret =
+          request.headers.get("x-convertewebinar-secret") ??
+          request.headers.get("x-novawebinar-secret") ??
+          payload.secret ??
+          "";
         const webinarId = payload.webinar_id ?? "";
         const buyer = (payload.buyer_name ?? "").trim();
         if (!webinarId || !secret || !buyer)

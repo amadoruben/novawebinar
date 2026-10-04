@@ -88,7 +88,7 @@ export function InternalWebinarRoom({
       theme={(webinar as { room_theme?: string }).room_theme === "light" ? "light" : "dark"}
       viewerName={workspace?.fullName ?? "Equipa"}
       comments={comments}
-      audienceMode={audience?.mode ?? "simulated"}
+      audienceMode={audience?.mode ?? "real"}
       curve={audience?.curve}
       socialProof={socialProof ?? null}
       purchases={simulatedPurchases}

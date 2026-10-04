@@ -59,7 +59,8 @@ export function WebinarPaymentsNotice({
           </h3>
           <p className="text-xs text-muted-foreground">
             A sua plataforma de pagamento já está ligada e a enviar pagamentos deste webinar. As
-            compras aprovadas aparecem na sala e nas métricas.
+            compras aprovadas aparecem nas métricas. Na sala só aparecem as notificações de
+            demonstração configuradas abaixo.
           </p>
         </div>
       </div>

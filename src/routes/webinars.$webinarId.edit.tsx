@@ -1,5 +1,5 @@
 import { friendlyError } from "@/lib/friendly-error";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useBlocker, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -88,6 +88,13 @@ import {
   webinarLifecycle,
 } from "@/lib/schedule";
 import { WebinarPaymentsNotice } from "@/components/metricas/webinar-payments";
+import {
+  isoFromLocalInput,
+  localInputFromIso,
+  offerTiming,
+  statusOnSave,
+  webinarIssues,
+} from "@/lib/webinar-draft";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -278,12 +285,15 @@ const FULL_WIDTH_STEPS = [
 
 type StepId = (typeof STEPS)[number]["id"];
 
-function toLocalInput(value: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  const offset = date.getTimezoneOffset();
-  return new Date(date.getTime() - offset * 60000).toISOString().slice(0, 16);
-}
+const TIMEZONES: [string, string][] = [
+  ["Africa/Luanda", "(GMT+01:00) Luanda"],
+  ["Europe/Lisbon", "(GMT+00:00) Lisboa"],
+  ["Europe/Madrid", "(GMT+01:00) Madrid"],
+  ["America/Sao_Paulo", "(GMT-03:00) Brasília"],
+  ["Atlantic/Azores", "(GMT-01:00) Açores"],
+  ["America/New_York", "(GMT-05:00) Nova Iorque"],
+  ["UTC", "(GMT+00:00) UTC"],
+];
 
 function formatOffset(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
@@ -353,7 +363,6 @@ function EditWebinar() {
     cta_image_url: "",
     cta_countdown_seconds: "300",
     cta_start_seconds: "",
-    pitch_seconds: "",
     cta_end_seconds: "",
     registration_headline: "",
     registration_subtitle: "",
@@ -375,6 +384,18 @@ function EditWebinar() {
   const [openIntegration, setOpenIntegration] = useState<"whatsapp" | "webhook" | null>(null);
 
   const [saving, setSaving] = useState(false);
+  // O formulário como está gravado: o que difere dele são alterações por gravar.
+  const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
+  const dirty = savedSnapshot !== null && JSON.stringify(form) !== savedSnapshot;
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  useBlocker({
+    shouldBlockFn: ({ current, next }) =>
+      dirtyRef.current &&
+      current.pathname !== next.pathname &&
+      !window.confirm("Há alterações por gravar. Sair mesmo assim?"),
+    enableBeforeUnload: () => dirtyRef.current,
+  });
   const [uploadingCover, setUploadingCover] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const hostAvatarInputRef = useRef<HTMLInputElement>(null);
@@ -453,7 +474,7 @@ function EditWebinar() {
   useEffect(() => {
     if (!webinar || hydratedRef.current === webinar.id) return;
     hydratedRef.current = webinar.id;
-    setForm({
+    const loaded: typeof form = {
       internal_name: webinar.internal_name,
       public_title: webinar.public_title,
       description: webinar.description,
@@ -465,7 +486,7 @@ function EditWebinar() {
       offer_pin_title: webinar.offer_pin_title ?? "Vagas abertas :",
       offer_pin_message: webinar.offer_pin_message ?? "",
       slug: webinar.slug,
-      scheduled_at: toLocalInput(webinar.scheduled_at),
+      scheduled_at: localInputFromIso(webinar.scheduled_at, webinar.timezone ?? "Europe/Lisbon"),
       session_end_time: webinar.session_end_time ?? "",
       status: webinar.status,
       video_source_id: webinar.video_source_id ?? "none",
@@ -497,8 +518,7 @@ function EditWebinar() {
       cta_price_now: webinar.cta_price_now ?? "",
       cta_image_url: webinar.cta_image_url ?? "",
       cta_countdown_seconds: String(webinar.cta_countdown_seconds ?? 300),
-      cta_start_seconds: webinar.cta_start_seconds != null ? String(webinar.cta_start_seconds) : "",
-      pitch_seconds: webinar.pitch_seconds != null ? String(webinar.pitch_seconds) : "",
+      cta_start_seconds: String(webinar.cta_start_seconds ?? webinar.pitch_seconds ?? ""),
       cta_end_seconds: webinar.cta_end_seconds != null ? String(webinar.cta_end_seconds) : "",
       registration_headline: webinar.registration_headline,
       registration_subtitle: webinar.registration_subtitle,
@@ -516,7 +536,9 @@ function EditWebinar() {
       share_image_url: webinar.share_image_url ?? "",
       webhook_url: webinar.webhook_url ?? "",
       webhook_enabled: webinar.webhook_enabled ?? false,
-    });
+    };
+    setForm(loaded);
+    setSavedSnapshot(JSON.stringify(loaded));
   }, [webinar]);
 
   useEffect(() => {
@@ -560,7 +582,7 @@ function EditWebinar() {
     const window = sessionWindow(
       {
         schedule_mode: form.schedule_mode,
-        scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
+        scheduled_at: isoFromLocalInput(form.scheduled_at, form.timezone),
         session_end_time: form.session_end_time || null,
         recurrence_enabled: form.recurrence_enabled,
         recurrence_pattern: form.recurrence_pattern,
@@ -590,20 +612,16 @@ function EditWebinar() {
 
   const save = async (options?: { silent?: boolean }): Promise<boolean> => {
     if (!webinar) return false;
-    let pendingWarning: string | null = null;
-    if (!options?.silent) {
-      if (form.recurrence_enabled && !form.recurrence_start_time) {
-        pendingWarning = "Defina a hora de início da repetição automática.";
-      } else if (
-        form.schedule_mode === "single" &&
-        !form.recurrence_enabled &&
-        !form.scheduled_at
-      ) {
-        pendingWarning = "Escolha a data e a hora da sessão.";
-      } else if (form.cta_url.trim() && !offerUrl(form.cta_url)) {
-        pendingWarning = "O link da oferta tem de começar por https://.";
-      }
+    const issues = webinarIssues(form, { durationSeconds: previewDuration });
+    // Um erro que bloqueia não grava nada e leva ao passo do campo, também ao «Continuar».
+    const blocking = issues.find((issue) => issue.blocking);
+    if (blocking) {
+      toast.error(blocking.message);
+      setStep(blocking.step);
+      return false;
     }
+    const pendingWarning = options?.silent ? undefined : issues[0];
+    const offer = offerTiming(form);
     setSaving(true);
     try {
       const { error } = await supabase
@@ -620,9 +638,9 @@ function EditWebinar() {
           offer_pin_title: form.offer_pin_title.trim() || "Vagas abertas :",
           offer_pin_message: form.offer_pin_message.trim(),
           slug: slugify(form.slug || form.public_title || form.internal_name),
-          scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
+          scheduled_at: isoFromLocalInput(form.scheduled_at, form.timezone),
           session_end_time: form.session_end_time || null,
-          status: derivedStatus,
+          status: statusOnSave(webinar, derivedStatus),
           video_source_id: form.video_source_id === "none" ? null : form.video_source_id,
           replay_enabled: form.replay_enabled,
           waiting_room_enabled: form.waiting_room_enabled,
@@ -649,9 +667,10 @@ function EditWebinar() {
           cta_price_now: form.cta_price_now.trim(),
           cta_image_url: form.cta_image_url.trim(),
           cta_countdown_seconds: Math.max(0, Number(form.cta_countdown_seconds) || 0),
-          cta_start_seconds: form.cta_start_seconds ? Number(form.cta_start_seconds) : null,
-          pitch_seconds: form.pitch_seconds ? Number(form.pitch_seconds) : null,
-          cta_end_seconds: form.cta_end_seconds ? Number(form.cta_end_seconds) : null,
+          // Um só minuto do pitch: a oferta aparece nele e os segmentos e as métricas comparam com ele.
+          cta_start_seconds: offer.start,
+          pitch_seconds: offer.start,
+          cta_end_seconds: offer.end,
           registration_headline: form.registration_headline.trim(),
           registration_subtitle: form.registration_subtitle.trim(),
           registration_button_text: form.registration_button_text.trim() || "Entrar na sala",
@@ -678,18 +697,22 @@ function EditWebinar() {
         .eq("id", webinarId);
       if (error) throw error;
       const socialProofOk = (await socialProofSaverRef.current?.()) ?? true;
+      const audienceOk = await saveAudience({ silent: true });
       invalidate(["webinar", "webinars"]);
       if (!options?.silent) {
         if (!socialProofOk) {
           toast.error("Webinar guardado, mas as notificações de compra não foram guardadas.");
+        } else if (!audienceOk) {
+          toast.error("Webinar guardado, mas a audiência não foi guardada.");
         } else if (pendingWarning) {
-          toast.warning(`Alterações guardadas. ${pendingWarning}`);
-          setStep("webinar");
+          toast.warning(`Alterações guardadas. ${pendingWarning.message}`);
+          setStep(pendingWarning.step);
         } else {
           toast.success("Alterações guardadas.");
         }
       }
-      return socialProofOk;
+      setSavedSnapshot(JSON.stringify(form));
+      return socialProofOk && audienceOk;
     } catch (error) {
       toast.error(friendlyError(error, "Não foi possível guardar."));
       return false;
@@ -698,14 +721,26 @@ function EditWebinar() {
     }
   };
 
-  const saveAndGo = (next: Parameters<typeof setStep>[0]) => {
-    void save({ silent: true }).finally(() => setStep(next));
+  // «Continuar» segue a ordem do menu e só avança se gravou.
+  const nextStep = STEPS[STEPS.findIndex((s) => s.id === step) + 1];
+  const nextLabel = nextStep ? `Continuar para ${nextStep.label}` : "Guardar";
+  const saveAndGo = () => {
+    void save({ silent: true }).then((ok) => {
+      if (ok && nextStep) setStep(nextStep.id);
+    });
   };
 
-  const saveAudience = async () => {
-    if (!workspace) return;
+  const saveAudience = async (options?: { silent?: boolean }): Promise<boolean> => {
+    if (!workspace) return false;
     const min = Math.max(0, Number(audienceMin) || 0);
     const max = Math.max(min, Number(audienceMax) || 0);
+    // Pelo «Guardar» geral só se escreve se a audiência mudou: a curva gravada fica como está.
+    const saved = audience
+      ? { mode: audience.mode, ...(curveBounds(audience.curve) ?? { min: 0, max: 0 }) }
+      : { mode: "real", min: 0, max: 0 };
+    if (options?.silent && saved.mode === audienceMode && saved.min === min && saved.max === max) {
+      return true;
+    }
     const curve = buildAudienceCurve(min, max, 28);
     const { error } = await supabase.from("audience_configuration").upsert(
       {
@@ -717,11 +752,13 @@ function EditWebinar() {
       },
       { onConflict: "webinar_id" },
     );
-    if (error) toast.error(friendlyError(error));
-    else {
-      invalidate(["audience-configuration"]);
-      toast.success("Audiência atualizada.");
+    if (error) {
+      toast.error(friendlyError(error));
+      return false;
     }
+    invalidate(["audience-configuration"]);
+    if (!options?.silent) toast.success("Audiência atualizada.");
+    return true;
   };
 
   const addComment = async (event: React.FormEvent) => {
@@ -1070,6 +1107,22 @@ function EditWebinar() {
       toast.error("Indique o link do vídeo, começado por https://");
       return;
     }
+    // O vídeo é da biblioteca: mudar o link aqui mudava-o em todos os webinars que o usam.
+    const { count, error: countError } = await supabase
+      .from("webinars")
+      .select("id", { count: "exact", head: true })
+      .eq("video_source_id", selectedVideo.id)
+      .neq("id", webinarId);
+    if (countError) {
+      toast.error(friendlyError(countError));
+      return;
+    }
+    if (count) {
+      toast.error(
+        `Este vídeo também é usado em ${count === 1 ? "outro webinar" : `mais ${count} webinars`}. Para não os alterar, adicione o novo link como um vídeo novo.`,
+      );
+      return;
+    }
     // Ao guardar o link, corrige a duração para a real sempre que for legível.
     const detected = await readDurationFromSrc(url);
     const { error } = await supabase
@@ -1092,6 +1145,7 @@ function EditWebinar() {
     }
     invalidate(["webinars"]);
     toast.success("Webinar eliminado.");
+    dirtyRef.current = false;
     await navigate({ to: "/webinars", search: { q: undefined } });
   };
 
@@ -1124,7 +1178,7 @@ function EditWebinar() {
   const lifecycle = webinarLifecycle(
     {
       schedule_mode: form.schedule_mode,
-      scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
+      scheduled_at: isoFromLocalInput(form.scheduled_at, form.timezone),
       session_end_time: form.session_end_time || null,
       recurrence_enabled: form.recurrence_enabled,
       recurrence_pattern: form.recurrence_pattern,
@@ -1142,6 +1196,9 @@ function EditWebinar() {
     lifecycle.kind === "on_demand" && form.status === "draft"
       ? "draft"
       : statusFromLifecycle(lifecycle, form.replay_enabled);
+  const offerErrors = webinarIssues(form, { durationSeconds: previewDuration }).filter(
+    (issue) => issue.step === "oferta",
+  );
   const fullWidth = (FULL_WIDTH_STEPS as readonly string[]).includes(step);
   const baseUrl = publicOrigin();
 
@@ -1150,7 +1207,7 @@ function EditWebinar() {
     const items: TimelineMarker[] = comments.map((c) => ({
       id: `c-${c.id}`,
       at: c.offset_seconds,
-      kind: c.comment_type === "ai" ? "ai" : "manual",
+      kind: c.ai_intent != null ? "ai" : "manual",
       label: `${c.author_name}: ${c.message.slice(0, 40)}`,
     }));
     const ctaStart = Number(form.cta_start_seconds) || 0;
@@ -1414,8 +1471,8 @@ function EditWebinar() {
                 <StepFooter
                   onSave={save}
                   saving={saving}
-                  onNext={() => saveAndGo("webinar")}
-                  nextLabel="Continuar para a sessão"
+                  onNext={saveAndGo}
+                  nextLabel={nextLabel}
                 />
               </div>
             )}
@@ -1487,6 +1544,28 @@ function EditWebinar() {
                   </Field>
                 )}
 
+                {/* O fuso vale para a data única e para a repetição: fica sempre à vista. */}
+                <Field
+                  label="Fuso horário"
+                  hint="As horas desta página são lidas neste fuso, seja qual for o do seu computador."
+                >
+                  <Select
+                    value={form.timezone}
+                    onValueChange={(v) => setForm({ ...form, timezone: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIMEZONES.map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+
                 <div className="space-y-4 rounded-xl border bg-background px-4 py-4">
                   <div className="flex items-center gap-3">
                     <Switch
@@ -1549,30 +1628,6 @@ function EditWebinar() {
                             setForm({ ...form, recurrence_end_time: e.target.value })
                           }
                         />
-                      </Field>
-                      <Field label="Fuso horário">
-                        <Select
-                          value={form.timezone}
-                          onValueChange={(v) => setForm({ ...form, timezone: v })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {[
-                              ["Europe/Lisbon", "(GMT+00:00) Lisboa"],
-                              ["Europe/Madrid", "(GMT+01:00) Madrid"],
-                              ["America/Sao_Paulo", "(GMT-03:00) Brasília"],
-                              ["Atlantic/Azores", "(GMT-01:00) Açores"],
-                              ["America/New_York", "(GMT-05:00) Nova Iorque"],
-                              ["UTC", "(GMT+00:00) UTC"],
-                            ].map(([value, label]) => (
-                              <SelectItem key={value} value={value!}>
-                                {label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
                       </Field>
                       {form.recurrence_pattern === "weekly" && (
                         <Field label="Dia da semana">
@@ -1772,8 +1827,8 @@ function EditWebinar() {
                 <StepFooter
                   onSave={save}
                   saving={saving}
-                  onNext={() => saveAndGo("login")}
-                  nextLabel="Continuar para o login"
+                  onNext={saveAndGo}
+                  nextLabel={nextLabel}
                 />
               </div>
             )}
@@ -1929,8 +1984,8 @@ function EditWebinar() {
                 <StepFooter
                   onSave={save}
                   saving={saving}
-                  onNext={() => saveAndGo("video")}
-                  nextLabel="Continuar para o vídeo"
+                  onNext={saveAndGo}
+                  nextLabel={nextLabel}
                 />
               </div>
             )}
@@ -1998,8 +2053,8 @@ function EditWebinar() {
                 <StepFooter
                   onSave={save}
                   saving={saving}
-                  onNext={() => saveAndGo("video")}
-                  nextLabel="Continuar para o vídeo"
+                  onNext={saveAndGo}
+                  nextLabel={nextLabel}
                 />
               </div>
             )}
@@ -2306,8 +2361,8 @@ function EditWebinar() {
                 <StepFooter
                   onSave={save}
                   saving={saving}
-                  onNext={() => saveAndGo("oferta")}
-                  nextLabel="Continuar para a oferta"
+                  onNext={saveAndGo}
+                  nextLabel={nextLabel}
                 />
               </div>
             )}
@@ -2599,8 +2654,8 @@ function EditWebinar() {
                 <StepFooter
                   onSave={save}
                   saving={saving}
-                  onNext={() => saveAndGo("vendas")}
-                  nextLabel="Continuar para vendas"
+                  onNext={saveAndGo}
+                  nextLabel={nextLabel}
                 />
               </div>
             )}
@@ -2744,20 +2799,10 @@ function EditWebinar() {
                     onChange={(v) => setForm({ ...form, cta_countdown_seconds: v })}
                   />
                 </Field>
-                <Field
-                  label="Momento do pitch"
-                  hint="Hora, minutos e segundos do vídeo em que começa o pitch. Serve para saber quantas pessoas chegaram a esse momento."
-                >
-                  <HmsInput
-                    allowEmpty
-                    value={form.pitch_seconds}
-                    onChange={(v) => setForm({ ...form, pitch_seconds: v })}
-                  />
-                </Field>
                 <div className="grid gap-5">
                   <Field
-                    label="Aparece em"
-                    hint="Momento do vídeo em que a oferta abre. Vazio ou 00:00:00 abre logo no início."
+                    label="Minuto do pitch"
+                    hint="Quando a oferta aparece na sala. Separa quem saiu antes do pitch de quem o assistiu, nas automações e nas métricas. Vazio abre a oferta logo no início."
                   >
                     <HmsInput
                       allowEmpty
@@ -2772,19 +2817,17 @@ function EditWebinar() {
                       onChange={(v) => setForm({ ...form, cta_end_seconds: v })}
                     />
                   </Field>
-                  {form.cta_end_seconds &&
-                  Number(form.cta_end_seconds) <= Number(form.cta_start_seconds || 0) ? (
-                    <p className="text-sm text-destructive">
-                      O momento em que a oferta desaparece tem de ser posterior ao momento em que
-                      aparece. Enquanto assim estiver, a oferta fica visível até ao fim.
+                  {offerErrors.map((issue) => (
+                    <p key={issue.field} className="text-sm text-destructive">
+                      {issue.message}
                     </p>
-                  ) : null}
+                  ))}
                 </div>
                 <StepFooter
                   onSave={save}
                   saving={saving}
-                  onNext={() => saveAndGo("chat")}
-                  nextLabel="Continuar para o chat"
+                  onNext={saveAndGo}
+                  nextLabel={nextLabel}
                 />
               </div>
             )}
@@ -2803,8 +2846,8 @@ function EditWebinar() {
                 <StepFooter
                   onSave={save}
                   saving={saving}
-                  onNext={() => saveAndGo("audiencia")}
-                  nextLabel="Continuar para a audiência"
+                  onNext={saveAndGo}
+                  nextLabel={nextLabel}
                 />
               </div>
             )}
@@ -2846,10 +2889,8 @@ function EditWebinar() {
                   miolo da sessão e desce suavemente no final — sempre dentro do intervalo definido.
                   A audiência simulada nunca é misturada com os dados reais do Analytics.
                 </p>
-                <div className="flex flex-wrap gap-3 border-t pt-6">
-                  <Button variant="dark" onClick={saveAudience}>
-                    Guardar audiência
-                  </Button>
+                <StepFooter onSave={save} saving={saving} onNext={saveAndGo} nextLabel={nextLabel} />
+                <div className="flex flex-wrap gap-3">
                   <Button variant="ghost" className="text-destructive" onClick={removeWebinar}>
                     <Trash2 />
                     Eliminar webinar
@@ -2919,8 +2960,8 @@ function EditWebinar() {
                 <StepFooter
                   onSave={save}
                   saving={saving}
-                  onNext={() => saveAndGo("timeline")}
-                  nextLabel="Continuar para a linha de tempo"
+                  onNext={saveAndGo}
+                  nextLabel={nextLabel}
                 />
               </section>
             )}
@@ -3114,8 +3155,8 @@ function EditWebinar() {
                     <StepFooter
                       onSave={save}
                       saving={saving}
-                      onNext={() => saveAndGo("timeline")}
-                      nextLabel="Continuar para a linha de tempo"
+                      onNext={saveAndGo}
+                      nextLabel={nextLabel}
                     />
                   </section>
 
@@ -3352,6 +3393,13 @@ function EditWebinar() {
               Pré-visualizar
             </Link>
           </Button>
+
+          {dirty && (
+            <span className="flex items-center gap-1.5 px-2 text-xs text-muted-foreground">
+              <span className="size-1.5 rounded-full bg-primary" aria-hidden />
+              Por gravar
+            </span>
+          )}
 
           <Button
             variant="dark"

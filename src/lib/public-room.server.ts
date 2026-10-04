@@ -187,7 +187,7 @@ export async function loadPublicRoom(slug: string) {
       video_provider: source?.provider ?? null,
     },
     comments: comments ?? [],
-    audience: { mode: audience?.mode ?? "simulated", curve: audience?.curve ?? [] },
+    audience: { mode: audience?.mode ?? "real", curve: audience?.curve ?? [] },
     socialProof: socialProof ?? null,
     simulatedPurchases: simulated ?? [],
   };
