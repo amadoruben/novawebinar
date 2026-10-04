@@ -19,7 +19,7 @@ import {
   ShoppingBag,
   Webhook,
   CodeXml,
-  ChartColumnIncreasing,
+  Funnel,
   History,
   createLucideIcon,
   type LucideIcon,
@@ -118,7 +118,7 @@ const NAV: { heading: string; items: Section[] }[] = [
       {
         id: "anuncios",
         label: "Pixels e conversões",
-        icon: ChartColumnIncreasing,
+        icon: Funnel,
         subtitle: "Os anúncios aprendem quem se inscreve e quem compra.",
         group: "ads",
       },
