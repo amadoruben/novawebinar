@@ -9,7 +9,7 @@ import { PageLoader, useInitialPageLoader } from "@/components/page-loader";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAdminHostRedirect, useWorkspace } from "@/lib/data";
-import { useIntegrationsRoute } from "@/lib/integrations-route";
+import { useIntegrationsRoute, useSettingsRoute } from "@/lib/modal-route";
 import { usePresence } from "@/lib/support/hooks";
 import { canAttend, canOpenPath } from "@/lib/support/model";
 
@@ -117,6 +117,7 @@ export function AppShell({
   const tabActive = (item: RailItem) =>
     item.exact ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`);
   const integrations = useIntegrationsRoute();
+  const settings = useSettingsRoute();
 
   return (
     <div className="min-h-screen bg-background">
@@ -163,7 +164,12 @@ export function AppShell({
           <div className="flex items-center gap-1.5">
             {workspace?.isTest && <TestBadge />}
             <NotificationsBell quiet />
-            <Link to="/settings" aria-label="Perfil e definições">
+            <button
+              type="button"
+              onClick={() => settings.go([])}
+              aria-label="Perfil e definições"
+              className="cursor-pointer"
+            >
               {workspace?.avatarUrl ? (
                 <img
                   src={workspace.avatarUrl}
@@ -175,7 +181,7 @@ export function AppShell({
                   {initial}
                 </span>
               )}
-            </Link>
+            </button>
           </div>
         </header>
         <main
@@ -212,10 +218,15 @@ export function AppShell({
         hidden={showLoader}
         extra={{ label: "Menu", icon: Menu, onClick: () => setMenuOpen(true), active: menuOpen }}
       />
-      {/* Integrações: pop-up por cima da página onde se está (#integracoes). */}
+      {/* Integrações e Definições: pop-ups por cima da página onde se está (#integracoes, #definicoes). */}
       {authorized && integrations.open && (
         <Suspense fallback={null}>
           <IntegrationsModal />
+        </Suspense>
+      )}
+      {authorized && settings.open && (
+        <Suspense fallback={null}>
+          <SettingsModal />
         </Suspense>
       )}
     </div>
@@ -223,6 +234,7 @@ export function AppShell({
 }
 
 const IntegrationsModal = lazy(() => import("@/components/integrations-modal"));
+const SettingsModal = lazy(() => import("@/components/settings-modal"));
 
 /** Conta de teste: dados fictícios e nenhum envio real. */
 function TestBadge() {

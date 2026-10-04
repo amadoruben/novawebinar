@@ -41,7 +41,7 @@ import {
 export const Route = createFileRoute("/credits")({
   head: () => ({
     meta: [
-      { title: "Saldo de IA | Convertewebinar" },
+      { title: "Créditos | Convertewebinar" },
       { name: "description", content: "Saldo em dólares, gasto real da IA e retorno." },
     ],
   }),
@@ -112,7 +112,7 @@ function CreditsPage() {
 
   return (
     <AppShell
-      title="Saldo de IA"
+      title="Créditos"
       description="Paga só o que a IA gasta de facto, em dólares. Veja em quê e quanto retorno trouxe."
       action={
         <Button onClick={() => setTopUp(true)}>

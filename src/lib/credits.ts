@@ -87,7 +87,7 @@ export type CreditState = {
 
 /** Porque é que uma acção não pode correr agora, ou null se pode. */
 export function blockedReason(state: CreditState): string | null {
-  if (state.balance_micros <= 0) return "O saldo de IA acabou. Carregue saldo em Créditos para continuar.";
+  if (state.balance_micros <= 0) return "Os créditos acabaram. Carregue créditos para continuar.";
   if (state.cap_micros && state.month_spent_micros >= state.cap_micros) {
     return "Atingiu o limite mensal de gasto com IA definido em Créditos.";
   }

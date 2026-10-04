@@ -42,7 +42,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { switchWorkspace, useWorkspace } from "@/lib/data";
-import { useIntegrationsRoute } from "@/lib/integrations-route";
+import { useIntegrationsRoute, useSettingsRoute } from "@/lib/modal-route";
 import { canAttend, canManageTeam, canOpenPath, type WorkspaceRole } from "@/lib/support/model";
 import { cn } from "@/lib/utils";
 
@@ -102,7 +102,7 @@ const SECTIONS: { heading: string; items: NavItem[] }[] = [
 const ACCOUNT: NavItem[] = [
   { to: "/team", title: "Utilizadores", icon: NAV_ICON.team, show: canManageTeam },
   { to: "/integrations", title: "Integrações", icon: NAV_ICON.integrations },
-  { to: "/credits", title: "Saldo de IA", icon: NAV_ICON.credits },
+  { to: "/credits", title: "Créditos", icon: NAV_ICON.credits },
 ];
 
 const roleLabels: Record<WorkspaceRole, string> = {
@@ -129,6 +129,7 @@ export function SidebarNav({
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   const navigate = useNavigate();
   const integrations = useIntegrationsRoute();
+  const settings = useSettingsRoute();
   const { data: workspace } = useWorkspace();
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
@@ -160,6 +161,7 @@ export function SidebarNav({
     setQuery("");
     onClose?.();
     if (to === "/integrations") return integrations.go([]);
+    if (to === "/settings") return settings.go([]);
     void navigate({ to: to as never, search: search as never });
   };
 
@@ -178,7 +180,7 @@ export function SidebarNav({
       "aria-label": item.title,
       "aria-current": active ? ("page" as const) : undefined,
       className: cn(
-        "group flex cursor-pointer items-center transition-colors duration-[var(--duration-fast)]",
+        "group flex cursor-pointer items-center text-left transition-colors duration-[var(--duration-fast)]",
         collapsed
           ? "mx-auto size-10 justify-center rounded-full"
           : "h-9 gap-3 rounded-md px-3 text-[14px] tracking-[-0.01em]",
@@ -319,26 +321,36 @@ export function SidebarNav({
             collapsed ? "flex-col gap-2" : "gap-1",
           )}
         >
+          {/* O nome abre as Definições (pop-up); a seta, a troca de workspace e a saída. */}
+          <button
+            type="button"
+            onClick={() => go("/settings")}
+            className={cn(
+              "flex min-w-0 cursor-pointer items-center gap-2.5 rounded-md text-left transition-colors hover:bg-[var(--hover-ghost)]",
+              collapsed ? "p-1" : "flex-1 py-1 pr-2 pl-1",
+              settings.open && "bg-chip",
+            )}
+            aria-label="Perfil e definições"
+          >
+            {avatar}
+            {!collapsed && (
+              <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                <span className="truncate text-[14px] tracking-[-0.01em]">{name}</span>
+                <span className="truncate text-[11px] text-muted-foreground">
+                  {workspace?.organizationName ?? (workspace ? roleLabels[workspace.role] : "")}
+                </span>
+              </span>
+            )}
+          </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className={cn(
-                  "flex min-w-0 cursor-pointer items-center gap-2.5 rounded-md text-left transition-colors hover:bg-[var(--hover-ghost)] data-[state=open]:bg-chip",
-                  collapsed ? "p-1" : "flex-1 py-1 pr-2 pl-1",
-                )}
-                aria-label="Conta e definições"
+                className={cn(iconButton, "data-[state=open]:bg-chip", collapsed && "size-7")}
+                aria-label="Conta e espaço de trabalho"
+                title="Conta e espaço de trabalho"
               >
-                {avatar}
-                {!collapsed && (
-                  <span className="flex min-w-0 flex-1 flex-col leading-tight">
-                    <span className="truncate text-[14px] tracking-[-0.01em]">{name}</span>
-                    <span className="truncate text-[11px] text-muted-foreground">
-                      {workspace?.organizationName ?? (workspace ? roleLabels[workspace.role] : "")}
-                    </span>
-                  </span>
-                )}
-                {!collapsed && <ChevronsUpDown className="size-3.5 shrink-0 text-gray-500" />}
+                <ChevronsUpDown className="size-3.5" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="start" className="w-64">

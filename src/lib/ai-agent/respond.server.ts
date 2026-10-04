@@ -534,7 +534,7 @@ export async function handleParticipantMessage(input: {
   } catch (error) {
     // Modo protegido: sem saldo, o agente cala-se e a conversa passa para a equipa.
     if (!(error instanceof NoCreditsError)) throw error;
-    await escalate("Saldo de IA esgotado", "system");
+    await escalate("Créditos esgotados", "system");
     return null;
   }
 

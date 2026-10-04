@@ -399,7 +399,7 @@ export function slugify(value: string) {
   );
 }
 
-/* ---------- Saldo de IA ---------- */
+/* ---------- Créditos ---------- */
 
 export function useCreditState(organizationId: string | undefined) {
   return useQuery({

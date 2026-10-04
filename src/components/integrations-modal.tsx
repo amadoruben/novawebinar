@@ -4,11 +4,9 @@
  * qualquer página (#integracoes/secção/integração).
  */
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import {
   ArrowUpRight,
   Check,
-  ChevronLeft,
   ChevronRight,
   Copy,
   ExternalLink,
@@ -37,7 +35,17 @@ import metaLogo from "@/assets/integrations/meta.jpg";
 import stripeLogo from "@/assets/integrations/stripe.png";
 import tiktokLogo from "@/assets/integrations/tiktok.svg";
 import whatsappLogo from "@/assets/local/whatsapp-icon.webp";
-import { BrandLogo } from "@/components/ds/brand-icons";
+import {
+  PaneHeader,
+  PanelDialog,
+  PanelNavButton,
+  PanelNavFooter,
+  PanelNavGroup,
+  PanelProfile,
+  PanelSection,
+  PanelTitle,
+} from "@/components/panel-modal";
+import { SettingsModal } from "@/components/settings-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -57,7 +65,6 @@ import {
   useInvalidate,
   useWorkspace,
   type IntegrationRow,
-  type Workspace,
 } from "@/lib/data";
 import {
   DEFAULT_COUNTRY_CODE,
@@ -69,7 +76,7 @@ import {
   type ProviderId,
   type ProviderInfo,
 } from "@/lib/integrations";
-import { useIntegrationsRoute } from "@/lib/integrations-route";
+import { useIntegrationsRoute } from "@/lib/modal-route";
 import { cn } from "@/lib/utils";
 import { whatsappSession } from "@/lib/whatsapp.functions";
 
@@ -81,8 +88,6 @@ type Section = {
   id: SectionId;
   label: string;
   icon: LucideIcon;
-  /** Logótipo da marca no menu (BrandLogo), no lugar do ícone. */
-  brand?: string;
   subtitle: string;
   group?: IntegrationGroup;
 };
@@ -102,7 +107,6 @@ const NAV: { heading: string; items: Section[] }[] = [
         id: "anuncios",
         label: "Pixels e conversões",
         icon: Crosshair,
-        brand: "Meta",
         subtitle: "Os anúncios aprendem quem se inscreve e quem compra.",
         group: "ads",
       },
@@ -115,7 +119,6 @@ const NAV: { heading: string; items: Section[] }[] = [
         id: "whatsapp",
         label: "WhatsApp",
         icon: MessageCircle,
-        brand: "WhatsApp",
         subtitle: "As automações enviam para o contacto e para os grupos.",
       },
       { id: "email", label: "Email", icon: Mail, subtitle: "Mensagens por email para o contacto." },
@@ -278,35 +281,6 @@ function StatusPill({ status, small = false }: { status: Status; small?: boolean
 
 /* ---------- Peças da página da direita ---------- */
 
-function PaneHeader({
-  title,
-  subtitle,
-  onBack,
-}: {
-  title: string;
-  subtitle?: string;
-  onBack?: () => void;
-}) {
-  return (
-    <header className="mb-6 border-b border-hairline pb-5">
-      <div className="flex items-center gap-1.5">
-        {onBack && (
-          <button
-            type="button"
-            onClick={onBack}
-            aria-label="Voltar"
-            className="-ml-2 inline-flex size-8 cursor-pointer items-center justify-center rounded-full text-foreground transition-colors hover:bg-[var(--hover-ghost)]"
-          >
-            <ChevronLeft className="size-5" strokeWidth={1.75} />
-          </button>
-        )}
-        <h2 className="text-2xl text-foreground">{title}</h2>
-      </div>
-      {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
-    </header>
-  );
-}
-
 /** Duas colunas sempre, com uma só integração também: todos os cartões com a mesma largura. */
 const GRID = "grid grid-cols-1 gap-3 sm:grid-cols-2";
 
@@ -370,14 +344,7 @@ function ActionCard({
 }
 
 function Overview({ children }: { children: ReactNode }) {
-  return (
-    <section className="mt-7">
-      <h3 className="mb-3 text-[15px] font-medium text-foreground">Visão geral</h3>
-      <div className="space-y-4 rounded-xl border border-hairline bg-white p-5 text-sm text-gray-800">
-        {children}
-      </div>
-    </section>
-  );
+  return <PanelSection title="Visão geral">{children}</PanelSection>;
 }
 
 function ConnectButton({ children, ...props }: React.ComponentProps<typeof Button>) {
@@ -398,6 +365,8 @@ export default function IntegrationsModal() {
   const { data: rows = [], isLoading } = useIntegrations(orgId);
   const { data: events = [] } = useIntegrationEvents(orgId);
   const [query, setQuery] = useState("");
+  // As Definições abrem por cima das Integrações; o X delas volta aqui.
+  const [settings, setSettings] = useState<string | null>(null);
 
   const byProvider = new Map(rows.map((r) => [r.provider, r]));
   const current = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0]!;
@@ -406,33 +375,15 @@ export default function IntegrationsModal() {
     go([id]);
   };
 
-  const navButton = (s: Section) => {
-    const active = s.id === current.id && !query;
-    return (
-      <button
-        key={s.id}
-        type="button"
-        onClick={() => open(s.id)}
-        aria-current={active ? "page" : undefined}
-        className={cn(
-          "flex h-9 shrink-0 cursor-pointer items-center gap-3 rounded-md px-3 text-left text-[14px] tracking-[-0.01em] transition-colors",
-          active ? "bg-chip text-foreground" : "text-gray-800 hover:bg-[var(--hover-ghost)]",
-        )}
-      >
-        <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
-          {s.brand ? (
-            <BrandLogo name={s.brand} className="size-[17px]" />
-          ) : (
-            <s.icon
-              className={cn("size-[18px]", active ? "text-primary" : "text-gray-700")}
-              strokeWidth={1.75}
-            />
-          )}
-        </span>
-        {s.label}
-      </button>
-    );
-  };
+  const navButton = (s: Section) => (
+    <PanelNavButton
+      key={s.id}
+      icon={s.icon}
+      label={s.label}
+      active={s.id === current.id && !query}
+      onClick={() => open(s.id)}
+    />
+  );
 
   let content: ReactNode;
   if (!orgId || isLoading) {
@@ -508,90 +459,54 @@ export default function IntegrationsModal() {
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && go(null)}>
-      {/* Medida da referência (1092 × 590), com margem à volta; um só fundo e uma linha a separar. */}
-      <DialogContent className="flex h-[min(590px,calc(100dvh-4rem))] w-[min(1092px,calc(100vw-2rem))] max-w-none gap-0 overflow-hidden bg-background p-0 sm:p-0 [&>button]:top-3 [&>button]:right-3 [&>button]:rounded-full [&>button]:p-1.5 [&>button]:opacity-80 [&>button]:hover:bg-[var(--hover-ghost)] [&>button>svg]:size-5">
-        {/* Fechar: o X da base, um pouco maior e com área de toque redonda. */}
-        <DialogTitle className="sr-only">Integrações</DialogTitle>
-        <DialogDescription className="sr-only">
-          Ligue plataformas de venda, pixels, canais de mensagens e webhooks.
-        </DialogDescription>
-
-        <aside className="scrollbar-thin hidden w-[224px] shrink-0 flex-col gap-5 overflow-y-auto border-r border-hairline px-3 py-5 md:flex">
-          <div className="px-1">
-            <p className="px-2 text-[15px] font-semibold tracking-[-0.02em] text-foreground">
-              Integrações
-            </p>
-            <label className="relative mt-3 block">
-              <Search
-                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-gray-600"
-                aria-hidden
-              />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Procurar"
-                aria-label="Procurar integrações"
-                className="h-9 pl-9"
-              />
-            </label>
-          </div>
-          {NAV.map((g) => (
-            <div key={g.heading} className="flex flex-col gap-0.5">
-              <span className="mb-1 px-3 text-[12px] text-gray-600">{g.heading}</span>
-              {g.items.map(navButton)}
+    <>
+      <PanelDialog
+        title="Integrações"
+        description="Ligue plataformas de venda, pixels, canais de mensagens e webhooks."
+        onClose={() => go(null)}
+        sidebar={
+          <>
+            <div>
+              <PanelTitle>Integrações</PanelTitle>
+              <label className="relative mt-3 block px-1">
+                <Search
+                  className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-gray-600"
+                  aria-hidden
+                />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Procurar"
+                  aria-label="Procurar integrações"
+                  className="h-9 pl-9"
+                />
+              </label>
             </div>
-          ))}
-          <div className="mt-auto flex flex-col gap-0.5 border-t border-hairline pt-3">
-            {FOOTER.map(navButton)}
-            {workspace && <Profile workspace={workspace} />}
-          </div>
-        </aside>
-
-        <main className="scrollbar-thin min-w-0 flex-1 overflow-y-auto px-5 pt-14 pb-10 md:px-[52px] md:pt-12">
-          {/* No telemóvel as categorias passam para cima, numa fila que desliza. */}
-          <nav
-            aria-label="Categorias"
-            className="-mx-5 mb-6 flex gap-1 overflow-x-auto px-5 pb-1 md:hidden"
-          >
-            {SECTIONS.map(navButton)}
-          </nav>
-          {/* A mesma largura em todas as secções e no detalhe de cada integração. */}
-          <div className="mx-auto w-full max-w-[768px]">{content}</div>
-        </main>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** A conta dona destas integrações, no fundo do menu; abre o perfil nas Definições. */
-function Profile({ workspace }: { workspace: Workspace }) {
-  const name = workspace.fullName.trim() || "A minha conta";
-  return (
-    <Link
-      to="/settings"
-      className="mt-2 flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--hover-ghost)]"
-      aria-label={`Perfil de ${name}`}
-    >
-      {workspace.avatarUrl ? (
-        <img
-          src={workspace.avatarUrl}
-          alt=""
-          className="size-8 shrink-0 rounded-full object-cover"
+            {NAV.map((g) => (
+              <PanelNavGroup key={g.heading} heading={g.heading}>
+                {g.items.map(navButton)}
+              </PanelNavGroup>
+            ))}
+            <PanelNavFooter>
+              {FOOTER.map(navButton)}
+              {workspace && (
+                <PanelProfile workspace={workspace} onClick={() => setSettings("perfil")} />
+              )}
+            </PanelNavFooter>
+          </>
+        }
+        mobileNav={SECTIONS.map(navButton)}
+      >
+        {content}
+      </PanelDialog>
+      {settings && (
+        <SettingsModal
+          section={settings}
+          onSection={setSettings}
+          onClose={() => setSettings(null)}
         />
-      ) : (
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-navy text-[13px] text-white">
-          {name.charAt(0).toUpperCase()}
-        </span>
       )}
-      <span className="flex min-w-0 flex-1 flex-col leading-tight">
-        <span className="truncate text-[14px] text-foreground">{name}</span>
-        <span className="truncate text-[11px] text-muted-foreground">
-          {workspace.organizationName}
-        </span>
-      </span>
-      <ChevronRight className="size-4 shrink-0 text-gray-500" aria-hidden />
-    </Link>
+    </>
   );
 }
 

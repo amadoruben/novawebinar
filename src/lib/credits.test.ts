@@ -38,7 +38,7 @@ describe("blockedReason", () => {
   });
   it("sem saldo ou acima do limite mensal bloqueia; com saldo deixa correr", () => {
     expect(blockedReason(state({}))).toBeNull();
-    expect(blockedReason(state({ balance_micros: 0 }))).toContain("saldo de IA acabou");
+    expect(blockedReason(state({ balance_micros: 0 }))).toContain("créditos acabaram");
     expect(blockedReason(state({ cap_micros: 3_000_000, month_spent_micros: 3_000_000 }))).toContain("limite mensal");
   });
 });
