@@ -5,7 +5,6 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import {
-  Activity as ActivityIcon,
   ArrowUpRight,
   Check,
   ChevronLeft,
@@ -18,9 +17,12 @@ import {
   RefreshCw,
   Search,
   Send,
-  ShoppingBag,
-  Target,
+  Smartphone,
+  Store,
   Webhook,
+  CodeXml,
+  Crosshair,
+  History,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
@@ -87,14 +89,14 @@ const NAV: { heading: string; items: Section[] }[] = [
       {
         id: "vendas",
         label: "Plataformas de venda",
-        icon: ShoppingBag,
+        icon: Store,
         subtitle: "Cada venda aprovada entra sozinha e liga-se ao contacto.",
         group: "sales",
       },
       {
         id: "anuncios",
         label: "Pixels e conversões",
-        icon: Target,
+        icon: Crosshair,
         subtitle: "Os anúncios aprendem quem se inscreve e quem compra.",
         group: "ads",
       },
@@ -113,7 +115,7 @@ const NAV: { heading: string; items: Section[] }[] = [
       {
         id: "sms",
         label: "SMS",
-        icon: MessageSquareText,
+        icon: Smartphone,
         subtitle: "SMS para o número do contacto.",
       },
     ],
@@ -124,20 +126,37 @@ const NAV: { heading: string; items: Section[] }[] = [
       {
         id: "api",
         label: "API e webhooks",
-        icon: Webhook,
+        icon: CodeXml,
         subtitle: "Inscrições, cliques e vendas para o seu CRM, Zapier, Make ou n8n.",
         group: "send",
-      },
-      {
-        id: "actividade",
-        label: "Actividade",
-        icon: ActivityIcon,
-        subtitle: "O que as plataformas enviaram e o estado de cada pedido.",
       },
     ],
   },
 ];
-const SECTIONS = NAV.flatMap((g) => g.items);
+/** No fundo do menu, depois de uma linha, como "Criar uma equipa" e "Obter ajuda" na referência. */
+const FOOTER: Section[] = [
+  {
+    id: "actividade",
+    label: "Actividade",
+    icon: History,
+    subtitle: "O que as plataformas enviaram e o estado de cada pedido.",
+  },
+];
+const SECTIONS = [...NAV.flatMap((g) => g.items), ...FOOTER];
+
+/** Uma frase curta por integração na lista: todos os cartões com a mesma medida. */
+const SHORT: Record<ProviderId, string> = {
+  kambafy: "Vendas em kwanzas, ligadas ao webinar certo.",
+  hotmart: "Compras, recusas, boletos e reembolsos.",
+  kiwify: "Vendas, Pix, boletos e reembolsos.",
+  eduzz: "Faturas pagas, canceladas e carrinhos abandonados.",
+  stripe: "Checkout e Payment Links, com reembolsos.",
+  webhook: "Qualquer sistema que envie um POST em JSON.",
+  meta_pixel: "Facebook e Instagram aprendem quem se inscreve.",
+  tiktok_pixel: "O TikTok aprende quem se inscreve e clica.",
+  google_tag: "Google Ads e Analytics com inscrições e cliques.",
+  outgoing_webhook: "Inscrições, cliques e vendas para o seu CRM.",
+};
 
 const LOGOS: Partial<Record<ProviderId, string>> = {
   kambafy: kambafyLogo,
@@ -211,7 +230,7 @@ const CHANNEL_TILE: Record<
 > = {
   whatsapp: { src: whatsappLogo },
   email: { icon: Mail, tone: "text-info" },
-  sms: { icon: MessageSquareText, tone: "text-navy" },
+  sms: { icon: Smartphone, tone: "text-navy" },
 };
 
 type Status = { label: string; tone: "on" | "warn" | "off" };
@@ -225,11 +244,12 @@ function statusOf(info: ProviderInfo, row: IntegrationRow | undefined): Status {
   return { label: "Ligada", tone: "on" };
 }
 
-function StatusPill({ status }: { status: Status }) {
+function StatusPill({ status, small = false }: { status: Status; small?: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium",
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full border font-medium",
+        small ? "px-2 py-px text-[11px]" : "px-2.5 py-0.5 text-xs",
         status.tone === "on" && "border-success/30 bg-success-soft text-success",
         status.tone === "warn" && "border-warning/40 bg-warning-soft text-warning-foreground",
         status.tone === "off" && "bg-white text-muted-foreground",
@@ -261,7 +281,7 @@ function PaneHeader({
   onBack?: () => void;
 }) {
   return (
-    <header className="border-b border-hairline pb-5">
+    <header className="mb-6 border-b border-hairline pb-5">
       <div className="flex items-center gap-1.5">
         {onBack && (
           <button
@@ -279,6 +299,9 @@ function PaneHeader({
     </header>
   );
 }
+
+/** Duas colunas sempre, com uma só integração também: todos os cartões com a mesma largura. */
+const GRID = "grid grid-cols-1 gap-3 sm:grid-cols-2";
 
 /** Uma linha da lista: mosaico, nome, uma frase e a seta, como nas referências. */
 function Row({
@@ -298,15 +321,17 @@ function Row({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full cursor-pointer items-center gap-4 rounded-xl border border-[var(--border-card)] bg-white p-4 text-left transition-shadow hover:shadow-[var(--shadow-raised)] focus-visible:outline-none focus-visible:ring-focus"
+      className="flex h-[88px] w-full cursor-pointer items-center gap-3.5 rounded-xl border border-hairline bg-white px-4 text-left transition-shadow hover:shadow-[var(--shadow-raised)] focus-visible:outline-none focus-visible:ring-focus"
     >
       {tile}
       <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-2">
-          <span className="font-medium text-foreground">{title}</span>
-          {status && status.tone !== "off" && <StatusPill status={status} />}
+        <span className="flex items-center gap-2">
+          <span className="truncate text-[14px] font-medium text-foreground">{title}</span>
+          {status && status.tone !== "off" && <StatusPill status={status} small />}
         </span>
-        <span className="mt-0.5 line-clamp-2 block text-sm text-muted-foreground">{text}</span>
+        <span className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-muted-foreground">
+          {text}
+        </span>
       </span>
       <ChevronRight className="size-4 shrink-0 text-gray-600" aria-hidden />
     </button>
@@ -326,11 +351,11 @@ function ActionCard({
   action: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-4 rounded-xl border border-[var(--border-card)] bg-white p-4 sm:flex-nowrap">
+    <div className="flex min-h-[76px] flex-wrap items-center gap-3.5 rounded-xl border border-hairline bg-white px-4 py-3 sm:flex-nowrap">
       {tile}
       <div className="min-w-0 flex-1">
-        <p className="font-medium text-foreground">{title}</p>
-        <p className="text-sm text-muted-foreground">{text}</p>
+        <p className="text-[14px] font-medium text-foreground">{title}</p>
+        <p className="text-[13px] text-muted-foreground">{text}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">{action}</div>
     </div>
@@ -339,9 +364,9 @@ function ActionCard({
 
 function Overview({ children }: { children: ReactNode }) {
   return (
-    <section className="mt-8">
-      <h3 className="mb-3 font-medium text-foreground">Visão geral</h3>
-      <div className="space-y-4 rounded-xl border border-[var(--border-card)] bg-white p-5 text-sm text-gray-800">
+    <section className="mt-7">
+      <h3 className="mb-3 text-[15px] font-medium text-foreground">Visão geral</h3>
+      <div className="space-y-4 rounded-xl border border-hairline bg-white p-5 text-sm text-gray-800">
         {children}
       </div>
     </section>
@@ -427,13 +452,13 @@ export default function IntegrationsModal() {
       ) : (
         <>
           <PaneHeader title={current.label} subtitle={current.subtitle} />
-          <div className="mt-6 grid gap-3 lg:grid-cols-2">
+          <div className={GRID}>
             {PROVIDERS.filter((p) => p.group === current.group).map((p) => (
               <Row
                 key={p.id}
                 tile={<ProviderTile id={p.id} />}
                 title={p.name}
-                text={p.blurb}
+                text={SHORT[p.id]}
                 status={statusOf(p, byProvider.get(p.id))}
                 onClick={() => go([current.id, p.id])}
               />
@@ -463,7 +488,7 @@ export default function IntegrationsModal() {
     content = (
       <>
         <PaneHeader title={current.label} subtitle={current.subtitle} />
-        <div className="mt-6">
+        <div>
           <Activity events={events} />
         </div>
       </>
@@ -472,13 +497,14 @@ export default function IntegrationsModal() {
 
   return (
     <Dialog open onOpenChange={(o) => !o && go(null)}>
-      <DialogContent className="flex h-[min(700px,calc(100dvh-2rem))] w-[min(1120px,calc(100vw-2rem))] max-w-none gap-0 overflow-hidden p-0 sm:p-0">
+      {/* Medida da referência (1092 × 590), com margem à volta; um só fundo e uma linha a separar. */}
+      <DialogContent className="flex h-[min(590px,calc(100dvh-4rem))] w-[min(1092px,calc(100vw-2rem))] max-w-none gap-0 overflow-hidden bg-background p-0 sm:p-0">
         <DialogTitle className="sr-only">Integrações</DialogTitle>
         <DialogDescription className="sr-only">
           Ligue plataformas de venda, pixels, canais de mensagens e webhooks.
         </DialogDescription>
 
-        <aside className="hidden w-64 shrink-0 flex-col gap-5 overflow-y-auto border-r border-hairline bg-white px-3 py-5 md:flex">
+        <aside className="scrollbar-thin hidden w-[224px] shrink-0 flex-col gap-5 overflow-y-auto border-r border-hairline px-3 py-5 md:flex">
           <div className="px-1">
             <p className="px-2 text-[15px] font-semibold tracking-[-0.02em] text-foreground">
               Integrações
@@ -503,9 +529,12 @@ export default function IntegrationsModal() {
               {g.items.map(navButton)}
             </div>
           ))}
+          <div className="mt-auto flex flex-col gap-0.5 border-t border-hairline pt-3">
+            {FOOTER.map(navButton)}
+          </div>
         </aside>
 
-        <main className="min-w-0 flex-1 overflow-y-auto bg-gray-100 px-5 pt-14 pb-8 md:px-12 md:pt-12">
+        <main className="scrollbar-thin min-w-0 flex-1 overflow-y-auto px-5 pt-14 pb-10 md:px-[52px] md:pt-12">
           {/* No telemóvel as categorias passam para cima, numa fila que desliza. */}
           <nav
             aria-label="Categorias"
@@ -513,7 +542,8 @@ export default function IntegrationsModal() {
           >
             {SECTIONS.map(navButton)}
           </nav>
-          {content}
+          {/* A mesma largura em todas as secções e no detalhe de cada integração. */}
+          <div className="mx-auto w-full max-w-[768px]">{content}</div>
         </main>
       </DialogContent>
     </Dialog>
@@ -556,9 +586,9 @@ function SearchResults({
     <>
       <PaneHeader title="Resultados" subtitle={`Integrações com "${query.trim()}".`} />
       {providers.length + channels.length === 0 ? (
-        <p className="mt-6 text-sm text-muted-foreground">Nenhuma integração com esse nome.</p>
+        <p className="text-sm text-muted-foreground">Nenhuma integração com esse nome.</p>
       ) : (
-        <div className="mt-6 grid gap-3 lg:grid-cols-2">
+        <div className={GRID}>
           {channels.map((c) => (
             <Row
               key={c.id}
@@ -578,7 +608,7 @@ function SearchResults({
               key={p.id}
               tile={<ProviderTile id={p.id} />}
               title={p.name}
-              text={p.blurb}
+              text={SHORT[p.id]}
               status={statusOf(p, byProvider.get(p.id))}
               onClick={() => onPick([sectionOf(p.group), p.id])}
             />
@@ -790,7 +820,7 @@ function ProviderDetail({
   return (
     <>
       <PaneHeader title={info.name} onBack={onBack} />
-      <div className="mt-6">
+      <div>
         <ActionCard
           tile={<ProviderTile id={info.id} />}
           title={info.name}
@@ -978,11 +1008,11 @@ function WhatsappOverview({
         subtitle="As automações enviam para o contacto e para os grupos."
       />
       {isTest && (
-        <p className="mt-5 rounded-lg bg-info-soft px-3 py-2 text-sm text-info">
+        <p className="mb-4 rounded-lg bg-info-soft px-3 py-2 text-sm text-info">
           Conta de teste: as mensagens são simuladas e nada sai da plataforma.
         </p>
       )}
-      <div className="mt-6 space-y-3">
+      <div className="space-y-3">
         <ActionCard
           tile={<Tile src={whatsappLogo} />}
           title="WhatsApp por código QR"
@@ -1198,7 +1228,7 @@ function WhatsappOfficial({
   return (
     <>
       <PaneHeader title="API oficial do WhatsApp Business" onBack={onBack} />
-      <div className="mt-6">
+      <div>
         <ActionCard
           tile={<Tile src={whatsappLogo} />}
           title="WhatsApp Business (Meta)"
@@ -1278,7 +1308,7 @@ function ChannelSoon({
   return (
     <>
       <PaneHeader title={section.label} subtitle={section.subtitle} />
-      <div className="mt-6">
+      <div>
         <ActionCard
           tile={<Tile {...CHANNEL_TILE[channel]} />}
           title={section.label}
@@ -1312,7 +1342,7 @@ function ChannelSoon({
 function Activity({ events }: { events: Events }) {
   if (events.length === 0) {
     return (
-      <div className="rounded-xl border border-[var(--border-card)] bg-white px-6 py-14 text-center">
+      <div className="rounded-xl border border-hairline bg-white px-6 py-14 text-center">
         <Webhook className="mx-auto size-6 text-gray-600" aria-hidden />
         <p className="mt-3 font-medium text-foreground">Ainda não chegou nada</p>
         <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
@@ -1323,7 +1353,7 @@ function Activity({ events }: { events: Events }) {
     );
   }
   return (
-    <div className="overflow-x-auto rounded-xl border border-[var(--border-card)] bg-white">
+    <div className="overflow-x-auto rounded-xl border border-hairline bg-white">
       <table className="w-full min-w-[640px] text-left text-sm">
         <thead className="border-b text-muted-foreground">
           <tr>
