@@ -4,6 +4,7 @@
  * qualquer página (#integracoes/secção/integração).
  */
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import {
   ArrowUpRight,
   Check,
@@ -36,6 +37,7 @@ import metaLogo from "@/assets/integrations/meta.jpg";
 import stripeLogo from "@/assets/integrations/stripe.png";
 import tiktokLogo from "@/assets/integrations/tiktok.svg";
 import whatsappLogo from "@/assets/local/whatsapp-icon.webp";
+import { BrandLogo } from "@/components/ds/brand-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -55,6 +57,7 @@ import {
   useInvalidate,
   useWorkspace,
   type IntegrationRow,
+  type Workspace,
 } from "@/lib/data";
 import {
   DEFAULT_COUNTRY_CODE,
@@ -78,6 +81,8 @@ type Section = {
   id: SectionId;
   label: string;
   icon: LucideIcon;
+  /** Logótipo da marca no menu (BrandLogo), no lugar do ícone. */
+  brand?: string;
   subtitle: string;
   group?: IntegrationGroup;
 };
@@ -97,6 +102,7 @@ const NAV: { heading: string; items: Section[] }[] = [
         id: "anuncios",
         label: "Pixels e conversões",
         icon: Crosshair,
+        brand: "Meta",
         subtitle: "Os anúncios aprendem quem se inscreve e quem compra.",
         group: "ads",
       },
@@ -109,6 +115,7 @@ const NAV: { heading: string; items: Section[] }[] = [
         id: "whatsapp",
         label: "WhatsApp",
         icon: MessageCircle,
+        brand: "WhatsApp",
         subtitle: "As automações enviam para o contacto e para os grupos.",
       },
       { id: "email", label: "Email", icon: Mail, subtitle: "Mensagens por email para o contacto." },
@@ -412,11 +419,16 @@ export default function IntegrationsModal() {
           active ? "bg-chip text-foreground" : "text-gray-800 hover:bg-[var(--hover-ghost)]",
         )}
       >
-        <s.icon
-          className={cn("size-[18px] shrink-0", active ? "text-primary" : "text-gray-700")}
-          strokeWidth={1.75}
-          aria-hidden
-        />
+        <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
+          {s.brand ? (
+            <BrandLogo name={s.brand} className="size-[17px]" />
+          ) : (
+            <s.icon
+              className={cn("size-[18px]", active ? "text-primary" : "text-gray-700")}
+              strokeWidth={1.75}
+            />
+          )}
+        </span>
         {s.label}
       </button>
     );
@@ -498,7 +510,8 @@ export default function IntegrationsModal() {
   return (
     <Dialog open onOpenChange={(o) => !o && go(null)}>
       {/* Medida da referência (1092 × 590), com margem à volta; um só fundo e uma linha a separar. */}
-      <DialogContent className="flex h-[min(590px,calc(100dvh-4rem))] w-[min(1092px,calc(100vw-2rem))] max-w-none gap-0 overflow-hidden bg-background p-0 sm:p-0">
+      <DialogContent className="flex h-[min(590px,calc(100dvh-4rem))] w-[min(1092px,calc(100vw-2rem))] max-w-none gap-0 overflow-hidden bg-background p-0 sm:p-0 [&>button]:top-3 [&>button]:right-3 [&>button]:rounded-full [&>button]:p-1.5 [&>button]:opacity-80 [&>button]:hover:bg-[var(--hover-ghost)] [&>button>svg]:size-5">
+        {/* Fechar: o X da base, um pouco maior e com área de toque redonda. */}
         <DialogTitle className="sr-only">Integrações</DialogTitle>
         <DialogDescription className="sr-only">
           Ligue plataformas de venda, pixels, canais de mensagens e webhooks.
@@ -531,6 +544,7 @@ export default function IntegrationsModal() {
           ))}
           <div className="mt-auto flex flex-col gap-0.5 border-t border-hairline pt-3">
             {FOOTER.map(navButton)}
+            {workspace && <Profile workspace={workspace} />}
           </div>
         </aside>
 
@@ -547,6 +561,37 @@ export default function IntegrationsModal() {
         </main>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** A conta dona destas integrações, no fundo do menu; abre o perfil nas Definições. */
+function Profile({ workspace }: { workspace: Workspace }) {
+  const name = workspace.fullName.trim() || "A minha conta";
+  return (
+    <Link
+      to="/settings"
+      className="mt-2 flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--hover-ghost)]"
+      aria-label={`Perfil de ${name}`}
+    >
+      {workspace.avatarUrl ? (
+        <img
+          src={workspace.avatarUrl}
+          alt=""
+          className="size-8 shrink-0 rounded-full object-cover"
+        />
+      ) : (
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-navy text-[13px] text-white">
+          {name.charAt(0).toUpperCase()}
+        </span>
+      )}
+      <span className="flex min-w-0 flex-1 flex-col leading-tight">
+        <span className="truncate text-[14px] text-foreground">{name}</span>
+        <span className="truncate text-[11px] text-muted-foreground">
+          {workspace.organizationName}
+        </span>
+      </span>
+      <ChevronRight className="size-4 shrink-0 text-gray-500" aria-hidden />
+    </Link>
   );
 }
 
