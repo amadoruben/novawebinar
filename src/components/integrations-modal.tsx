@@ -19,7 +19,7 @@ import {
   ShoppingBag,
   Webhook,
   CodeXml,
-  MousePointerClick,
+  ChartColumnIncreasing,
   History,
   createLucideIcon,
   type LucideIcon,
@@ -118,7 +118,7 @@ const NAV: { heading: string; items: Section[] }[] = [
       {
         id: "anuncios",
         label: "Pixels e conversões",
-        icon: MousePointerClick,
+        icon: ChartColumnIncreasing,
         subtitle: "Os anúncios aprendem quem se inscreve e quem compra.",
         group: "ads",
       },
