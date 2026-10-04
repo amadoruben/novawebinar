@@ -42,6 +42,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { switchWorkspace, useWorkspace } from "@/lib/data";
+import { useIntegrationsRoute } from "@/lib/integrations-route";
 import { canAttend, canManageTeam, canOpenPath, type WorkspaceRole } from "@/lib/support/model";
 import { cn } from "@/lib/utils";
 
@@ -127,6 +128,7 @@ export function SidebarNav({
 }) {
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   const navigate = useNavigate();
+  const integrations = useIntegrationsRoute();
   const { data: workspace } = useWorkspace();
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
@@ -157,6 +159,7 @@ export function SidebarNav({
     setSearching(false);
     setQuery("");
     onClose?.();
+    if (to === "/integrations") return integrations.go([]);
     void navigate({ to: to as never, search: search as never });
   };
 
@@ -166,31 +169,51 @@ export function SidebarNav({
     window.location.href = "/auth/login";
   };
 
-  const row = (item: NavItem, quiet = false) => {
-    const active = isActive(item);
-    return (
-      <Link
-        key={item.to}
-        to={item.to}
-        onClick={onClose}
-        title={collapsed ? item.title : undefined}
-        aria-label={item.title}
-        aria-current={active ? "page" : undefined}
-        className={cn(
-          "group flex items-center transition-colors duration-[var(--duration-fast)]",
-          collapsed
-            ? "mx-auto size-10 justify-center rounded-full"
-            : "h-9 gap-3 rounded-md px-3 text-[14px] tracking-[-0.01em]",
-          active
-            ? "bg-chip text-foreground"
-            : cn("hover:bg-[var(--hover-ghost)] hover:text-foreground", quiet ? "text-gray-600" : "text-gray-800"),
-        )}
-      >
+  const row = (item: NavItem) => {
+    // Integrações abre um pop-up por cima da página onde se está, em vez de mudar de página.
+    const modal = item.to === "/integrations";
+    const active = modal ? integrations.open : isActive(item);
+    const props = {
+      title: collapsed ? item.title : undefined,
+      "aria-label": item.title,
+      "aria-current": active ? ("page" as const) : undefined,
+      className: cn(
+        "group flex cursor-pointer items-center transition-colors duration-[var(--duration-fast)]",
+        collapsed
+          ? "mx-auto size-10 justify-center rounded-full"
+          : "h-9 gap-3 rounded-md px-3 text-[14px] tracking-[-0.01em]",
+        active
+          ? "bg-chip text-foreground"
+          : "text-gray-800 hover:bg-[var(--hover-ghost)] hover:text-foreground",
+      ),
+    };
+    const content = (
+      <>
         <item.icon
-          className={cn("size-[18px] shrink-0", active ? "text-primary" : "text-gray-600 group-hover:text-foreground")}
-          strokeWidth={1.6}
+          className={cn(
+            "size-[18px] shrink-0",
+            active ? "text-primary" : "text-gray-700 group-hover:text-foreground",
+          )}
+          strokeWidth={1.75}
         />
         {!collapsed && <span className="min-w-0 flex-1 truncate">{item.title}</span>}
+      </>
+    );
+    return modal ? (
+      <button
+        key={item.to}
+        type="button"
+        onClick={() => {
+          onClose?.();
+          integrations.go([]);
+        }}
+        {...props}
+      >
+        {content}
+      </button>
+    ) : (
+      <Link key={item.to} to={item.to} onClick={onClose} {...props}>
+        {content}
       </Link>
     );
   };
@@ -268,22 +291,22 @@ export function SidebarNav({
         {sections.map((section) => (
           <div key={section.heading} className={cn("flex flex-col", collapsed ? "gap-2" : "gap-0.5")}>
             {!collapsed ? (
-              <span className="mb-1 px-3 text-[12px] text-gray-500">{section.heading}</span>
+              <span className="mb-1 px-3 text-[12px] text-gray-600">{section.heading}</span>
             ) : (
               <span className="mx-auto mb-1 h-px w-6 bg-gray-250" aria-hidden />
             )}
-            {section.items.map((item) => row(item, true))}
+            {section.items.map((item) => row(item))}
           </div>
         ))}
         {/* Conta: ferramentas da conta, no fundo da lista (desliza com ela). */}
         {account.length > 0 && (
           <div className={cn("mt-auto flex flex-col", collapsed ? "gap-2" : "gap-0.5")}>
             {!collapsed ? (
-              <span className="mb-1 px-3 text-[12px] text-gray-500">Conta</span>
+              <span className="mb-1 px-3 text-[12px] text-gray-600">Conta</span>
             ) : (
               <span className="mx-auto mb-1 h-px w-6 bg-gray-250" aria-hidden />
             )}
-            {account.map((item) => row(item, true))}
+            {account.map((item) => row(item))}
           </div>
         )}
       </nav>

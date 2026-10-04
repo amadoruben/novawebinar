@@ -1,6 +1,6 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Menu, Plus } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import iconAsset from "@/assets/brand/convertewebinar-icon.svg";
 import { BottomNav, PageHeader, type BackLink, type Crumb, type RailItem } from "@/components/ds/navigation";
 import { NAV_ICON, SidebarNav } from "@/components/ui/dashboard-sidebar";
@@ -9,6 +9,7 @@ import { PageLoader, useInitialPageLoader } from "@/components/page-loader";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAdminHostRedirect, useWorkspace } from "@/lib/data";
+import { useIntegrationsRoute } from "@/lib/integrations-route";
 import { usePresence } from "@/lib/support/hooks";
 import { canAttend, canOpenPath } from "@/lib/support/model";
 
@@ -115,7 +116,7 @@ export function AppShell({
       ];
   const tabActive = (item: RailItem) =>
     item.exact ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`);
-
+  const integrations = useIntegrationsRoute();
 
   return (
     <div className="min-h-screen bg-background">
@@ -211,9 +212,17 @@ export function AppShell({
         hidden={showLoader}
         extra={{ label: "Menu", icon: Menu, onClick: () => setMenuOpen(true), active: menuOpen }}
       />
+      {/* Integrações: pop-up por cima da página onde se está (#integracoes). */}
+      {authorized && integrations.open && (
+        <Suspense fallback={null}>
+          <IntegrationsModal />
+        </Suspense>
+      )}
     </div>
   );
 }
+
+const IntegrationsModal = lazy(() => import("@/components/integrations-modal"));
 
 /** Conta de teste: dados fictícios e nenhum envio real. */
 function TestBadge() {
