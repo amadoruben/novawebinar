@@ -11,17 +11,17 @@ import {
   Copy,
   ExternalLink,
   Mail,
-  MessageCircle,
   MessageSquareText,
   RefreshCw,
   Search,
   Send,
   Smartphone,
-  Store,
+  ShoppingBag,
   Webhook,
   CodeXml,
-  Crosshair,
+  MousePointerClick,
   History,
+  createLucideIcon,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
@@ -83,6 +83,18 @@ import { whatsappSession } from "@/lib/whatsapp.functions";
 type Events = NonNullable<ReturnType<typeof useIntegrationEvents>["data"]>;
 type Go = (path: string[] | null) => void;
 
+// O balão do WhatsApp no mesmo traço fino dos outros ícones do menu (desenho do Tabler, MIT).
+const WhatsappLine = createLucideIcon("whatsapp-line", [
+  ["path", { d: "M3 21l1.65 -3.8a9 9 0 1 1 3.4 2.9l-5.05 .9", key: "balao" }],
+  [
+    "path",
+    {
+      d: "M9 10a.5 .5 0 0 0 1 0v-1a.5 .5 0 0 0 -1 0v1a5 5 0 0 0 5 5h1a.5 .5 0 0 0 0 -1h-1a.5 .5 0 0 0 0 1",
+      key: "telefone",
+    },
+  ],
+]);
+
 type SectionId = "vendas" | "anuncios" | "whatsapp" | "email" | "sms" | "api" | "actividade";
 type Section = {
   id: SectionId;
@@ -99,14 +111,14 @@ const NAV: { heading: string; items: Section[] }[] = [
       {
         id: "vendas",
         label: "Plataformas de venda",
-        icon: Store,
+        icon: ShoppingBag,
         subtitle: "Cada venda aprovada entra sozinha e liga-se ao contacto.",
         group: "sales",
       },
       {
         id: "anuncios",
         label: "Pixels e conversões",
-        icon: Crosshair,
+        icon: MousePointerClick,
         subtitle: "Os anúncios aprendem quem se inscreve e quem compra.",
         group: "ads",
       },
@@ -118,7 +130,7 @@ const NAV: { heading: string; items: Section[] }[] = [
       {
         id: "whatsapp",
         label: "WhatsApp",
-        icon: MessageCircle,
+        icon: WhatsappLine,
         subtitle: "As automações enviam para o contacto e para os grupos.",
       },
       { id: "email", label: "Email", icon: Mail, subtitle: "Mensagens por email para o contacto." },
