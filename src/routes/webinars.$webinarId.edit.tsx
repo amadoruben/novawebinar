@@ -999,8 +999,9 @@ function EditWebinar() {
     }) as (ChatDraft & Partial<DraftComment>)[];
 
   const insertGenerated = async (drafts: DraftComment[]) => {
-    const n = await insertComments(realism(drafts), true);
-    const people = new Set(realism(drafts).map((d) => d.author)).size;
+    const ready = realism(drafts);
+    const n = await insertComments(ready, true);
+    const people = new Set(ready.map((d) => d.author)).size;
     toast.success(`${n} comentários de ${people} pessoas, no tom ${{ natural: "Natural", vendas: "Vendas", formal: "Formal" }[chatRules.tone]}.`);
   };
 
@@ -1210,7 +1211,7 @@ function EditWebinar() {
       onOpen={() => setEntryMoment(2)}
       live={live.live}
       liveLabel={live.label}
-      video={videoUrl ? { url: videoUrl, startSeconds: t } : null}
+      video={videoUrl ? { url: videoUrl, startSeconds: 0 } : null}
       fallback={{ kicker: selectedVideo?.name ?? "Sessão ao vivo", title: form.public_title }}
       badge={form.registration_badge_text || undefined}
       headline={form.registration_headline || form.public_title || "O título do webinar"}
