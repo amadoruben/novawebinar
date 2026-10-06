@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowUp,
   BadgeCheck,
   Eye,
   Headset,
-  Heart,
   MessagesSquare,
   Pin,
   Play,
@@ -17,7 +15,14 @@ import {
 import { useHearts, useLivePresence } from "@/lib/live-presence";
 import { Input } from "@/components/ui/input";
 import { VideoPlayer } from "@/components/video-player";
-import { ctaButtonClass } from "@/lib/cta-colors";
+import { checkoutLink } from "@/lib/room-logic";
+import {
+  HeartButton,
+  OfferCard,
+  PulseDot,
+  RoomPartsStyle,
+  SendButton,
+} from "@/components/room/room-parts";
 import { useAudienceCount } from "@/components/audience-counter";
 import { cn, isHttpUrl } from "@/lib/utils";
 import { PreliveCountdown, unlockPreliveAudio } from "@/components/prelive-countdown";
@@ -191,8 +196,11 @@ export function WebinarRoom({
   onCtaView,
   onCtaClick,
   onProgress,
+  checkoutOrigin,
 }: {
   webinar: RoomWebinar;
+  /** O anúncio de onde a pessoa veio, para o link do checkout. */
+  checkoutOrigin?: { source?: string | null; medium?: string | null; campaign?: string | null } | undefined;
   comments: RoomComment[];
   audienceMode: string;
   curve: unknown;
@@ -577,7 +585,6 @@ export function WebinarRoom({
     ? (now - offerWallStartRef.current) / 1000
     : Math.max(0, contentPeak - ctaStart);
   const offerRemaining = Math.max(0, Math.round(countdownTotal - offerElapsed));
-  const offerClock = `${String(Math.floor(offerRemaining / 60)).padStart(2, "0")}:${String(offerRemaining % 60).padStart(2, "0")}`;
 
   // Notificação de compra visível neste segundo, dentro da janela configurada.
   // Cada notificação tem o seu momento definido à mão, por isso não há janela
@@ -714,10 +721,13 @@ export function WebinarRoom({
   // O link vem da base de dados: só http(s) chega ao browser do participante.
   const ctaUrl = isHttpUrl(webinar.cta_url) ? webinar.cta_url : null;
 
+  // Cada clique leva até ao checkout a origem da pessoa, onde clicou e em que minuto.
   const clickCta = () => {
     setCheckout(true);
     onCtaClick?.();
-    if (ctaUrl) window.open(ctaUrl, "_blank", "noopener");
+    if (!ctaUrl) return;
+    const link = checkoutLink(ctaUrl, { ...checkoutOrigin, place: "sala", seconds: contentSeconds });
+    window.open(link, "_blank", "noopener");
   };
 
   // Uma mensagem que não chegou ao servidor fica à vista, com a opção de repetir.
@@ -1163,13 +1173,15 @@ export function WebinarRoom({
               ) : item.mine ? (
 
                 <div key={item.key} className="flex items-start gap-3">
-                  <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
-                    {initials(viewerName || "EU")}
+                  <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-[#3A3A3A] text-[11px] font-bold text-white">
+                    EU
                   </span>
                   <div className="min-w-0">
                     <p className="text-sm leading-snug">
-                      <span className="mr-1.5 font-semibold text-room-subtle">
-                        {viewerName ? `${viewerName} (Eu)` : "Eu"}
+                      <span className="mr-1.5 font-semibold text-room-subtle">Você</span>
+                      {/* O que a pessoa escreve só ela vê: não chega aos outros nem afecta o lançamento. */}
+                      <span className="mr-1.5 rounded bg-room-raised px-1.5 py-px text-[10.5px] font-medium text-room-subtle">
+                        Só você vê
                       </span>
                       <span className="text-[11px] tabular-nums text-room-subtle">
                         {formatMessageTime(item.at)}
@@ -1249,45 +1261,19 @@ export function WebinarRoom({
     </div>
   );
 
+  const productName = socialProof?.product_name?.trim();
   const offerPanel = (
-    <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain p-4">
-      {webinar.cta_image_url ? (
-        <img
-          src={webinar.cta_image_url}
-          alt={webinar.cta_text ?? "Oferta"}
-          className="w-full rounded-xl object-cover ring-1 ring-room-line"
-        />
-      ) : null}
-      {(webinar.cta_price_original || webinar.cta_price_now) && (
-        <div className="space-y-1 border-t border-room-line pt-4">
-          {webinar.cta_price_original && (
-            <p className="text-sm font-bold text-room-subtle line-through">
-              De {webinar.cta_price_original}
-            </p>
-          )}
-          {webinar.cta_price_now && (
-            <p className="text-2xl font-black tracking-tight text-room-text">
-              Por {webinar.cta_price_now}
-            </p>
-          )}
-        </div>
-      )}
-      <button
-        type="button"
-        onClick={clickCta}
-        className={`flex w-full items-center justify-center gap-2.5 rounded-xl px-5 py-4 text-base font-black uppercase tracking-wide transition hover:brightness-105 ${ctaButtonClass(webinar.cta_color)}`}
-      >
-        <ShoppingCart className="size-5" />
-        {webinar.cta_text}
-      </button>
-      {countdownTotal > 0 && (
-        <div className="text-center">
-          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-room-subtle">
-            {offerRemaining > 0 ? "Oferta termina em" : "Tempo esgotado"}
-          </p>
-          <p className="text-4xl font-black tabular-nums text-room-text">{offerClock}</p>
-        </div>
-      )}
+    <div className="flex-1 overflow-y-auto overscroll-contain">
+      <OfferCard
+        productName={productName || undefined}
+        imageUrl={webinar.cta_image_url || undefined}
+        priceFrom={webinar.cta_price_original}
+        priceNow={webinar.cta_price_now}
+        buttonText={webinar.cta_text ?? "Quero entrar"}
+        onBuy={clickCta}
+        countdownSeconds={offerRemaining}
+        showCountdown={countdownTotal > 0}
+      />
     </div>
   );
 
@@ -1394,6 +1380,7 @@ export function WebinarRoom({
           >
             <Icon className="size-4" strokeWidth={1.9} />
             {label}
+            {value === "offer" && tab !== "offer" ? <PulseDot /> : null}
             {tab === value ? (
               <span className="absolute inset-x-5 bottom-0 h-[3px] rounded-full bg-primary" />
             ) : null}
@@ -1431,26 +1418,13 @@ export function WebinarRoom({
           onBlur={() => {
             roomRef.current?.classList.remove("live-room-shell--keyboard");
           }}
-          placeholder="Escreva um comentário..."
+          placeholder={tab === "support" ? "Escreva à equipa..." : "Escreva um comentário..."}
           enterKeyHint="send"
           className="h-11 rounded-full border-room-line bg-room-raised px-4 text-base text-room-text placeholder:text-room-subtle focus-visible:ring-primary/40"
         />
-        <button
-          type="button"
-          onClick={sendHeart}
-          aria-label="Enviar coração"
-          title="Enviar coração"
-          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-room-raised text-primary ring-1 ring-room-line transition hover:scale-110 hover:bg-primary/15 active:scale-95"
-        >
-          <Heart className="size-5 fill-current" />
-        </button>
-        <button
-          type="submit"
-          aria-label="Enviar"
-          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition hover:brightness-110"
-        >
-          <ArrowUp className="size-4" />
-        </button>
+        {/* O coração e as reações só existem no separador Chat. */}
+        {tab === "chat" ? <HeartButton onHeart={sendHeart} reactions={hearts} /> : null}
+        <SendButton />
       </form>
     </div>
   );
@@ -1460,6 +1434,7 @@ export function WebinarRoom({
       ref={roomRef}
       className={`${theme === "light" ? "room-light " : ""}live-room-shell room-ambient flex flex-col overflow-hidden text-room-text lg:min-h-dvh lg:overflow-visible`}
     >
+      <RoomPartsStyle />
       <div className="mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-6 lg:p-6">
         <section className="flex min-w-0 shrink-0 flex-col">
           <div className={`relative ring-1 ring-room-line lg:overflow-hidden lg:rounded-2xl ${theme === "light" ? "bg-room-surface" : "bg-black shadow-[0_30px_80px_-20px_rgb(0_0_0/0.8)]"}`}>
@@ -1467,15 +1442,6 @@ export function WebinarRoom({
             {player}
             {soundPrompt}
             {purchaseToast}
-            <div className="pointer-events-none absolute bottom-2 right-6 z-20 h-56 w-24 overflow-hidden">
-              {hearts.map((heart) => (
-                <Heart
-                  key={heart.id}
-                  className="nw-heart absolute bottom-0 left-1/2 size-7 fill-primary text-primary drop-shadow"
-                  style={{ marginLeft: `${heart.offset}px` }}
-                />
-              ))}
-            </div>
           </div>
           <div className="px-5 pb-2 pt-1 lg:px-1 lg:pb-0 lg:pt-6">
             <p className="hidden text-[11px] font-bold uppercase tracking-[0.22em] text-primary lg:block">

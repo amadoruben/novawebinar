@@ -581,6 +581,11 @@ export function PublicRoom({
       onSend={onSend}
       supportMessages={privateThread?.messages ?? []}
       onProgress={onProgress}
+      checkoutOrigin={{
+        source: source["utm_source"] ?? null,
+        medium: source["utm_medium"] ?? null,
+        campaign: source["utm_campaign"] ?? null,
+      }}
       onCtaView={() => sendCta("view")}
       onCtaClick={() => {
         if (!testMode) trackPixels("checkout");
