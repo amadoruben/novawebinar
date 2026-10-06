@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  EDITOR_STEPS,
   isoFromLocalInput,
   localInputFromIso,
   offerTiming,
   statusOnSave,
+  stepFromSearch,
   webinarIssues,
   type DraftFields,
 } from "./webinar-draft";
@@ -69,15 +71,15 @@ describe("erros que impedem gravar", () => {
 });
 
 describe("avisos que deixam gravar", () => {
-  it("data única sem data avisa no passo Webinar", () => {
+  it("data única sem data avisa na etapa Agenda", () => {
     const issues = webinarIssues({ ...base, scheduled_at: "" }, { durationSeconds: 3600 });
-    expect(issues).toEqual([expect.objectContaining({ step: "webinar", blocking: false })]);
+    expect(issues).toEqual([expect.objectContaining({ step: "agenda", blocking: false })]);
   });
 
-  it("repetição sem hora de início avisa no passo Webinar", () => {
+  it("repetição sem hora de início avisa na etapa Agenda", () => {
     const issues = webinarIssues({ ...base, recurrence_enabled: true }, { durationSeconds: 3600 });
     expect(issues).toEqual([
-      expect.objectContaining({ step: "webinar", field: "recurrence_start_time" }),
+      expect.objectContaining({ step: "agenda", field: "recurrence_start_time" }),
     ]);
   });
 });
@@ -125,5 +127,36 @@ describe("data única no fuso do webinar", () => {
   it("vazio continua vazio", () => {
     expect(isoFromLocalInput("", "Africa/Luanda")).toBeNull();
     expect(localInputFromIso(null, "Africa/Luanda")).toBe("");
+  });
+});
+
+describe("etapas do editor", () => {
+  it("seguem a ordem nova: antes da sala, na sala, depois e lançar", () => {
+    expect(EDITOR_STEPS.map((s) => s.id)).toEqual([
+      "inicio",
+      "entrada",
+      "video",
+      "chat",
+      "audiencia",
+      "oferta",
+      "vendas",
+      "automacoes",
+      "agente",
+      "agenda",
+    ]);
+  });
+
+  it("um endereço antigo abre a etapa onde o conteúdo ficou", () => {
+    expect(stepFromSearch("login")).toBe("entrada");
+    expect(stepFromSearch("design")).toBe("entrada");
+    expect(stepFromSearch("webinar")).toBe("agenda");
+    expect(stepFromSearch("integracoes")).toBe("inicio");
+    expect(stepFromSearch("timeline")).toBe("video");
+  });
+
+  it("sem etapa ou com uma desconhecida abre o Início", () => {
+    expect(stepFromSearch(undefined)).toBe("inicio");
+    expect(stepFromSearch("nada")).toBe("inicio");
+    expect(stepFromSearch("chat")).toBe("chat");
   });
 });

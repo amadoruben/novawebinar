@@ -21,6 +21,8 @@ export function AppShell({
   compact = false,
   crumbs,
   back,
+  bleed = false,
+  rail = false,
 }: {
   children: ReactNode;
   title?: string;
@@ -31,6 +33,10 @@ export function AppShell({
   crumbs?: Crumb[];
   /** Botão voltar circular à esquerda do título. */
   back?: BackLink;
+  /** Sem margens nem largura máxima: a página ocupa a área toda (o editor do webinar). */
+  bleed?: boolean;
+  /** O menu da plataforma fica recolhido, só com ícones. */
+  rail?: boolean;
 }) {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (r) => r.location.pathname });
@@ -98,7 +104,7 @@ export function AppShell({
   }, [navigate]);
 
   const showLoader = useInitialPageLoader(!authorized);
-  const sidebarCollapsed = (collapsed || tabletViewport) && !mobileViewport;
+  const sidebarCollapsed = (rail || collapsed || tabletViewport) && !mobileViewport;
 
   const initial = (workspace?.fullName ?? "?").trim().charAt(0).toUpperCase() || "?";
 
@@ -185,7 +191,11 @@ export function AppShell({
           </div>
         </header>
         <main
-          className={`mx-auto flex w-full max-w-[1480px] min-h-[calc(100dvh-3.5rem)] flex-1 flex-col px-4 pt-4 pb-32 md:min-h-0 md:pb-10 ${compact ? "md:px-6 md:pt-6" : "md:px-8 md:pt-8"}`}
+          className={
+            bleed
+              ? "flex w-full min-h-[calc(100dvh-3.5rem)] flex-1 flex-col pb-32 md:min-h-0 md:pb-0"
+              : `mx-auto flex w-full max-w-[1480px] min-h-[calc(100dvh-3.5rem)] flex-1 flex-col px-4 pt-4 pb-32 md:min-h-0 md:pb-10 ${compact ? "md:px-6 md:pt-6" : "md:px-8 md:pt-8"}`
+          }
         >
           {title && (
             <PageHeader

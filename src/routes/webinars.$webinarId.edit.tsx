@@ -1,10 +1,15 @@
 import { friendlyError } from "@/lib/friendly-error";
 import { createFileRoute, Link, useBlocker, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   ArrowLeft,
   BarChart3,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  Gift,
+  Info,
   Blocks,
   Bot,
   ChevronRight,
@@ -32,7 +37,9 @@ import {
   Upload,
   Users,
   Workflow,
+  type LucideIcon,
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 import { AppShell } from "@/components/app-shell";
 import { WebinarAutomations } from "@/components/workflow/webinar-automations";
@@ -89,11 +96,14 @@ import {
 } from "@/lib/schedule";
 import { WebinarPaymentsNotice } from "@/components/metricas/webinar-payments";
 import {
+  EDITOR_STEPS,
   isoFromLocalInput,
   localInputFromIso,
   offerTiming,
   statusOnSave,
+  stepFromSearch,
   webinarIssues,
+  type EditorStep,
 } from "@/lib/webinar-draft";
 
 import { Button } from "@/components/ui/button";
@@ -177,113 +187,69 @@ export const Route = createFileRoute("/webinars/$webinarId/edit")({
   component: EditWebinar,
 });
 
-const STEPS = [
-  {
-    id: "inicio",
-    label: "Início",
+/** Ícone, título e ajuda de cada etapa. A ordem e os grupos vêm do rascunho do webinar. */
+const STEP_UI: Record<EditorStep, { icon: LucideIcon; title: string; hint: string }> = {
+  inicio: {
     icon: Presentation,
-    title: "Identidade do webinar",
-    hint: "Nome interno, título público e o endereço por onde as pessoas entram.",
+    title: "Início",
+    hint: "Nome interno, título público, endereço da sala, quem apresenta e o cartão do link partilhado.",
   },
-  {
-    id: "webinar",
-    label: "Webinar",
-    icon: CalendarClock,
-    title: "Sessão e agendamento",
-    hint: "Quando acontece, em que estado está e o que fazer com quem chega cedo.",
-  },
-  {
-    id: "login",
-    label: "Login",
+  entrada: {
     icon: LogIn,
-    title: "Ecrã antes da sala",
-    hint: "Os dados que pedimos antes de entrar. O nome indicado identifica a pessoa no chat.",
+    title: "Dados de quem entra",
+    hint: "O ecrã antes da sala: os dados que a pessoa deixa para entrar e o tema das salas.",
   },
-  {
-    id: "design",
-    label: "Design",
-    icon: Palette,
-    title: "Aspeto das salas",
-    hint: "Escolha o tema visual e veja como ficam a espera, a entrada, o direto e o fim.",
-  },
-  {
-    id: "video",
-    label: "Vídeo",
+  video: {
     icon: Film,
-    title: "Configuração de vídeo",
-    hint: "Escolha a fonte do conteúdo. O replay reutiliza exatamente o mesmo vídeo.",
+    title: "Vídeo",
+    hint: "A fonte do vídeo. O replay usa exactamente o mesmo vídeo.",
   },
-  {
-    id: "oferta",
-    label: "Oferta",
-    icon: ShoppingBag,
-    title: "Oferta e chamada à ação",
-    hint: "Sem hora de fim, o botão fica visível até ao final da sessão.",
-  },
-  {
-    id: "chat",
-    label: "Chat",
+  chat: {
     icon: MessagesSquare,
-    title: "Comentários programados",
-    hint: "Comentários globais que aparecem no chat no segundo indicado.",
+    title: "Comentários simulados",
+    hint: "Comentários que aparecem no chat no segundo indicado.",
   },
-  {
-    id: "agente",
-    label: "Agente IA",
+  audiencia: {
+    icon: Users,
+    title: "Audiência",
+    hint: "Quantas pessoas a sala mostra. A contagem arranca no mínimo e nunca mistura real com simulada.",
+  },
+  oferta: {
+    icon: Gift,
+    title: "Oferta",
+    hint: "O que vende e quando aparece. Sem hora de fim, o botão fica até ao fim da sessão.",
+  },
+  vendas: {
+    icon: ShoppingBag,
+    title: "Vendas",
+    hint: "Notificações de compra durante a sessão. As de demonstração vão marcadas.",
+  },
+  automacoes: {
+    icon: Workflow,
+    title: "Automações",
+    hint: "A jornada de quem se inscreve: aquecimento, lembretes, recuperação e pós-compra, no fluxo do webinar.",
+  },
+  agente: {
     icon: Bot,
-    title: "Agente IA de chat",
+    title: "Agente IA",
     hint: "Atende as mensagens reais dos participantes com o conhecimento que autorizar.",
   },
-  {
-    id: "vendas",
-    label: "Vendas",
-    icon: ShoppingBag,
-    title: "Vendas e prova social",
-    hint: "Notificações de compra durante a sessão. As de demonstração vão marcadas como simulação.",
+  agenda: {
+    icon: CalendarClock,
+    title: "Agenda",
+    hint: "Quando a sessão acontece, o fuso, a sala de espera e o replay.",
   },
-  {
-    id: "audiencia",
-    label: "Audiência",
-    icon: Users,
-    title: "Contagem de audiência",
-    hint: "A contagem arranca no mínimo definido e nunca mistura real com simulada.",
-  },
-  {
-    id: "integracoes",
-    label: "Integrações",
-    icon: Blocks,
-    title: "Integrações do webinar",
-    hint: "Ligações com o exterior. O WhatsApp define como o link da sala aparece ao ser partilhado.",
-  },
-  {
-    id: "automacoes",
-    label: "Automações",
-    icon: Workflow,
-    title: "Automações do webinar",
-    hint: "A jornada de quem se inscreve: aquecimento, lembretes, recuperação e pós-compra, no workflow.",
-  },
-  {
-    id: "timeline",
-    label: "Linha de tempo",
-    icon: GanttChartSquare,
-    title: "Linha de tempo da sessão",
-    hint: "Tudo o que acontece do minuto zero ao fim: chat, oferta, vendas e audiência.",
-  },
-] as const;
+};
 
-/** Passos que ocupam a largura toda, sem painel de pré-visualização. */
-const FULL_WIDTH_STEPS = [
-  "inicio",
-  "webinar",
-  "chat",
-  "agente",
-  "vendas",
-  "integracoes",
-  "automacoes",
-  "timeline",
-] as const;
+const STEPS = EDITOR_STEPS.map((s) => ({ ...s, ...STEP_UI[s.id] }));
 
-type StepId = (typeof STEPS)[number]["id"];
+/** Etapas que ainda ocupam a largura toda, sem pré-visualização ao lado. */
+const FULL_WIDTH_STEPS: readonly EditorStep[] = ["chat", "vendas", "automacoes", "agente"];
+
+/** Etapas da sala: mostram a linha do tempo em baixo. */
+const DOCK_STEPS: readonly EditorStep[] = ["video", "chat", "audiencia", "oferta", "vendas"];
+
+type StepId = EditorStep;
 
 const TIMEZONES: [string, string][] = [
   ["Africa/Luanda", "(GMT+01:00) Luanda"],
@@ -318,9 +284,8 @@ function EditWebinar() {
   const { data: simulatedPurchases = [] } = useSimulatedPurchases(webinarId);
 
   const initialStep = Route.useSearch().step;
-  const [step, setStep] = useState<StepId>(() =>
-    STEPS.some((s) => s.id === initialStep) ? (initialStep as StepId) : "inicio",
-  );
+  const [step, setStep] = useState<StepId>(() => stepFromSearch(initialStep));
+  const [dockOpen, setDockOpen] = useState(true);
   const [form, setForm] = useState({
     internal_name: "",
     public_title: "",
@@ -382,6 +347,8 @@ function EditWebinar() {
     webhook_enabled: false,
   });
   const [openIntegration, setOpenIntegration] = useState<"whatsapp" | "webhook" | null>(null);
+  // As ligações (WhatsApp, WebHook) abrem dentro do Início; ao mudar de etapa, volta-se à lista.
+  useEffect(() => setOpenIntegration(null), [step]);
 
   const [saving, setSaving] = useState(false);
   // O formulário como está gravado: o que difere dele são alterações por gravar.
@@ -1163,7 +1130,7 @@ function EditWebinar() {
     [minValue, maxValue],
   );
 
-  const activeStep = STEPS.find((s) => s.id === step) ?? STEPS[0];
+  const activeStep = STEP_UI[step];
   const previewUrl = useMemo(() => {
     const draft = linkDraft.trim();
     const saved = selectedVideo?.source_url?.trim();
@@ -1199,7 +1166,7 @@ function EditWebinar() {
   const offerErrors = webinarIssues(form, { durationSeconds: previewDuration }).filter(
     (issue) => issue.step === "oferta",
   );
-  const fullWidth = (FULL_WIDTH_STEPS as readonly string[]).includes(step);
+  const fullWidth = FULL_WIDTH_STEPS.includes(step);
   const baseUrl = publicOrigin();
 
   /** Marcas da linha de tempo: chat, oferta, vendas simuladas e audiência. */
@@ -1250,78 +1217,153 @@ function EditWebinar() {
       </AppShell>
     );
 
+  const prevStep = STEPS[stepIndex - 1];
+  const issues = webinarIssues(form, { durationSeconds: previewDuration });
+  const stepsWithIssues = new Set<StepId>(issues.map((issue) => issue.step));
+  const previewLabel =
+    step === "inicio" || step === "entrada"
+      ? "Ecrã antes de entrar"
+      : step === "video"
+        ? "Vídeo da sala"
+        : step === "oferta"
+          ? "Momento da oferta"
+          : step === "audiencia"
+            ? "Curva de audiência"
+            : "Como o webinar se apresenta";
+  // A linha do tempo da sessão fica em baixo nas etapas da sala, e recolhe-se.
+  const dock =
+    DOCK_STEPS.includes(step) && previewDuration > 0 ? (
+      <div className="shrink-0 border-t bg-background">
+        <button
+          type="button"
+          onClick={() => setDockOpen((open) => !open)}
+          aria-expanded={dockOpen}
+          className="flex h-10 w-full items-center gap-2 px-5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <GanttChartSquare className="size-4" />
+          Linha do tempo
+          <span className="tabular-nums text-foreground">{formatOffset(timelineCursor)}</span>
+          {dockOpen ? (
+            <ChevronDown className="ml-auto size-4" />
+          ) : (
+            <ChevronUp className="ml-auto size-4" />
+          )}
+        </button>
+        {dockOpen ? (
+          <div className="max-h-[38vh] overflow-y-auto px-5 pb-4">
+            <WebinarTimeline
+              durationSeconds={previewDuration}
+              markers={timelineMarkers}
+              cursor={timelineCursor}
+              onSeek={setTimelineCursor}
+            />
+          </div>
+        ) : null}
+      </div>
+    ) : null;
+
   return (
-    <AppShell action={false} compact>
-      <div className="overflow-hidden rounded-card bg-card shadow-[0_24px_48px_-28px_color-mix(in_oklab,var(--foreground)_28%,transparent)]">
-        {/* Step rail */}
-        <nav className="border-b px-3 py-3 sm:px-4 sm:py-4 xl:px-6">
-          <ol className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <AppShell action={false} bleed rail>
+      <div className="flex flex-1 flex-col lg:h-dvh lg:min-h-0">
+        <header className="grid shrink-0 border-b bg-background lg:grid-cols-[380px_minmax(0,1fr)]">
+          <div className="flex h-14 min-w-0 items-center gap-1.5 border-b px-3 lg:border-r lg:border-b-0">
+            <Button variant="ghost" size="icon" className="shrink-0" asChild>
+              <Link to="/webinars" search={{ q: undefined }} aria-label="Voltar aos webinars">
+                <ArrowLeft />
+              </Link>
+            </Button>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">
+                {form.public_title || form.internal_name || "Webinar sem título"}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">
+                {lifecycleLabel(lifecycle)}
+                {issues.length > 0 && (
+                  <span className="text-warning"> · {issues.length} por resolver</span>
+                )}
+              </p>
+            </div>
+            <Button variant="ghost" size="icon" className="shrink-0" asChild>
+              <Link
+                to="/live/$webinarId"
+                params={{ webinarId }}
+                aria-label="Pré-visualizar a sala"
+                title="Pré-visualizar a sala"
+              >
+                <Eye />
+              </Link>
+            </Button>
+            <Button
+              variant="dark"
+              size="sm"
+              className="shrink-0"
+              onClick={() => void save()}
+              disabled={saving}
+            >
+              {saving && <Loader2 className="animate-spin" />}
+              {dirty ? "Guardar" : "Guardado"}
+            </Button>
+          </div>
+          <nav
+            aria-label="Etapas"
+            className="flex min-w-0 items-center overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
             {STEPS.map((s, index) => {
               const Icon = s.icon;
-              const isActive = s.id === step;
-              const isDone = index < stepIndex;
+              const active = s.id === step;
               return (
-                <li key={s.id} className="shrink-0">
+                <Fragment key={s.id}>
+                  {index > 0 && STEPS[index - 1]?.group !== s.group && (
+                    <span aria-hidden className="mx-1.5 h-5 w-px shrink-0 bg-border" />
+                  )}
                   <button
                     type="button"
                     onClick={() => setStep(s.id)}
-                    aria-current={isActive ? "step" : undefined}
+                    aria-current={active ? "step" : undefined}
                     className={cn(
-                      "flex w-[74px] flex-col items-center gap-2 rounded-xl px-1.5 py-3 text-xs font-semibold transition-all sm:w-[96px] sm:gap-2.5 sm:px-2 sm:py-3.5",
-                      isActive
-                        ? "bg-accent text-foreground shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--primary)_20%,transparent)]"
-                        : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                      "relative flex h-14 shrink-0 items-center gap-1.5 px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors",
+                      active
+                        ? "text-foreground after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-foreground"
+                        : "text-muted-foreground hover:text-foreground",
                     )}
                   >
-                    <span
-                      className={cn(
-                        "grid size-11 place-items-center transition-all sm:size-14",
-                        isActive
-                          ? "text-primary"
-                          : isDone
-                            ? "text-primary"
-                            : "text-muted-foreground",
-                      )}
-                    >
-                      {isDone ? (
-                        <Check className="size-5 sm:size-6" />
-                      ) : (
-                        <Icon className="size-5 sm:size-6" />
-                      )}
-                    </span>
-                    <span className="text-[10px] leading-tight sm:text-[11px]">{s.label}</span>
+                    <Icon className="size-4" />
+                    {s.label}
+                    {stepsWithIssues.has(s.id) && (
+                      <span className="size-1.5 rounded-full bg-warning" aria-label="Por resolver" />
+                    )}
                   </button>
-                </li>
+                </Fragment>
               );
             })}
-          </ol>
-        </nav>
+          </nav>
+        </header>
 
         <div
-          className={cn(
-            "grid xl:min-h-[calc(100vh-184px)]",
-            !fullWidth && "xl:grid-cols-[minmax(0,1fr)_minmax(0,520px)]",
-          )}
+          className={cn("grid min-h-0 flex-1", !fullWidth && "lg:grid-cols-[380px_minmax(0,1fr)]")}
         >
-          {/* Editor pane */}
-          <section
-            className={cn(
-              "@container min-w-0 border-b bg-card p-4 sm:p-5 xl:border-b-0 xl:p-7",
-              !fullWidth && "xl:border-r",
-            )}
-          >
-
-            <header className="mb-5">
-              <p className="text-xs text-muted-foreground">
-                Passo {stepIndex + 1} de {STEPS.length}
-              </p>
-              <h2 className="mt-1 text-xl font-bold">{activeStep.title}</h2>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                {activeStep.hint}
-              </p>
-            </header>
-
-            {step === "inicio" && (
+          <section className="flex min-h-0 min-w-0 flex-col bg-background lg:border-r">
+            <div className="flex shrink-0 items-center gap-1 px-5 pt-5 pb-3">
+              <h1 className="text-lg font-semibold tracking-tight">{activeStep.title}</h1>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 text-muted-foreground"
+                    aria-label="O que é isto?"
+                  >
+                    <Info className="size-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-72 text-sm leading-relaxed">
+                  {activeStep.hint}
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="@container min-h-0 flex-1 overflow-y-auto px-5 pb-8">
+              <div className={cn("min-w-0", fullWidth && "max-w-[1180px]")}>
+            {step === "inicio" && openIntegration === null && (
               <div className="w-full space-y-5">
                 <div className="grid gap-5 @md:grid-cols-2">
                   <Field label="Nome interno">
@@ -1468,16 +1510,10 @@ function EditWebinar() {
                   </div>
                 </div>
 
-                <StepFooter
-                  onSave={save}
-                  saving={saving}
-                  onNext={saveAndGo}
-                  nextLabel={nextLabel}
-                />
               </div>
             )}
 
-            {step === "webinar" && (
+            {step === "agenda" && (
               <div className="space-y-4">
                 <div className="inline-flex rounded-xl border bg-muted/40 p-1">
                   {(
@@ -1824,16 +1860,10 @@ function EditWebinar() {
                   </div>
                 </details>
 
-                <StepFooter
-                  onSave={save}
-                  saving={saving}
-                  onNext={saveAndGo}
-                  nextLabel={nextLabel}
-                />
               </div>
             )}
 
-            {step === "login" && (
+            {step === "entrada" && (
               <div className="space-y-4">
                 <Field
                   label="Capa do ecrã de entrada"
@@ -1981,16 +2011,10 @@ function EditWebinar() {
                     pessoa no chat da sessão.
                   </p>
                 </div>
-                <StepFooter
-                  onSave={save}
-                  saving={saving}
-                  onNext={saveAndGo}
-                  nextLabel={nextLabel}
-                />
               </div>
             )}
 
-            {step === "design" && (
+            {step === "entrada" && (
               <div className="space-y-4">
                 <Field
                   label="Tema das salas"
@@ -2050,12 +2074,6 @@ function EditWebinar() {
                   Use os separadores da pré-visualização para ver cada momento: sala de espera,
                   entrada, direto e fim da transmissão.
                 </p>
-                <StepFooter
-                  onSave={save}
-                  saving={saving}
-                  onNext={saveAndGo}
-                  nextLabel={nextLabel}
-                />
               </div>
             )}
 
@@ -2358,12 +2376,6 @@ function EditWebinar() {
                 )}
 
 
-                <StepFooter
-                  onSave={save}
-                  saving={saving}
-                  onNext={saveAndGo}
-                  nextLabel={nextLabel}
-                />
               </div>
             )}
 
@@ -2651,12 +2663,6 @@ function EditWebinar() {
                   </div>
                 </div>
 
-                <StepFooter
-                  onSave={save}
-                  saving={saving}
-                  onNext={saveAndGo}
-                  nextLabel={nextLabel}
-                />
               </div>
             )}
 
@@ -2823,12 +2829,6 @@ function EditWebinar() {
                     </p>
                   ))}
                 </div>
-                <StepFooter
-                  onSave={save}
-                  saving={saving}
-                  onNext={saveAndGo}
-                  nextLabel={nextLabel}
-                />
               </div>
             )}
 
@@ -2842,12 +2842,6 @@ function EditWebinar() {
                   webhookUrl={`${baseUrl}/api/public/purchase-webhook`}
                   offerStartSeconds={Number(form.cta_start_seconds) || 0}
                   saveRef={socialProofSaverRef}
-                />
-                <StepFooter
-                  onSave={save}
-                  saving={saving}
-                  onNext={saveAndGo}
-                  nextLabel={nextLabel}
                 />
               </div>
             )}
@@ -2889,7 +2883,6 @@ function EditWebinar() {
                   miolo da sessão e desce suavemente no final — sempre dentro do intervalo definido.
                   A audiência simulada nunca é misturada com os dados reais do Analytics.
                 </p>
-                <StepFooter onSave={save} saving={saving} onNext={saveAndGo} nextLabel={nextLabel} />
                 <div className="flex flex-wrap gap-3">
                   <Button variant="ghost" className="text-destructive" onClick={removeWebinar}>
                     <Trash2 />
@@ -2899,9 +2892,9 @@ function EditWebinar() {
               </div>
             )}
 
-            {step === "integracoes" && openIntegration === null && (
+            {step === "inicio" && openIntegration === null && (
               <section className="rounded-card bg-card p-5 sm:p-6">
-                <h3 className="text-lg font-bold">As suas integrações</h3>
+                <h3 className="text-lg font-bold">Partilha e ligações</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Escolha uma integração para configurar.
                 </p>
@@ -2957,16 +2950,10 @@ function EditWebinar() {
                   </button>
                 </div>
 
-                <StepFooter
-                  onSave={save}
-                  saving={saving}
-                  onNext={saveAndGo}
-                  nextLabel={nextLabel}
-                />
               </section>
             )}
 
-            {step === "integracoes" && openIntegration === "webhook" && (
+            {step === "inicio" && openIntegration === "webhook" && (
               <section className="rounded-card bg-card p-5 sm:p-6">
                 <Button
                   variant="ghost"
@@ -2975,7 +2962,7 @@ function EditWebinar() {
                   onClick={() => setOpenIntegration(null)}
                 >
                   <ArrowLeft />
-                  Voltar às integrações
+                  Voltar ao Início
                 </Button>
                 <div className="flex items-center gap-3">
                   <span className="grid size-10 place-items-center rounded-2xl bg-foreground/8 text-foreground">
@@ -3028,16 +3015,10 @@ function EditWebinar() {
                   </div>
                 </div>
 
-                <StepFooter
-                  onSave={save}
-                  saving={saving}
-                  onNext={() => setOpenIntegration(null)}
-                  nextLabel="Voltar às integrações"
-                />
               </section>
             )}
 
-            {step === "integracoes" && openIntegration === "whatsapp" && (
+            {step === "inicio" && openIntegration === "whatsapp" && (
               <div className="space-y-4">
                 <Button
                   variant="ghost"
@@ -3046,7 +3027,7 @@ function EditWebinar() {
                   onClick={() => setOpenIntegration(null)}
                 >
                   <ArrowLeft />
-                  Voltar às integrações
+                  Voltar ao Início
                 </Button>
                 <div className="grid gap-6 @3xl:grid-cols-[1.05fr_1fr]">
                   <section className="rounded-card bg-card p-5 sm:p-6">
@@ -3152,12 +3133,6 @@ function EditWebinar() {
                       </Field>
                     </div>
 
-                    <StepFooter
-                      onSave={save}
-                      saving={saving}
-                      onNext={saveAndGo}
-                      nextLabel={nextLabel}
-                    />
                   </section>
 
                   <section className="rounded-card bg-card p-5 sm:p-6">
@@ -3224,196 +3199,153 @@ function EditWebinar() {
             {step === "automacoes" && (
               <WebinarAutomations webinarId={webinarId} title={form.public_title || form.internal_name || "Webinar"} />
             )}
-            {step === "timeline" && (
-              <div className="space-y-4">
-                <WebinarTimeline
-                  durationSeconds={previewDuration}
-                  markers={timelineMarkers}
-                  cursor={timelineCursor}
-                  onSeek={setTimelineCursor}
-                />
-                <p className="text-sm text-muted-foreground">
-                  Momento escolhido:{" "}
-                  <strong className="tabular-nums">{formatOffset(timelineCursor)}</strong>. Clique
-                  na régua para saltar para outro ponto da sessão.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setStep("chat")}>
-                    <MessagesSquare />
-                    Abrir o chat neste momento
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setStep("vendas")}>
-                    <ShoppingBag />
-                    Abrir as vendas
-                  </Button>
-                </div>
               </div>
-            )}
+            </div>
+            <footer className="flex shrink-0 items-center justify-between gap-3 border-t bg-background px-5 py-3">
+              <Button
+                variant="ghost"
+                onClick={() => prevStep && setStep(prevStep.id)}
+                disabled={!prevStep}
+              >
+                <ArrowLeft />
+                Voltar
+              </Button>
+              <Button variant="dark" onClick={saveAndGo} disabled={saving}>
+                {saving && <Loader2 className="animate-spin" />}
+                {nextLabel}
+              </Button>
+            </footer>
           </section>
 
-          {/* Preview pane */}
           {!fullWidth && (
-            <PreviewShell
-              label={
-                step === "webinar"
-                  ? "Como o webinar se apresenta"
-                  : step === "login"
-                    ? "Ecrã antes de entrar"
-                    : step === "design"
-                      ? "Pré-visualização dinâmica das salas"
-                      : step === "video"
-                        ? "Pré-visualização do vídeo"
-                        : step === "oferta"
-                          ? "Momento da oferta"
-                          : "Curva de audiência"
-              }
-            >
-              {step === "webinar" && (
-                <IdentityPreview
-                  title={form.public_title}
-                  description={form.description}
-                  statusLabel={lifecycleLabel(lifecycle)}
-                  scheduledAt={form.scheduled_at}
-                  internalName={form.internal_name}
-                />
-              )}
-
-              {step === "login" && (
-                <RegistrationPreview
-                  title={form.public_title}
-                  headline={form.registration_headline}
-                  subtitle={form.registration_subtitle}
-                  buttonText={form.registration_button_text}
-                  collectPhone={form.registration_collect_phone}
-                  requirePhone={form.registration_require_phone}
-                  coverUrl={form.registration_cover_url}
-                  badgeText={form.registration_badge_text}
-                  progressEnabled={form.registration_progress_enabled}
-                  progressValue={Number(form.registration_progress_value) || 0}
-                  scarcityNote={form.registration_scarcity_note}
-                />
-              )}
-
-              {step === "design" && (
-                <RoomDesignPreview
-                  theme={form.room_theme}
-                  title={form.public_title}
-                  headline={form.registration_headline}
-                  subtitle={form.registration_subtitle}
-                  buttonText={form.registration_button_text}
-                  coverUrl={form.registration_cover_url}
-                  ctaText={form.cta_text}
-                  ctaColor={form.cta_color}
-                  scheduledAt={form.scheduled_at}
-                  viewersLabel={audienceLabel}
-                />
-              )}
-
-              {step === "video" && (
-                <div className="group relative mx-auto aspect-video w-full max-w-3xl overflow-hidden rounded-2xl bg-[#0b0e14] shadow-[0_36px_64px_-28px_rgba(0,0,0,0.55)] ring-1 ring-black/10">
-                  {previewUrl ? (
-                    <VideoPlayer
-                      url={previewUrl}
-                      provider={selectedVideo?.provider ?? null}
-                      controls
-                      onTime={() => {}}
-                      className="size-full rounded-none"
-                      autoPlay
-                      muted
-                      loop
-                      quiet
+            <section className="flex min-h-[420px] min-w-0 flex-col bg-muted/40 lg:min-h-0">
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <PreviewShell label={previewLabel}>
+                  <div
+                    className={cn("mx-auto w-full", step === "video" ? "max-w-3xl" : "max-w-[560px]")}
+                  >
+                  {(step === "inicio" || step === "entrada") && (
+                    <RegistrationPreview
+                      title={form.public_title}
+                      headline={form.registration_headline}
+                      subtitle={form.registration_subtitle}
+                      buttonText={form.registration_button_text}
+                      collectPhone={form.registration_collect_phone}
+                      requirePhone={form.registration_require_phone}
+                      coverUrl={form.registration_cover_url}
+                      badgeText={form.registration_badge_text}
+                      progressEnabled={form.registration_progress_enabled}
+                      progressValue={Number(form.registration_progress_value) || 0}
+                      scarcityNote={form.registration_scarcity_note}
                     />
-                  ) : (
-                    <>
-                      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_0%,rgba(220,38,38,0.22),transparent_60%)]" />
-                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-10">
-                        <p className="truncate text-sm font-bold text-white">
-                          {form.public_title || "Sem título público"}
-                        </p>
-                        <p className="mt-1 text-[11px] text-white/60">
-                          Adicione o link do vídeo para ver aqui a reprodução.
-                        </p>
-                      </div>
-                    </>
                   )}
-                  <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between p-4">
-                    <span className="flex items-center gap-1.5 rounded-full bg-primary px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-widest text-primary-foreground">
-                      <span className="size-1.5 animate-pulse rounded-full bg-primary-foreground" />
-                      Ao vivo
-                    </span>
-                    <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur-md">
-                      <Radio className="size-3" />
-                      {audienceLabel}
-                    </span>
+
+                  {step === "entrada" && (
+                    <div className="mt-8">
+                      <RoomDesignPreview
+                        theme={form.room_theme}
+                        title={form.public_title}
+                        headline={form.registration_headline}
+                        subtitle={form.registration_subtitle}
+                        buttonText={form.registration_button_text}
+                        coverUrl={form.registration_cover_url}
+                        ctaText={form.cta_text}
+                        ctaColor={form.cta_color}
+                        scheduledAt={form.scheduled_at}
+                        viewersLabel={audienceLabel}
+                      />
+                    </div>
+                  )}
+
+                  {step === "agenda" && (
+                    <IdentityPreview
+                      title={form.public_title}
+                      description={form.description}
+                      statusLabel={lifecycleLabel(lifecycle)}
+                      scheduledAt={form.scheduled_at}
+                      internalName={form.internal_name}
+                    />
+                  )}
+
+                  {step === "video" && (
+                    <div className="group relative mx-auto aspect-video w-full max-w-3xl overflow-hidden rounded-2xl bg-[#0b0e14] shadow-[0_36px_64px_-28px_rgba(0,0,0,0.55)] ring-1 ring-black/10">
+                      {previewUrl ? (
+                        <VideoPlayer
+                          url={previewUrl}
+                          provider={selectedVideo?.provider ?? null}
+                          controls
+                          onTime={() => {}}
+                          className="size-full rounded-none"
+                          autoPlay
+                          muted
+                          loop
+                          quiet
+                        />
+                      ) : (
+                        <>
+                          <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_0%,rgba(220,38,38,0.22),transparent_60%)]" />
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-10">
+                            <p className="truncate text-sm font-bold text-white">
+                              {form.public_title || "Sem título público"}
+                            </p>
+                            <p className="mt-1 text-[11px] text-white/60">
+                              Adicione o link do vídeo para ver aqui a reprodução.
+                            </p>
+                          </div>
+                        </>
+                      )}
+                      <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between p-4">
+                        <span className="flex items-center gap-1.5 rounded-full bg-primary px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-widest text-primary-foreground">
+                          <span className="size-1.5 animate-pulse rounded-full bg-primary-foreground" />
+                          Ao vivo
+                        </span>
+                        <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur-md">
+                          <Radio className="size-3" />
+                          {audienceLabel}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {step === "oferta" && (
+                    <OfferPreview
+                      ctaText={form.cta_text}
+                      ctaUrl={form.cta_url}
+                      ctaColor={form.cta_color}
+                      priceOriginal={form.cta_price_original}
+                      priceNow={form.cta_price_now}
+                      imageUrl={form.cta_image_url}
+                      countdownSeconds={Number(form.cta_countdown_seconds) || 0}
+                      startSeconds={form.cta_start_seconds ? Number(form.cta_start_seconds) : null}
+                      endSeconds={form.cta_end_seconds ? Number(form.cta_end_seconds) : null}
+                      durationSeconds={previewDuration}
+                    />
+                  )}
+
+                  {step === "audiencia" && (
+                    <AudienceChartPreview
+                      curve={previewCurve}
+                      min={minValue}
+                      max={maxValue}
+                      modeLabel={
+                        audienceMode === "real"
+                          ? "Apenas audiência real"
+                          : audienceMode === "simulated"
+                            ? "Audiência simulada"
+                            : "Real + simulada"
+                      }
+                      durationSeconds={previewDuration}
+                    />
+                  )}
                   </div>
-                </div>
-              )}
-
-              {step === "oferta" && (
-                <OfferPreview
-                  ctaText={form.cta_text}
-                  ctaUrl={form.cta_url}
-                  ctaColor={form.cta_color}
-                  priceOriginal={form.cta_price_original}
-                  priceNow={form.cta_price_now}
-                  imageUrl={form.cta_image_url}
-                  countdownSeconds={Number(form.cta_countdown_seconds) || 0}
-                  startSeconds={form.cta_start_seconds ? Number(form.cta_start_seconds) : null}
-                  endSeconds={form.cta_end_seconds ? Number(form.cta_end_seconds) : null}
-                  durationSeconds={previewDuration}
-                />
-              )}
-
-              {step === "audiencia" && (
-                <AudienceChartPreview
-                  curve={previewCurve}
-                  min={minValue}
-                  max={maxValue}
-                  modeLabel={
-                    audienceMode === "real"
-                      ? "Apenas audiência real"
-                      : audienceMode === "simulated"
-                        ? "Audiência simulada"
-                        : "Real + simulada"
-                  }
-                  durationSeconds={previewDuration}
-                />
-              )}
-            </PreviewShell>
+                </PreviewShell>
+              </div>
+              {dock}
+            </section>
           )}
         </div>
+        {fullWidth && dock}
       </div>
-
-      {/* Ações suspensas no fim da página */}
-      <div className="pointer-events-none fixed bottom-24 right-4 z-30 md:bottom-6 md:right-6">
-        <div className="glass glass-edge pointer-events-auto flex items-center gap-1.5 rounded-pill p-1.5 shadow-pop">
-
-          <Button variant="ghost" size="sm" className="rounded-full" asChild>
-            <Link to="/live/$webinarId" params={{ webinarId }}>
-              Pré-visualizar
-            </Link>
-          </Button>
-
-          {dirty && (
-            <span className="flex items-center gap-1.5 px-2 text-xs text-muted-foreground">
-              <span className="size-1.5 rounded-full bg-primary" aria-hidden />
-              Por gravar
-            </span>
-          )}
-
-          <Button
-            variant="dark"
-            size="sm"
-            onClick={() => void save()}
-            disabled={saving}
-            className="rounded-full px-5"
-          >
-            {saving && <Loader2 className="animate-spin" />}
-            Guardar webinar
-          </Button>
-        </div>
-      </div>
-      <div className="h-24 md:h-16" aria-hidden="true" />
 
       <Dialog open={analysisOpen} onOpenChange={setAnalysisOpen}>
         <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
@@ -3506,38 +3438,6 @@ function Field({
       {children}
       {hint ? <p className="text-xs leading-snug text-muted-foreground">{hint}</p> : null}
 
-    </div>
-  );
-}
-
-function StepFooter({
-  onSave,
-  saving,
-  onNext,
-  nextLabel,
-}: {
-  onSave: () => void;
-  saving: boolean;
-  onNext: () => void;
-  nextLabel: string;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 border-t pt-4">
-      <Button
-        onClick={onSave}
-        disabled={saving}
-        variant="outline"
-        className="shrink-0 border-primary font-medium text-primary hover:bg-primary/10 hover:text-primary"
-      >
-        {saving && <Loader2 className="animate-spin" />}
-        Guardar alterações
-      </Button>
-      <Button
-        onClick={onNext}
-        className="shrink-0 rounded-full bg-primary px-5 font-medium text-primary-foreground hover:bg-primary/90"
-      >
-        {nextLabel}
-      </Button>
     </div>
   );
 }

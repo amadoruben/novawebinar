@@ -18,8 +18,43 @@ export type DraftFields = {
   scheduled_at: string;
 };
 
+/**
+ * As 10 etapas do editor, pela ordem do menu: antes da sala, na sala, depois da sala e lançar.
+ * Cada etapa faz uma só coisa; o vídeo dá o tempo às da sala.
+ */
+export const EDITOR_STEPS = [
+  { id: "inicio", label: "Início", group: "antes" },
+  { id: "entrada", label: "Entrada", group: "antes" },
+  { id: "video", label: "Vídeo", group: "sala" },
+  { id: "chat", label: "Chat", group: "sala" },
+  { id: "audiencia", label: "Audiência", group: "sala" },
+  { id: "oferta", label: "Oferta", group: "sala" },
+  { id: "vendas", label: "Vendas", group: "sala" },
+  { id: "automacoes", label: "Automações", group: "depois" },
+  { id: "agente", label: "Agente IA", group: "depois" },
+  { id: "agenda", label: "Agenda", group: "lancar" },
+] as const;
+
+export type EditorStep = (typeof EDITOR_STEPS)[number]["id"];
+
+/** Etapas antigas que deixaram de existir e a etapa onde ficou o que tinham. */
+const MOVED_STEPS: Record<string, EditorStep> = {
+  login: "entrada",
+  design: "entrada",
+  webinar: "agenda",
+  integracoes: "inicio",
+  timeline: "video",
+};
+
+/** A etapa do endereço (`?step=`): as antigas abrem onde o conteúdo ficou; o resto abre o Início. */
+export function stepFromSearch(value: string | undefined): EditorStep {
+  if (!value) return "inicio";
+  const known = EDITOR_STEPS.find((s) => s.id === value);
+  return known ? known.id : (MOVED_STEPS[value] ?? "inicio");
+}
+
 export type DraftIssue = {
-  step: "webinar" | "oferta";
+  step: "agenda" | "oferta";
   field: string;
   message: string;
   /** Erros que impedem gravar; os outros são avisos. */
@@ -65,14 +100,14 @@ export function webinarIssues(
 
   if (draft.recurrence_enabled && !draft.recurrence_start_time) {
     issues.push({
-      step: "webinar",
+      step: "agenda",
       field: "recurrence_start_time",
       message: "Defina a hora de início da repetição automática.",
       blocking: false,
     });
   } else if (draft.schedule_mode === "single" && !draft.recurrence_enabled && !draft.scheduled_at) {
     issues.push({
-      step: "webinar",
+      step: "agenda",
       field: "scheduled_at",
       message: "Escolha a data e a hora da sessão.",
       blocking: false,
