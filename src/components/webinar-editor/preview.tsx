@@ -25,7 +25,8 @@ import { ROOM_FONT } from "@/components/room/entry-screen";
 
 export type Device = "desktop" | "phone";
 
-const DESK = { w: 1280, h: 720 };
+/** O portátil inteiro ao tamanho real: ecrã 1280×720 com a barra do navegador, moldura e base. */
+const LAPTOP = { w: 1452, h: 832 };
 const PHONE = { w: 425, h: 878 };
 
 function useSize<T extends HTMLElement>() {
@@ -44,16 +45,15 @@ function useSize<T extends HTMLElement>() {
 }
 
 /**
- * A escala que faz o aparelho caber inteiro no espaço (largura e altura), sem deformar e sem
- * nunca crescer acima do tamanho real. Assim a sala fica fixa e toda à vista.
+ * A escala que faz o aparelho caber inteiro no espaço, com margem à volta, sem deformar e sem
+ * passar do tamanho real. O telemóvel ao alto fica um pouco mais pequeno, para não dominar.
  */
 export function deviceScale(device: Device, width: number, height: number, landscape = false) {
-  const pad = 12;
-  if (device === "desktop") {
-    return Math.max(0.1, Math.min((width - 2 * pad) / DESK.w, (height - 2 * pad - 26) / DESK.h, 1));
-  }
-  const [w, h] = landscape ? [PHONE.h, PHONE.w] : [PHONE.w, PHONE.h];
-  return Math.max(0.1, Math.min((width - 2 * pad) / w, (height - 2 * pad) / h, 1));
+  const pad = 24;
+  const [w, h] = device === "desktop" ? [LAPTOP.w, LAPTOP.h] : landscape ? [PHONE.h, PHONE.w] : [PHONE.w, PHONE.h];
+  const fit = Math.min((width - 2 * pad) / w, (height - 2 * pad) / h);
+  const cap = device === "phone" && !landscape ? Math.min(0.8, ((height - 2 * pad) * 0.88) / h) : 1;
+  return Math.max(0.1, Math.min(fit, cap, 1));
 }
 
 export function Scaled({ k, w, h, children }: { k: number; w: number; h: number; children: ReactNode }) {
@@ -66,37 +66,47 @@ export function Scaled({ k, w, h, children }: { k: number; w: number; h: number;
   );
 }
 
-export function BrowserFrame({
-  url,
+/** O portátil: moldura preta com a câmara, a barra do navegador com o endereço e a base. */
+export function LaptopFrame({
   k,
+  url,
   highlightUrl,
   children,
 }: {
-  url: string;
   k: number;
+  url: string;
   highlightUrl?: boolean | undefined;
   children: ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border bg-white shadow-[0_8px_24px_rgba(0,0,0,.08)]">
-      <div className="flex h-[26px] items-center gap-1.5 border-b px-3">
-        {[0, 1, 2].map((i) => (
-          <i key={i} className="size-2 shrink-0 rounded-full bg-[#E5E5E5]" />
-        ))}
-        <span
-          className={cn(
-            "mx-2 flex h-[18px] min-w-0 flex-1 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-full bg-gray-100 px-2.5 text-[11px] text-muted-foreground",
-            highlightUrl && "outline outline-2 outline-[#E8440C]",
-          )}
-        >
-          <Lock className="size-2.5 shrink-0" />
-          <span className="truncate">{url}</span>
-        </span>
+    <Scaled k={k} w={LAPTOP.w} h={LAPTOP.h}>
+      <div className="flex h-[832px] w-[1452px] flex-col items-center">
+        <div className="relative rounded-[28px] bg-[#0A0A0B] p-5 shadow-[0_0_0_2px_#D9D5CD,0_0_0_3.5px_#A7A298]">
+          <i className="absolute left-1/2 top-[7px] size-[7px] -translate-x-1/2 rounded-full bg-[#1D1D22] ring-1 ring-[#2B2B31]" />
+          <div className="overflow-hidden rounded-[6px] bg-white">
+            <div className="flex h-[42px] w-[1280px] items-center gap-2 border-b border-[#E5E5E5] bg-[#F4F4F5] px-4">
+              {["#FF5F57", "#FEBC2E", "#28C840"].map((c) => (
+                <i key={c} className="size-3 shrink-0 rounded-full" style={{ background: c }} />
+              ))}
+              <span
+                className={cn(
+                  "mx-auto flex h-[26px] w-[520px] min-w-0 items-center justify-center gap-1.5 rounded-lg bg-white px-3 text-[13px] text-[#52525B] shadow-[0_0_0_1px_#E4E4E7]",
+                  highlightUrl && "outline outline-[3px] outline-[#E8440C]",
+                )}
+              >
+                <Lock className="size-3 shrink-0" />
+                <span className="truncate">{url}</span>
+              </span>
+              <span className="w-[52px] shrink-0" />
+            </div>
+            <div className="h-[720px] w-[1280px] overflow-hidden">{children}</div>
+          </div>
+        </div>
+        <div className="relative h-[30px] w-[1452px] rounded-b-[20px] rounded-t-[3px] bg-[linear-gradient(#ECEAE5,#CFCBC2_55%,#A29E95)] shadow-[0_30px_40px_-24px_rgba(0,0,0,.6)]">
+          <i className="absolute left-1/2 top-0 h-[10px] w-[240px] -translate-x-1/2 rounded-b-[10px] bg-[#BDB9B0]" />
+        </div>
       </div>
-      <Scaled k={k} w={DESK.w} h={DESK.h}>
-        {children}
-      </Scaled>
-    </div>
+    </Scaled>
   );
 }
 
@@ -175,7 +185,7 @@ export function PhoneFrame({
   );
 }
 
-/** O aparelho certo, inteiro no espaço disponível, alinhado em cima. */
+/** O aparelho certo, inteiro e centrado no espaço disponível, com margem à volta. */
 export function DeviceStage({
   device,
   landscape,
@@ -194,14 +204,12 @@ export function DeviceStage({
   const [ref, size] = useSize<HTMLDivElement>();
   const k = deviceScale(device, size.w, size.h, landscape);
   return (
-    <div ref={ref} className="flex size-full min-h-0 min-w-0 items-start justify-center overflow-hidden p-3">
+    <div ref={ref} className="flex size-full min-h-0 min-w-0 items-center justify-center overflow-hidden">
       {size.w > 0 && size.h > 0 ? (
         device === "desktop" ? (
-          <div style={{ width: DESK.w * k }}>
-            <BrowserFrame url={url} k={k} highlightUrl={highlightUrl}>
-              {children}
-            </BrowserFrame>
-          </div>
+          <LaptopFrame k={k} url={url} highlightUrl={highlightUrl}>
+            {children}
+          </LaptopFrame>
         ) : (
           <PhoneFrame k={k} light={light} landscape={landscape}>
             {children}
@@ -233,6 +241,8 @@ export function DeviceToggle({ device, onChange }: { device: Device; onChange: (
     <button
       type="button"
       aria-pressed={device === value}
+      aria-label={label}
+      title={label}
       onClick={() => onChange(value)}
       className={cn(
         "inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition",
@@ -240,7 +250,7 @@ export function DeviceToggle({ device, onChange }: { device: Device; onChange: (
       )}
     >
       <Icon className="size-3.5" />
-      {label}
+      <span className="hidden sm:inline">{label}</span>
     </button>
   );
   return (
@@ -248,6 +258,83 @@ export function DeviceToggle({ device, onChange }: { device: Device; onChange: (
       {option("desktop", "Computador", Monitor)}
       {option("phone", "Telemóvel", Smartphone)}
     </div>
+  );
+}
+
+export type ScreenTab = { key: string; label: string; active: boolean; onClick: () => void };
+
+/** Os ecrãs por baixo do aparelho, como no ManyChat: cada um abre a etapa que o define. */
+export function ScreenTabs({ tabs, dark }: { tabs: readonly ScreenTab[]; dark?: boolean | undefined }) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Ecrãs"
+      className={cn(
+        "inline-flex max-w-full gap-0.5 overflow-x-auto rounded-xl p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        dark ? "bg-[#1F1F1F]" : "bg-white shadow-[0_1px_2px_rgba(0,0,0,.06),0_0_0_1px_rgba(0,0,0,.06)]",
+      )}
+    >
+      {tabs.map((t) => (
+        <button
+          key={t.key}
+          type="button"
+          role="tab"
+          aria-selected={t.active}
+          onClick={t.onClick}
+          className={cn(
+            "h-8 shrink-0 whitespace-nowrap rounded-lg px-3.5 text-[13px] font-medium transition",
+            t.active
+              ? dark
+                ? "bg-[#EDEDED] text-[#0A0A0A]"
+                : "bg-foreground text-background"
+              : dark
+                ? "text-[#A1A1A1] hover:text-[#EDEDED]"
+                : "text-muted-foreground hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground",
+          )}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Tocar e pausar a sala, com o minuto: fica ao lado dos ecrãs. */
+export function PlayChip({
+  t,
+  duration,
+  playing,
+  onToggle,
+  dark,
+}: {
+  t: number;
+  duration: number;
+  playing: boolean;
+  onToggle: () => void;
+  dark?: boolean | undefined;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl pl-1 pr-3",
+        dark ? "bg-[#1F1F1F] text-[#EDEDED]" : "bg-white shadow-[0_1px_2px_rgba(0,0,0,.06),0_0_0_1px_rgba(0,0,0,.06)]",
+      )}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label={playing ? "Pausar" : "Tocar"}
+        className={cn(
+          "grid size-8 place-items-center rounded-lg",
+          dark ? "bg-[#EDEDED] text-[#0A0A0A]" : "bg-foreground text-background",
+        )}
+      >
+        {playing ? <Pause className="size-3.5 fill-current" /> : <Play className="size-3.5 fill-current" />}
+      </button>
+      <span className="font-mono text-[12.5px] tabular-nums">
+        {clock(t)} <span className={dark ? "text-[#8F8F8F]" : "text-muted-foreground"}>/ {clock(duration)}</span>
+      </span>
+    </span>
   );
 }
 
@@ -265,20 +352,21 @@ export function ExpandButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-/** O ecrã completo: a página ao tamanho real, sobre fundo escuro, com o leitor pequeno. */
+/** O ecrã completo: o aparelho sobre fundo escuro, com o leitor e os ecrãs em baixo. */
 export function FullScreen({
   name,
   device,
   onDevice,
   onClose,
-  room,
+  bottom,
   children,
 }: {
   name: string;
   device: Device;
   onDevice: (device: Device) => void;
   onClose: () => void;
-  room?: { t: number; duration: number; playing: boolean; onToggle: () => void; pitch: number | null } | undefined;
+  /** O leitor e os ecrãs, por baixo do aparelho. */
+  bottom?: ReactNode;
   children: ReactNode;
 }) {
   useEffect(() => {
@@ -288,45 +376,21 @@ export function FullScreen({
   }, [onClose]);
   return (
     <div className="fixed inset-0 z-[80] flex flex-col bg-[#0A0A0A] text-[#EDEDED]" role="dialog" aria-label={name}>
-      <div className="grid h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 px-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <b className="truncate text-sm">{name}</b>
-          {room ? (
-            <>
-              <button
-                type="button"
-                onClick={room.onToggle}
-                aria-label={room.playing ? "Pausar" : "Tocar"}
-                className="grid size-8 place-items-center rounded-full bg-white text-black"
-              >
-                {room.playing ? <Pause className="size-3.5 fill-current" /> : <Play className="size-3.5 fill-current" />}
-              </button>
-              <span className="font-mono text-[13px] tabular-nums">
-                {clock(room.t)} <span className="text-[#8F8F8F]">/ {clock(room.duration)}</span>
-              </span>
-              {room.pitch !== null ? (
-                <span className="hidden items-center gap-1.5 rounded-md bg-white/10 px-2 py-1 text-xs sm:inline-flex">
-                  <Gift className="size-3.5" />
-                  Oferta aos {clock(room.pitch)}
-                </span>
-              ) : null}
-            </>
-          ) : null}
-        </div>
-        <div>{device === "phone" ? <DarkToggle device={device} onChange={onDevice} /> : null}</div>
-        <div className="flex items-center justify-end gap-2">
-          {device === "desktop" ? <DarkToggle device={device} onChange={onDevice} /> : null}
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-white/10 px-3 text-[13px] font-medium hover:bg-white/15"
-          >
-            <X className="size-4" />
-            Fechar
-          </button>
-        </div>
+      <div className="flex h-14 shrink-0 items-center gap-3 px-4">
+        <b className="min-w-0 flex-1 truncate text-sm">{name}</b>
+        <DarkToggle device={device} onChange={onDevice} />
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Fechar"
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-white/10 px-3 text-[13px] font-medium hover:bg-white/15"
+        >
+          <X className="size-4" />
+          <span className="hidden sm:inline">Fechar</span>
+        </button>
       </div>
-      <div className="min-h-0 flex-1 px-4 pb-4">{children}</div>
+      <div className="min-h-0 flex-1 px-2 sm:px-4">{children}</div>
+      {bottom ? <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 px-3 pb-4 pt-2">{bottom}</div> : null}
     </div>
   );
 }
@@ -336,6 +400,7 @@ function DarkToggle({ device, onChange }: { device: Device; onChange: (device: D
     <button
       type="button"
       aria-pressed={device === value}
+      aria-label={label}
       onClick={() => onChange(value)}
       className={cn(
         "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium",
@@ -343,11 +408,11 @@ function DarkToggle({ device, onChange }: { device: Device; onChange: (device: D
       )}
     >
       <Icon className="size-3.5" />
-      {label}
+      <span className="hidden sm:inline">{label}</span>
     </button>
   );
   return (
-    <div className="inline-flex gap-0.5 rounded-[10px] bg-[#1F1F1F] p-[3px]">
+    <div className="inline-flex shrink-0 gap-0.5 rounded-[10px] bg-[#1F1F1F] p-[3px]">
       {option("desktop", "Computador", Monitor)}
       {option("phone", "Telemóvel", Smartphone)}
     </div>

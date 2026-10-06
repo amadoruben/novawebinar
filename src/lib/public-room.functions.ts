@@ -263,6 +263,35 @@ export const trackPublicRoomCta = createServerFn({ method: "POST" })
     return recordCta({ participantId, eventType: data.eventType, videoSecond: data.videoSecond });
   });
 
+/** Entrar no grupo da oferta: guarda os dados confirmados e conta como clique na oferta. */
+export const joinOfferGroup = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) =>
+    z
+      .object({
+        token: viewerToken,
+        name: z.string().trim().min(2).max(80),
+        email: z.string().trim().toLowerCase().email().max(160).optional(),
+        phone: z
+          .string()
+          .trim()
+          .regex(/^[\d\s()+-]{6,24}$/)
+          .optional(),
+        videoSecond: second.optional(),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    const participantId = await participantOf(data.token);
+    const { recordGroupJoin } = await import("@/lib/public-room.server");
+    return recordGroupJoin({
+      participantId,
+      name: data.name,
+      email: data.email ?? null,
+      phone: data.phone ?? null,
+      videoSecond: data.videoSecond,
+    });
+  });
+
 export const trackPublicRoomProgress = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => watchedSchema.parse(data))
   .handler(async ({ data }) => {

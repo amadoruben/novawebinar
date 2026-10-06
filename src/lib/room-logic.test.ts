@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   activeOffer,
   offerDeadlinePassed,
+  isGroupLink,
   parseExtraOffers,
   buildFormatCurve,
   checkoutLink,
@@ -145,5 +146,23 @@ describe("oferta", () => {
     expect(checkoutLink("javascript:alert(1)", { place: "sala", seconds: 0 })).toBe(
       "javascript:alert(1)",
     );
+  });
+});
+
+describe("ofertas por grupo e prazo de cada oferta", () => {
+  it("reconhece os links de grupo do WhatsApp e do Telegram", () => {
+    expect(isGroupLink("https://chat.whatsapp.com/AbC123")).toBe(true);
+    expect(isGroupLink("https://t.me/+grupo")).toBe(true);
+    expect(isGroupLink("https://pay.kambafy.com/checkout/x")).toBe(false);
+    expect(isGroupLink("")).toBe(false);
+  });
+
+  it("guarda o prazo de uma oferta seguinte só com uma data válida", () => {
+    const [a, b] = parseExtraOffers([
+      { start: 600, url: "https://chat.whatsapp.com/x", deadline: "2026-10-20" },
+      { start: 900, url: "https://k.ao/y", deadline: "amanhã" },
+    ]);
+    expect(a!.deadline).toBe("2026-10-20");
+    expect(b!.deadline).toBeNull();
   });
 });

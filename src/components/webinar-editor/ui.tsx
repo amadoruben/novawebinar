@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Info, type LucideIcon } from "lucide-react";
+import { ChevronDown, Info, Minus, Plus, type LucideIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
@@ -327,16 +329,25 @@ export function MinuteWheel({
   onChange: (seconds: number) => void;
 }) {
   const maxMinutes = Math.max(0, Math.floor(Math.max(0, maxSeconds) / 60));
-  const minutes = Array.from({ length: maxMinutes + 1 }, (_, i) => i);
-  const seconds = Array.from({ length: 60 }, (_, i) => i);
+  const minutes = Array.from({ length: maxMinutes + 1 }, (_, i) => String(i).padStart(2, "0"));
+  const seconds = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
   const m = Math.min(maxMinutes, Math.floor(Math.max(0, value) / 60));
   const s = Math.floor(Math.max(0, value) % 60);
   const emit = (nm: number, ns: number) => onChange(Math.min(maxSeconds || Infinity, nm * 60 + ns));
   return (
-    <div className="relative flex h-[170px] items-stretch justify-center gap-6 overflow-hidden rounded-xl border bg-white">
-      <div aria-hidden className="pointer-events-none absolute inset-x-3 top-1/2 h-[34px] -translate-y-1/2 rounded-lg bg-chip" />
-      <WheelColumn label="Minutos" unit="min" items={minutes} value={m} onSettle={(nm) => emit(nm, s)} />
-      <WheelColumn label="Segundos" unit="seg" items={seconds} value={s} onSettle={(ns) => emit(m, ns)} />
+    <WheelBox>
+      <WheelColumn label="Minutos" unit="min" items={minutes} index={m} onSettle={(nm) => emit(nm, s)} />
+      <WheelColumn label="Segundos" unit="seg" items={seconds} index={s} onSettle={(ns) => emit(m, ns)} />
+    </WheelBox>
+  );
+}
+
+/** A moldura das rodas: a faixa do valor escolhido ao centro e o desvanecer em cima e em baixo. */
+export function WheelBox({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative flex h-[170px] items-stretch justify-center gap-5 overflow-hidden rounded-xl bg-white">
+      <div aria-hidden className="pointer-events-none absolute inset-x-2 top-1/2 h-[34px] -translate-y-1/2 rounded-lg bg-chip" />
+      {children}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 bg-[linear-gradient(#fff,transparent_35%,transparent_65%,#fff)]"
@@ -347,18 +358,21 @@ export function MinuteWheel({
 
 const ROW = 34;
 
-function WheelColumn({
+/** Uma coluna da roda: rola e pára numa linha; a mudança só sai quando pára. */
+export function WheelColumn({
   label,
   unit,
   items,
-  value,
+  index,
   onSettle,
+  wide,
 }: {
   label: string;
-  unit: string;
-  items: number[];
-  value: number;
-  onSettle: (value: number) => void;
+  unit?: string | undefined;
+  items: readonly string[];
+  index: number;
+  onSettle: (index: number) => void;
+  wide?: boolean | undefined;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const timer = useRef<number | null>(null);
@@ -367,9 +381,9 @@ function WheelColumn({
   useEffect(() => {
     const node = ref.current;
     if (!node || settling.current) return;
-    const top = value * ROW;
+    const top = index * ROW;
     if (Math.abs(node.scrollTop - top) > 2) node.scrollTop = top;
-  }, [value]);
+  }, [index]);
   return (
     <div className="relative z-[1] flex items-center gap-1.5">
       <div
@@ -380,8 +394,7 @@ function WheelColumn({
         onKeyDown={(event) => {
           if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
           event.preventDefault();
-          const next = Math.min(items.length - 1, Math.max(0, value + (event.key === "ArrowDown" ? 1 : -1)));
-          onSettle(next);
+          onSettle(Math.min(items.length - 1, Math.max(0, index + (event.key === "ArrowDown" ? 1 : -1))));
         }}
         onScroll={() => {
           settling.current = true;
@@ -390,25 +403,114 @@ function WheelColumn({
             settling.current = false;
             const node = ref.current;
             if (!node) return;
-            const index = Math.min(items.length - 1, Math.max(0, Math.round(node.scrollTop / ROW)));
-            if (index !== value) onSettle(index);
+            const next = Math.min(items.length - 1, Math.max(0, Math.round(node.scrollTop / ROW)));
+            if (next !== index) onSettle(next);
           }, 160);
         }}
-        className="h-full w-16 snap-y snap-mandatory overflow-y-scroll py-[68px] [scrollbar-width:none] focus-visible:outline-2 focus-visible:outline-foreground [&::-webkit-scrollbar]:hidden"
+        className={cn(
+          "h-full snap-y snap-mandatory overflow-y-scroll py-[68px] [scrollbar-width:none] focus-visible:outline-2 focus-visible:outline-foreground [&::-webkit-scrollbar]:hidden",
+          wide ? "w-[92px]" : "w-16",
+        )}
       >
-        {items.map((n) => (
+        {items.map((item, i) => (
           <div
-            key={n}
+            key={`${item}-${i}`}
             className={cn(
-              "grid h-[34px] snap-center place-items-center font-mono text-[22px] tabular-nums",
-              n === value ? "font-semibold text-foreground" : "text-gray-400",
+              "grid h-[34px] snap-center place-items-center font-mono text-[21px] tabular-nums",
+              i === index ? "font-semibold text-foreground" : "text-gray-400",
             )}
           >
-            {String(n).padStart(2, "0")}
+            {item}
           </div>
         ))}
       </div>
-      <span className="text-xs text-muted-foreground">{unit}</span>
+      {unit ? <span className="text-xs text-muted-foreground">{unit}</span> : null}
+    </div>
+  );
+}
+
+/**
+ * Um botão com o valor que abre a roda num pop-up, como o relógio do iPhone: clica-se, roda-se
+ * e fica. Serve para minutos, pessoas e quantidades.
+ */
+export function PickerButton({
+  value,
+  title,
+  hint,
+  icon: Icon,
+  children,
+  className,
+}: {
+  value: ReactNode;
+  title: string;
+  hint?: ReactNode;
+  icon?: LucideIcon | undefined;
+  children: ReactNode;
+  className?: string | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "flex h-11 w-full min-w-0 items-center gap-2.5 rounded-lg bg-white px-3.5 text-left shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-400)] transition hover:bg-gray-50 data-[state=open]:shadow-[inset_0_0_0_1.5px_var(--foreground)]",
+            className,
+          )}
+        >
+          {Icon ? <Icon className="size-4 shrink-0 text-muted-foreground" /> : null}
+          <span className="min-w-0 flex-1 truncate text-[15px] font-semibold tabular-nums">{value}</span>
+          <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[296px] p-3" onOpenAutoFocus={(event) => event.preventDefault()}>
+        <p className="text-[13.5px] font-semibold">{title}</p>
+        {hint ? <p className="mt-0.5 text-[12.5px] leading-snug text-muted-foreground">{hint}</p> : null}
+        <div className="mt-2.5">{children}</div>
+        <Button size="sm" variant="dark" className="mt-3 w-full" onClick={() => setOpen(false)}>
+          Feito
+        </Button>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** Menos e mais, com o número ao meio (escreve-se também). */
+export function Stepper({
+  value,
+  min,
+  max,
+  onChange,
+  unit,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+  unit?: string | undefined;
+}) {
+  const set = (v: number) => onChange(Math.min(max, Math.max(min, Math.round(v) || min)));
+  const btn =
+    "grid size-9 shrink-0 place-items-center rounded-md text-foreground transition hover:bg-[var(--ds-gray-alpha-200)] disabled:opacity-40";
+  return (
+    <div className="inline-flex h-11 items-center gap-1 rounded-lg bg-white px-1 shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-400)]">
+      <button type="button" className={btn} onClick={() => set(value - 1)} disabled={value <= min} aria-label="Menos">
+        <Minus className="size-4" />
+      </button>
+      <label className="flex items-baseline gap-1 px-1">
+        <input
+          inputMode="numeric"
+          value={value}
+          onChange={(e) => set(Number(e.target.value.replace(/\D/g, "")))}
+          aria-label={unit ?? "Quantidade"}
+          className="w-10 bg-transparent text-center font-mono text-[17px] font-semibold tabular-nums outline-none"
+        />
+        {unit ? <span className="text-[12.5px] text-muted-foreground">{unit}</span> : null}
+      </label>
+      <button type="button" className={btn} onClick={() => set(value + 1)} disabled={value >= max} aria-label="Mais">
+        <Plus className="size-4" />
+      </button>
     </div>
   );
 }

@@ -228,7 +228,14 @@ export type OfferSlot = {
   button: string;
   /** Segundos do cronómetro a partir de quando abre; 0 sem cronómetro. */
   countdown: number;
+  /** O último dia da oferta (AAAA-MM-DD); depois dele o botão fecha. */
+  deadline?: string | null | undefined;
 };
+
+/** Um link de grupo (WhatsApp ou Telegram): o botão pede os dados antes de abrir o grupo. */
+export function isGroupLink(url: string | null | undefined) {
+  return /^https?:\/\/(chat\.whatsapp\.com|t\.me|telegram\.me)\//i.test((url ?? "").trim());
+}
 
 /** As ofertas seguintes gravadas; o que não tiver minuto nem link fica de fora. */
 export function parseExtraOffers(raw: unknown): OfferSlot[] {
@@ -250,6 +257,7 @@ export function parseExtraOffers(raw: unknown): OfferSlot[] {
       url: String(r["url"] ?? "").slice(0, 500),
       button: String(r["button"] ?? "").slice(0, 60) || "Quero entrar",
       countdown: Math.max(0, Math.round(Number(r["countdown"]) || 0)),
+      deadline: typeof r["deadline"] === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r["deadline"]) ? r["deadline"] : null,
     });
   }
   return out.sort((a, b) => a.start - b.start).slice(0, 4);

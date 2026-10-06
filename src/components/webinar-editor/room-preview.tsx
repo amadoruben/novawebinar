@@ -2,16 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import { Eye, Headset, MessagesSquare, Pin, Play, ShoppingCart, Zap } from "lucide-react";
 import { VideoPlayer } from "@/components/video-player";
 import { cn } from "@/lib/utils";
-import { activeOffer, clock, offerCountdownLeft, type OfferSlot } from "@/lib/room-logic";
+import { activeOffer, clock, isGroupLink, offerCountdownLeft, type OfferSlot } from "@/lib/room-logic";
 import { ROOM_FONT } from "@/components/room/entry-screen";
 import {
   CaptionLine,
   ChatComposer,
+  ChatLine,
   OfferCard,
   PulseDot,
   RoomPartsStyle,
   RoomTitle,
   SaleLine,
+  saleColor,
   VideoSettings,
   type Appearance,
   type Reaction,
@@ -51,6 +53,8 @@ export type RoomPreviewProps = {
   comments: readonly PreviewComment[];
   sales: readonly PreviewSale[];
   salesWhere: "chat" | "video" | "both";
+  /** A cor das compras (Vendas). */
+  saleColor?: string | null | undefined;
   offers: readonly OfferSlot[];
   offerImageUrl?: string | undefined;
   offerClosed: boolean;
@@ -73,6 +77,8 @@ export function RoomPreview(props: RoomPreviewProps) {
   const hl = (key: string) =>
     props.highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
   const open = activeOffer(props.offers, props.t);
+  // O vídeo acabou, mas a oferta fecha depois: a sala fica aberta para compras.
+  const afterVideo = props.duration > 0 && props.t >= props.duration - 0.5 && open !== null && (open.end ?? 0) > props.duration;
   // No separador Oferta do editor, mostra-se a primeira oferta mesmo antes de abrir.
   const shown = open ?? (props.forceOffer ? props.offers[0] ?? null : null);
   const offerTab = shown !== null;
@@ -131,22 +137,34 @@ export function RoomPreview(props: RoomPreviewProps) {
       {lastSale ? (
         <div
           className={cn(
-            "absolute flex items-center rounded-[14px] bg-white/95 text-[#0F1B2D] shadow-[0_12px_30px_rgba(0,0,0,.4)]",
+            "absolute flex items-center rounded-[14px] text-white shadow-[0_12px_30px_rgba(0,0,0,.4)]",
             phone ? "bottom-2 left-2 gap-2 py-1.5 pl-1.5 pr-2.5" : "bottom-4 left-4 gap-3 py-2.5 pl-2.5 pr-4",
           )}
+          style={{ background: saleColor(props.saleColor).solid }}
         >
-          <span className={cn("grid place-items-center rounded-full bg-[#FDE4D9] text-[#A82F05]", phone ? "size-[26px]" : "size-9")}>
+          <span className={cn("grid place-items-center rounded-full bg-white/25 text-white", phone ? "size-[26px]" : "size-9")}>
             <ShoppingCart className={phone ? "size-3" : "size-4"} />
           </span>
           <span>
             <b className={cn("block font-bold", phone ? "text-xs" : "text-[15px]")}>
               {lastSale.buyer} comprou {lastSale.product}
             </b>
-            <small className={cn("text-[#465166]", phone ? "text-[10.5px]" : "text-[12.5px]")}>agora mesmo</small>
+            <small className={cn("text-white/80", phone ? "text-[10.5px]" : "text-[12.5px]")}>agora mesmo</small>
           </span>
         </div>
       ) : null}
       {props.captionsOn ? <CaptionLine text={said} compact={phone} /> : null}
+      {afterVideo ? (
+        <div className="absolute inset-0 z-[5] grid place-items-center bg-black/90 px-6 text-center text-white">
+          <div className={cn("grid justify-items-center", phone ? "gap-1.5" : "gap-3")}>
+            <p className={cn("font-bold uppercase tracking-[0.18em] text-[#F28E63]", phone ? "text-[10px]" : "text-[13px]")}>A aula terminou</p>
+            <p className={cn("font-extrabold leading-tight", phone ? "text-[17px]" : "text-[34px]")}>As inscrições continuam abertas</p>
+            <p className={cn("text-white/75", phone ? "text-[11px]" : "text-[16px]")}>
+              Mais {Math.round(((open?.end ?? props.duration) - props.duration) / 60)} min, no separador Oferta. Dúvidas? Fale com a equipa no Suporte.
+            </p>
+          </div>
+        </div>
+      ) : null}
       <button
         type="button"
         onClick={props.onTogglePlay}
@@ -216,7 +234,7 @@ export function RoomPreview(props: RoomPreviewProps) {
           </div>
         </div>
       )}
-      <Panel {...props} tab={tab} shown={shown} open={open} hl={hl} phone={phone} />
+      <Panel {...props} tab={tab} shown={shown} open={open} hl={hl} phone={phone} afterVideo={afterVideo} />
     </div>
   );
 }
@@ -227,6 +245,7 @@ function Panel({
   shown,
   open,
   hl,
+  afterVideo,
   ...props
 }: RoomPreviewProps & {
   phone: boolean;
@@ -234,6 +253,7 @@ function Panel({
   shown: OfferSlot | null;
   open: OfferSlot | null;
   hl: (k: string) => string;
+  afterVideo: boolean;
 }) {
   const [text, setText] = useState("");
   const tabs: [RoomTab, string, typeof MessagesSquare][] = [
@@ -295,7 +315,16 @@ function Panel({
             onBuy={props.onBuy}
             countdownSeconds={countdownLeft}
             showCountdown={shown.countdown > 0}
-            closed={props.offerClosed}
+            closed={shown.id === "main" && props.offerClosed}
+            group={isGroupLink(shown.url)}
+            banner={
+              afterVideo ? (
+                <>
+                  <b className="block font-semibold">A aula terminou, mas as inscrições continuam abertas.</b>
+                  Mais {Math.round(((open?.end ?? props.duration) - props.duration) / 60)} minutos.
+                </>
+              ) : null
+            }
             note={!open ? `Na sala, esta oferta abre aos ${clock(shown.start)}.` : null}
             compact={phone}
             highlight={props.highlight}
@@ -316,11 +345,13 @@ function Panel({
               ) : (
                 chatItems.map((item) =>
                   item.kind === "sale" ? (
-                    <SaleLine key={item.key} text={`${item.s.buyer} comprou ${item.s.product}`} />
+                    <SaleLine key={item.key} text={`${item.s.buyer} comprou ${item.s.product}`} color={props.saleColor} />
                   ) : item.kind === "mine" ? (
-                    <Message key={item.key} author="Você" text={item.m.text} badge="Só você vê" mine />
+                    <ChatLine key={item.key} author="Você" text={item.m.text} badge="Só você vê" tone="mine" big={!phone} />
                   ) : (
-                    <Message key={item.key} author={item.c.author} text={item.c.message} agent={item.c.agent} />
+                    <div key={item.key} className={cn(props.highlight === `comment:${item.c.id}` && "-mx-2 rounded-lg bg-primary/15 px-2 py-1")}>
+                      <ChatLine author={item.c.author} text={item.c.message} tone={item.c.agent ? "agent" : "people"} big={!phone} />
+                    </div>
                   ),
                 )
               )
@@ -347,50 +378,6 @@ function Panel({
   );
 }
 
-function Message({
-  author,
-  text,
-  agent,
-  mine,
-  badge,
-}: {
-  author: string;
-  text: string;
-  agent?: boolean | undefined;
-  mine?: boolean | undefined;
-  badge?: string | undefined;
-}) {
-  const initials =
-    author
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((p) => p[0]?.toUpperCase())
-      .join("") || "?";
-  return (
-    <div className="flex items-start gap-2.5">
-      <span
-        className={cn(
-          "grid size-8 shrink-0 place-items-center rounded-full text-[11px] font-bold",
-          mine ? "bg-room-line text-room-text" : agent ? "bg-primary text-white" : "bg-room-raised text-room-text ring-1 ring-room-line",
-        )}
-      >
-        {mine ? "EU" : initials}
-      </span>
-      <div className="min-w-0">
-        <b className={cn("flex items-center gap-1.5 text-[13.5px] font-bold", agent ? "text-primary" : "text-room-subtle")}>
-          {author}
-          {agent ? <Zap className="size-3" /> : null}
-          {badge ? (
-            <em className="rounded bg-room-raised px-1.5 py-px text-[10.5px] font-medium not-italic text-room-subtle">{badge}</em>
-          ) : null}
-        </b>
-        <p className="break-words text-sm leading-[1.4] text-room-text">{text}</p>
-      </div>
-    </div>
-  );
-}
-
 function SupportThread({
   agent,
   offer,
@@ -409,28 +396,28 @@ function SupportThread({
     <div className={cn("flex flex-col gap-3.5", agent.on && hl("support"))}>
       {agent.on ? (
         <>
-          <Message author="Marta" text="Qual é o preço da vaga?" />
-          <Message
+          <ChatLine author="Marta" text="Qual é o preço da vaga?" />
+          <ChatLine
             author={agent.name}
-            agent
+            tone="agent"
             text={
               offer?.priceNow
                 ? `Marta, a vaga está por ${offer.priceNow}${offer.priceFrom ? ` em vez de ${offer.priceFrom}` : ""}. Está no separador Oferta.`
                 : "Marta, os valores aparecem no separador Oferta quando abrir."
             }
           />
-          <Message author="Marta" text="Posso pagar por transferência?" />
-          <Message author={agent.name} agent text="Vou passar-te a alguém da equipa, só um momento." />
+          <ChatLine author="Marta" text="Posso pagar por transferência?" />
+          <ChatLine author={agent.name} tone="agent" text="Vou passar-te a alguém da equipa, só um momento." />
           {system("Passou para a equipa no Atendimento")}
         </>
       ) : (
         <>
-          <Message author="Marta" text="Posso pagar por transferência?" />
+          <ChatLine author="Marta" text="Posso pagar por transferência?" />
           {system("Enviada para o Atendimento")}
         </>
       )}
       {mine.map((m, i) => (
-        <Message key={i} author="Você" text={m.text} badge="Só a equipa vê" mine />
+        <ChatLine key={i} author="Você" text={m.text} badge="Só a equipa vê" tone="mine" />
       ))}
     </div>
   );

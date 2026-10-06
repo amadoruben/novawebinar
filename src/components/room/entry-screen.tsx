@@ -1,21 +1,36 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   AtSign,
+  BookOpen,
   Briefcase,
   Building2,
   CalendarDays,
   Check,
   ChevronDown,
+  CircleHelp,
+  Gift,
+  Globe,
+  GraduationCap,
+  Hash,
+  Heart,
+  House,
+  Lightbulb,
+  Link2,
   Loader2,
   Mail,
   MapPin,
+  MessageCircle,
   Phone,
-  TextCursorInput,
+  Star,
+  Target,
   UserRound,
+  Users,
+  Wallet,
+  type LucideIcon,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PHONE_COUNTRIES, type PhoneCountry } from "@/lib/phone-countries";
-import { FIELD_KINDS, type EntryField, type EntryFieldKind } from "@/lib/entry-fields";
+import { FIELD_KINDS, fieldIcon, type EntryField, type EntryFieldKind, type FieldIconKey } from "@/lib/entry-fields";
 import { ENTRY_CARD_DEFAULT, entryPalette } from "@/lib/room-logic";
 import { cn } from "@/lib/utils";
 import whatsappIcon from "@/assets/local/whatsapp-icon.webp";
@@ -30,20 +45,46 @@ const ENTRY_CSS = `@keyframes cwBlink{50%{opacity:.25}}.cw-blink{animation:cwBli
 
 export const ROOM_FONT = '"Plus Jakarta Sans Variable", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif';
 
-/** O ícone de cada tipo de campo, igual no editor e na página. */
-export function FieldIcon({ kind, className }: { kind: EntryFieldKind; className?: string }) {
-  if (kind === "whatsapp") return <img src={whatsappIcon} alt="" className={className} />;
-  const Icon = {
-    name: UserRound,
-    email: Mail,
-    text: TextCursorInput,
-    phone: Phone,
-    location: MapPin,
-    company: Building2,
-    job: Briefcase,
-    instagram: AtSign,
-    date: CalendarDays,
-  }[kind];
+/** Os ícones que o organizador pode dar a um campo, iguais no editor e na página. */
+export const FIELD_ICON_COMPONENTS: Record<Exclude<FieldIconKey, "whatsapp">, LucideIcon> = {
+  user: UserRound,
+  mail: Mail,
+  phone: Phone,
+  pin: MapPin,
+  building: Building2,
+  briefcase: Briefcase,
+  instagram: AtSign,
+  calendar: CalendarDays,
+  globe: Globe,
+  school: GraduationCap,
+  target: Target,
+  wallet: Wallet,
+  users: Users,
+  heart: Heart,
+  star: Star,
+  chat: MessageCircle,
+  hash: Hash,
+  home: House,
+  gift: Gift,
+  book: BookOpen,
+  link: Link2,
+  idea: Lightbulb,
+  help: CircleHelp,
+};
+
+/** O ícone de um campo: o escolhido ou o do tipo. */
+export function FieldIcon({
+  kind,
+  icon,
+  className,
+}: {
+  kind: EntryFieldKind;
+  icon?: string | undefined;
+  className?: string;
+}) {
+  const key = fieldIcon({ kind, icon });
+  if (key === "whatsapp") return <img src={whatsappIcon} alt="" className={className} />;
+  const Icon = FIELD_ICON_COMPONENTS[key];
   return <Icon className={className} />;
 }
 
@@ -164,7 +205,11 @@ export function EntryScreen(props: EntryScreenProps) {
               key={field.id}
               label={
                 <>
-                  {field.kind === "whatsapp" ? <FieldIcon kind="whatsapp" className="size-4" /> : null}
+                  <FieldIcon
+                    kind={field.kind}
+                    icon={field.icon}
+                    className={cn("size-4 shrink-0", fieldIcon(field) !== "whatsapp" && "opacity-70")}
+                  />
                   {field.label}
                 </>
               }

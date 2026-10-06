@@ -15,20 +15,23 @@ import {
 import { useHearts, useLivePresence } from "@/lib/live-presence";
 import { Input } from "@/components/ui/input";
 import { VideoPlayer } from "@/components/video-player";
-import { activeOffer, checkoutLink, type OfferSlot } from "@/lib/room-logic";
+import { activeOffer, checkoutLink, isGroupLink, type OfferSlot } from "@/lib/room-logic";
 import { useServerFn } from "@tanstack/react-start";
 import { getPublicRoomPurchases } from "@/lib/public-room.functions";
 import {
   CaptionLine,
   ChatComposer,
+  ChatLine,
   OfferCard,
   PulseDot,
   RoomPartsStyle,
   RoomTitle,
+  SaleLine,
   VideoSettings,
   type Appearance,
 } from "@/components/room/room-parts";
 import { useAudienceCount } from "@/components/audience-counter";
+import { GroupJoinDialog } from "@/components/room/group-join";
 import { cn, isHttpUrl } from "@/lib/utils";
 import { PreliveCountdown, unlockPreliveAudio } from "@/components/prelive-countdown";
 import { watchedStep } from "@/lib/participant-facts";
@@ -104,25 +107,6 @@ export type RoomComment = {
   created_at?: string | null;
 };
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
-}
-
-// Tom fixo por nome: cada pessoa tem sempre a mesma cor de avatar na sala.
-function avatarTone(name: string) {
-  // Referência da sala: avatares neutros (--room-avatar); só o apresentador leva laranja.
-  // Dois tons próximos mantêm pessoas distinguíveis sem sair da paleta.
-  const palette = ["bg-room-raised text-room-text", "bg-room-line text-room-text"];
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  return palette[Math.abs(hash) % palette.length];
-}
-
 function formatMessageTime(value: string | number | Date | null | undefined) {
   const date = value instanceof Date ? value : new Date(value ?? Date.now());
   if (Number.isNaN(date.getTime())) return "";
@@ -158,6 +142,13 @@ function purchaseColorClasses(value?: string | null) {
         text: "text-violet-600",
         panel: "bg-violet-500/90",
         ring: "ring-violet-400/60",
+      };
+    case "orange":
+      return {
+        bg: "bg-orange-500/20",
+        text: "text-orange-600",
+        panel: "bg-[#E8440C]/90",
+        ring: "ring-orange-400/60",
       };
     case "slate":
       return {
@@ -209,6 +200,8 @@ export function WebinarRoom({
   sales,
   audienceFormat,
   hostVerified = true,
+  onJoinGroup,
+  prefill,
 }: {
   webinar: RoomWebinar;
   /** A aparência escolhida (do organizador ou desta pessoa); `theme` é o resultado. */
@@ -223,6 +216,10 @@ export function WebinarRoom({
   /** «off»: a sala não mostra quantas pessoas estão a ver. */
   audienceFormat?: string | null | undefined;
   hostVerified?: boolean | undefined;
+  /** Entrar no grupo da oferta: grava os dados confirmados (nome, e-mail, WhatsApp). */
+  onJoinGroup?: ((data: { name: string; email: string; phone: string }) => void) | undefined;
+  /** O que a pessoa escreveu na entrada, para não ter de repetir no pop-up do grupo. */
+  prefill?: { name?: string; email?: string; phone?: string } | undefined;
   /** O anúncio de onde a pessoa veio, para o link do checkout. */
   checkoutOrigin?: { source?: string | null; medium?: string | null; campaign?: string | null } | undefined;
   comments: RoomComment[];
@@ -590,8 +587,20 @@ export function WebinarRoom({
       : [];
     return [...main, ...(offers?.extra ?? [])];
   }, [webinar, socialProof?.product_name, offers?.extra]);
-  const currentOffer = waiting ? null : activeOffer(offerList, contentPeak);
+  // Depois do vídeo, o tempo das ofertas continua pelo relógio real: uma oferta que fecha depois
+  // do fim mantém a sala aberta para compras até lá.
+  const endedAtRef = useRef<number | null>(null);
+  if (finished && endedAtRef.current === null) endedAtRef.current = Date.now();
+  const afterSeconds = finished && endedAtRef.current !== null ? Math.max(0, (now - endedAtRef.current) / 1000) : 0;
+  const offerClock = finished ? Math.max(contentPeak, webinar.duration_seconds) + afterSeconds : contentPeak;
+  const currentOffer = waiting ? null : activeOffer(offerList, offerClock);
   const ctaVisible = currentOffer !== null;
+  /** A sala continua aberta depois da aula: quanto falta para fechar, em segundos. */
+  const openAfter =
+    finished && currentOffer?.end != null && currentOffer.end > webinar.duration_seconds
+      ? Math.max(0, Math.round(currentOffer.end - offerClock))
+      : null;
+  const [groupOpen, setGroupOpen] = useState(false);
 
   useEffect(() => {
     if (!ctaVisible || ctaLogged) return;
@@ -798,6 +807,11 @@ export function WebinarRoom({
   // Cada clique leva até ao checkout a origem da pessoa, onde clicou e em que minuto.
   const clickCta = () => {
     if (offerClosed) return;
+    // Um grupo (WhatsApp ou Telegram) pede primeiro os dados, para saber quem entrou.
+    if (ctaUrl && isGroupLink(ctaUrl)) {
+      setGroupOpen(true);
+      return;
+    }
     setCheckout(true);
     onCtaClick?.();
     if (!ctaUrl) return;
@@ -1102,6 +1116,23 @@ export function WebinarRoom({
       </div>
       <p className="text-sm text-room-subtle">Fique por aqui. Entramos no ar à hora marcada.</p>
     </div>
+  ) : finished && openAfter !== null ? (
+    <div className="flex aspect-video flex-col items-center justify-center gap-3 px-6 text-center text-white">
+      <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">A aula terminou</p>
+      <h2 className="text-2xl font-extrabold text-white sm:text-3xl">As inscrições continuam abertas</h2>
+      <p className="font-mono text-3xl font-bold tabular-nums text-white sm:text-4xl">
+        {String(Math.floor(openAfter / 3600)).padStart(2, "0")}:{String(Math.floor((openAfter % 3600) / 60)).padStart(2, "0")}:
+        {String(openAfter % 60).padStart(2, "0")}
+      </p>
+      <p className="max-w-md text-sm text-white/80">Garanta a sua vaga no separador Oferta. Dúvidas? A equipa responde no Suporte.</p>
+      <button
+        type="button"
+        onClick={() => setTab("offer")}
+        className="mt-1 h-11 rounded-xl bg-primary px-5 text-[15px] font-bold text-primary-foreground transition hover:brightness-110"
+      >
+        Ver a oferta
+      </button>
+    </div>
   ) : finished ? (
     <div className="flex aspect-video flex-col items-center justify-center gap-4 px-6 text-center text-white">
       <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">
@@ -1201,118 +1232,66 @@ export function WebinarRoom({
     return items.sort((a, b) => a.at.getTime() - b.at.getTime());
   }, [visibleComments, commentArrival, sent, viewerName, purchaseFeed]);
 
+  // As compras também entram no chat: a última fica à vista.
+  useEffect(() => {
+    const node = feedRef.current;
+    if (node) node.scrollTop = node.scrollHeight;
+  }, [chatThread.length]);
 
+
+  // O chat começa em baixo e cresce para cima, como no YouTube: a mensagem mais recente fica
+  // sempre junto da caixa de escrever.
   const feed = (
-    <div ref={feedRef} className="flex-1 space-y-6 overflow-y-auto overscroll-contain px-5 py-5">
-      {tab === "chat" ? (
-        chatThread.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-            <MessagesSquare className="size-5 text-room-subtle" />
-          </div>
-        ) : (
-          <>
-            {chatThread.map((item) =>
+    <div ref={feedRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-4 py-4">
+      <div className="mt-auto grid gap-3.5">
+        {tab === "chat" ? (
+          chatThread.length === 0 ? (
+            <p className="py-6 text-center text-[13.5px] text-room-subtle">As mensagens aparecem aqui.</p>
+          ) : (
+            chatThread.map((item) =>
               item.purchase ? (
-                <div
-                  key={item.key}
-                  className="flex items-center gap-2.5 rounded-md bg-primary/10 px-3 py-2 ring-1 ring-primary/25"
-                >
-                  <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary/20 text-primary">
-                    <ShoppingCart className="size-3.5" />
-                  </span>
-                  <p className="min-w-0 break-words text-[14px] leading-snug text-room-text">
-                    <span className="mr-1.5 font-semibold text-primary">{item.author}</span>
-                    {item.message}
-                  </p>
-                </div>
+                <SaleLine key={item.key} text={`${item.author} ${item.message}`} color={socialProof?.notification_color} />
               ) : item.mine ? (
-
-                <div key={item.key} className="flex items-start gap-3">
-                  <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-[#3A3A3A] text-[11px] font-bold text-white">
-                    EU
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm leading-snug">
-                      <span className="mr-1.5 font-semibold text-room-subtle">Você</span>
-                      {/* O que a pessoa escreve só ela vê: não chega aos outros nem afecta o lançamento. */}
-                      <span className="mr-1.5 rounded bg-room-raised px-1.5 py-px text-[10.5px] font-medium text-room-subtle">
-                        Só você vê
-                      </span>
-                      <span className="text-[11px] tabular-nums text-room-subtle">
-                        {formatMessageTime(item.at)}
-                      </span>
-                    </p>
-                    <p className="mt-0.5 break-words text-sm leading-relaxed text-room-text">
-                      {item.message}
-                    </p>
-                    {item.source ? retryNote(item.source) : null}
-                  </div>
+                <div key={item.key}>
+                  {/* O que a pessoa escreve só ela vê: não chega aos outros nem afecta o lançamento. */}
+                  <ChatLine author="Você" text={item.message} tone="mine" badge="Só você vê" big />
+                  {item.source ? retryNote(item.source) : null}
                 </div>
               ) : (
-                <div key={item.key} className="flex items-start gap-3">
-                  {item.avatarUrl ? (
-                    <img
-                      src={item.avatarUrl}
-                      alt=""
-                      className="mt-0.5 size-8 shrink-0 rounded-full object-cover ring-1 ring-room-line"
-                    />
-                  ) : (
-                    <span
-                      className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ring-1 ring-room-line ${avatarTone(item.author)}`}
-                    >
-                      {initials(item.author)}
-                    </span>
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-sm leading-snug">
-                      <span className="mr-1.5 font-semibold text-room-subtle">{item.author}</span>
-                      <span className="text-[11px] tabular-nums text-room-subtle">
-                        {formatMessageTime(item.at)}
-                      </span>
-                    </p>
-                    <p className="mt-0.5 break-words text-sm leading-relaxed text-room-text">
-                      {item.message}
-                    </p>
+                <ChatLine key={item.key} author={item.author} text={item.message} avatarUrl={item.avatarUrl} big />
+              ),
+            )
+          )
+        ) : (
+          <>
+            {supportThread.length === 0 ? (
+              <p className="px-1 py-6 text-center text-[13.5px] text-room-subtle">
+                Escreva à equipa. A resposta aparece aqui, só para si.
+              </p>
+            ) : null}
+            {supportThread.map((message) =>
+              message.fromTeam ? (
+                <div key={message.key} className="mr-auto flex max-w-[85%] flex-col items-start gap-1">
+                  <div className="w-fit rounded-2xl rounded-bl-md bg-room-raised px-3.5 py-2 text-[15px] text-room-text ring-1 ring-room-line">
+                    {message.text}
                   </div>
+                  <span className="px-1 text-[11px] tabular-nums text-room-subtle">
+                    Suporte · {formatMessageTime(message.at)}
+                  </span>
+                </div>
+              ) : (
+                <div key={message.key} className="ml-auto flex max-w-[85%] flex-col items-end gap-1">
+                  <div className="w-fit rounded-2xl rounded-br-md bg-primary px-3.5 py-2 text-[15px] text-primary-foreground">
+                    {message.text}
+                  </div>
+                  <span className="px-1 text-[11px] tabular-nums text-room-subtle">{formatMessageTime(message.at)}</span>
+                  {message.source ? retryNote(message.source) : null}
                 </div>
               ),
             )}
           </>
-        )
-      ) : (
-        <>
-          {supportThread.length === 0 ? (
-            <p className="px-1 text-center text-[13px] text-room-subtle">
-              Escreva à equipa. A resposta aparece aqui, só para si.
-            </p>
-          ) : null}
-          {supportThread.map((message) =>
-            message.fromTeam ? (
-              <div
-                key={message.key}
-                className="mr-auto flex max-w-[85%] flex-col items-start gap-1"
-              >
-                <div className="w-fit rounded-2xl rounded-bl-md bg-room-raised px-3.5 py-2 text-sm font-medium text-room-text ring-1 ring-room-line">
-                  {message.text}
-                </div>
-                <span className="px-1 text-[10px] tabular-nums text-room-subtle">
-                  Suporte · {formatMessageTime(message.at)}
-                </span>
-              </div>
-            ) : (
-              <div key={message.key} className="ml-auto flex max-w-[85%] flex-col items-end gap-1">
-                <div className="w-fit rounded-2xl rounded-br-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground">
-                  {message.text}
-                </div>
-                <span className="px-1 text-[10px] tabular-nums text-room-subtle">
-                  {formatMessageTime(message.at)}
-                </span>
-                {message.source ? retryNote(message.source) : null}
-              </div>
-            ),
-          )}
-        </>
-      )}
+        )}
+      </div>
     </div>
   );
 
@@ -1328,6 +1307,15 @@ export function WebinarRoom({
         countdownSeconds={offerRemaining}
         showCountdown={countdownTotal > 0}
         closed={offerClosed}
+        group={isGroupLink(currentOffer.url)}
+        banner={
+          openAfter !== null ? (
+            <>
+              <b className="block font-semibold">A aula terminou, mas as inscrições continuam abertas.</b>
+              Fecham daqui a {Math.ceil(openAfter / 60)} min.
+            </>
+          ) : null
+        }
       />
     </div>
   ) : null;
@@ -1516,6 +1504,20 @@ export function WebinarRoom({
           {panel}
         </aside>
       </div>
+      {groupOpen && currentOffer && ctaUrl ? (
+        <GroupJoinDialog
+          product={currentOffer.product}
+          host={webinar.host_name ?? ""}
+          prefill={{ name: prefill?.name || viewerName, email: prefill?.email ?? "", phone: prefill?.phone ?? "" }}
+          onClose={() => setGroupOpen(false)}
+          onJoin={(data) => {
+            setGroupOpen(false);
+            setCheckout(true);
+            onJoinGroup?.(data);
+            window.open(ctaUrl, "_blank", "noopener");
+          }}
+        />
+      ) : null}
     </main>
   );
 }

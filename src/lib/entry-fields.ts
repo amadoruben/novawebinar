@@ -16,7 +16,61 @@ export type EntryFieldKind =
   | "instagram"
   | "date";
 
-export type EntryField = { id: string; kind: EntryFieldKind; label: string; required: boolean };
+export type EntryField = {
+  id: string;
+  kind: EntryFieldKind;
+  label: string;
+  required: boolean;
+  /** O ícone escolhido pelo organizador (uma chave de FIELD_ICON_KEYS); sem ele, o do tipo. */
+  icon?: string | undefined;
+};
+
+/** Os ícones que o organizador pode dar a um campo. */
+export const FIELD_ICON_KEYS = [
+  "user",
+  "mail",
+  "whatsapp",
+  "phone",
+  "pin",
+  "building",
+  "briefcase",
+  "instagram",
+  "calendar",
+  "globe",
+  "school",
+  "target",
+  "wallet",
+  "users",
+  "heart",
+  "star",
+  "chat",
+  "hash",
+  "home",
+  "gift",
+  "book",
+  "link",
+  "idea",
+  "help",
+] as const;
+export type FieldIconKey = (typeof FIELD_ICON_KEYS)[number];
+
+/** O ícone de cada tipo, quando o organizador não escolheu outro. */
+export const KIND_ICON: Record<EntryFieldKind, FieldIconKey> = {
+  name: "user",
+  email: "mail",
+  whatsapp: "whatsapp",
+  text: "help",
+  phone: "phone",
+  location: "pin",
+  company: "building",
+  job: "briefcase",
+  instagram: "instagram",
+  date: "calendar",
+};
+
+export function fieldIcon(field: Pick<EntryField, "kind" | "icon">): FieldIconKey {
+  return (FIELD_ICON_KEYS as readonly string[]).includes(field.icon ?? "") ? (field.icon as FieldIconKey) : KIND_ICON[field.kind];
+}
 
 export const FIELD_KINDS: Record<
   EntryFieldKind,
@@ -64,7 +118,8 @@ export function parseEntryFields(raw: unknown, legacy: { collectPhone: boolean; 
     if (!id || seen.has(id)) continue;
     seen.add(id);
     const label = String(r["label"] ?? "").trim().slice(0, 60) || FIELD_KINDS[kind].label;
-    out.push({ id, kind, label, required: Boolean(r["required"]) });
+    const icon = typeof r["icon"] === "string" && (FIELD_ICON_KEYS as readonly string[]).includes(r["icon"]) ? r["icon"] : undefined;
+    out.push({ id, kind, label, required: Boolean(r["required"]), ...(icon ? { icon } : {}) });
   }
   return out.length ? out.slice(0, MAX_FIELDS) : defaultEntryFields(legacy.collectPhone, legacy.requirePhone);
 }

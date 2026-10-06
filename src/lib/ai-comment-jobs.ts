@@ -62,7 +62,8 @@ export type AiJobPartial = {
 
 
 export type AiSettings = {
-  variant: "pt-PT" | "pt-BR" | "mixed";
+  /** Que português e que nomes: ver chatVariant em chat-variants. */
+  variant: string;
   level: "low" | "medium" | "high" | "very-high";
   participants: number;
   emojis: "low" | "normal" | "high";

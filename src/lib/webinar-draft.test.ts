@@ -46,11 +46,15 @@ describe("erros que impedem gravar", () => {
     ]);
   });
 
-  it("minutos depois do fim do vídeo não gravam", () => {
+  it("a oferta não abre depois do fim do vídeo", () => {
     expect(blocking({ ...base, cta_start_seconds: "4000" })).toEqual([
       expect.objectContaining({ step: "oferta", field: "cta_start_seconds" }),
     ]);
-    expect(blocking({ ...base, cta_end_seconds: "4000" })).toEqual([
+  });
+
+  it("a oferta pode fechar depois do vídeo (a sala fica aberta), até um dia", () => {
+    expect(blocking({ ...base, cta_end_seconds: "4000" })).toEqual([]);
+    expect(blocking({ ...base, cta_end_seconds: String(3600 + 25 * 3600) })).toEqual([
       expect.objectContaining({ step: "oferta", field: "cta_end_seconds" }),
     ]);
   });
@@ -136,8 +140,8 @@ describe("etapas do editor", () => {
       "inicio",
       "entrada",
       "video",
-      "chat",
       "audiencia",
+      "chat",
       "oferta",
       "vendas",
       "automacoes",

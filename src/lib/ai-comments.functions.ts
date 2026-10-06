@@ -46,6 +46,7 @@ import {
 } from "@/lib/temporal/placement";
 import { AIError, chatJson } from "@/lib/ai/gateway.server";
 import { s, schema } from "@/lib/ai/schema";
+import { isChatVariant, variantText } from "@/lib/chat-variants";
 
 
 /**
@@ -185,7 +186,7 @@ export const SPEECH_SYNC = schema("speech_sync", {
 const probeSchema = z.object({ webinarId: z.string().uuid() });
 
 const settingsSchema = z.object({
-  variant: z.enum(["pt-PT", "pt-BR", "mixed"]).default("pt-PT"),
+  variant: z.string().refine(isChatVariant).default("pt-PT"),
   level: z.enum(["low", "medium", "high", "very-high"]).default("medium"),
   participants: z.coerce
     .number()
@@ -454,12 +455,6 @@ const TIMING = {
   readAloud: "entre 4 e 20 segundos antes",
   answer: "entre 2 e 45 segundos depois",
   react: "entre 3 e 30 segundos depois",
-};
-
-const variantLabel: Record<string, string> = {
-  "pt-PT": "português de Portugal",
-  "pt-BR": "português do Brasil",
-  mixed: "mistura natural de português de Portugal e do Brasil",
 };
 
 const toneLabel: Record<string, string> = {
@@ -1116,8 +1111,9 @@ async function askWindow(
       ? `Comentários que já existem e NÃO podem ser repetidos nem contrariados:\n${existing}`
       : "",
     "",
-    `Escreva até ${howMany} comentários de chat de espectadores, em ${variantLabel[settings.variant]}, com tom ${tone}.`,
-    `Use cerca de ${settings.participants} pessoas diferentes, com nomes próprios plausíveis e repetições naturais de quem fala mais.`,
+    `Escreva até ${howMany} comentários de chat de espectadores, com tom ${tone}.`,
+    variantText(settings.variant),
+    `Use cerca de ${settings.participants} pessoas diferentes, com nome e apelido plausíveis do país de cada pessoa e repetições naturais de quem fala mais.`,
     `Emojis ${emojiLabel[settings.emojis]}.`,
     settings.densityByMoment
       ? "Densidade variável: concentre muitas reações nas perguntas diretas, provas sociais, histórias, momentos emocionais e na oferta; deixe as partes técnicas quase silenciosas."
@@ -1800,7 +1796,7 @@ export async function analyseWebinarStructureImpl(supabase: any, data: any) {
       'Marque readsChat a verdadeiro quando o apresentador lê, cita ou responde ao chat ("estou a ver-vos aqui", "vi alguém perguntar", "quem perguntou isto", "tem muita gente a dizer"). Em hostQuestion escreva a pergunta direta que ele faz ao público, quando existir; caso contrário deixe vazio.',
       "Em moments, liste de 8 a 30 momentos semânticos: ideias completas com início e fim (uma ideia pode começar aos 620s e só fechar aos 648s). Para cada um: from, to (segundo em que a ideia fecha), topic (rótulo curto do tema, para memória das personas), summary, novelty de 0 a 100 (100 = revelação que muda tudo; 10 = conteúdo trivial) e reactionUntil (até que segundo faz sentido alguém reagir — normalmente to + 20 a 90).",
       "Em audienceState, estime o estado COLETIVO da audiência a cada 3 a 8 minutos (e nos pontos de viragem: prova forte, revelação de preço, garantia, CTA). São estimativas do modelo, não factos: estimatedAttention, estimatedConfusion, estimatedExcitement, estimatedTrust, estimatedPurchaseIntent, estimatedObjection e chatEnergy, todos de 0 a 100. Faça-os evoluir com a narrativa: explicação complexa sobe a confusão; exemplo claro baixa-a e sobe a confiança; prova forte sobe a confiança; preço sobe a objeção; garantia baixa-a.",
-      `Crie ${howManyPersonas} personas de participantes simulados desta sessão, em ${variantLabel[data.variant]}: nome próprio plausível, traço dominante (entusiasta, racional, cética, reservada, participativa), um perfil curto e coerente (experiência, situação, cidade) e o uso de emojis. Dê a cada uma: knowledge (iniciante, intermedio ou experiente — muda a forma como lê o conteúdo), rhythm (observadora, moderada ou participativa — quase todas observadoras ou moderadas) e arrivalAt (segundo em que entra na sala: a maioria 0, algumas chegam a meio). Nunca as apresente como clientes reais nem compradores.`,
+      `Crie ${howManyPersonas} personas de participantes simulados desta sessão: nome e apelido plausíveis do país de cada pessoa, traço dominante (entusiasta, racional, cética, reservada, participativa), um perfil curto e coerente (país, cidade, experiência, situação) e o uso de emojis. ${variantText(data.variant)} Dê a cada uma: knowledge (iniciante, intermedio ou experiente — muda a forma como lê o conteúdo), rhythm (observadora, moderada ou participativa — quase todas observadoras ou moderadas) e arrivalAt (segundo em que entra na sala: a maioria 0, algumas chegam a meio). Nunca as apresente como clientes reais nem compradores.`,
       "Em insights, aponte 5 a 12 momentos concretos para o apresentador melhorar o webinar, em linguagem simples e direta (trecho longo sem mudança de ritmo, pergunta com bom potencial, história com alta retenção, oferta que começa de forma abrupta, boa oportunidade de CTA).",
       "Em rescue, liste os trechos com previsão de baixa retenção e sugestões concretas (pergunta ao público, comentário contextual, enquete, antecipar uma promessa, CTA secundário, encurtar o trecho no próximo webinar). Não resolva tudo com mais comentários.",
       "Em score, pontue de 0 a 100: overall, retention, engagement, clarity, pace, offer, cta, mais um resumo de duas frases.",
@@ -1893,7 +1889,7 @@ export const analyseWebinarStructure = createServerFn({ method: "POST" })
           .int()
           .catch(25)
           .transform((n) => Math.min(2000, Math.max(3, n))),
-        variant: z.enum(["pt-PT", "pt-BR", "mixed"]).catch("pt-PT"),
+        variant: z.string().refine(isChatVariant).catch("pt-PT"),
       })
       .parse(data),
   )

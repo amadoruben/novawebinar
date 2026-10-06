@@ -284,6 +284,44 @@ export async function recordCta(data: {
 }
 
 /**
+ * Entrar no grupo da oferta (WhatsApp ou Telegram): a pessoa confirma o nome, o e-mail e o
+ * WhatsApp, e fica marcada em `participants.answers.grupo`. Depois conta como clique na oferta,
+ * para as automações e as métricas separarem quem entrou no grupo e comprou de quem não comprou.
+ */
+export async function recordGroupJoin(data: {
+  participantId: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  videoSecond?: number | undefined;
+}) {
+  const { data: participant, error } = await supabaseAdmin
+    .from("participants")
+    .select("id, name, email, phone, answers")
+    .eq("id", data.participantId)
+    .maybeSingle();
+  if (error) throw new Error(UNAVAILABLE);
+  if (!participant) return { ok: false };
+  const answers =
+    participant.answers && typeof participant.answers === "object" && !Array.isArray(participant.answers)
+      ? (participant.answers as Record<string, unknown>)
+      : {};
+  // O e-mail só substitui o provisório da entrada sem formulário; nunca outro já confirmado.
+  const placeholder = !participant.email || participant.email.endsWith("@sala.local");
+  const { error: updateError } = await supabaseAdmin
+    .from("participants")
+    .update({
+      name: data.name || participant.name,
+      ...(data.email && placeholder ? { email: data.email } : {}),
+      ...(data.phone ? { phone: data.phone } : {}),
+      answers: { ...answers, grupo: new Date().toISOString() },
+    })
+    .eq("id", participant.id);
+  if (updateError) throw new Error(UNAVAILABLE);
+  return recordCta({ participantId: participant.id, eventType: "click", videoSecond: data.videoSecond });
+}
+
+/**
  * Credencial da sala: o id da participação assinado pelo servidor. Só quem entra pela sala a
  * recebe; saber o id (de um webhook, de uma resposta da API) não chega para ler ou escrever
  * no chat privado de outra pessoa.

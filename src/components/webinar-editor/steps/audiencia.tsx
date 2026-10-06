@@ -1,14 +1,18 @@
 import { useMemo, useRef } from "react";
 import { Activity, ChevronDown, EyeOff, Radio, Users } from "lucide-react";
 import { AUDIENCE_FORMATS, clock, curveValueAt, type AudienceFormat } from "@/lib/room-logic";
-import { Field, Note, Section } from "../ui";
+import { Field, Note, PickerButton, Section, WheelBox, WheelColumn } from "../ui";
 import type { EditorClock } from "./video";
 
-const SCALES = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000];
+/** Os números das rodas: passos que se lêem bem, do pequeno ao grande. */
+const STEPS = [
+  0, 5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 120, 150, 180, 200, 250, 300, 350, 400, 450, 500, 600, 700, 800,
+  900, 1000, 1200, 1500, 1800, 2000, 2500, 3000, 3500, 4000, 5000, 6000, 7500, 10000, 12500, 15000, 20000, 30000, 50000,
+];
 
-/** A escala da barra: sempre com folga acima do máximo, para os dois pontos nunca se taparem. */
-export function audienceScale(max: number) {
-  return SCALES.find((s) => s >= max * 1.25) ?? Math.ceil((max * 1.25) / 10000) * 10000;
+/** As rodas de um número: os passos, mais o valor actual se não for um deles. */
+function wheelItems(value: number) {
+  return [...new Set([...STEPS, value])].sort((a, b) => a - b);
 }
 
 /** Audiência: quantas pessoas a sala mostra e como o número muda ao longo do vídeo. */
@@ -21,7 +25,6 @@ export function StepAudiencia({
   curve,
   pitch,
   clock: c,
-  onFocusViewers,
 }: {
   format: AudienceFormat;
   onFormat: (format: AudienceFormat) => void;
@@ -31,14 +34,15 @@ export function StepAudiencia({
   curve: readonly number[];
   pitch: number | null;
   clock: EditorClock;
-  onFocusViewers: (on: boolean) => void;
 }) {
   const simulated = format !== "real" && format !== "off";
   const chosen = AUDIENCE_FORMATS.find((f) => f.value === format)!;
-  const top = audienceScale(max);
-  const step = Math.max(1, Math.round(top / 400));
-  const setMin = (v: number) => onRange(Math.max(0, Math.min(v, max - step)), max);
-  const setMax = (v: number) => onRange(min, Math.max(v, min + step));
+  const mins = wheelItems(min).filter((v) => v < 50000);
+  const maxs = wheelItems(max).filter((v) => v > 0);
+  // O máximo fica sempre acima do mínimo: se o mínimo passar, o máximo sobe com ele.
+  const pickMin = (v: number) => onRange(v, max > v ? max : (maxs.find((m) => m > v) ?? v + 1));
+  const pickMax = (v: number) => onRange(min < v ? min : (mins.filter((m) => m < v).at(-1) ?? 0), v);
+  const fmt = (n: number) => n.toLocaleString("pt-PT");
 
   return (
     <>
@@ -48,48 +52,26 @@ export function StepAudiencia({
         ) : format === "real" ? (
           <Note icon={Radio}>A sala mostra só quem está mesmo a ver, sem número simulado.</Note>
         ) : (
-          <>
-            <div className="grid grid-cols-2 gap-2.5">
-              <CountBox label="No mínimo" value={min} onChange={setMin} onFocus={onFocusViewers} />
-              <CountBox label="No máximo" value={max} onChange={setMax} onFocus={onFocusViewers} />
+          <PickerButton
+            icon={Users}
+            value={
+              <>
+                {fmt(min)} <span className="font-normal text-muted-foreground">→</span> {fmt(max)}{" "}
+                <span className="text-[13px] font-normal text-muted-foreground">pessoas</span>
+              </>
+            }
+            title="Pessoas na sala"
+            hint="Rode as duas rodas: com quantas a sala começa e até quantas chega."
+          >
+            <WheelBox>
+              <WheelColumn label="Mínimo" items={mins.map(fmt)} index={mins.indexOf(min)} onSettle={(i) => pickMin(mins[i]!)} wide />
+              <WheelColumn label="Máximo" items={maxs.map(fmt)} index={maxs.indexOf(max)} onSettle={(i) => pickMax(maxs[i]!)} wide />
+            </WheelBox>
+            <div className="mt-1.5 grid grid-cols-2 text-center text-[11.5px] font-medium text-muted-foreground">
+              <span>Começa com</span>
+              <span>Chega até</span>
             </div>
-            <div className="relative h-8">
-              <div className="absolute inset-x-2.5 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-gray-200" />
-              <div
-                className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground"
-                style={{
-                  left: `calc(10px + (100% - 20px) * ${min / top})`,
-                  right: `calc(10px + (100% - 20px) * ${1 - max / top})`,
-                }}
-              />
-              <input
-                type="range"
-                min={0}
-                max={top}
-                step={step}
-                value={min}
-                onChange={(e) => setMin(Number(e.target.value))}
-                aria-label="Mínimo de pessoas"
-                className="cw-range absolute inset-0 w-full"
-              />
-              <input
-                type="range"
-                min={0}
-                max={top}
-                step={step}
-                value={max}
-                onChange={(e) => setMax(Number(e.target.value))}
-                aria-label="Máximo de pessoas"
-                className="cw-range absolute inset-0 w-full"
-              />
-            </div>
-            <div className="flex justify-between font-mono text-[11px] text-muted-foreground">
-              <span>0</span>
-              <span>{(top / 2).toLocaleString("pt-PT")}</span>
-              <span>{top.toLocaleString("pt-PT")}</span>
-            </div>
-            <style>{RANGE_CSS}</style>
-          </>
+          </PickerButton>
         )}
       </Section>
 
@@ -120,37 +102,6 @@ export function StepAudiencia({
         </Section>
       ) : null}
     </>
-  );
-}
-
-const RANGE_CSS = `.cw-range{appearance:none;-webkit-appearance:none;background:transparent;pointer-events:none;height:32px;margin:0}.cw-range::-webkit-slider-thumb{-webkit-appearance:none;pointer-events:auto;width:22px;height:22px;border-radius:50%;background:#fff;border:2px solid #171717;box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:grab}.cw-range::-moz-range-thumb{pointer-events:auto;width:18px;height:18px;border-radius:50%;background:#fff;border:2px solid #171717;cursor:grab}.cw-range:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px rgba(0,114,245,.35)}`;
-
-function CountBox({
-  label,
-  value,
-  onChange,
-  onFocus,
-}: {
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
-  onFocus: (on: boolean) => void;
-}) {
-  return (
-    <label className="grid gap-1 rounded-xl border bg-white px-3 py-2.5 focus-within:border-foreground focus-within:shadow-[inset_0_0_0_1px_var(--foreground)]">
-      <span className="text-[12px] text-muted-foreground">{label}</span>
-      <span className="flex items-baseline gap-1.5">
-        <input
-          inputMode="numeric"
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value.replace(/\D/g, "")) || 0)}
-          onFocus={() => onFocus(true)}
-          onBlur={() => onFocus(false)}
-          className="w-full min-w-0 bg-transparent font-mono text-[22px] font-semibold tabular-nums outline-none"
-        />
-        <span className="text-[12px] text-muted-foreground">pessoas</span>
-      </span>
-    </label>
   );
 }
 

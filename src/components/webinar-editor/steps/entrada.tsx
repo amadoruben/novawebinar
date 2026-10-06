@@ -8,13 +8,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import {
   BASE_KINDS,
-  EXTRA_KINDS,
+  FIELD_ICON_KEYS,
   FIELD_KINDS,
   MAX_FIELDS,
   entryFieldsProblem,
+  fieldIcon,
   newFieldId,
   type EntryField,
   type EntryFieldKind,
+  type FieldIconKey,
 } from "@/lib/entry-fields";
 import { ENTRY_BUTTON_DEFAULT, ENTRY_CARD_DEFAULT } from "@/lib/room-logic";
 import { FieldIcon } from "@/components/room/entry-screen";
@@ -49,6 +51,7 @@ export function StepEntrada({
   embed: { code: string | null; creating: boolean; onCreate: () => void };
 }) {
   const problem = entryFieldsProblem(fields);
+  const [justAdded, setJustAdded] = useState<string | null>(null);
   const copy = (text: string, what: string) => {
     void navigator.clipboard.writeText(text);
     toast.success(`${what} copiado.`);
@@ -64,16 +67,23 @@ export function StepEntrada({
     }
     onFields(next);
   };
-  const add = (kind: EntryFieldKind) => {
+  /** Um campo novo: escreve-se o nome e escolhe-se o ícone. */
+  const addCustom = () => {
     if (fields.length >= MAX_FIELDS) {
       toast.error(`No máximo ${MAX_FIELDS} campos.`);
       return;
     }
-    const base = BASE_KINDS.includes(kind);
-    onFields([
-      ...fields,
-      { id: base ? kind : newFieldId(), kind, label: FIELD_KINDS[kind].label, required: kind === "email" },
-    ]);
+    const id = newFieldId();
+    onFields([...fields, { id, kind: "text", label: "", required: false, icon: "help" }]);
+    setJustAdded(id);
+  };
+  /** Voltar a pôr o nome, o e-mail ou o WhatsApp. */
+  const restore = (kind: EntryFieldKind) => {
+    if (fields.length >= MAX_FIELDS) {
+      toast.error(`No máximo ${MAX_FIELDS} campos.`);
+      return;
+    }
+    onFields([...fields, { id: kind, kind, label: FIELD_KINDS[kind].label, required: kind !== "whatsapp" }]);
   };
   const missingBase = BASE_KINDS.filter((kind) => !fields.some((f) => f.kind === kind));
 
@@ -128,27 +138,33 @@ export function StepEntrada({
           {fields.map((field) => (
             <div
               key={field.id}
-              className="grid grid-cols-[minmax(0,1fr)_auto_28px] items-center gap-2 border-b px-3 py-2 last:border-b-0"
+              className="grid grid-cols-[minmax(0,1fr)_auto_28px] items-center gap-2 border-b px-3 py-2"
             >
               <span className="flex min-w-0 items-center gap-2">
-                <KindPicker field={field} onKind={(kind) => update(field.id, { kind, label: FIELD_KINDS[kind].label })} />
+                <IconPicker field={field} onIcon={(icon) => update(field.id, { icon })} />
                 <input
                   value={field.label}
+                  autoFocus={justAdded === field.id}
                   onChange={(e) => update(field.id, { label: e.target.value.slice(0, 60) })}
-                  onBlur={(e) => !e.target.value.trim() && update(field.id, { label: FIELD_KINDS[field.kind].label })}
+                  onBlur={(e) => {
+                    if (!e.target.value.trim())
+                      update(field.id, { label: field.kind === "text" ? "Nova pergunta" : FIELD_KINDS[field.kind].label });
+                    if (justAdded === field.id) setJustAdded(null);
+                  }}
+                  placeholder="Escreva o nome do campo"
                   aria-label="Nome do campo"
-                  className="h-8 min-w-0 flex-1 rounded-md bg-transparent px-1.5 text-sm font-medium outline-none hover:bg-gray-50 focus:bg-white focus:shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-400)]"
+                  className="h-8 min-w-0 flex-1 rounded-md bg-transparent px-1.5 text-sm font-medium outline-none placeholder:font-normal placeholder:text-muted-foreground hover:bg-gray-50 focus:bg-white focus:shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-400)]"
                 />
               </span>
               <Switch
                 checked={field.required}
                 onCheckedChange={(required) => update(field.id, { required })}
-                aria-label={`${field.label} obrigatório`}
+                aria-label={`${field.label || "Campo"} obrigatório`}
               />
               <button
                 type="button"
                 onClick={() => remove(field.id)}
-                aria-label={`Tirar ${field.label}`}
+                aria-label={`Tirar ${field.label || "o campo"}`}
                 title="Tirar o campo"
                 className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-[var(--ds-gray-alpha-200)] hover:text-foreground"
               >
@@ -156,34 +172,40 @@ export function StepEntrada({
               </button>
             </div>
           ))}
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                disabled={fields.length >= MAX_FIELDS}
-                className="flex w-full items-center gap-2 border-t px-3 py-2.5 text-left text-[13px] font-medium text-foreground hover:bg-gray-50 disabled:opacity-40"
-              >
-                <span className="grid size-6 place-items-center rounded-md bg-foreground text-background">
-                  <Plus className="size-3.5" />
-                </span>
-                Adicionar campo
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-[280px] p-2">
-              {missingBase.length ? (
-                <>
-                  <p className="px-1.5 pb-1 text-[11.5px] font-medium text-muted-foreground">Dados do contacto</p>
-                  <KindGrid kinds={missingBase} onPick={add} />
-                </>
-              ) : null}
-              <p className="px-1.5 pb-1 pt-1.5 text-[11.5px] font-medium text-muted-foreground">Mais perguntas</p>
-              <KindGrid kinds={EXTRA_KINDS} onPick={add} />
-            </PopoverContent>
-          </Popover>
+          <button
+            type="button"
+            onClick={addCustom}
+            disabled={fields.length >= MAX_FIELDS}
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] font-medium text-foreground hover:bg-gray-50 disabled:opacity-40"
+          >
+            <span className="grid size-7 place-items-center rounded-full bg-foreground text-background">
+              <Plus className="size-3.5" />
+            </span>
+            Adicionar campo
+            <span className="ml-auto text-[12px] font-normal text-muted-foreground">
+              {fields.length}/{MAX_FIELDS}
+            </span>
+          </button>
         </div>
+        {missingBase.length ? (
+          <div className="flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted-foreground">
+            Repor:
+            {missingBase.map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => restore(kind)}
+                className="inline-flex h-7 items-center gap-1.5 rounded-full border bg-white px-2.5 font-medium text-foreground hover:bg-gray-50"
+              >
+                <FieldIcon kind={kind} className="size-3.5" />
+                {FIELD_KINDS[kind].label}
+              </button>
+            ))}
+          </div>
+        ) : null}
         {problem ? <p className="text-[12.5px] text-warning">{problem}</p> : null}
         <p className="text-[12.5px] text-muted-foreground">
-          Clique no ícone para trocar o tipo e no nome para o mudar. Na página, os obrigatórios levam *.
+          Clique no ícone para o trocar e no nome para escrever o que quiser. Na página, os obrigatórios levam *.
         </p>
       </Section>
 
@@ -241,61 +263,48 @@ export function StepEntrada({
   );
 }
 
-function KindPicker({ field, onKind }: { field: EntryField; onKind: (kind: EntryFieldKind) => void }) {
-  const base = BASE_KINDS.includes(field.kind);
-  const icon = (
-    <span
-      className={cn(
-        "grid size-7 shrink-0 place-items-center rounded-full",
-        field.kind === "whatsapp" ? "bg-[#25D366]/15" : "bg-chip",
-        !base && "hover:ring-1 hover:ring-foreground/30",
-      )}
-    >
-      <FieldIcon kind={field.kind} className="size-3.5" />
-    </span>
-  );
-  // Nome, e-mail e WhatsApp são os dados do contacto: o tipo não muda.
-  if (base) return <span title={FIELD_KINDS[field.kind].label}>{icon}</span>;
+/** O ícone do campo: abre um pop-up com os ícones para escolher. */
+function IconPicker({ field, onIcon }: { field: EntryField; onIcon: (icon: FieldIconKey) => void }) {
+  const [open, setOpen] = useState(false);
+  const current = fieldIcon(field);
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button type="button" aria-label="Trocar o tipo do campo" title="Trocar o tipo">
-          {icon}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-[280px] p-2">
-        <KindGrid kinds={EXTRA_KINDS} onPick={onKind} current={field.kind} />
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function KindGrid({
-  kinds,
-  onPick,
-  current,
-}: {
-  kinds: readonly EntryFieldKind[];
-  onPick: (kind: EntryFieldKind) => void;
-  current?: EntryFieldKind;
-}) {
-  return (
-    <div className="grid grid-cols-2 gap-1">
-      {kinds.map((kind) => (
         <button
-          key={kind}
           type="button"
-          onClick={() => onPick(kind)}
+          aria-label="Escolher o ícone do campo"
+          title="Escolher o ícone"
           className={cn(
-            "flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-accent",
-            current === kind && "bg-accent font-medium",
+            "grid size-8 shrink-0 place-items-center rounded-full transition hover:ring-1 hover:ring-foreground/30",
+            current === "whatsapp" ? "bg-[#25D366]/15" : "bg-chip",
           )}
         >
-          <FieldIcon kind={kind} className="size-4 shrink-0" />
-          {FIELD_KINDS[kind].label}
+          <FieldIcon kind={field.kind} icon={field.icon} className="size-4" />
         </button>
-      ))}
-    </div>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[260px] p-2.5">
+        <p className="px-0.5 pb-2 text-[12.5px] font-semibold">Ícone do campo</p>
+        <div className="grid grid-cols-6 gap-1">
+          {FIELD_ICON_KEYS.map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => {
+                onIcon(key);
+                setOpen(false);
+              }}
+              aria-label={key}
+              className={cn(
+                "grid size-9 place-items-center rounded-lg transition hover:bg-accent",
+                key === current && "bg-foreground text-background hover:bg-foreground",
+              )}
+            >
+              <FieldIcon kind="text" icon={key} className="size-[18px]" />
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

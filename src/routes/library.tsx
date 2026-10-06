@@ -4,8 +4,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { MonitorPlay, Plus, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import { Clock3, EmptySection, Play } from "@/components/page-primitives";
+import { Clock3, EmptySection } from "@/components/page-primitives";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { VideoThumb } from "@/components/video-thumb";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,63 +42,6 @@ export const Route = createFileRoute("/library")({
 });
 
 type Provider = Database["public"]["Enums"]["video_provider"];
-
-function posterFromUrl(url: string | null | undefined) {
-  if (!url) return null;
-  const youtube = url.match(
-    /(?:youtube\.com\/(?:watch\?v=|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/,
-  );
-  if (youtube) return `https://i.ytimg.com/vi/${youtube[1]}/hqdefault.jpg`;
-  const bunny = url.match(/(?:iframe|video)\.mediadelivery\.net\/(?:embed|play)\/(\d+)\/([\w-]+)/);
-  if (bunny) return `https://vz-${bunny[1]}.b-cdn.net/${bunny[2]}/thumbnail.jpg`;
-  const bunnyCdn = url.match(/^(https:\/\/[^/]*\.b-cdn\.net\/[0-9a-f-]+)\//i);
-  if (bunnyCdn) return `${bunnyCdn[1]}/thumbnail.jpg`;
-  return null;
-}
-
-function VideoThumb({
-  name,
-  thumbnailUrl,
-  sourceUrl,
-}: {
-  name: string;
-  thumbnailUrl: string | null | undefined;
-  sourceUrl: string | null | undefined;
-}) {
-  const [failed, setFailed] = useState(false);
-  const poster = thumbnailUrl || posterFromUrl(sourceUrl);
-  const isFile = !!sourceUrl && /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(sourceUrl);
-
-  return (
-    <div className="relative flex aspect-video items-center justify-center overflow-hidden bg-sidebar text-sidebar-foreground">
-      {poster && !failed ? (
-        <img
-          src={poster}
-          alt={name}
-          loading="lazy"
-          className="size-full object-cover"
-          onError={() => setFailed(true)}
-        />
-      ) : isFile && !failed ? (
-        <video
-          src={`${sourceUrl}#t=2`}
-          muted
-          playsInline
-          preload="metadata"
-          className="size-full object-cover"
-          onError={() => setFailed(true)}
-        />
-      ) : (
-        <Play className="size-9" />
-      )}
-      {(poster || isFile) && !failed && (
-        <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-foreground/25 text-primary-foreground">
-          <Play className="size-8" />
-        </span>
-      )}
-    </div>
-  );
-}
 
 function LibraryPage() {
   const { data: workspace } = useWorkspace();

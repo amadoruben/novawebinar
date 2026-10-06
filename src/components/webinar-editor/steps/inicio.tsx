@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { VerifiedBadge } from "@/components/room/room-parts";
 import { cn } from "@/lib/utils";
 import { slugify } from "@/lib/data";
 import whatsappIcon from "@/assets/local/whatsapp-icon.webp";
@@ -88,9 +89,7 @@ export function StepInicio({
           <span className="min-w-0 flex-1">
             <b className="flex items-center gap-1.5 text-[15px] font-semibold">
               <span className="truncate">{form.host_name || "Quem apresenta"}</span>
-              {form.host_verified ? (
-                <BadgeCheck className="size-[18px] shrink-0 fill-[#0095f6] text-white" aria-label="Verificado" />
-              ) : null}
+              {form.host_verified ? <VerifiedBadge className="size-4 text-[#606060]" check="#fff" /> : null}
             </b>
             <span className="block truncate text-[12.5px] text-muted-foreground">{form.host_role || "Cargo"}</span>
           </span>
@@ -129,7 +128,7 @@ export function StepInicio({
         <SwitchRow
           icon={BadgeCheck}
           title="Selo de verificado"
-          description="Aparece ao lado do nome, na sala."
+          description="Como no YouTube: aparece ao lado do nome, na sala, e muda de cor com o tema."
           checked={form.host_verified}
           onChange={(host_verified) => set({ host_verified })}
         />

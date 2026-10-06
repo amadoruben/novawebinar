@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   defaultEntryFields,
   entryFieldsProblem,
+  fieldIcon,
   parseEntryFields,
   validateEntry,
   type EntryField,
@@ -82,5 +83,22 @@ describe("número do WhatsApp", () => {
   it("o indicativo do país fica no número", () => {
     const fields: EntryField[] = [{ id: "whatsapp", kind: "whatsapp", label: "WhatsApp", required: true }];
     expect(validateEntry(fields, { whatsapp: "+244 923 456 789" })).toMatchObject({ ok: true, phone: "+244 923 456 789" });
+  });
+});
+
+describe("ícones dos campos", () => {
+  it("guarda o ícone escolhido e ignora chaves desconhecidas", () => {
+    const fields = parseEntryFields(
+      [
+        { id: "email", kind: "email", label: "E-mail", required: true },
+        { id: "f_1", kind: "text", label: "Qual é o seu negócio?", required: false, icon: "building" },
+        { id: "f_2", kind: "text", label: "Cidade", required: false, icon: "nada" },
+      ],
+      { collectPhone: false, requirePhone: false },
+    );
+    expect(fields[1]).toMatchObject({ label: "Qual é o seu negócio?", icon: "building" });
+    expect(fields[2]!.icon).toBeUndefined();
+    expect(fieldIcon(fields[2]!)).toBe("help");
+    expect(fieldIcon(fields[0]!)).toBe("mail");
   });
 });

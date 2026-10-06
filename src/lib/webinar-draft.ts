@@ -26,8 +26,9 @@ export const EDITOR_STEPS = [
   { id: "inicio", label: "Início", group: "antes" },
   { id: "entrada", label: "Página", group: "antes" },
   { id: "video", label: "Vídeo", group: "sala" },
-  { id: "chat", label: "Chat", group: "sala" },
+  // A audiência vem antes do chat: o volume de comentários segue o número de pessoas.
   { id: "audiencia", label: "Audiência", group: "sala" },
+  { id: "chat", label: "Chat", group: "sala" },
   { id: "oferta", label: "Oferta", group: "sala" },
   { id: "vendas", label: "Vendas", group: "sala" },
   { id: "automacoes", label: "Automações", group: "depois" },
@@ -36,6 +37,9 @@ export const EDITOR_STEPS = [
 ] as const;
 
 export type EditorStep = (typeof EDITOR_STEPS)[number]["id"];
+
+/** Depois do vídeo, a oferta (e a sala) pode ficar aberta até um dia. */
+export const MAX_OPEN_AFTER_SECONDS = 24 * 3600;
 
 /** Etapas antigas que deixaram de existir e a etapa onde ficou o que tinham. */
 const MOVED_STEPS: Record<string, EditorStep> = {
@@ -91,11 +95,8 @@ export function webinarIssues(
   }
   if (end !== null && end <= (start ?? 0)) {
     offer("cta_end_seconds", "A oferta tem de desaparecer depois de aparecer.");
-  } else if (duration > 0 && end !== null && end > duration) {
-    offer(
-      "cta_end_seconds",
-      "A oferta desaparece depois do fim do vídeo. Deixe vazio para ficar até ao fim.",
-    );
+  } else if (duration > 0 && end !== null && end > duration + MAX_OPEN_AFTER_SECONDS) {
+    offer("cta_end_seconds", "A sala só fica aberta até 24 horas depois do fim do vídeo.");
   }
 
   if (draft.recurrence_enabled && !draft.recurrence_start_time) {

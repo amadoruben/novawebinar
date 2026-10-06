@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   applyChatRealism,
+  chatPace,
   chatTagLabel,
   DEFAULT_CHAT_RULES,
   hostQuestions,
   mobileText,
   namePool,
+  parseChatRules,
   parseCommentSheet,
   stripEmoji,
   type ChatDraft,
@@ -21,7 +23,7 @@ const ctx = { durationSeconds: 329, pitchSeconds: 311, questions: [69, 168] };
 describe("regras do chat simulado", () => {
   it("nomes do país e nunca o mesmo nome antes de dois minutos", () => {
     const out = applyChatRealism(drafts, DEFAULT_CHAT_RULES, ctx);
-    const pool = new Set(namePool("ao"));
+    const pool = new Set(namePool(["ao"]));
     const last = new Map<string, number>();
     for (const c of out) {
       expect(pool.has(c.author)).toBe(true);
@@ -42,15 +44,34 @@ describe("regras do chat simulado", () => {
     const out = applyChatRealism(drafts, DEFAULT_CHAT_RULES, ctx);
     expect(out.filter((c) => c.tag === "late")).toHaveLength(3);
     const answers = out.filter((c) => c.tag === "answer");
-    expect(answers).toHaveLength(6);
+    expect(answers).toHaveLength(8);
     expect(answers.every((c) => c.at > 69)).toBe(true);
   });
 
-  it("no máximo duas pessoas dizem que são alunas, perto da oferta", () => {
-    const out = applyChatRealism(drafts, DEFAULT_CHAT_RULES, ctx);
+  it("os alunos dizem de que curso são e aparecem depois de a oferta abrir", () => {
+    const long: ChatDraft[] = Array.from({ length: 60 }, (_, i) => ({ at: 10 + i * 19, author: "Gerado", message: `Mensagem ${i}` }));
+    const rules = { ...DEFAULT_CHAT_RULES, alunos: { on: true, product: "Mentoria Primo", count: 3, when: "oferta" as const } };
+    const out = applyChatRealism(long, rules, { durationSeconds: 1200, pitchSeconds: 600 });
     const alunos = out.filter((c) => c.tag === "aluno");
-    expect(alunos.length).toBeLessThanOrEqual(2);
-    expect(alunos.every((c) => c.at > 311 - 30)).toBe(true);
+    expect(alunos).toHaveLength(3);
+    expect(alunos.every((c) => c.at > 600 && c.message.includes("Mentoria Primo"))).toBe(true);
+    const spread = applyChatRealism(long, { ...rules, alunos: { ...rules.alunos, when: "aula" as const } }, {
+      durationSeconds: 1200,
+      pitchSeconds: 600,
+    }).filter((c) => c.tag === "aluno");
+    expect(spread.some((c) => c.at < 600)).toBe(true);
+  });
+
+  it("os nomes do gerador (nome e apelido) ficam; os outros vêm da lista do país", () => {
+    const out = applyChatRealism(
+      [{ at: 30, author: "Célia Macuácua", message: "Boa noite, maningue bom" } as ChatDraft],
+      { ...DEFAULT_CHAT_RULES, countries: ["mz"], late: true },
+      { durationSeconds: 300, pitchSeconds: null },
+    );
+    expect(out.find((c) => c.message.startsWith("Boa noite, maningue"))!.author).toBe("Célia Macuácua");
+    const late = out.filter((c) => c.tag === "late");
+    expect(late.every((c) => namePool(["mz"]).includes(c.author))).toBe(true);
+    expect(late.some((c) => c.message.includes("Maputo"))).toBe(true);
   });
 
   it("sem emojis ou no tom formal, as mensagens saem sem emojis", () => {
@@ -79,6 +100,32 @@ describe("regras do chat simulado", () => {
       audienceAt: () => 0.1,
     });
     expect(quiet.length).toBeLessThan(drafts.length);
+  });
+});
+
+describe("países, volume e regras antigas", () => {
+  it("nome e apelido de cada país, intercalados numa mistura", () => {
+    const pool = namePool(["ao", "br"]);
+    expect(pool.every((n) => n.split(" ").length >= 2)).toBe(true);
+    expect(pool[0]).toMatch(/^Edson /);
+    expect(pool[1]).toMatch(/^Ana Clara /);
+  });
+
+  it("o volume do chat segue o número de pessoas", () => {
+    expect(chatPace(50, "normal").perMinute).toBeGreaterThanOrEqual(3);
+    expect(chatPace(600, "normal").perMinute).toBe(12);
+    expect(chatPace(5000, "normal").perMinute).toBe(30);
+    expect(chatPace(600, "mais").perMinute).toBeGreaterThan(chatPace(600, "menos").perMinute);
+    expect(chatPace(600, "normal").people).toBe(72);
+  });
+
+  it("as regras antigas (um país, intensidade, alunos em número) ainda se lêem", () => {
+    const rules = parseChatRules({ country: "mix", level: "alta", alunos: 2, tone: "vendas" });
+    expect(rules.countries).toEqual(["ao", "br", "pt"]);
+    expect(rules.volume).toBe("mais");
+    expect(rules.alunos).toMatchObject({ on: true, count: 2, when: "oferta" });
+    expect(rules.tone).toBe("vendas");
+    expect(parseChatRules(null)).toEqual(DEFAULT_CHAT_RULES);
   });
 });
 

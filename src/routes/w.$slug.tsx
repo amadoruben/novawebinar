@@ -20,6 +20,7 @@ import {
   getPublicRoom,
   joinPublicRoom,
   getPublicRoomMessages,
+  joinOfferGroup,
   sendPublicRoomMessage,
   trackPublicRoomCta,
   trackPublicRoomProgress,
@@ -127,6 +128,7 @@ export function PublicRoom({
   const join = useServerFn(joinPublicRoom);
   const sendMessage = useServerFn(sendPublicRoomMessage);
   const trackCta = useServerFn(trackPublicRoomCta);
+  const joinGroup = useServerFn(joinOfferGroup);
   const fetchMessages = useServerFn(getPublicRoomMessages);
   const trackProgress = useServerFn(trackPublicRoomProgress);
 
@@ -321,6 +323,22 @@ export function PublicRoom({
       );
     },
     [trackCta, viewer],
+  );
+
+  // Entrar no grupo da oferta: os dados confirmados ficam na participação e contam como clique.
+  const sendGroupJoin = useCallback(
+    (person: { name: string; email: string; phone: string }) => {
+      if (!viewer) return;
+      const data = {
+        token: viewer.token,
+        name: person.name,
+        ...(person.email ? { email: person.email } : {}),
+        ...(person.phone ? { phone: person.phone } : {}),
+        videoSecond: Math.max(0, Math.round(positionRef.current)),
+      };
+      void retry(() => joinGroup({ data })).catch((error: unknown) => console.error("[oferta] grupo não registado", error));
+    },
+    [joinGroup, viewer],
   );
 
   // Acesso facilitado: entram logo na sala, sem formulário. A sala de teste
@@ -615,6 +633,12 @@ export function PublicRoom({
       sales={{ where: webinar.sales_where === "chat" || webinar.sales_where === "video" ? webinar.sales_where : "both", real: webinar.sales_show_real }}
       audienceFormat={audience.format}
       hostVerified={webinar.host_verified}
+      onJoinGroup={sendGroupJoin}
+      prefill={{
+        name: values["name"] ?? "",
+        email: values["email"] ?? "",
+        phone: values["whatsapp"] ? `${phoneCountry.dial} ${values["whatsapp"]}` : "",
+      }}
       mode={roomMode}
       startsAt={roomStartsAt}
       viewerName={viewer.name}

@@ -17,17 +17,18 @@
 --room-player:linear-gradient(160deg,#262626 0%,#141414 100%); /* @kind color */
 }
 [data-room-theme="light"],.room-light{
+/* Claro como o chat ao vivo do YouTube: branco, linhas finas e texto quase preto. */
 --room-bg:#FFFFFF;
---room-surface:var(--gray-100);
---room-raised:var(--gray-150);
---room-line:var(--border-hairline);
---room-ink:var(--navy);
---room-ink-2:var(--text-secondary);
---room-msg:var(--ink-soft);
+--room-surface:#FFFFFF;
+--room-raised:#F2F2F2;
+--room-line:#E5E5E5;
+--room-ink:#0F0F0F;
+--room-ink-2:#606060;
+--room-msg:#0F0F0F;
 --room-host:var(--accent);
---room-avatar:var(--mist);
---room-avatar-ink:var(--navy);
+--room-avatar:#F2F2F2;
+--room-avatar-ink:#0F0F0F;
 --room-offer-bg:var(--accent-soft);
---room-offer-ink:var(--navy);
+--room-offer-ink:#0F0F0F;
 --room-offer-line:transparent;
 }

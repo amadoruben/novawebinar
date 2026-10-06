@@ -1,53 +1,142 @@
-import { useEffect, useRef, useState } from "react";
-import { BarChart3, Check, Clock, Flag, Gift, Layers, Play, ShoppingBag, ShoppingCart, Target, X } from "lucide-react";
+import { useRef, useState } from "react";
+import {
+  BarChart3,
+  ChevronDown,
+  Clock,
+  DoorOpen,
+  Gift,
+  Play,
+  Plus,
+  Target,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { clock, discountPercent, type OfferSlot } from "@/lib/room-logic";
-import { Field, Section, Seg, SwitchRow, Tag } from "../ui";
+import { clock, discountPercent, isGroupLink, type OfferSlot } from "@/lib/room-logic";
+import { Field, MinuteWheel, Note, PickerButton, Section, Seg, SwitchRow, Tag } from "../ui";
 import type { EditorClock } from "./video";
 import type { EditorForm, FocusProps, SetForm } from "../form";
 
-const PRESETS = ["0", "300", "600", "900"] as const;
+type Target = "checkout" | "page" | "group";
+const MAX_EXTRAS = 3;
+const COUNTDOWNS = ["0", "300", "600", "900", "1800"] as const;
+const AFTER = [0, 15, 30, 60, 120] as const;
 
-/** Oferta: o que vende, quando aparece (e desaparece), uma oferta seguinte e a urgência. */
+/** Para onde leva o botão, a partir do link: grupo, checkout ou página de vendas. */
+function targetOf(url: string): Target {
+  if (isGroupLink(url)) return "group";
+  return !url || /checkout|pay\.|kambafy|hotmart|eduzz|kiwify|stripe/i.test(url) ? "checkout" : "page";
+}
+
+/** Uma oferta no ecrã: a principal (campos do webinar) ou uma das seguintes. */
+type OfferView = {
+  id: string;
+  product: string;
+  priceFrom: string;
+  priceNow: string;
+  url: string;
+  button: string;
+  start: number | null;
+  end: number | null;
+};
+
+/** Oferta: as ofertas da sala (a principal e as seguintes), a urgência e o que fica depois do vídeo. */
 export function StepOferta({
   form,
   set,
   focus,
   product,
   onProduct,
-  extra,
-  onExtra,
+  extras,
+  onExtras,
   suggestedPitch,
   clock: c,
   onWatch,
+  onAfter,
 }: {
   form: EditorForm;
   set: SetForm;
   focus: FocusProps;
   product: string;
   onProduct: (name: string) => void;
-  extra: OfferSlot | null;
-  onExtra: (offer: OfferSlot | null) => void;
+  extras: readonly OfferSlot[];
+  onExtras: (offers: OfferSlot[]) => void;
   suggestedPitch: number | null;
   clock: EditorClock;
+  /** Toca a sala uns segundos antes deste minuto. */
   onWatch: (seconds: number) => void;
+  /** Mostra a sala no fim do vídeo, com a oferta ainda aberta. */
+  onAfter: () => void;
 }) {
   const visible = Boolean(form.cta_text.trim());
   const lastText = useRef(form.cta_text || "Quero minha vaga");
   const d = Math.max(1, c.duration);
+  const [open, setOpen] = useState<string | null>("main");
   const start = form.cta_start_seconds.trim() === "" ? null : Number(form.cta_start_seconds) || 0;
   const end = form.cta_end_seconds.trim() === "" ? null : Number(form.cta_end_seconds) || null;
-  const [target, setTarget] = useState<"checkout" | "sales">(
-    !form.cta_url || /checkout|pay\.|kambafy|hotmart|eduzz|kiwify|stripe/i.test(form.cta_url) ? "checkout" : "sales",
-  );
   const countdown = Number(form.cta_countdown_seconds) || 0;
-  const preset = PRESETS.includes(String(countdown) as (typeof PRESETS)[number]) ? String(countdown) : "other";
-  const [other, setOther] = useState(preset === "other");
-  const discount = discountPercent(form.cta_price_original, form.cta_price_now);
-  const setStart = (s: number | null) => set({ cta_start_seconds: s === null ? "" : String(Math.round(Math.min(d, Math.max(0, s)))) });
-  const setEnd = (s: number | null) => set({ cta_end_seconds: s === null ? "" : String(Math.round(Math.min(d, Math.max(0, s)))) });
+  const countdownOptions = [
+    ...COUNTDOWNS.map((v) => ({ value: v as string, label: v === "0" ? "Sem" : `${Number(v) / 60} min` })),
+    ...(COUNTDOWNS.includes(String(countdown) as (typeof COUNTDOWNS)[number])
+      ? []
+      : [{ value: String(countdown), label: `${Math.round(countdown / 60)} min` }]),
+  ];
+  // «Depois do vídeo» vale para a última oferta: é ela que fica aberta.
+  const last = extras.length ? extras[extras.length - 1]! : null;
+  const lastEnd = last ? last.end : end;
+  const afterMinutes = lastEnd !== null && lastEnd > d ? Math.round((lastEnd - d) / 60) : 0;
+  const setAfter = (minutes: number) => {
+    const value = minutes > 0 ? Math.round(d + minutes * 60) : null;
+    if (last) onExtras(extras.map((x) => (x.id === last.id ? { ...x, end: value } : x)));
+    else set({ cta_end_seconds: value === null ? "" : String(value) });
+  };
+
+  const main: OfferView = {
+    id: "main",
+    product,
+    priceFrom: form.cta_price_original,
+    priceNow: form.cta_price_now,
+    url: form.cta_url,
+    button: form.cta_text,
+    start,
+    end,
+  };
+  const updateMain = (patch: Partial<OfferView>) => {
+    if (patch.product !== undefined) onProduct(patch.product);
+    set({
+      ...(patch.priceFrom !== undefined ? { cta_price_original: patch.priceFrom } : {}),
+      ...(patch.priceNow !== undefined ? { cta_price_now: patch.priceNow } : {}),
+      ...(patch.url !== undefined ? { cta_url: patch.url } : {}),
+      ...(patch.button !== undefined ? { cta_text: patch.button } : {}),
+      ...("start" in patch ? { cta_start_seconds: patch.start == null ? "" : String(Math.round(patch.start)) } : {}),
+      ...("end" in patch ? { cta_end_seconds: patch.end == null ? "" : String(Math.round(patch.end)) } : {}),
+    });
+  };
+  const updateExtra = (id: string, patch: Partial<OfferSlot>) =>
+    onExtras(extras.map((x) => (x.id === id ? { ...x, ...patch } : x)).sort((a, b) => a.start - b.start));
+  const addExtra = () => {
+    const after = Math.max(start ?? 0, ...extras.map((x) => x.start));
+    const id = `extra-${Date.now().toString(36)}`;
+    onExtras([
+      ...extras,
+      {
+        id,
+        start: Math.min(d - 30, after + 300),
+        end: null,
+        product: "",
+        priceFrom: "",
+        priceNow: "",
+        url: "",
+        button: "Quero entrar",
+        countdown,
+        deadline: null,
+      },
+    ]);
+    setOpen(id);
+  };
 
   return (
     <>
@@ -55,6 +144,7 @@ export function StepOferta({
         <SwitchRow
           icon={Gift}
           title="Mostrar a oferta na sala"
+          description="Abre o separador Oferta na sala, no minuto que escolher."
           checked={visible}
           onChange={(on) => {
             if (!on) lastText.current = form.cta_text || lastText.current;
@@ -65,247 +155,118 @@ export function StepOferta({
 
       {visible ? (
         <>
-          <Section icon={ShoppingBag} title="Produto e preço">
-            <Field label="Nome do produto" required>
-              <Input
-                value={product}
-                onChange={(e) => onProduct(e.target.value)}
-                placeholder="Ex.: Mentoria Upsell com IA"
-                className={cn(!product.trim() && "bg-[#FFFBF3] shadow-[inset_0_0_0_1px_#E3B566]")}
-                {...focus("product")}
+          <Section icon={Gift} title="Ofertas" help="oferta">
+            <OfferCardEditor
+              index={1}
+              label="Oferta principal"
+              offer={main}
+              open={open === "main"}
+              onToggle={() => setOpen((o) => (o === "main" ? null : "main"))}
+              onChange={updateMain}
+              duration={d}
+              clock={c}
+              suggested={suggestedPitch}
+              onWatch={onWatch}
+              focus={focus}
+              required
+            />
+            {extras.map((x, i) => (
+              <OfferCardEditor
+                key={x.id}
+                index={i + 2}
+                label={`Oferta ${i + 2}`}
+                offer={x}
+                open={open === x.id}
+                onToggle={() => setOpen((o) => (o === x.id ? null : x.id))}
+                onChange={(patch) =>
+                  updateExtra(x.id, {
+                    ...patch,
+                    ...("start" in patch ? { start: patch.start ?? 0 } : {}),
+                  } as Partial<OfferSlot>)
+                }
+                duration={d}
+                clock={c}
+                onWatch={onWatch}
+                deadline={{ value: x.deadline ?? "", onChange: (deadline) => updateExtra(x.id, { deadline: deadline || null }) }}
+                onRemove={() => onExtras(extras.filter((y) => y.id !== x.id))}
               />
-            </Field>
-            <div className="grid grid-cols-2 gap-3.5">
-              <Field label="Preço inicial">
-                <Input value={form.cta_price_original} onChange={(e) => set({ cta_price_original: e.target.value })} placeholder="50 000 Kz" {...focus("price")} />
-              </Field>
-              <Field label="Preço com desconto">
-                <Input value={form.cta_price_now} onChange={(e) => set({ cta_price_now: e.target.value })} placeholder="6 997 Kz" {...focus("price")} />
-              </Field>
-            </div>
-            {discount !== null ? <p className="text-[12.5px] text-muted-foreground">Desconto de {discount}%.</p> : null}
+            ))}
+            {extras.length < MAX_EXTRAS ? (
+              <button
+                type="button"
+                onClick={addExtra}
+                className="flex items-center gap-2.5 rounded-xl border border-dashed bg-white px-3.5 py-3 text-left text-[13.5px] font-medium hover:border-foreground/40 hover:bg-gray-50"
+              >
+                <span className="grid size-7 place-items-center rounded-full bg-foreground text-background">
+                  <Plus className="size-3.5" />
+                </span>
+                <span className="min-w-0">
+                  Adicionar outra oferta
+                  <span className="block text-[12px] font-normal text-muted-foreground">
+                    Ex.: uma oferta especial para quem está na aula e, depois, a geral.
+                  </span>
+                </span>
+              </button>
+            ) : null}
+            {extras.length ? (
+              <p className="text-[12.5px] text-muted-foreground">Quando a oferta seguinte abre, a anterior fecha.</p>
+            ) : null}
           </Section>
 
-          <Section icon={ShoppingCart} title="Botão" help="link">
-            <Field label="Leva a">
+          <Section icon={Clock} title="Urgência" help="urgencia">
+            <Field label="Cronómetro na sala" hint="Começa quando cada oferta abre.">
               <Seg
                 full
                 small
-                value={target}
-                onChange={setTarget}
-                options={[
-                  { value: "checkout", label: "Checkout", tag: "Recomendado" },
-                  { value: "sales", label: "Página de vendas" },
-                ]}
+                value={String(countdown)}
+                onChange={(v) => {
+                  set({ cta_countdown_seconds: v });
+                  if (extras.length) onExtras(extras.map((x) => ({ ...x, countdown: Number(v) })));
+                }}
+                options={countdownOptions}
               />
             </Field>
-            <Field label={target === "checkout" ? "Link do checkout" : "Link da página de vendas"} required>
-              <Input value={form.cta_url} onChange={(e) => set({ cta_url: e.target.value })} placeholder="https://pay.kambafy.com/checkout/..." {...focus("cta")} />
+            {countdown > 0 ? (
+              <SwitchRow
+                title="Fechar o botão no zero"
+                description="Quando o cronómetro acaba, o botão fica «Oferta encerrada»."
+                checked={form.offer_countdown_end === "close"}
+                onChange={(on) => set({ offer_countdown_end: on ? "close" : "keep" })}
+              />
+            ) : null}
+            <Field label="Prazo da oferta principal" hint="Depois deste dia, o botão e o replay fecham.">
+              <DateInput value={form.offer_deadline} onChange={(offer_deadline) => set({ offer_deadline })} focus={focus("deadline")} />
             </Field>
-            <Field label="Texto do botão">
-              <Input value={form.cta_text} onChange={(e) => set({ cta_text: e.target.value })} {...focus("cta")} />
-            </Field>
+          </Section>
+
+          <Section icon={DoorOpen} title="Depois do vídeo">
+            <Seg
+              full
+              small
+              value={String(AFTER.includes(afterMinutes as (typeof AFTER)[number]) ? afterMinutes : 0)}
+              onChange={(v) => setAfter(Number(v))}
+              options={AFTER.map((m) => ({ value: String(m), label: m === 0 ? "Fecha" : m < 60 ? `${m} min` : `${m / 60} h` }))}
+            />
+            <p className="text-[12.5px] leading-snug text-muted-foreground">
+              {afterMinutes > 0
+                ? `A aula acaba, mas a sala fica aberta mais ${afterMinutes < 60 ? `${afterMinutes} minutos` : `${afterMinutes / 60} h`} para quem quer comprar: a oferta, o cronómetro e o Suporte continuam. O Agente IA e a equipa respondem no Atendimento.`
+                : "A sala fecha quando o vídeo acaba. Escolha um tempo para as inscrições continuarem abertas depois da aula."}
+            </p>
+            {afterMinutes > 0 ? (
+              <Button variant="outline" size="sm" className="justify-self-start" onClick={onAfter}>
+                <Play className="fill-current" />
+                Ver a sala depois do vídeo
+              </Button>
+            ) : null}
+          </Section>
+
+          <Section icon={BarChart3} title="Origem das vendas" help="utm">
             <SwitchRow
-              icon={BarChart3}
               title="Levar a origem ao checkout"
               description="O anúncio de onde a pessoa veio e o minuto do clique (UTM)."
               checked={form.offer_utm}
               onChange={(offer_utm) => set({ offer_utm })}
             />
-          </Section>
-
-          <Section icon={Flag} title="Quando a oferta aparece" help="pitch">
-            {suggestedPitch !== null ? (
-              <div className="flex items-center gap-3 rounded-xl border bg-white p-3">
-                <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-[#FDE4D9] text-[#A82F05]">
-                  <Target className="size-4" />
-                </span>
-                <span className="min-w-0 flex-1 text-[13px]">
-                  A análise do vídeo encontrou o pitch aos <b className="font-mono">{clock(suggestedPitch)}</b>.
-                </span>
-                {start === suggestedPitch ? (
-                  <Tag tone="gray">
-                    <Check className="mr-0.5 inline size-3" />
-                    Em uso
-                  </Tag>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="dark"
-                    onClick={() => {
-                      setStart(suggestedPitch);
-                      c.seek(Math.max(0, suggestedPitch - 2));
-                    }}
-                  >
-                    Usar
-                  </Button>
-                )}
-              </div>
-            ) : null}
-            <OfferWindow
-              duration={d}
-              t={c.t}
-              start={start ?? 0}
-              end={end}
-              onStart={(s) => setStart(s)}
-              onEnd={(s) => setEnd(s)}
-              onSeek={c.seek}
-            />
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Abre aos">
-                <ClockInput value={start ?? 0} max={d} onChange={(s) => setStart(s)} />
-              </Field>
-              <Field label="Fecha">
-                {end === null ? (
-                  <button
-                    type="button"
-                    onClick={() => setEnd(Math.min(d, (start ?? 0) + 600))}
-                    className="flex h-9 items-center justify-between rounded-sm bg-white px-3 text-left text-sm shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-400)] hover:bg-gray-50"
-                  >
-                    <span className="truncate">Fim do vídeo</span>
-                    <span className="shrink-0 text-[12px] text-muted-foreground">mudar</span>
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-1.5">
-                    <ClockInput value={end} max={d} onChange={(s) => setEnd(s)} />
-                    <button
-                      type="button"
-                      onClick={() => setEnd(null)}
-                      aria-label="Fechar só no fim do vídeo"
-                      title="Fechar só no fim do vídeo"
-                      className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-[var(--ds-gray-alpha-200)]"
-                    >
-                      <X className="size-4" />
-                    </button>
-                  </div>
-                )}
-              </Field>
-            </div>
-            {start === null ? (
-              <p className="text-[12.5px] text-warning">Sem minuto, a oferta abre no início do vídeo.</p>
-            ) : null}
-            <Button variant="outline" size="sm" className="justify-self-start" onClick={() => onWatch(start ?? 0)}>
-              <Play className="fill-current" />
-              Ver a oferta a abrir
-            </Button>
-          </Section>
-
-          <Section icon={Layers} title="Depois desta oferta">
-            <SwitchRow
-              title="Mostrar outra oferta a seguir"
-              description="Ex.: uma oferta especial até ao minuto 10 e depois a oferta geral."
-              checked={Boolean(extra)}
-              onChange={(on) =>
-                onExtra(
-                  on
-                    ? {
-                        id: "extra-1",
-                        start: Math.min(d, end ?? (start ?? 0) + 600),
-                        end: null,
-                        product: "",
-                        priceFrom: "",
-                        priceNow: "",
-                        url: "",
-                        button: "Quero entrar",
-                        countdown: 0,
-                      }
-                    : null,
-                )
-              }
-            />
-            {extra ? (
-              <div className="grid gap-3 rounded-xl border bg-white p-3.5">
-                <Field label="Abre aos" hint="Quando esta abre, a anterior fecha.">
-                  <ClockInput value={extra.start} max={d} onChange={(s) => onExtra({ ...extra, start: s })} />
-                </Field>
-                <Field label="Nome do produto">
-                  <Input value={extra.product} onChange={(e) => onExtra({ ...extra, product: e.target.value })} placeholder="Ex.: Mentoria (oferta geral)" />
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Preço inicial">
-                    <Input value={extra.priceFrom} onChange={(e) => onExtra({ ...extra, priceFrom: e.target.value })} />
-                  </Field>
-                  <Field label="Preço com desconto">
-                    <Input value={extra.priceNow} onChange={(e) => onExtra({ ...extra, priceNow: e.target.value })} />
-                  </Field>
-                </div>
-                <Field label="Link">
-                  <Input value={extra.url} onChange={(e) => onExtra({ ...extra, url: e.target.value })} placeholder="https://pay.kambafy.com/checkout/..." />
-                </Field>
-                <Field label="Texto do botão">
-                  <Input value={extra.button} onChange={(e) => onExtra({ ...extra, button: e.target.value })} />
-                </Field>
-                <Button variant="outline" size="sm" className="justify-self-start" onClick={() => onWatch(extra.start)}>
-                  <Play className="fill-current" />
-                  Ver a troca
-                </Button>
-              </div>
-            ) : null}
-          </Section>
-
-          <Section icon={Clock} title="Urgência" help="urgencia">
-            <Field label="Cronómetro na sala" hint="Começa quando a oferta abre.">
-              <Seg
-                full
-                small
-                value={other ? "other" : preset}
-                onChange={(v) => {
-                  if (v === "other") {
-                    setOther(true);
-                    if (preset !== "other") set({ cta_countdown_seconds: "1200" });
-                  } else {
-                    setOther(false);
-                    set({ cta_countdown_seconds: v });
-                  }
-                }}
-                options={[
-                  { value: "0", label: "Sem" },
-                  { value: "300", label: "5 min" },
-                  { value: "600", label: "10 min" },
-                  { value: "900", label: "15 min" },
-                  { value: "other", label: "Outro" },
-                ]}
-              />
-            </Field>
-            {other ? (
-              <Field label="Minutos">
-                <Input
-                  inputMode="numeric"
-                  className="w-28"
-                  value={String(Math.round(countdown / 60))}
-                  onChange={(e) => set({ cta_countdown_seconds: String(Math.min(240, Number(e.target.value.replace(/\D/g, "")) || 0) * 60) })}
-                />
-              </Field>
-            ) : null}
-            {countdown > 0 ? (
-              <Field label="Quando chega a zero">
-                <Seg
-                  full
-                  small
-                  value={form.offer_countdown_end}
-                  onChange={(offer_countdown_end) => set({ offer_countdown_end })}
-                  options={[
-                    { value: "keep", label: "O botão continua" },
-                    { value: "close", label: "O botão fecha" },
-                  ]}
-                />
-              </Field>
-            ) : null}
-            <Field label="Prazo da oferta" hint="Depois deste dia, o botão e o replay fecham.">
-              <div className="flex items-center gap-1.5">
-                <Input type="date" className="w-44" value={form.offer_deadline} onChange={(e) => set({ offer_deadline: e.target.value })} {...focus("deadline")} />
-                {form.offer_deadline ? (
-                  <button
-                    type="button"
-                    onClick={() => set({ offer_deadline: "" })}
-                    aria-label="Tirar o prazo"
-                    className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-[var(--ds-gray-alpha-200)]"
-                  >
-                    <X className="size-4" />
-                  </button>
-                ) : null}
-              </div>
-            </Field>
           </Section>
         </>
       ) : null}
@@ -313,34 +274,233 @@ export function StepOferta({
   );
 }
 
-/** «05:11», «5:11» ou «311» → segundos. */
-function parseClock(value: string): number | null {
-  const v = value.trim();
-  if (/^\d+$/.test(v)) return Number(v);
-  const parts = v.split(":");
-  if (parts.length < 2 || parts.length > 3 || parts.some((p) => !/^\d{1,2}$/.test(p))) return null;
-  return parts.map(Number).reduce((total, n) => total * 60 + n, 0);
+/** Um cartão de oferta: fechado mostra o resumo; aberto, os campos. */
+function OfferCardEditor({
+  index,
+  label,
+  offer,
+  open,
+  onToggle,
+  onChange,
+  duration: d,
+  clock: c,
+  suggested,
+  onWatch,
+  focus,
+  required,
+  deadline,
+  onRemove,
+}: {
+  index: number;
+  label: string;
+  offer: OfferView;
+  open: boolean;
+  onToggle: () => void;
+  onChange: (patch: Partial<OfferView>) => void;
+  duration: number;
+  clock: EditorClock;
+  suggested?: number | null | undefined;
+  onWatch: (seconds: number) => void;
+  focus?: FocusProps | undefined;
+  required?: boolean | undefined;
+  deadline?: { value: string; onChange: (value: string) => void } | undefined;
+  onRemove?: (() => void) | undefined;
+}) {
+  const [target, setTarget] = useState<Target>(targetOf(offer.url));
+  const discount = discountPercent(offer.priceFrom, offer.priceNow);
+  const start = offer.start ?? 0;
+  const f = (key: string) => (focus ? focus(key) : {});
+  const linkLabel = { checkout: "Link do checkout", page: "Link da página de vendas", group: "Link do grupo" }[target];
+  const linkPlaceholder = {
+    checkout: "https://pay.kambafy.com/checkout/…",
+    page: "https://o-seu-site.com/oferta",
+    group: "https://chat.whatsapp.com/…",
+  }[target];
+  const groupProblem = target === "group" && offer.url.trim() && !isGroupLink(offer.url);
+  const endLabel =
+    offer.end === null ? "Fim do vídeo" : offer.end > d ? `Depois do vídeo +${Math.round((offer.end - d) / 60)} min` : clock(offer.end);
+  const tagLabel = { checkout: "Checkout", page: "Página de vendas", group: "Grupo" }[targetOf(offer.url)];
+
+  return (
+    <div className={cn("overflow-hidden rounded-xl border bg-white", open && "shadow-[0_2px_8px_rgba(0,0,0,.06)]")}>
+      <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full items-center gap-3 px-3.5 py-3 text-left">
+        <span className={cn("grid size-7 shrink-0 place-items-center rounded-full text-[12.5px] font-semibold", open ? "bg-foreground text-background" : "bg-chip")}>
+          {index}
+        </span>
+        <span className="min-w-0 flex-1">
+          <b className="flex items-center gap-1.5 text-[14px] font-semibold">
+            <span className="truncate">{offer.product.trim() || label}</span>
+            {offer.url.trim() ? <Tag tone="gray">{tagLabel}</Tag> : null}
+          </b>
+          <span className="block truncate font-mono text-[12px] text-muted-foreground">
+            {clock(start)} → {offer.end === null ? "fim" : offer.end > d ? "depois do vídeo" : clock(offer.end)}
+            {offer.priceNow ? <span className="font-sans"> · por {offer.priceNow}</span> : null}
+          </span>
+        </span>
+        <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+      {open ? (
+        <div className="grid gap-3.5 border-t bg-[#FAFAFA] px-3.5 pb-3.5 pt-3.5">
+          <Field label="Nome do produto" required={required}>
+            <Input
+              value={offer.product}
+              onChange={(e) => onChange({ product: e.target.value })}
+              placeholder="Ex.: Mentoria Grupo Primo"
+              className={cn(required && !offer.product.trim() && "bg-[#FFFBF3] shadow-[inset_0_0_0_1px_#E3B566]")}
+              {...f("product")}
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Preço inicial">
+              <Input value={offer.priceFrom} onChange={(e) => onChange({ priceFrom: e.target.value })} placeholder="100 000 Kz" {...f("price")} />
+            </Field>
+            <Field label="Preço com desconto">
+              <Input value={offer.priceNow} onChange={(e) => onChange({ priceNow: e.target.value })} placeholder="15 000 Kz" {...f("price")} />
+            </Field>
+          </div>
+          {discount !== null ? <p className="-mt-1.5 text-[12.5px] text-muted-foreground">Desconto de {discount}%.</p> : null}
+
+          <Field label="O botão leva a">
+            <Seg
+              full
+              small
+              value={target}
+              onChange={setTarget}
+              options={[
+                { value: "checkout", label: "Checkout" },
+                { value: "page", label: "Página" },
+                { value: "group", label: "Grupo" },
+              ]}
+            />
+          </Field>
+          <Field label={linkLabel} required={required} hint={target === "checkout" ? "Recomendado: tira um passo e vende mais." : undefined}>
+            <Input value={offer.url} onChange={(e) => onChange({ url: e.target.value })} placeholder={linkPlaceholder} {...f("cta")} />
+          </Field>
+          {groupProblem ? <p className="-mt-1.5 text-[12.5px] text-warning">O link do grupo começa por https://chat.whatsapp.com/ ou https://t.me/</p> : null}
+          {target === "group" ? (
+            <Note icon={Users}>
+              Na sala, o botão abre um pop-up: a pessoa confirma o nome, o e-mail e o WhatsApp e entra no grupo, onde está o link com o
+              desconto. Fica registado quem entrou, para depois separar quem comprou de quem não comprou.
+            </Note>
+          ) : null}
+          <Field label="Texto do botão">
+            <Input
+              value={offer.button}
+              onChange={(e) => onChange({ button: e.target.value })}
+              placeholder={target === "group" ? "Entrar no grupo" : "Quero minha vaga"}
+              {...f("cta")}
+            />
+          </Field>
+
+          <div className="grid gap-2.5 rounded-xl border bg-white p-3">
+            <b className="flex items-center gap-2 text-[13px] font-semibold">
+              <Clock className="size-3.5 text-muted-foreground" />
+              Quando aparece
+            </b>
+            {suggested != null ? (
+              <div className="flex items-center gap-2.5 rounded-lg bg-[#FDE4D9]/60 px-3 py-2">
+                <Target className="size-4 shrink-0 text-[#A82F05]" />
+                <span className="min-w-0 flex-1 text-[12.5px]">
+                  A análise do vídeo encontrou o pitch aos <b className="font-mono">{clock(suggested)}</b>.
+                </span>
+                {offer.start === suggested ? (
+                  <Tag tone="gray">Validado</Tag>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="dark"
+                    className="h-7"
+                    onClick={() => {
+                      onChange({ start: suggested });
+                      c.seek(Math.max(0, suggested - 2));
+                    }}
+                  >
+                    Validar
+                  </Button>
+                )}
+              </div>
+            ) : null}
+            <div className="grid grid-cols-2 gap-2.5">
+              <Field label="Abre aos">
+                <PickerButton value={<span className="font-mono">{clock(start)}</span>} title="Abre aos" hint="Rode os minutos e os segundos.">
+                  <MinuteWheel value={start} maxSeconds={d} onChange={(s) => {
+                    onChange({ start: s });
+                    c.seek(Math.max(0, s - 2));
+                  }} />
+                </PickerButton>
+              </Field>
+              <Field label="Fecha">
+                <PickerButton value={<span className={offer.end !== null && offer.end <= d ? "font-mono" : undefined}>{endLabel}</span>} title="Fecha aos" hint="Ou deixe ficar até ao fim do vídeo.">
+                  <MinuteWheel
+                    value={offer.end !== null && offer.end <= d ? offer.end : d}
+                    maxSeconds={d}
+                    onChange={(s) => onChange({ end: s >= d - 1 ? null : Math.max(start + 5, s) })}
+                  />
+                  <Button variant="outline" size="sm" className="mt-2 w-full" onClick={() => onChange({ end: null })}>
+                    No fim do vídeo
+                  </Button>
+                </PickerButton>
+              </Field>
+            </div>
+            <OfferWindow
+              duration={d}
+              t={c.t}
+              start={start}
+              end={offer.end}
+              onStart={(s) => onChange({ start: s })}
+              onEnd={(s) => onChange({ end: s >= d - 1 ? null : s })}
+              onSeek={c.seek}
+            />
+            <Button variant="outline" size="sm" className="justify-self-start" onClick={() => onWatch(start)}>
+              <Play className="fill-current" />
+              Ver na sala
+            </Button>
+          </div>
+
+          {deadline ? (
+            <Field label="Prazo desta oferta" hint="Depois deste dia, o botão desta oferta fecha.">
+              <DateInput value={deadline.value} onChange={deadline.onChange} />
+            </Field>
+          ) : null}
+          {onRemove ? (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="inline-flex items-center gap-1.5 justify-self-start text-[12.5px] font-medium text-destructive hover:underline"
+            >
+              <Trash2 className="size-3.5" />
+              Tirar esta oferta
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
-function ClockInput({ value, max, onChange }: { value: number; max: number; onChange: (seconds: number) => void }) {
-  const [text, setText] = useState(clock(value));
-  useEffect(() => setText(clock(value)), [value]);
+function DateInput({
+  value,
+  onChange,
+  focus,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  focus?: { onFocus: () => void; onBlur: () => void } | undefined;
+}) {
   return (
-    <Input
-      value={text}
-      inputMode="numeric"
-      onChange={(e) => setText(e.target.value)}
-      onBlur={() => {
-        const parsed = parseClock(text);
-        if (parsed === null) setText(clock(value));
-        else onChange(Math.min(max, parsed));
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-      }}
-      className="w-full font-mono tabular-nums"
-      aria-label="Minuto e segundo"
-    />
+    <div className="flex items-center gap-1.5">
+      <Input type="date" className="w-44" value={value} onChange={(e) => onChange(e.target.value)} {...(focus ?? {})} />
+      {value ? (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          aria-label="Tirar o prazo"
+          className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-[var(--ds-gray-alpha-200)]"
+        >
+          <X className="size-4" />
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -373,7 +533,8 @@ function OfferWindow({
     return Math.round(Math.min(1, Math.max(0, (clientX - box.left) / box.width)) * duration);
   };
   const pct = (s: number) => `${(Math.min(duration, Math.max(0, s)) / duration) * 100}%`;
-  const closeAt = end ?? duration;
+  const closeAt = end === null ? duration : Math.min(duration, end);
+  const after = end !== null && end > duration;
   return (
     <div className="grid gap-1.5">
       <div
@@ -397,7 +558,7 @@ function OfferWindow({
         }}
       >
         <div
-          className="absolute inset-y-1 rounded-md border-l-[3px] border-[#E8440C] bg-[#FDE4D9]"
+          className="absolute inset-y-1 overflow-hidden rounded-md border-l-[3px] border-[#E8440C] bg-[#FDE4D9]"
           style={{ left: pct(start), width: `calc(${pct(closeAt)} - ${pct(start)})` }}
         >
           {(closeAt - start) / duration > 0.25 ? (
@@ -412,7 +573,7 @@ function OfferWindow({
           className="absolute inset-y-0 z-10 w-3 -translate-x-1/2 cursor-ew-resize rounded-sm bg-[#E8440C] ring-2 ring-white"
           style={{ left: pct(start) }}
         />
-        {end !== null ? (
+        {end !== null && !after ? (
           <span
             data-handle="end"
             title="Arraste para mudar quando fecha"
@@ -425,7 +586,7 @@ function OfferWindow({
       <div className="flex justify-between font-mono text-[11px] text-muted-foreground">
         <span>00:00</span>
         <span>
-          {clock(start)} → {end === null ? "fim" : clock(end)}
+          {clock(start)} → {end === null ? "fim" : after ? "depois do vídeo" : clock(end)}
         </span>
         <span>{clock(duration)}</span>
       </div>
