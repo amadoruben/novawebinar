@@ -2,26 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Check, ChevronDown, Loader2 } from "lucide-react";
 import { z } from "zod";
 import { formatSessionStart } from "@/lib/schedule";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { detectDevice, lookupPlace, type GeoPlace } from "@/lib/live-presence";
 import { leadSource } from "@/lib/contacts";
 import { loadPixels, trackPixels } from "@/lib/pixels";
 import { retry } from "@/lib/utils";
-import {
-  DEFAULT_PHONE_COUNTRY,
-  PHONE_COUNTRIES,
-  phoneCountryForIso,
-  type PhoneCountry,
-} from "@/lib/phone-countries";
+import { DEFAULT_PHONE_COUNTRY, phoneCountryForIso, type PhoneCountry } from "@/lib/phone-countries";
 import { WebinarRoom, type RoomProgressOptions } from "@/components/webinar-room";
 import { RoomSkeleton, getCachedRoomTheme, cacheRoomTheme } from "@/components/room-skeleton";
-import whatsappIcon from "@/assets/local/whatsapp-icon.webp";
+import { EntryScreen, entryLiveLabel, isDirectVideo } from "@/components/room/entry-screen";
 import {
   getPublicRoom,
   joinPublicRoom,
@@ -38,6 +28,9 @@ export const Route = createFileRoute("/w/$slug")({
     // Sala de teste: qualquer pessoa com o link entra de imediato, mesmo com a
     // sessão inativa ou fora do horário. Serve para rever a sala antes de abrir.
     teste: ["1", "true"].includes(String(search["teste"])) ? true : undefined,
+    // Entrada com dados (links dos e-mails e do WhatsApp): abre já o cartão preenchido.
+    nome: typeof search["nome"] === "string" ? search["nome"].slice(0, 80) : undefined,
+    email: typeof search["email"] === "string" ? search["email"].slice(0, 160) : undefined,
     // Origem do lead: fica no endereço até à inscrição.
     ...Object.fromEntries(
       ["utm_source", "utm_medium", "utm_campaign", "utm_content", "fbclid", "gclid"]
@@ -83,8 +76,16 @@ export const Route = createFileRoute("/w/$slug")({
 
 function PublicRoomRoute() {
   const { slug } = Route.useParams();
-  const { replay, teste, ...source } = Route.useSearch();
-  return <PublicRoom slug={slug} replay={replay} teste={teste} source={source} />;
+  const { replay, teste, nome, email, ...source } = Route.useSearch();
+  return (
+    <PublicRoom
+      slug={slug}
+      replay={replay}
+      teste={teste}
+      source={source}
+      prefill={nome || email ? { name: nome ?? "", email: email ?? "" } : undefined}
+    />
+  );
 }
 
 type Viewer = {
@@ -106,12 +107,15 @@ export function PublicRoom({
   replay,
   teste,
   source = {},
+  prefill,
 }: {
   slug: string;
   replay?: boolean | undefined;
   teste?: boolean | undefined;
   /** Parâmetros de origem do endereço (utm_*, fbclid, gclid). */
   source?: Partial<Record<string, string>>;
+  /** Nome e e-mail que vêm no link: o cartão abre já preenchido. */
+  prefill?: { name: string; email: string } | undefined;
 }) {
   const testMode = Boolean(teste);
   const roomMode: "live" | "replay" = replay ? "replay" : "live";
@@ -123,9 +127,9 @@ export function PublicRoom({
   const trackProgress = useServerFn(trackPublicRoomProgress);
 
   const [viewer, setViewer] = useState<Viewer | null>(null);
-  const [form, setForm] = useState({ name: "", email: "", phone: "" });
+  const [form, setForm] = useState({ name: prefill?.name ?? "", email: prefill?.email ?? "", phone: "" });
   const [phoneCountry, setPhoneCountry] = useState<PhoneCountry>(DEFAULT_PHONE_COUNTRY);
-  const [countryPickerOpen, setCountryPickerOpen] = useState(false);
+  const [entryMoment, setEntryMoment] = useState<"gate" | "card">(prefill ? "card" : "gate");
   const [entering, setEntering] = useState(false);
   const [error, setError] = useState("");
   const [waiting, setWaiting] = useState(true);
@@ -506,167 +510,40 @@ export function PublicRoom({
       }
     };
 
+    // Ao chegar: a aula a decorrer por trás e o botão. Ao clicar: os dados. Só depois a sala,
+    // com o chat e o número de pessoas.
+    const live = entryLiveLabel(startMs, webinar.timezone, Date.now());
+    const elapsed = startMs !== null && startMs <= Date.now() ? (Date.now() - startMs) / 1000 : 0;
     return (
-      <main
-        className={`room-ambient flex min-h-dvh items-center justify-center px-5 py-6 sm:px-8 ${themeClass}`}
-      >
-        <div className="w-full max-w-md text-room-text">
-          {webinar.registration_cover_url ? (
-            <div className="mb-5 overflow-hidden rounded-xl">
-              <img
-                src={webinar.registration_cover_url}
-                alt={webinar.public_title}
-                className="h-36 w-full object-cover sm:h-44"
-              />
-            </div>
-          ) : null}
-
-          <form onSubmit={submit} className="space-y-4">
-            {webinar.registration_badge_text ? (
-              <div className="flex justify-center">
-                <span className="inline-flex rounded-full bg-primary px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary-foreground">
-                  {webinar.registration_badge_text}
-                </span>
-              </div>
-            ) : null}
-
-            {webinar.registration_progress_enabled ? (
-              <div className="relative h-7 w-full overflow-hidden rounded-full bg-room-raised">
-                <div
-                  className="h-full rounded-full bg-primary transition-all"
-                  style={{
-                    width: `${Math.min(100, Math.max(0, webinar.registration_progress_value))}%`,
-                  }}
-                />
-                <span className="absolute inset-0 flex items-center justify-center px-3 text-xs font-semibold text-white drop-shadow-sm">
-                  {Math.min(100, Math.max(0, webinar.registration_progress_value))}% das vagas
-                  preenchidas
-                </span>
-              </div>
-            ) : null}
-
-            <div>
-              <h1 className="text-xl font-semibold leading-snug sm:text-2xl">
-                {roomMode === "live"
-                  ? `[🔴 AO VIVO] ${webinar.registration_headline || webinar.public_title}`
-                  : webinar.registration_headline || webinar.public_title}
-              </h1>
-              {webinar.registration_subtitle ? (
-                <p className="mt-1.5 text-sm leading-relaxed text-room-subtle">
-                  {webinar.registration_subtitle}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="flex flex-col gap-3">
-              <div className="grid gap-1.5">
-                <Label className="text-sm font-medium">
-                  Nome <span className="text-primary">*</span>
-                </Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="Como quer ser tratado"
-                  className="h-11 rounded-pill border-room-line bg-room-surface px-4 text-sm text-room-text placeholder:text-room-subtle hover:border-room-subtle focus-visible:border-primary"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-sm font-medium">
-                  E-mail <span className="text-primary">*</span>
-                </Label>
-                <Input
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  placeholder="onde enviamos o acesso"
-                  className="h-11 rounded-pill border-room-line bg-room-surface px-4 text-sm text-room-text placeholder:text-room-subtle hover:border-room-subtle focus-visible:border-primary"
-                />
-              </div>
-              {webinar.registration_collect_phone && (
-                <div className="grid gap-1.5">
-                  <Label className="flex items-center gap-1.5 text-sm font-medium">
-                    <img src={whatsappIcon} alt="" className="size-4" />
-                    WhatsApp{" "}
-                    {webinar.registration_require_phone ? (
-                      <span className="text-primary">*</span>
-                    ) : (
-                      "(opcional)"
-                    )}
-                  </Label>
-
-                  <div className="flex gap-2">
-                    <Popover open={countryPickerOpen} onOpenChange={setCountryPickerOpen}>
-                      <PopoverTrigger asChild>
-                        <button
-                          type="button"
-                          aria-label="Escolher o indicativo do país"
-                          className="flex h-11 shrink-0 items-center gap-1.5 rounded-pill border border-room-line bg-room-surface px-3.5 text-sm text-room-text"
-                        >
-                          <span className="text-lg leading-none">{phoneCountry.flag}</span>
-                          <span className="font-semibold tabular-nums">{phoneCountry.dial}</span>
-                          <ChevronDown className="size-4 text-room-subtle" />
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        align="start"
-                        className="max-h-72 w-64 overflow-y-auto p-1"
-                      >
-                        {PHONE_COUNTRIES.map((country) => (
-                          <button
-                            key={`${country.code}-${country.dial}`}
-                            type="button"
-                            onClick={() => {
-                              setPhoneCountry(country);
-                              setCountryPickerOpen(false);
-                            }}
-                            className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
-                          >
-                            <span className="text-base leading-none">{country.flag}</span>
-                            <span className="flex-1 truncate">{country.name}</span>
-                            <span className="text-xs font-semibold tabular-nums text-muted-foreground">
-                              {country.dial}
-                            </span>
-                            {country.code === phoneCountry.code && country.dial === phoneCountry.dial ? (
-                              <Check className="size-3.5 text-primary" />
-                            ) : null}
-                          </button>
-                        ))}
-                      </PopoverContent>
-                    </Popover>
-                    <Input
-                      value={form.phone}
-                      onChange={(e) =>
-                        setForm({ ...form, phone: e.target.value.replace(/[^\d\s()-]/g, "") })
-                      }
-                      inputMode="tel"
-                      placeholder="900 000 000"
-                      className="h-11 min-w-0 rounded-pill border-room-line bg-room-surface px-4 text-sm text-room-text placeholder:text-room-subtle hover:border-room-subtle focus-visible:border-primary"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {error && <p className="text-center text-sm font-medium text-primary">{error}</p>}
-
-            <Button
-              type="submit"
-              disabled={entering}
-              className="h-12 w-full rounded-pill bg-primary text-[15px] font-medium text-white hover:bg-accent-strong"
-            >
-              {entering && <Loader2 className="animate-spin" />}
-              {webinar.registration_button_text || "Entrar na sala"}
-              {!entering && <ArrowRight className="size-5" />}
-            </Button>
-
-            {webinar.registration_scarcity_note ? (
-              <p className="text-center text-xs text-room-subtle">
-                {webinar.registration_scarcity_note}
-              </p>
-            ) : null}
-          </form>
-        </div>
-      </main>
+      <EntryScreen
+        className="min-h-dvh"
+        moment={entryMoment}
+        onOpen={() => setEntryMoment("card")}
+        live={live.live}
+        liveLabel={live.label}
+        video={
+          isDirectVideo(webinar.video_url, webinar.video_provider)
+            ? { url: webinar.video_url!, startSeconds: elapsed }
+            : null
+        }
+        fallback={{ kicker: "Sessão ao vivo", title: webinar.public_title }}
+        badge={webinar.registration_badge_text || undefined}
+        headline={webinar.registration_headline || webinar.public_title}
+        subtitle={webinar.registration_subtitle || undefined}
+        buttonText={webinar.registration_button_text || "Entrar na sala"}
+        progress={webinar.registration_progress_enabled ? webinar.registration_progress_value : null}
+        phone={{
+          show: webinar.registration_collect_phone,
+          required: webinar.registration_collect_phone && webinar.registration_require_phone,
+        }}
+        values={form}
+        onChange={setForm}
+        country={phoneCountry}
+        onCountry={setPhoneCountry}
+        onSubmit={(event) => void submit(event)}
+        error={error}
+        entering={entering}
+      />
     );
   }
 
