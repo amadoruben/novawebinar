@@ -10,42 +10,42 @@ export const HELP = {
     ],
   },
   entrada: {
-    title: "Entrada",
-    description: "O ecrã antes da sala. Não é uma página de vendas: serve para saber quem entra.",
+    title: "Página",
+    description: "A página antes da sala. Não é uma página de vendas: serve para saber quem entra.",
     items: [
-      "Ao chegar, a pessoa vê a aula a decorrer e o botão a piscar.",
-      "Ao clicar, deixa os dados. Só depois entra na sala.",
+      "A pessoa vê o título com «Ao vivo», os campos e o botão. Ao carregar, entra logo na sala.",
+      "Só na sala vê o chat e quantas pessoas estão a ver.",
       "Os dados alimentam as automações e a lista de contactos.",
       "Se já tem uma página, escolha «A minha página» e cole lá o formulário.",
     ],
   },
   pagina: {
     title: "Página",
-    description: "O que a pessoa vê antes de entrar na sala, em três momentos.",
+    description: "O que a pessoa vê antes de entrar na sala.",
     items: [
-      "1. Ao chegar: a aula a decorrer, desfocada por trás, «Ao vivo» a piscar e o botão. Sem título e sem número de pessoas.",
-      "2. Ao clicar: abre o cartão com a etiqueta, o título, a descrição e os campos.",
-      "3. Na sala: só depois de deixar os dados vê o chat e quantas pessoas estão a ver.",
+      "O título do webinar (escolhido no Início) com «Ao vivo», os campos e o botão.",
       "Antes da hora da sessão, em vez de «Ao vivo» aparece a hora a que começa.",
+      "O tema escuro ou claro escolhe-se na etapa Vídeo, em «Aparência da sala».",
     ],
   },
   contactos: {
     title: "Captar contactos",
     description: "Os dados que a pessoa deixa para entrar na sala.",
     items: [
-      "Pede o nome completo e o e-mail, e o WhatsApp se o ligar.",
-      "Em «Personalizar campos» diz se o WhatsApp é obrigatório. Na página, os obrigatórios levam *.",
+      "Escolha os campos: nome, e-mail, WhatsApp e perguntas suas (empresa, cidade, profissão…).",
+      "Pode tirar o nome ou o e-mail. Precisa sempre de um contacto: e-mail ou WhatsApp.",
+      "No ícone troca o tipo, no nome muda o texto e o interruptor diz se é obrigatório. Na página, os obrigatórios levam *.",
       "Cada campo a mais faz perder entradas. Peça só o que vai usar.",
-      "O WhatsApp começa com a bandeira e o código do país de quem entra, pela localização; a pessoa pode trocar.",
+      "O WhatsApp começa com a bandeira do país de quem entra, pela localização; a pessoa pode trocar.",
     ],
   },
   video: {
     title: "Vídeo",
     description: "O vídeo dá o tempo a tudo o que acontece na sala: chat, oferta, audiência e vendas.",
     items: [
-      "Ao gerar os comentários, o sistema transcreve a fala e analisa cada momento.",
-      "A análise encontra o minuto do pitch e os momentos em que se pode perder audiência.",
-      "Aceita MP4 ou MOV até 5 GB, um vídeo da Biblioteca, de uma plataforma (Vimeo, Panda, Bunny) ou um link HLS.",
+      "Carregue do computador, da Biblioteca, do Vimeo, Panda ou Bunny, ou por um link MP4 ou HLS.",
+      "Ao criar os comentários, o sistema transcreve a fala e encontra o minuto do pitch.",
+      "A aparência da sala pode ser escura, clara ou seguir o dispositivo de quem vê.",
     ],
   },
   chat: {
@@ -86,9 +86,8 @@ export const HELP = {
     description: "Quantas pessoas a sala mostra e como esse número muda ao longo do vídeo.",
     items: [
       "Quantidade: o mínimo e o máximo, na mesma barra.",
-      "Formato: escolha na lista; por baixo vê como fica.",
+      "Formato: escolha na lista; por baixo vê como fica ao vivo.",
       "Arraste o cursor no gráfico: o número muda e a sala mostra-o.",
-      "O que o agente faz quando a audiência real cai está no Agente IA.",
     ],
   },
   oferta: {
@@ -96,8 +95,8 @@ export const HELP = {
     description: "O que vende, quando aparece e até quando.",
     items: [
       "Nome do produto, preço inicial e preço com desconto.",
-      "A oferta abre no momento que a análise encontrou ou no minuto que escolher.",
-      "O cronómetro começa quando a oferta abre.",
+      "A oferta abre e fecha nos minutos que escolher; a análise do vídeo sugere o minuto do pitch.",
+      "Pode mostrar uma segunda oferta a seguir: quando ela abre, a primeira fecha.",
     ],
   },
   link: {
@@ -113,7 +112,7 @@ export const HELP = {
     title: "Origem das vendas",
     description: "Cada clique na oferta leva até ao checkout a origem da pessoa.",
     items: [
-      "Cada clique no botão da oferta leva ao checkout o anúncio de onde a pessoa veio e onde clicou, com o minuto.",
+      "Ligado, o link do botão leva o anúncio de onde a pessoa veio e o minuto do clique (UTM).",
       "Sem anúncio, a origem fica convertewebinar.",
     ],
   },
@@ -130,8 +129,9 @@ export const HELP = {
     title: "Urgência",
     description: "O que acontece depois de a oferta abrir.",
     items: [
-      "A oferta abre no minuto escolhido.",
-      "O cronómetro conta 5, 10 ou 15 minutos (ou outra duração) a partir daí.",
+      "O cronómetro conta 5, 10 ou 15 minutos (ou outra duração) a partir de quando a oferta abre.",
+      "Quando chega a zero, o botão continua ou fecha, como escolher.",
+      "O prazo da oferta: depois desse dia, o botão e o replay fecham.",
     ],
   },
   vendas: {
@@ -139,7 +139,8 @@ export const HELP = {
     description: "As compras que aparecem na sala.",
     items: [
       "As de demonstração só aparecem depois do pitch e nunca entram nas métricas.",
-      "Aparecem no vídeo e ficam no chat.",
+      "As reais vêm da Kambafy, no momento em que acontecem, só com o primeiro nome.",
+      "Escolha se aparecem no vídeo, no chat ou nos dois.",
     ],
   },
   automacoes: {
@@ -174,8 +175,8 @@ export const HELP = {
     description: "Quando a sessão acontece.",
     items: [
       "Uma data: uma sessão num dia e hora.",
-      "Repetir: todos os dias ou um dia por semana, à mesma hora.",
-      "Just in time: começa a cada 15, 30 ou 60 minutos, para quem chega.",
+      "Repetir: nos dias e horas que escolher, por exemplo terças e quintas às 20:00.",
+      "Just in time: começa a cada 15, 30 ou 60 minutos, para quem chega; pode saltar a noite.",
       "Sempre disponível: o vídeo começa quando a pessoa entra.",
     ],
   },

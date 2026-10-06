@@ -145,7 +145,7 @@ export function StepAgenda({
   );
   const kinds: { value: ScheduleKind; icon: typeof CalendarDays; title: string; text: string }[] = [
     { value: "single", icon: CalendarDays, title: "Uma data", text: "Uma sessão, num dia e hora." },
-    { value: "repeat", icon: Repeat, title: "Repetir", text: "Todos os dias ou um dia por semana." },
+    { value: "repeat", icon: Repeat, title: "Repetir", text: "Nos dias e horas que escolher." },
     { value: "jit", icon: Clock, title: "Just in time", text: "Começa a cada 15, 30 ou 60 min." },
     { value: "ondemand", icon: Play, title: "Sempre disponível", text: "Começa quando a pessoa entra." },
   ];
@@ -205,48 +205,75 @@ export function StepAgenda({
         </Section>
       ) : kind === "repeat" ? (
         <Section icon={Clock} title="Quando">
-          <Field label="Repete">
-            <Seg
-              full
-              small
-              value={form.recurrence_pattern}
-              onChange={(recurrence_pattern) => set({ recurrence_pattern })}
-              options={[
-                { value: "daily", label: "Todos os dias" },
-                { value: "weekly", label: "Um dia por semana" },
-              ]}
-            />
-          </Field>
-          {form.recurrence_pattern === "weekly" ? (
-            <Field label="Dia">
-              <div className="grid grid-cols-7 gap-1">
-                {DAYS.map(([n, short, full]) => (
+          <Field label="Dias">
+            <div className="grid grid-cols-7 gap-1">
+              {DAYS.map(([n, short, full]) => {
+                const on = form.recurrence_days.includes(n);
+                return (
                   <button
                     key={n}
                     type="button"
                     aria-label={full}
-                    aria-pressed={form.recurrence_weekday === String(n)}
-                    onClick={() => set({ recurrence_weekday: String(n) })}
+                    aria-pressed={on}
+                    onClick={() =>
+                      set({
+                        recurrence_days: on
+                          ? form.recurrence_days.filter((d) => d !== n)
+                          : [...form.recurrence_days, n].sort((a, b) => a - b),
+                      })
+                    }
                     className={cn(
                       "h-9 rounded-md border bg-white text-[12.5px] font-medium",
-                      form.recurrence_weekday === String(n) && "border-foreground bg-foreground text-background",
+                      on && "border-foreground bg-foreground text-background",
                     )}
                   >
                     {short}
                   </button>
-                ))}
-              </div>
-            </Field>
-          ) : null}
-          <Field label="Hora" required>
-            <Input
-              type="time"
-              className="w-36"
-              value={form.recurrence_start_time}
-              onChange={(e) => set({ recurrence_start_time: e.target.value })}
-              {...focus("date")}
-            />
+                );
+              })}
+            </div>
           </Field>
+          <Field label="Horas" required>
+            <div className="flex flex-wrap items-center gap-2">
+              {form.recurrence_times.map((time, i) => (
+                <span key={`${time}-${i}`} className="inline-flex h-9 items-center gap-1 rounded-md border bg-white pl-2 pr-1">
+                  <Clock className="size-3.5 text-muted-foreground" />
+                  <input
+                    type="time"
+                    value={time}
+                    onChange={(e) =>
+                      set({ recurrence_times: form.recurrence_times.map((t, j) => (j === i ? e.target.value || t : t)) })
+                    }
+                    className="w-[84px] bg-transparent text-sm outline-none"
+                    aria-label={`Hora ${i + 1}`}
+                    {...(i === 0 ? focus("date") : {})}
+                  />
+                  {form.recurrence_times.length > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => set({ recurrence_times: form.recurrence_times.filter((_, j) => j !== i) })}
+                      aria-label="Tirar esta hora"
+                      className="grid size-6 place-items-center rounded text-muted-foreground hover:bg-[var(--ds-gray-alpha-200)]"
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                </span>
+              ))}
+              {form.recurrence_times.length < 6 ? (
+                <button
+                  type="button"
+                  onClick={() => set({ recurrence_times: [...form.recurrence_times, "20:00"] })}
+                  className="inline-flex h-9 items-center gap-1 rounded-md border border-dashed px-2.5 text-[13px] font-medium hover:bg-gray-50"
+                >
+                  + Hora
+                </button>
+              ) : null}
+            </div>
+          </Field>
+          {form.recurrence_days.length === 0 ? (
+            <p className="text-[12.5px] text-muted-foreground">Sem dias escolhidos, repete todos os dias.</p>
+          ) : null}
           {zoneSelect}
         </Section>
       ) : kind === "jit" ? (
@@ -260,6 +287,12 @@ export function StepAgenda({
               { value: "30", label: "30 min" },
               { value: "60", label: "1 hora" },
             ]}
+          />
+          <SwitchRow
+            title="Sem sessões de noite"
+            description="Entre as 22:00 e as 07:00, a próxima sessão é às 07:00."
+            checked={form.jit_skip_night}
+            onChange={(jit_skip_night) => set({ jit_skip_night })}
           />
           {zoneSelect}
         </Section>

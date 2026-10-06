@@ -26,6 +26,7 @@ import { PageSkeleton } from "@/components/page-skeleton";
 import { AiCommentsDialog } from "@/components/ai-comments-dialog";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import {
   defaultAiSettings,
   startAiJob,
@@ -59,14 +60,18 @@ import {
   useWorkspace,
   type WebinarStatus,
 } from "@/lib/data";
+import { entryFieldsProblem, parseEntryFields, type EntryField } from "@/lib/entry-fields";
 import {
   audienceModeFor,
   buildFormatCurve,
   clock,
   curveValueAt,
   inferAudienceFormat,
+  offerDeadlinePassed,
+  parseExtraOffers,
   type AudienceContext,
   type AudienceFormat,
+  type OfferSlot,
 } from "@/lib/room-logic";
 import { formatSessionStart, lifecycleLabel, sessionWindow, webinarLifecycle } from "@/lib/schedule";
 import { toStorageOffsets } from "@/lib/temporal/placement";
@@ -91,8 +96,8 @@ import {
   type EditorStep,
 } from "@/lib/webinar-draft";
 import { useSimulatedPurchases, useSocialProof } from "@/components/social-proof-editor";
-import { EntryScreen, entryLiveLabel, isDirectVideo } from "@/components/room/entry-screen";
-import type { Reaction } from "@/components/room/room-parts";
+import { EntryScreen, entryLiveLabel, resolveTheme } from "@/components/room/entry-screen";
+import type { Appearance, Reaction } from "@/components/room/room-parts";
 import { emptyEditorForm, type EditorForm, type FocusProps } from "@/components/webinar-editor/form";
 import { HelpButton } from "@/components/webinar-editor/ui";
 import type { HelpTopic } from "@/components/webinar-editor/help";
@@ -101,24 +106,16 @@ import {
   DeviceToggle,
   ExpandButton,
   FullScreen,
+  RotateButton,
   WaitingPreview,
   WhatsAppPreview,
   type Device,
 } from "@/components/webinar-editor/preview";
-import {
-  RoomPreview,
-  type PreviewMine,
-  type RoomTab,
-} from "@/components/webinar-editor/room-preview";
-import {
-  DEFAULT_LANE,
-  TimelineDock,
-  type LaneKey,
-  type RiskZone,
-} from "@/components/webinar-editor/timeline-dock";
+import { RoomPreview, type PreviewMine, type RoomTab } from "@/components/webinar-editor/room-preview";
+import { DEFAULT_LANE, TimelineDock, type LaneKey, type RiskZone } from "@/components/webinar-editor/timeline-dock";
 import { PublishPage, type LaunchIssue } from "@/components/webinar-editor/publish-page";
 import { StepInicio } from "@/components/webinar-editor/steps/inicio";
-import { StepEntrada, type EntryMoment } from "@/components/webinar-editor/steps/entrada";
+import { StepEntrada } from "@/components/webinar-editor/steps/entrada";
 import { StepVideo, type EditorClock } from "@/components/webinar-editor/steps/video";
 import { StepChat, type ChatWay } from "@/components/webinar-editor/steps/chat";
 import { StepAudiencia } from "@/components/webinar-editor/steps/audiencia";
@@ -140,7 +137,7 @@ export const Route = createFileRoute("/webinars/$webinarId/edit")({
   head: () => ({
     meta: [
       { title: "Editar webinar | Convertewebinar" },
-      { name: "description", content: "Edite a entrada, o vídeo, o chat, a oferta e a agenda do webinar." },
+      { name: "description", content: "Edite a página, o vídeo, o chat, a oferta e a agenda do webinar." },
       { property: "og:title", content: "Editar webinar | Convertewebinar" },
       { property: "og:description", content: "Configuração completa do webinar." },
       { property: "og:type", content: "website" },
@@ -150,10 +147,10 @@ export const Route = createFileRoute("/webinars/$webinarId/edit")({
   component: EditWebinar,
 });
 
-/** Ícone, título e ajuda de cada etapa (versão 13 do protótipo). A ordem e os grupos vêm do rascunho. */
+/** Ícone, título e ajuda de cada etapa. A ordem e os grupos vêm do rascunho. */
 const STEP_UI: Record<EditorStep, { icon: LucideIcon; title: string; help: HelpTopic }> = {
-  inicio: { icon: Flag, title: "Webinar e apresentador", help: "inicio" },
-  entrada: { icon: LogIn, title: "Dados de quem entra", help: "entrada" },
+  inicio: { icon: Flag, title: "Webinar e quem apresenta", help: "inicio" },
+  entrada: { icon: LogIn, title: "Página de entrada", help: "entrada" },
   video: { icon: Video, title: "Vídeo", help: "video" },
   chat: { icon: MessagesSquare, title: "Comentários simulados", help: "chat" },
   audiencia: { icon: Users, title: "Audiência", help: "audiencia" },
@@ -168,7 +165,9 @@ const GROUP_NAME = { antes: "Antes da sala", sala: "Na sala", depois: "Depois da
 
 /** Etapas da sala: mostram a linha do vídeo em baixo. */
 const DOCK_STEPS: readonly EditorStep[] = ["video", "chat", "audiencia", "oferta", "vendas"];
-/** Os ecrãs da sala por baixo do aparelho, e a etapa que cada um abre. */
+/** Etapas que seguem o tempo do vídeo: sem vídeo, pedem-no primeiro. */
+const NEEDS_VIDEO: readonly EditorStep[] = ["chat", "audiencia", "oferta", "vendas"];
+/** Os ecrãs da sala, e a etapa que cada um abre. */
 const SCREENS: [EditorStep, string][] = [
   ["video", "Webinar"],
   ["audiencia", "Audiência"],
@@ -177,16 +176,11 @@ const SCREENS: [EditorStep, string][] = [
   ["agente", "Suporte"],
 ];
 
-const CHAT_KEY = (id: string) => `cw:chat-rules:${id}`;
-
-/** As regras do chat são o pedido ao gerador: ficam no browser, como as definições da geração. */
-function loadChatRules(webinarId: string): ChatRules {
-  try {
-    const raw = window.localStorage.getItem(CHAT_KEY(webinarId));
-    return raw ? { ...DEFAULT_CHAT_RULES, ...(JSON.parse(raw) as Partial<ChatRules>) } : DEFAULT_CHAT_RULES;
-  } catch {
-    return DEFAULT_CHAT_RULES;
-  }
+/** As regras do chat gravadas (o que falta fica como de origem). */
+function parseChatRules(raw: unknown): ChatRules {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return DEFAULT_CHAT_RULES;
+  const r = raw as Partial<ChatRules>;
+  return { ...DEFAULT_CHAT_RULES, ...r };
 }
 
 /** As regras do chat no pedido ao gerador de comentários. */
@@ -219,7 +213,7 @@ function EditWebinar() {
   const [form, setForm] = useState<EditorForm>(emptyEditorForm);
   const set = useCallback((patch: Partial<EditorForm>) => setForm((prev) => ({ ...prev, ...patch })), []);
 
-  /* ---------- Gravação ---------- */
+  /* ---------- Estado gravado ---------- */
 
   const [saving, setSaving] = useState(false);
   // O formulário como está gravado: o que difere dele são alterações por gravar.
@@ -230,6 +224,14 @@ function EditWebinar() {
   const [range, setRange] = useState({ min: 200, max: 600 });
   const [savedAudience, setSavedAudience] = useState<string | null>(null);
   const [scheduleKind, setScheduleKind] = useState<ScheduleKind>("single");
+  // Os campos da página, a oferta seguinte e as regras do chat: listas e objectos à parte.
+  const [entryFields, setEntryFields] = useState<EntryField[]>(() => parseEntryFields([], { collectPhone: true, requirePhone: false }));
+  const [extraOffer, setExtraOffer] = useState<OfferSlot | null>(null);
+  const [chatRules, setChatRules] = useState<ChatRules>(DEFAULT_CHAT_RULES);
+  const [savedExtras, setSavedExtras] = useState<string | null>(null);
+  const extrasKey = (fields: EntryField[], extra: OfferSlot | null, rules: ChatRules) =>
+    JSON.stringify({ fields, extra, rules });
+
   // Carrega o formulário uma única vez por webinar: assim uma atualização em
   // segundo plano não apaga o que o organizador está a escrever.
   const hydratedRef = useRef<string | null>(null);
@@ -256,12 +258,6 @@ function EditWebinar() {
       video_source_id: webinar.video_source_id ?? "none",
       replay_enabled: webinar.replay_enabled,
       waiting_room_enabled: webinar.waiting_room_enabled,
-      prelive_enabled: webinar.prelive_enabled ?? false,
-      prelive_seconds: webinar.prelive_seconds ?? 300,
-      prelive_sound: webinar.prelive_sound ?? true,
-      prelive_message: webinar.prelive_message ?? base.prelive_message,
-      prelive_template: webinar.prelive_template ?? base.prelive_template,
-      prelive_appearance: base.prelive_appearance,
       schedule_mode: webinar.schedule_mode === "jit" ? "jit" : "single",
       recurrence_enabled: webinar.recurrence_enabled ?? false,
       recurrence_pattern: webinar.recurrence_pattern === "weekly" ? "weekly" : "daily",
@@ -270,38 +266,55 @@ function EditWebinar() {
       recurrence_end_time: webinar.recurrence_end_time ?? "",
       jit_interval_minutes: String(webinar.jit_interval_minutes ?? 15),
       timezone: webinar.timezone ?? "Europe/Lisbon",
-      easy_access: webinar.easy_access ?? false,
       sync_video_with_start: webinar.sync_video_with_start ?? false,
       cta_text: webinar.cta_text ?? "",
       cta_url: webinar.cta_url ?? "",
-      cta_color: webinar.cta_color ?? "green",
       cta_price_original: webinar.cta_price_original ?? "",
       cta_price_now: webinar.cta_price_now ?? "",
       cta_image_url: webinar.cta_image_url ?? "",
       cta_countdown_seconds: String(webinar.cta_countdown_seconds ?? 300),
       cta_start_seconds: String(webinar.cta_start_seconds ?? webinar.pitch_seconds ?? ""),
       cta_end_seconds: webinar.cta_end_seconds != null ? String(webinar.cta_end_seconds) : "",
-      registration_headline: webinar.registration_headline,
-      registration_subtitle: webinar.registration_subtitle,
       registration_button_text: webinar.registration_button_text,
       registration_collect_phone: webinar.registration_collect_phone,
       registration_require_phone: webinar.registration_require_phone,
-      registration_cover_url: webinar.registration_cover_url ?? "",
-      registration_badge_text: webinar.registration_badge_text ?? "",
       registration_progress_enabled: webinar.registration_progress_enabled ?? false,
       registration_progress_value: String(webinar.registration_progress_value ?? 92),
-      registration_scarcity_note: webinar.registration_scarcity_note ?? "",
       room_theme: webinar.room_theme === "light" ? "light" : "dark",
       share_title: webinar.share_title ?? "",
       share_description: webinar.share_description ?? "",
       share_image_url: webinar.share_image_url ?? "",
       webhook_url: webinar.webhook_url ?? "",
       webhook_enabled: webinar.webhook_enabled ?? false,
+      host_verified: webinar.host_verified,
+      room_theme_system: webinar.room_theme_system,
+      entry_card_color: webinar.entry_card_color,
+      entry_button_color: webinar.entry_button_color,
+      offer_utm: webinar.offer_utm,
+      offer_countdown_end: webinar.offer_countdown_end === "close" ? "close" : "keep",
+      offer_deadline: webinar.offer_deadline ?? "",
+      sales_show_real: webinar.sales_show_real,
+      sales_where: webinar.sales_where === "chat" || webinar.sales_where === "video" ? webinar.sales_where : "both",
+      recurrence_days: webinar.recurrence_days ?? [],
+      recurrence_times: webinar.recurrence_times?.length
+        ? webinar.recurrence_times
+        : webinar.recurrence_start_time
+          ? [webinar.recurrence_start_time]
+          : [],
+      jit_skip_night: webinar.jit_skip_night,
     };
-    // A aparência da contagem guardada continua igual: o editor não a mostra, mas não a apaga.
-    loaded.prelive_appearance = (webinar.prelive_appearance ?? base.prelive_appearance) as EditorForm["prelive_appearance"];
     setForm(loaded);
     setSavedSnapshot(JSON.stringify(loaded));
+    const fields = parseEntryFields(webinar.entry_fields, {
+      collectPhone: webinar.registration_collect_phone,
+      requirePhone: webinar.registration_require_phone,
+    });
+    const extra = parseExtraOffers(webinar.extra_offers)[0] ?? null;
+    const rules = parseChatRules(webinar.chat_settings);
+    setEntryFields(fields);
+    setExtraOffer(extra);
+    setChatRules(rules);
+    setSavedExtras(extrasKey(fields, extra, rules));
     setScheduleKind(
       loaded.schedule_mode === "jit"
         ? "jit"
@@ -388,7 +401,6 @@ function EditWebinar() {
 
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(true);
   useEffect(() => {
     if (!playing) return;
     let last = performance.now();
@@ -415,21 +427,44 @@ function EditWebinar() {
     toggle: () => setPlaying((p) => !p),
     seek,
   };
+  /** Leva o vídeo uns segundos antes e toca, para ver acontecer na sala. */
+  const watchAt = (seconds: number, tab: RoomTab | null = null) => {
+    setRoomTab(tab);
+    seek(Math.max(0, seconds - 3));
+    setPlaying(true);
+  };
 
-  /* ---------- Estado da pré-visualização ---------- */
+  /* ---------- Pré-visualização ---------- */
 
   const [device, setDevice] = useState<Device>("desktop");
+  const [landscape, setLandscape] = useState(false);
   const [full, setFull] = useState(false);
   const [roomTab, setRoomTab] = useState<RoomTab | null>(null);
-  const [entryMoment, setEntryMoment] = useState<EntryMoment>(1);
+  const [entryView, setEntryView] = useState<"page" | "room">("page");
   const [entryMode, setEntryMode] = useState<"page" | "own">("page");
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const [mine, setMine] = useState<PreviewMine[]>([]);
   const [reactions, setReactions] = useState<Reaction[]>([]);
+  const [volume, setVolume] = useState(0);
+  const [captionsOn, setCaptionsOn] = useState(false);
   const [dockOpen, setDockOpen] = useState(false);
   const [lane, setLane] = useState<LaneKey>("fala");
   const [published, setPublished] = useState(false);
   const [agentState, setAgentState] = useState({ on: false, name: "Equipa" });
+  // A aparência da sala: a escolhida pelo organizador; na pré-visualização pode trocar-se no ⚙.
+  const orgAppearance: Appearance = form.room_theme_system ? "system" : form.room_theme;
+  const [previewAppearance, setPreviewAppearance] = useState<Appearance>(orgAppearance);
+  useEffect(() => setPreviewAppearance(orgAppearance), [orgAppearance]);
+  const [prefersDark, setPrefersDark] = useState(true);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    setPrefersDark(media.matches);
+    const onChange = (event: MediaQueryListEvent) => setPrefersDark(event.matches);
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+  const previewTheme = resolveTheme(previewAppearance, prefersDark);
+
   const focus: FocusProps = (key) => ({
     onFocus: () => setFocusKey(key),
     onBlur: () => setFocusKey((k) => (k === key ? null : k)),
@@ -476,14 +511,20 @@ function EditWebinar() {
     audienceLoadedRef.current = true;
     const bounds = curveBounds(audience?.curve);
     const nextRange = bounds && bounds.max > 0 ? { min: bounds.min, max: bounds.max } : { min: 200, max: 600 };
-    const nextFormat = audience ? inferAudienceFormat(audience.mode, audience.curve, audienceCtx) : "dynamic";
+    const stored = audience?.format as AudienceFormat | null | undefined;
+    const nextFormat = stored ?? (audience ? inferAudienceFormat(audience.mode, audience.curve, audienceCtx) : "dynamic");
     setRange(nextRange);
     setFormat(nextFormat);
     setSavedAudience(audience ? audienceKey(nextFormat, nextRange) : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audience, webinar, audienceCtx, analysisPending]);
+  const simulatedAudience = format !== "real" && format !== "off";
   const curve = useMemo(
-    () => (format === "real" ? [] : buildFormatCurve(format === "mista" ? "dynamic" : format, range.min, range.max, audienceCtx)),
-    [format, range.min, range.max, audienceCtx],
+    () =>
+      simulatedAudience
+        ? buildFormatCurve(format === "mista" ? "dynamic" : format, range.min, range.max, audienceCtx)
+        : [],
+    [simulatedAudience, format, range.min, range.max, audienceCtx],
   );
 
   const saveAudience = async (): Promise<boolean> => {
@@ -494,6 +535,7 @@ function EditWebinar() {
         webinar_id: webinarId,
         organization_id: organizationId,
         mode: audienceModeFor(format),
+        format,
         curve,
         updated_at: new Date().toISOString(),
       },
@@ -511,7 +553,8 @@ function EditWebinar() {
   const dirty =
     (savedSnapshot !== null && JSON.stringify(form) !== savedSnapshot) ||
     product !== savedProduct ||
-    (savedAudience !== null && audienceKey(format, range) !== savedAudience);
+    (savedAudience !== null && audienceKey(format, range) !== savedAudience) ||
+    (savedExtras !== null && extrasKey(entryFields, extraOffer, chatRules) !== savedExtras);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
   useBlocker({
@@ -521,7 +564,6 @@ function EditWebinar() {
       !window.confirm("Há alterações por gravar. Sair mesmo assim?"),
     enableBeforeUnload: () => dirtyRef.current,
   });
-
 
   /* ---------- Produto e compras de demonstração ---------- */
 
@@ -575,7 +617,7 @@ function EditWebinar() {
       if (enabled !== salesEnabled) await saveProduct({ enabled });
       if (enabled) {
         const first = demoSales(SALES_QTY[qty], pitchSeconds, duration)[0];
-        if (first) seek(first.at + 1);
+        if (first) watchAt(first.at);
       }
     } catch (error) {
       toast.error(friendlyError(error, "Não foi possível mudar as compras de demonstração."));
@@ -594,9 +636,12 @@ function EditWebinar() {
       recurrence_enabled: form.recurrence_enabled,
       recurrence_pattern: form.recurrence_pattern,
       recurrence_weekday: Number(form.recurrence_weekday) || 0,
-      recurrence_start_time: form.recurrence_start_time,
+      recurrence_start_time: form.recurrence_times[0] ?? form.recurrence_start_time,
       recurrence_end_time: form.recurrence_end_time,
+      recurrence_days: form.recurrence_days,
+      recurrence_times: form.recurrence_times,
       jit_interval_minutes: Number(form.jit_interval_minutes) || 15,
+      jit_skip_night: form.jit_skip_night,
       timezone: form.timezone,
       duration_seconds: duration,
     },
@@ -614,7 +659,9 @@ function EditWebinar() {
       set({
         schedule_mode: "single",
         recurrence_enabled: true,
-        recurrence_start_time: form.recurrence_start_time || form.scheduled_at.split("T")[1] || "20:00",
+        recurrence_times: form.recurrence_times.length
+          ? form.recurrence_times
+          : [form.recurrence_start_time || form.scheduled_at.split("T")[1] || "20:00"],
       });
     if (kind === "single")
       set({ schedule_mode: "single", recurrence_enabled: false, scheduled_at: form.scheduled_at || lastDateRef.current });
@@ -622,9 +669,10 @@ function EditWebinar() {
     if (kind === "ondemand") set({ schedule_mode: "single", recurrence_enabled: false, scheduled_at: "" });
   };
 
-  const draftIssues = webinarIssues(form, { durationSeconds: duration }).filter(
-    (issue) => !(scheduleKind === "ondemand" && issue.field === "scheduled_at"),
-  );
+  const draftIssues = webinarIssues(
+    { ...form, recurrence_start_time: form.recurrence_times[0] ?? form.recurrence_start_time },
+    { durationSeconds: duration },
+  ).filter((issue) => !(scheduleKind === "ondemand" && issue.field === "scheduled_at"));
   const sessionEnded = (() => {
     if (scheduleKind !== "single" || lifecycle.kind !== "session" || lifecycle.state !== "finished") return null;
     return new Intl.DateTimeFormat("pt-PT", { day: "2-digit", month: "2-digit", timeZone: form.timezone }).format(
@@ -632,7 +680,10 @@ function EditWebinar() {
     );
   })();
   const offerVisible = Boolean(form.cta_text.trim());
+  const fieldsProblem = entryFieldsProblem(entryFields);
   const launchIssues: LaunchIssue[] = [
+    ...(fieldsProblem ? [{ step: "entrada" as const, title: fieldsProblem, detail: "Impede gravar." }] : []),
+    ...(!selectedVideo ? [{ step: "video" as const, title: "Falta o vídeo", detail: "O chat, a oferta e a audiência seguem o tempo dele." }] : []),
     ...draftIssues.map((issue) => ({ step: issue.step, title: issue.message, detail: issue.blocking ? "Impede gravar." : "" })),
     ...(offerVisible && !product.trim()
       ? [{ step: "oferta" as const, title: "Falta o nome do produto", detail: "Aparece na oferta e nas compras." }]
@@ -656,6 +707,11 @@ function EditWebinar() {
   const save = async (options?: { silent?: boolean }): Promise<boolean> => {
     if (!webinar) return false;
     // Um erro que bloqueia não grava nada e leva ao passo do campo, também ao «Continuar».
+    if (fieldsProblem) {
+      toast.error(fieldsProblem);
+      setStep("entrada");
+      return false;
+    }
     const blocking = draftIssues.find((issue) => issue.blocking);
     if (blocking) {
       toast.error(blocking.message);
@@ -663,6 +719,8 @@ function EditWebinar() {
       return false;
     }
     const offer = offerTiming(form);
+    const whatsapp = entryFields.find((f) => f.kind === "whatsapp");
+    const times = form.recurrence_times.filter(Boolean);
     setSaving(true);
     try {
       const { error } = await supabase
@@ -674,8 +732,8 @@ function EditWebinar() {
           host_name: form.host_name.trim(),
           host_role: form.host_role.trim(),
           host_avatar_url: form.host_avatar_url.trim(),
+          host_verified: form.host_verified,
           chat_pin_title: form.chat_pin_title.trim() || "Participe no chat!",
-          chat_pin_message: form.chat_pin_message.trim(),
           slug: slugify(form.slug || form.public_title || form.internal_name),
           scheduled_at: scheduleKind === "ondemand" ? null : isoFromLocalInput(form.scheduled_at, form.timezone),
           status: statusOnSave(webinar, derivedStatus),
@@ -686,10 +744,16 @@ function EditWebinar() {
           recurrence_enabled: form.recurrence_enabled,
           recurrence_pattern: form.recurrence_pattern,
           recurrence_weekday: Number(form.recurrence_weekday) || 0,
-          recurrence_start_time: form.recurrence_start_time,
+          // A primeira hora fica também na coluna antiga, que outras partes ainda lêem.
+          recurrence_start_time: times[0] ?? form.recurrence_start_time,
+          recurrence_days: form.recurrence_days,
+          recurrence_times: times,
           jit_interval_minutes: Math.max(5, Number(form.jit_interval_minutes) || 15),
+          jit_skip_night: form.jit_skip_night,
           timezone: form.timezone,
           sync_video_with_start: form.sync_video_with_start,
+          room_theme: form.room_theme,
+          room_theme_system: form.room_theme_system,
           cta_text: form.cta_text.trim() || null,
           cta_url: offerUrl(form.cta_url),
           cta_price_original: form.cta_price_original.trim(),
@@ -699,14 +763,22 @@ function EditWebinar() {
           cta_start_seconds: offer.start,
           pitch_seconds: offer.start,
           cta_end_seconds: offer.end,
-          registration_headline: form.registration_headline.trim(),
-          registration_subtitle: form.registration_subtitle.trim(),
+          offer_utm: form.offer_utm,
+          offer_countdown_end: form.offer_countdown_end,
+          offer_deadline: form.offer_deadline || null,
+          extra_offers: (extraOffer ? [{ ...extraOffer, url: offerUrl(extraOffer.url) ?? "" }] : []) as unknown as Json,
+          sales_show_real: form.sales_show_real,
+          sales_where: form.sales_where,
           registration_button_text: form.registration_button_text.trim() || "Entrar na sala",
-          registration_collect_phone: form.registration_collect_phone,
-          registration_require_phone: form.registration_collect_phone && form.registration_require_phone,
-          registration_badge_text: form.registration_badge_text.trim(),
+          // Os campos escolhidos; o WhatsApp fica também nas colunas antigas (formulários embed, métricas).
+          entry_fields: entryFields as unknown as Json,
+          registration_collect_phone: Boolean(whatsapp),
+          registration_require_phone: Boolean(whatsapp?.required),
           registration_progress_enabled: form.registration_progress_enabled,
           registration_progress_value: Math.min(100, Math.max(0, Number(form.registration_progress_value) || 0)),
+          entry_card_color: form.entry_card_color,
+          entry_button_color: form.entry_button_color,
+          chat_settings: chatRules as unknown as Json,
           share_title: form.share_title.trim(),
           share_description: form.share_description.trim(),
           share_image_url: form.share_image_url.trim() || null,
@@ -725,6 +797,7 @@ function EditWebinar() {
         else toast.success("Alterações guardadas.");
       }
       setSavedSnapshot(JSON.stringify(form));
+      setSavedExtras(extrasKey(entryFields, extraOffer, chatRules));
       return productOk && audienceOk;
     } catch (error) {
       toast.error(friendlyError(error, "Não foi possível guardar."));
@@ -773,6 +846,18 @@ function EditWebinar() {
 
   /* ---------- Vídeo: biblioteca, envio e link ---------- */
 
+  /** O vídeo escolhido grava logo: o resto das etapas (e a transcrição) dependem dele. */
+  const persistVideo = async (id: string) => {
+    set({ video_source_id: id });
+    const { error } = await supabase.from("webinars").update({ video_source_id: id }).eq("id", webinarId);
+    if (error) {
+      toast.error(friendlyError(error, "O vídeo foi escolhido mas não ficou gravado. Carregue em Guardar."));
+      return;
+    }
+    setSavedSnapshot((prev) => (prev ? JSON.stringify({ ...JSON.parse(prev), video_source_id: id }) : prev));
+    invalidate(["webinar"]);
+  };
+
   const readDurationFromSrc = (src: string, timeoutMs = 10000) =>
     new Promise<number>((resolve) => {
       const el = document.createElement("video");
@@ -794,10 +879,6 @@ function EditWebinar() {
 
   const addVideoLink = async (input: { name: string; provider: Provider; url: string }) => {
     if (!organizationId) return false;
-    if (!/^https?:\/\/.+/i.test(input.url)) {
-      toast.error("Indique o link do vídeo, começado por https://");
-      return false;
-    }
     const detected = await readDurationFromSrc(input.url);
     const { data, error } = await supabase
       .from("video_sources")
@@ -814,9 +895,9 @@ function EditWebinar() {
       toast.error(friendlyError(error));
       return false;
     }
-    set({ video_source_id: data.id });
     invalidate(["video-sources"]);
-    toast.success("Vídeo escolhido. Guarde as alterações.");
+    await persistVideo(data.id);
+    toast.success(detected ? "Vídeo escolhido e guardado." : "Vídeo escolhido. Não conseguimos ler a duração: confirme na Biblioteca.");
     return true;
   };
 
@@ -849,11 +930,11 @@ function EditWebinar() {
       toast.error(friendlyError(error));
       return;
     }
-    set({ video_source_id: data.id });
     setVideoUpload(null);
     videoUploadRef.current = null;
     invalidate(["video-sources"]);
-    toast.success(`Vídeo enviado (${formatBytes(file.size)}) e escolhido. Guarde as alterações.`);
+    await persistVideo(data.id);
+    toast.success(`Vídeo enviado (${formatBytes(file.size)}), escolhido e guardado.`);
   };
 
   const uploadVideoFile = async (file: File) => {
@@ -900,17 +981,7 @@ function EditWebinar() {
 
   /* ---------- Chat ---------- */
 
-  const [chatRules, setChatRules] = useState<ChatRules>(() => loadChatRules(webinarId));
-  const updateRules = (patch: Partial<ChatRules>) =>
-    setChatRules((prev) => {
-      const next = { ...prev, ...patch };
-      try {
-        window.localStorage.setItem(CHAT_KEY(webinarId), JSON.stringify(next));
-      } catch {
-        /* sem armazenamento: ficam só nesta página */
-      }
-      return next;
-    });
+  const updateRules = (patch: Partial<ChatRules>) => setChatRules((prev) => ({ ...prev, ...patch }));
   const [chatWay, setChatWay] = useState<ChatWay>("ai");
   const [aiOpen, setAiOpen] = useState(false);
 
@@ -925,11 +996,15 @@ function EditWebinar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiJob?.status, aiJob?.startedAt, aiJob?.drafts?.length]);
 
-  const generate = () => {
+  // O gerador lê o vídeo gravado na base: grava-se tudo antes de começar.
+  const generate = async () => {
     if (!selectedVideo) {
       toast.error("Escolha o vídeo primeiro, na etapa Vídeo.");
+      setStep("video");
       return;
     }
+    const ok = await save({ silent: true });
+    if (!ok) return;
     startAiJob({
       webinarId,
       webinarTitle: form.public_title || form.internal_name || "Webinar",
@@ -942,11 +1017,11 @@ function EditWebinar() {
   };
 
   const audienceNorm = useMemo(() => {
-    if (format === "real" || range.max <= range.min || curve.length < 2) return undefined;
+    if (!simulatedAudience || range.max <= range.min || curve.length < 2) return undefined;
     return (seconds: number) => (curveValueAt(curve, seconds, duration) - range.min) / (range.max - range.min);
-  }, [format, range.min, range.max, curve, duration]);
+  }, [simulatedAudience, range.min, range.max, curve, duration]);
 
-  /** Grava os comentários com as regras para não parecer falso; os escritos à mão ficam. */
+  /** Grava os comentários com as regras para parecer real; os escritos à mão ficam. */
   const insertComments = async (drafts: (ChatDraft & Partial<DraftComment>)[], replaceGenerated: boolean) => {
     if (!organizationId) throw new Error("Não foi possível identificar o seu espaço de trabalho.");
     if (replaceGenerated) {
@@ -1107,7 +1182,7 @@ function EditWebinar() {
   const roomSlug = slugify(form.slug || form.public_title || form.internal_name);
   const roomLink = `${baseUrl}/w/${roomSlug}`;
   const active = STEP_UI[step];
-  const videoUrl = selectedVideo && isDirectVideo(selectedVideo.source_url, selectedVideo.provider) ? selectedVideo.source_url : null;
+  const videoUrl = selectedVideo?.source_url && /^https?:\/\//i.test(selectedVideo.source_url) ? selectedVideo.source_url : null;
   const sales = simulatedPurchases.map((p) => ({
     id: p.id,
     at: p.offset_seconds,
@@ -1115,7 +1190,7 @@ function EditWebinar() {
     product: p.product_name || product.trim() || "a vaga",
   }));
   const shownSales = salesEnabled ? sales : [];
-  const viewers = format === "real" ? 1 : curveValueAt(curve, t, duration);
+  const viewers = format === "off" ? null : format === "real" ? 1 : curveValueAt(curve, t, duration);
   const nextWindow = sessionWindow(
     {
       schedule_mode: form.schedule_mode,
@@ -1123,74 +1198,88 @@ function EditWebinar() {
       recurrence_enabled: form.recurrence_enabled,
       recurrence_pattern: form.recurrence_pattern,
       recurrence_weekday: Number(form.recurrence_weekday) || 0,
-      recurrence_start_time: form.recurrence_start_time,
+      recurrence_start_time: form.recurrence_times[0] ?? form.recurrence_start_time,
+      recurrence_days: form.recurrence_days,
+      recurrence_times: form.recurrence_times,
       jit_interval_minutes: Number(form.jit_interval_minutes) || 15,
+      jit_skip_night: form.jit_skip_night,
       timezone: form.timezone,
       duration_seconds: duration,
     },
     Date.now(),
   );
   const nextSession = nextWindow.startMs ? formatSessionStart(nextWindow.startMs, form.timezone) : null;
+  const offers: OfferSlot[] = [
+    ...(offerVisible
+      ? [
+          {
+            id: "main",
+            start: pitchSeconds ?? 0,
+            end: form.cta_end_seconds.trim() ? Number(form.cta_end_seconds) || null : null,
+            product,
+            priceFrom: form.cta_price_original,
+            priceNow: form.cta_price_now,
+            url: form.cta_url,
+            button: form.cta_text || "Quero minha vaga",
+            countdown: Number(form.cta_countdown_seconds) || 0,
+          },
+        ]
+      : []),
+    ...(offerVisible && extraOffer ? [extraOffer] : []),
+  ];
+  const offerClosed = offerDeadlinePassed(form.offer_deadline, form.timezone, Date.now());
+  const needsVideo = NEEDS_VIDEO.includes(step) && !selectedVideo;
 
   // O ecrã que cada etapa mostra.
-  type Screen = "entry-gate" | "entry-card" | "room" | "waiting" | "whatsapp";
+  type Screen = "entry" | "room" | "waiting" | "whatsapp";
   const screen: Screen =
     step === "inicio"
-      ? "entry-card"
+      ? "entry"
       : step === "entrada"
-        ? entryMoment === 1
-          ? "entry-gate"
-          : entryMoment === 2
-            ? "entry-card"
-            : "room"
+        ? entryView === "page"
+          ? "entry"
+          : "room"
         : step === "agenda"
           ? form.waiting_room_enabled && scheduleKind !== "ondemand" && nextWindow.startMs && nextWindow.startMs > Date.now()
             ? "waiting"
-            : "entry-card"
+            : "entry"
           : step === "automacoes"
             ? "whatsapp"
             : "room";
   const defaultTab: RoomTab = step === "oferta" ? "offer" : step === "agente" ? "support" : "chat";
   const tab = roomTab ?? defaultTab;
-  const screenName = { "entry-gate": "Página de entrada", "entry-card": "Página de entrada", room: "Sala ao vivo", waiting: "Sala de espera", whatsapp: "WhatsApp" }[screen];
-  const ScreenIcon = { "entry-gate": LogIn, "entry-card": LogIn, room: Radio, waiting: CalendarDays, whatsapp: MessagesSquare }[screen];
+  const screenName = { entry: "Página de entrada", room: "Sala ao vivo", waiting: "Sala de espera", whatsapp: "WhatsApp" }[screen];
+  const ScreenIcon = { entry: LogIn, room: Radio, waiting: CalendarDays, whatsapp: MessagesSquare }[screen];
   const screenDevice: Device = screen === "whatsapp" ? "phone" : device;
+  const rotated = screenDevice === "phone" && landscape && screen === "room";
   const live = entryLiveLabel(nextWindow.startMs, form.timezone, Date.now());
 
-  const watchChat = () => {
-    setRoomTab("chat");
-    if (t < 40 || t > duration - 20) seek(Math.min(60, duration));
-    setPlaying(true);
-  };
-  const watchOffer = () => {
-    setRoomTab("chat");
-    seek(Math.max(0, (pitchSeconds ?? 0) - 4));
-    setPlaying(true);
-  };
   const room = (
     <RoomPreview
-      device={screenDevice}
+      device={screenDevice === "phone" ? (rotated ? "phone-landscape" : "phone") : "desktop"}
+      theme={previewTheme}
+      appearance={previewAppearance}
+      onAppearance={setPreviewAppearance}
       t={t}
       playing={playing}
       onTogglePlay={() => setPlaying((p) => !p)}
       duration={duration}
-      video={{ url: videoUrl, muted }}
+      video={{ url: videoUrl, provider: selectedVideo?.provider ?? null }}
+      volume={volume}
+      onVolume={setVolume}
+      captionsOn={captionsOn}
+      onCaptions={setCaptionsOn}
+      speech={speech}
       title={form.public_title || "O título do webinar"}
-      host={{ name: form.host_name, role: form.host_role, avatarUrl: form.host_avatar_url }}
+      host={{ name: form.host_name, role: form.host_role, avatarUrl: form.host_avatar_url, verified: form.host_verified }}
       viewers={viewers}
       pin={form.chat_pin_title}
       comments={comments.map((c) => ({ id: c.id, at: c.offset_seconds, author: c.author_name, message: c.message }))}
       sales={shownSales}
-      offer={{
-        visible: offerVisible,
-        start: pitchSeconds,
-        productName: product,
-        imageUrl: form.cta_image_url || undefined,
-        priceFrom: form.cta_price_original,
-        priceNow: form.cta_price_now,
-        buttonText: form.cta_text || "Quero minha vaga",
-        countdown: Number(form.cta_countdown_seconds) || 0,
-      }}
+      salesWhere={form.sales_where}
+      offers={offers}
+      offerImageUrl={form.cta_image_url || undefined}
+      offerClosed={offerClosed}
       agent={agentState}
       tab={tab}
       onTab={setRoomTab}
@@ -1200,37 +1289,33 @@ function EditWebinar() {
       onSend={(text, where) => setMine((list) => [...list, { at: t, text, tab: where }])}
       reactions={reactions}
       onHeart={heart}
-      onBuy={() => toast(`Abre o checkout num separador novo, com a origem da pessoa.`)}
+      onBuy={() => toast(`Abre o checkout num separador novo${form.offer_utm ? ", com a origem da pessoa" : ""}.`)}
     />
   );
-  const entry = (moment: "gate" | "card") => (
+  const entry = (
     <EntryScreen
       preview
-      className={screenDevice === "phone" ? "h-[852px] w-[393px]" : "h-[720px] w-[1280px]"}
-      moment={moment}
-      onOpen={() => setEntryMoment(2)}
+      className={screenDevice === "phone" ? "h-[852px] w-[393px] pt-[60px]" : "h-[720px] w-[1280px]"}
+      theme={previewTheme}
+      title={form.public_title || "O título do webinar"}
       live={live.live}
       liveLabel={live.label}
-      video={videoUrl ? { url: videoUrl, startSeconds: 0 } : null}
-      fallback={{ kicker: selectedVideo?.name ?? "Sessão ao vivo", title: form.public_title }}
-      badge={form.registration_badge_text || undefined}
-      headline={form.registration_headline || form.public_title || "O título do webinar"}
-      subtitle={form.registration_subtitle || undefined}
+      video={videoUrl && selectedVideo?.provider === "upload" ? { url: videoUrl, startSeconds: 0 } : null}
       buttonText={form.registration_button_text || "Entrar na sala"}
       progress={form.registration_progress_enabled ? Number(form.registration_progress_value) || 0 : null}
-      phone={{ show: form.registration_collect_phone, required: form.registration_require_phone }}
-      values={{ name: "", email: "", phone: "" }}
+      fields={entryFields}
+      values={{}}
       country={{ code: "AO", name: "Angola", dial: "+244", flag: "🇦🇴" }}
+      cardColor={form.entry_card_color}
+      buttonColor={form.entry_button_color}
       highlight={focusKey}
     />
   );
   const screenBody =
     screen === "room" ? (
       room
-    ) : screen === "entry-gate" ? (
-      entry("gate")
-    ) : screen === "entry-card" ? (
-      entry("card")
+    ) : screen === "entry" ? (
+      entry
     ) : screen === "waiting" ? (
       <WaitingPreview
         device={screenDevice}
@@ -1260,15 +1345,15 @@ function EditWebinar() {
     );
 
   const dock =
-    DOCK_STEPS.includes(step) && duration > 0 && !published ? (
+    DOCK_STEPS.includes(step) && duration > 0 && !published && !needsVideo ? (
       <TimelineDock
         t={t}
         duration={duration}
         playing={playing}
         onToggle={() => setPlaying((p) => !p)}
         onSeek={seek}
-        muted={muted}
-        onMute={() => setMuted((m) => !m)}
+        muted={volume === 0}
+        onMute={() => setVolume((v) => (v === 0 ? 1 : 0))}
         open={dockOpen}
         onOpenChange={setDockOpen}
         lane={lane}
@@ -1279,7 +1364,7 @@ function EditWebinar() {
           step === "oferta" && offerVisible
             ? () => {
                 set({ cta_start_seconds: String(Math.round(t)) });
-                toast.success(`Minuto do pitch: ${clock(t)}.`);
+                toast.success(`A oferta abre aos ${clock(t)}.`);
               }
             : undefined
         }
@@ -1287,8 +1372,8 @@ function EditWebinar() {
           speech,
           comments: comments.map((c) => ({ at: c.offset_seconds, author: c.author_name, message: c.message })),
           audience: {
-            curve: format === "real" ? null : curve,
-            label: format === "real" ? "Só a real" : `${range.min} a ${range.max}`,
+            curve: simulatedAudience ? curve : null,
+            label: format === "off" ? "Não mostra" : format === "real" ? "Só a real" : `${range.min} a ${range.max}`,
           },
           offer: { visible: offerVisible, start: pitchSeconds, countdown: Number(form.cta_countdown_seconds) || 0, suggested: suggestedPitch },
           sales: shownSales,
@@ -1297,15 +1382,29 @@ function EditWebinar() {
       />
     ) : null;
 
+  // Os ecrãs por cima do aparelho: na Página, a página e a sala; nas etapas da sala, os ecrãs dela.
+  const pills: [string, string, () => void, boolean][] =
+    step === "entrada" || step === "inicio"
+      ? [
+          ["page", "Página", () => (setStepState("entrada"), setEntryView("page")), screen === "entry"],
+          ["room", "Na sala", () => (setStepState("entrada"), setEntryView("room")), step === "entrada" && entryView === "room"],
+        ]
+      : screen === "room"
+        ? SCREENS.map(([target, label]) => [target, label, () => setStep(target), step === target || (target === "vendas" && step === "oferta")])
+        : [];
+
   const tools = (
-    <>
+    <span className="flex items-center gap-2">
+      {screenDevice === "phone" && screen === "room" ? <RotateButton landscape={landscape} onChange={setLandscape} /> : null}
+      <ExpandButton onClick={() => setFull(true)} />
       {screen !== "whatsapp" ? <DeviceToggle device={device} onChange={setDevice} /> : null}
-    </>
+    </span>
   );
 
   return (
     <AppShell action={false} bleed rail>
-      <div className="flex flex-1 flex-col lg:h-dvh lg:min-h-0">
+      {/* No computador, o editor ocupa o ecrã: a página não desliza, só o painel. */}
+      <div className="flex flex-1 flex-col bg-background lg:fixed lg:inset-y-0 lg:left-[72px] lg:right-0 lg:z-10">
         <header className="grid shrink-0 border-b bg-background lg:grid-cols-[340px_minmax(0,1fr)]">
           <div className="flex h-12 min-w-0 items-center gap-1.5 border-b px-2.5 lg:border-r lg:border-b-0">
             <Button variant="ghost" size="icon" className="size-8 shrink-0" asChild>
@@ -1341,9 +1440,7 @@ function EditWebinar() {
               const current = s.id === step && !published;
               return (
                 <Fragment key={s.id}>
-                  {index > 0 && STEPS[index - 1]?.group !== s.group ? (
-                    <span aria-hidden className="mx-1 h-[18px] w-px shrink-0 bg-border" />
-                  ) : null}
+                  {index > 0 && STEPS[index - 1]?.group !== s.group ? <span aria-hidden className="mx-1 h-[18px] w-px shrink-0 bg-border" /> : null}
                   <button
                     type="button"
                     onClick={() => setStep(s.id)}
@@ -1376,7 +1473,21 @@ function EditWebinar() {
                 <HelpButton topic={active.help} />
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-3.5 [scrollbar-width:thin]">
-                {step === "inicio" ? (
+                {needsVideo ? (
+                  <div className="grid justify-items-start gap-3 rounded-xl border bg-white p-4">
+                    <span className="grid size-10 place-items-center rounded-full bg-chip">
+                      <Video className="size-5" />
+                    </span>
+                    <b className="text-[15px] font-semibold">Primeiro, o vídeo</b>
+                    <p className="text-[13px] text-muted-foreground">
+                      Esta etapa segue o tempo do vídeo: o que se escreve no chat, quando a oferta abre, quantas pessoas a sala mostra e
+                      quando aparecem as compras. Carregue o vídeo e volte aqui.
+                    </p>
+                    <Button variant="dark" size="sm" onClick={() => setStep("video")}>
+                      Ir para o Vídeo
+                    </Button>
+                  </div>
+                ) : step === "inicio" ? (
                   <StepInicio
                     form={form}
                     set={set}
@@ -1392,8 +1503,10 @@ function EditWebinar() {
                     form={form}
                     set={set}
                     focus={focus}
-                    moment={entryMoment}
-                    onMoment={setEntryMoment}
+                    fields={entryFields}
+                    onFields={setEntryFields}
+                    colors={{ card: form.entry_card_color, button: form.entry_button_color }}
+                    onColors={(c) => set({ entry_card_color: c.card, entry_button_color: c.button })}
                     mode={entryMode}
                     onMode={setEntryMode}
                     roomLink={roomLink}
@@ -1428,7 +1541,7 @@ function EditWebinar() {
                     providerLabel={(p) => providerLabels[p as Provider] ?? p}
                     clock={editorClock}
                     transcript={speech}
-                    onPick={(id) => set({ video_source_id: id })}
+                    onPick={(id) => void persistVideo(id)}
                     upload={{
                       state: videoUpload,
                       busy: uploading,
@@ -1442,6 +1555,10 @@ function EditWebinar() {
                       },
                     }}
                     onAddLink={addVideoLink}
+                    appearance={orgAppearance}
+                    onAppearance={(a) =>
+                      set(a === "system" ? { room_theme_system: true } : { room_theme_system: false, room_theme: a })
+                    }
                   />
                 ) : step === "chat" ? (
                   <StepChat
@@ -1473,11 +1590,11 @@ function EditWebinar() {
                           }
                         : null
                     }
-                    onGenerate={generate}
+                    onGenerate={() => void generate()}
                     onImport={(file) => void importSheet(file)}
                     onWrite={writeComment}
                     onRemove={(id) => void removeComment(id)}
-                    onWatch={watchChat}
+                    onWatch={() => watchAt(t < 40 || t > duration - 20 ? Math.min(63, duration) : t, "chat")}
                   />
                 ) : step === "audiencia" ? (
                   <StepAudiencia
@@ -1498,9 +1615,11 @@ function EditWebinar() {
                     focus={focus}
                     product={product}
                     onProduct={setProduct}
+                    extra={extraOffer}
+                    onExtra={setExtraOffer}
                     suggestedPitch={suggestedPitch}
                     clock={editorClock}
-                    onWatch={watchOffer}
+                    onWatch={(seconds) => watchAt(seconds - 1, "chat")}
                   />
                 ) : step === "vendas" ? (
                   <StepVendas
@@ -1510,17 +1629,18 @@ function EditWebinar() {
                     onEnabled={(on) => void setSales(on, salesQty)}
                     qty={salesQty}
                     onQty={(qty) => void setSales(true, qty)}
+                    real={form.sales_show_real}
+                    onReal={(sales_show_real) => set({ sales_show_real })}
+                    where={form.sales_where}
+                    onWhere={(sales_where) => set({ sales_where })}
                     sales={shownSales}
                     clock={editorClock}
                     onGoOffer={() => setStep("oferta")}
+                    onWatch={(seconds) => watchAt(seconds)}
                     busy={salesBusy}
                   />
                 ) : step === "automacoes" ? (
-                  <StepAutomacoes
-                    webinarId={webinarId}
-                    organizationId={organizationId}
-                    title={form.public_title || form.internal_name || "Webinar"}
-                  />
+                  <StepAutomacoes webinarId={webinarId} organizationId={organizationId} title={form.public_title || form.internal_name || "Webinar"} />
                 ) : step === "agente" ? (
                   <StepAgente webinarId={webinarId} onState={setAgentState} onSeek={seek} />
                 ) : (
@@ -1547,52 +1667,45 @@ function EditWebinar() {
               </footer>
             </section>
 
-            <section className="flex min-h-[520px] min-w-0 flex-col bg-[var(--background)] lg:min-h-0">
-              <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 pt-2.5">
+            <section className="flex h-[640px] min-w-0 flex-col bg-[var(--background)] lg:h-auto lg:min-h-0">
+              <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-4 pt-2.5">
                 <span className="flex min-w-0 items-center gap-2 text-[12.5px] font-medium">
                   <ScreenIcon className="size-3.5 shrink-0 text-muted-foreground" />
                   <span className="truncate">{screenName}</span>
-                  {screen === "room" ? <span className="font-mono text-muted-foreground">Aos {clock(t)}</span> : null}
-                  {focusKey ? (
-                    <span className="hidden rounded-md bg-[#FDE4D9] px-2 py-0.5 text-[12px] text-[#A82F05] sm:inline">A editar</span>
-                  ) : null}
+                  {screen === "room" ? <span className="hidden font-mono text-muted-foreground xl:inline">· {clock(t)}</span> : null}
                 </span>
-                <span className="flex items-center gap-2">
-                  <ExpandButton onClick={() => setFull(true)} />
-                  {tools}
-                </span>
+                {pills.length ? (
+                  <div className="inline-flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-chip p-1 [scrollbar-width:none]">
+                    {pills.map(([key, label, onClick, on]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={onClick}
+                        aria-pressed={on}
+                        className={cn(
+                          "h-[26px] shrink-0 rounded-lg px-3 text-[12.5px] font-medium",
+                          on ? "bg-white text-foreground shadow-[0_1px_2px_rgba(0,0,0,.08)]" : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <span />
+                )}
+                <span className="flex justify-end">{tools}</span>
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-2 [scrollbar-gutter:stable]">
-                <div className="flex min-h-full flex-col items-center justify-center gap-2.5">
-                  <DeviceStage
-                    device={screenDevice}
-                    url={`${roomOrigin}/w/${roomSlug}`}
-                    highlightUrl={focusKey === "url"}
-                    light={screen === "whatsapp"}
-                  >
-                    {screenBody}
-                  </DeviceStage>
-                  {screen === "room" || step === "entrada" ? (
-                    <div className="inline-flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-chip p-1 [scrollbar-width:none]">
-                      {SCREENS.map(([target, label]) => (
-                        <button
-                          key={target}
-                          type="button"
-                          onClick={() => setStep(target)}
-                          aria-pressed={step === target || (target === "vendas" && step === "oferta")}
-                          className={cn(
-                            "h-[26px] shrink-0 rounded-lg px-3 text-[12.5px] font-medium",
-                            step === target || (target === "vendas" && step === "oferta")
-                              ? "bg-white text-foreground shadow-[0_1px_2px_rgba(0,0,0,.08)]"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
+              <div className="min-h-0 flex-1">
+                <DeviceStage
+                  device={screenDevice}
+                  landscape={rotated}
+                  url={`${roomOrigin}/w/${roomSlug}`}
+                  highlightUrl={focusKey === "url"}
+                  light={screen === "whatsapp" || (screen !== "room" && previewTheme === "light")}
+                >
+                  {screenBody}
+                </DeviceStage>
               </div>
               {dock}
             </section>
@@ -1606,13 +1719,9 @@ function EditWebinar() {
           device={screenDevice}
           onDevice={setDevice}
           onClose={() => setFull(false)}
-          room={
-            screen === "room"
-              ? { t, duration, playing, onToggle: () => setPlaying((p) => !p), pitch: offerVisible ? pitchSeconds : null }
-              : undefined
-          }
+          room={screen === "room" ? { t, duration, playing, onToggle: () => setPlaying((p) => !p), pitch: offerVisible ? pitchSeconds : null } : undefined}
         >
-          <DeviceStage device={screenDevice} url={`${roomOrigin}/w/${roomSlug}`} light={screen === "whatsapp"} full>
+          <DeviceStage device={screenDevice} landscape={rotated} url={`${roomOrigin}/w/${roomSlug}`} light={screen === "whatsapp"}>
             {screenBody}
           </DeviceStage>
         </FullScreen>

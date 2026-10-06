@@ -12,9 +12,12 @@ const slugSchema = z.object({
 
 const joinSchema = z.object({
   webinarId: z.string().uuid(),
-  name: z.string().trim().min(2).max(80),
-  email: z.string().trim().email().max(160),
+  // O que é obrigatório depende dos campos que o organizador escolheu: valida-se no handler.
+  name: z.string().trim().max(80).optional(),
+  email: z.string().trim().max(160).optional(),
   phone: z.string().trim().max(40).optional(),
+  /** Respostas aos campos novos da página: { id do campo: resposta }. */
+  answers: z.record(z.string().max(40), z.string().max(200)).optional(),
   mode: z.enum(["live", "replay"]).default("live"),
   // Entrada pela sala de teste: aberta mesmo com a sessão inativa e sem
   // disparar avisos para sistemas externos.
@@ -111,15 +114,30 @@ export const joinPublicRoom = createServerFn({ method: "POST" })
     if (!webinar) throw new Error("Webinar indisponível.");
     if (webinar.status === "draft" && !data.teste) throw new Error("Webinar indisponível.");
 
+    // Os campos da página: os mesmos que a pessoa viu, com as mesmas regras.
+    const { parseEntryFields, validateEntry } = await import("@/lib/entry-fields");
+    const fields = parseEntryFields(webinar.entry_fields, {
+      collectPhone: webinar.registration_collect_phone,
+      requirePhone: webinar.registration_require_phone,
+    });
+    const entry = validateEntry(fields, {
+      ...(data.answers ?? {}),
+      name: data.name ?? "",
+      email: data.email ?? "",
+      whatsapp: data.phone ?? "",
+    });
+    if (!entry.ok) throw new Error(entry.message);
+
     // Inscrição ao vivo num webinar com horário: fica ligada à sessão global, com a
     // mesma janela que a sala mostra (o mesmo caminho da captura externa).
     const sessionId = await openRegistrationSession(webinar, data.mode, Boolean(data.teste));
     const { participant, error } = await createRegistration(
       webinar,
       {
-        name: data.name,
-        email: data.email,
-        phone: data.phone ?? null,
+        name: entry.name,
+        email: entry.email,
+        phone: entry.phone,
+        answers: entry.answers,
         mode: data.mode,
         device: data.device ?? fallback.device,
         city: data.city ?? fallback.city,
@@ -269,4 +287,14 @@ export const getPublicRoomMessages = createServerFn({ method: "GET" })
     const participantId = await participantOf(data.token);
     const { loadRoomMessages } = await import("@/lib/public-room.server");
     return loadRoomMessages(participantId);
+  });
+
+/** Compras reais aprovadas para a sala, desde um instante. */
+export const getPublicRoomPurchases = createServerFn({ method: "GET" })
+  .inputValidator((data: unknown) =>
+    z.object({ webinarId: z.string().uuid(), since: z.number().int().nonnegative() }).parse(data),
+  )
+  .handler(async ({ data }) => {
+    const { loadRoomPurchases } = await import("@/lib/public-room.server");
+    return loadRoomPurchases(data.webinarId, data.since);
   });

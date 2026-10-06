@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  activeOffer,
+  offerDeadlinePassed,
+  parseExtraOffers,
   buildFormatCurve,
   checkoutLink,
   clock,
@@ -49,6 +52,45 @@ describe("audiência por formato", () => {
   it("a curva antiga de 28 pontos lê-se como Dinâmica", () => {
     const old = [10, 40, 80, 90, 92, 95, 94, 93, 90, 85, 70, 60, 55, 52, 50, 49, 48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37];
     expect(inferAudienceFormat("simulated", old, ctx)).toBe("dynamic");
+  });
+});
+
+describe("várias ofertas no tempo do vídeo", () => {
+  const offer = (id: string, start: number, end: number | null) => ({
+    id,
+    start,
+    end,
+    product: id,
+    priceFrom: "",
+    priceNow: "",
+    url: "https://x.pt",
+    button: "Comprar",
+    countdown: 0,
+  });
+
+  it("a especial até ao minuto 10 e depois a geral", () => {
+    const offers = [offer("geral", 600, null), offer("especial", 311, 600)];
+    expect(activeOffer(offers, 100)).toBeNull();
+    expect(activeOffer(offers, 400)?.id).toBe("especial");
+    expect(activeOffer(offers, 600)?.id).toBe("geral");
+    expect(activeOffer(offers, 2000)?.id).toBe("geral");
+  });
+
+  it("uma oferta com fim fecha e, sem outra, não há oferta", () => {
+    expect(activeOffer([offer("a", 10, 20)], 25)).toBeNull();
+  });
+
+  it("lê as ofertas gravadas e ignora as que não têm minuto", () => {
+    const parsed = parseExtraOffers([{ start: 600, product: "Geral", url: "https://k.ao/x" }, { product: "sem minuto" }]);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]).toMatchObject({ start: 600, end: null, product: "Geral", button: "Quero entrar" });
+  });
+
+  it("o prazo fecha no dia seguinte ao escolhido, no fuso do webinar", () => {
+    const at = Date.parse("2026-10-12T23:30:00Z"); // 13/10 00:30 em Luanda
+    expect(offerDeadlinePassed("2026-10-12", "Africa/Luanda", at)).toBe(true);
+    expect(offerDeadlinePassed("2026-10-12", "UTC", at)).toBe(false);
+    expect(offerDeadlinePassed(null, "UTC", at)).toBe(false);
   });
 });
 

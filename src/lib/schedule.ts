@@ -20,6 +20,12 @@ export type ScheduleInput = {
   recurrence_start_time?: string | null;
   recurrence_end_time?: string | null;
   jit_interval_minutes?: number | null;
+  /** Just in time sem sessões entre as 22:00 e as 07:00 (no fuso do webinar). */
+  jit_skip_night?: boolean | null;
+  /** Repetição em vários dias (0 = domingo … 6 = sábado); vazio segue `recurrence_pattern`. */
+  recurrence_days?: readonly number[] | null;
+  /** Repetição a várias horas («20:00»); vazio usa `recurrence_start_time`. */
+  recurrence_times?: readonly string[] | null;
   timezone?: string | null;
   duration_seconds?: number | null;
 };
@@ -115,7 +121,22 @@ export function sessionWindow(webinar: ScheduleInput, nowMs = Date.now()): Sessi
     const interval = Math.max(5, webinar.jit_interval_minutes ?? 15) * 60 * 1000;
     const slot = Math.floor(nowMs / interval) * interval;
     // Quem chega nos primeiros dois minutos apanha a sessão que acabou de arrancar.
-    const startMs = nowMs - slot <= 2 * 60 * 1000 ? slot : slot + interval;
+    let startMs = nowMs - slot <= 2 * 60 * 1000 ? slot : slot + interval;
+    // Sem noites: entre as 22:00 e as 07:00 a sessão seguinte é às 07:00.
+    if (webinar.jit_skip_night) {
+      const p = zoneParts(startMs, timezone);
+      if (p.hour >= 22 || p.hour < 7) {
+        const morning = new Date(Date.UTC(p.year, p.month - 1, p.day + (p.hour >= 22 ? 1 : 0)));
+        startMs = zonedTimeToMs(
+          morning.getUTCFullYear(),
+          morning.getUTCMonth() + 1,
+          morning.getUTCDate(),
+          7,
+          0,
+          timezone,
+        );
+      }
+    }
     return {
       startMs,
       endMs: duration ? startMs + duration : null,
@@ -125,10 +146,17 @@ export function sessionWindow(webinar: ScheduleInput, nowMs = Date.now()): Sessi
     };
   }
 
-  // Repetição automática: diária ou semanal, à hora definida.
-  const start = parseTime(webinar.recurrence_start_time);
-  if (webinar.recurrence_enabled && start) {
-    const end = parseTime(webinar.recurrence_end_time);
+  // Repetição automática: nos dias escolhidos (ou diária / semanal), a cada hora definida.
+  const times = (
+    webinar.recurrence_times?.length ? webinar.recurrence_times : [webinar.recurrence_start_time]
+  )
+    .map((value) => parseTime(value))
+    .filter((value): value is { hour: number; minute: number } => value !== null)
+    .sort((a, b) => a.hour * 60 + a.minute - (b.hour * 60 + b.minute));
+  if (webinar.recurrence_enabled && times.length > 0) {
+    // A hora de fim só vale com uma única hora; com várias, cada sessão dura o vídeo.
+    const end = times.length === 1 ? parseTime(webinar.recurrence_end_time) : null;
+    const days = webinar.recurrence_days?.length ? new Set(webinar.recurrence_days) : null;
     const weekly = webinar.recurrence_pattern === "weekly";
     const targetWeekday = Math.min(6, Math.max(0, webinar.recurrence_weekday ?? 1));
     const today = zoneParts(nowMs, timezone);
@@ -137,45 +165,47 @@ export function sessionWindow(webinar: ScheduleInput, nowMs = Date.now()): Sessi
     for (let step = -1; step <= 14; step += 1) {
       const base = new Date(Date.UTC(today.year, today.month - 1, today.day + step));
       const weekday = base.getUTCDay();
-      if (weekly && weekday !== targetWeekday) continue;
-      const startMs = zonedTimeToMs(
-        base.getUTCFullYear(),
-        base.getUTCMonth() + 1,
-        base.getUTCDate(),
-        start.hour,
-        start.minute,
-        timezone,
-      );
-      const endMs = end
-        ? zonedTimeToMs(
-            base.getUTCFullYear(),
-            base.getUTCMonth() + 1,
-            base.getUTCDate() +
-              (end.hour * 60 + end.minute <= start.hour * 60 + start.minute ? 1 : 0),
-            end.hour,
-            end.minute,
-            timezone,
-          )
-        : duration
-          ? startMs + duration
-          : null;
-      // Sessão a decorrer agora. Sem hora de fim nem duração conhecida,
-      // assumimos uma sessão de duas horas para a sala de espera voltar a abrir.
-      const fallbackEnd = startMs + 2 * 60 * 60 * 1000;
-      const effectiveEnd = endMs ?? fallbackEnd;
-      if (startMs <= nowMs && nowMs < effectiveEnd)
-        return { startMs, endMs, live: true, endedMs: null, waitingOpen: false };
-      // Sessão já terminada: guardamos o fim para mostrar "Transmissão terminou"
-      // até ao dia da sessão seguinte.
-      if (effectiveEnd <= nowMs) {
-        lastEndedMs = effectiveEnd;
-        continue;
+      if (days ? !days.has(weekday) : weekly && weekday !== targetWeekday) continue;
+      for (const start of times) {
+        const startMs = zonedTimeToMs(
+          base.getUTCFullYear(),
+          base.getUTCMonth() + 1,
+          base.getUTCDate(),
+          start.hour,
+          start.minute,
+          timezone,
+        );
+        const endMs = end
+          ? zonedTimeToMs(
+              base.getUTCFullYear(),
+              base.getUTCMonth() + 1,
+              base.getUTCDate() +
+                (end.hour * 60 + end.minute <= start.hour * 60 + start.minute ? 1 : 0),
+              end.hour,
+              end.minute,
+              timezone,
+            )
+          : duration
+            ? startMs + duration
+            : null;
+        // Sessão a decorrer agora. Sem hora de fim nem duração conhecida,
+        // assumimos uma sessão de duas horas para a sala de espera voltar a abrir.
+        const fallbackEnd = startMs + 2 * 60 * 60 * 1000;
+        const effectiveEnd = endMs ?? fallbackEnd;
+        if (startMs <= nowMs && nowMs < effectiveEnd)
+          return { startMs, endMs, live: true, endedMs: null, waitingOpen: false };
+        // Sessão já terminada: guardamos o fim para mostrar "Transmissão terminou"
+        // até ao dia da sessão seguinte.
+        if (effectiveEnd <= nowMs) {
+          lastEndedMs = effectiveEnd;
+          continue;
+        }
+        // Próxima sessão: a sala de espera só abre no próprio dia da sessão.
+        const nextDay = zoneParts(startMs, timezone);
+        const sameDay =
+          nextDay.year === today.year && nextDay.month === today.month && nextDay.day === today.day;
+        return { startMs, endMs, live: false, endedMs: lastEndedMs, waitingOpen: sameDay };
       }
-      // Próxima sessão: a sala de espera só abre no próprio dia da sessão.
-      const nextDay = zoneParts(startMs, timezone);
-      const sameDay =
-        nextDay.year === today.year && nextDay.month === today.month && nextDay.day === today.day;
-      return { startMs, endMs, live: false, endedMs: lastEndedMs, waitingOpen: sameDay };
     }
   }
 
@@ -209,7 +239,11 @@ export function sessionWindow(webinar: ScheduleInput, nowMs = Date.now()): Sessi
  */
 export type SessionState = "scheduled" | "live" | "finished";
 
-export function sessionState(startMs: number, endMs: number | null, nowMs = Date.now()): SessionState {
+export function sessionState(
+  startMs: number,
+  endMs: number | null,
+  nowMs = Date.now(),
+): SessionState {
   if (nowMs < startMs) return "scheduled";
   if (endMs !== null && nowMs >= endMs) return "finished";
   return "live";
@@ -282,7 +316,8 @@ export function lifecycleDetail(lifecycle: WebinarLifecycle, timezone?: string |
     case "session":
       if (lifecycle.state === "scheduled")
         return `Começa ${at(lifecycle.startMs)}.${lifecycle.lastEndedMs ? ` A anterior terminou ${at(lifecycle.lastEndedMs)}.` : ""}`;
-      if (lifecycle.state === "finished") return `Terminou ${at(lifecycle.endMs ?? lifecycle.startMs)}.`;
+      if (lifecycle.state === "finished")
+        return `Terminou ${at(lifecycle.endMs ?? lifecycle.startMs)}.`;
       return lifecycle.endMs === null
         ? `Começou ${at(lifecycle.startMs)}; sem duração nem hora de fim, não termina sozinha.`
         : `Começou ${at(lifecycle.startMs)} e termina ${at(lifecycle.endMs)}.`;

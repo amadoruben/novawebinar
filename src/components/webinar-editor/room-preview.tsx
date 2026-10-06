@@ -1,51 +1,59 @@
 import { useEffect, useRef, useState } from "react";
-import { BadgeCheck, Eye, Headset, MessagesSquare, Pin, Play, ShoppingCart, Zap } from "lucide-react";
+import { Eye, Headset, MessagesSquare, Pin, Play, ShoppingCart, Zap } from "lucide-react";
+import { VideoPlayer } from "@/components/video-player";
 import { cn } from "@/lib/utils";
-import { clock, offerCountdownLeft } from "@/lib/room-logic";
+import { activeOffer, clock, offerCountdownLeft, type OfferSlot } from "@/lib/room-logic";
 import { ROOM_FONT } from "@/components/room/entry-screen";
 import {
-  HeartButton,
+  CaptionLine,
+  ChatComposer,
   OfferCard,
   PulseDot,
   RoomPartsStyle,
+  RoomTitle,
   SaleLine,
-  SendButton,
+  VideoSettings,
+  type Appearance,
   type Reaction,
 } from "@/components/room/room-parts";
 
 /**
- * A sala ao vivo desenhada no segundo `t` do relógio do editor, ao tamanho real (computador
- * 1280×720, telemóvel 393×852). Usa as mesmas peças da sala pública.
+ * A sala ao vivo no segundo `t` do relógio do editor, ao tamanho real (computador 1280×720,
+ * telemóvel 393×852 ao alto ou 852×393 deitado). Usa o leitor e as peças da sala pública:
+ * o que se vê aqui é o que as pessoas vêem.
  */
 
 export type RoomTab = "chat" | "support" | "offer";
 export type PreviewComment = { id: string; at: number; author: string; message: string; agent?: boolean };
 export type PreviewSale = { id: string; at: number; buyer: string; product: string };
 export type PreviewMine = { at: number; text: string; tab: "chat" | "support" };
+export type PreviewDevice = "desktop" | "phone" | "phone-landscape";
 
 export type RoomPreviewProps = {
-  device: "desktop" | "phone";
+  device: PreviewDevice;
+  theme: "dark" | "light";
+  appearance: Appearance;
+  onAppearance: (appearance: Appearance) => void;
   t: number;
   playing: boolean;
   onTogglePlay: () => void;
   duration: number;
-  video: { url: string | null; muted: boolean };
+  video: { url: string | null; provider: string | null };
+  volume: number;
+  onVolume: (volume: number) => void;
+  captionsOn: boolean;
+  onCaptions: (on: boolean) => void;
+  speech: readonly { at: number; text: string }[];
   title: string;
-  host: { name: string; role: string; avatarUrl: string };
+  host: { name: string; role: string; avatarUrl: string; verified: boolean };
   viewers: number | null;
   pin: string;
   comments: readonly PreviewComment[];
   sales: readonly PreviewSale[];
-  offer: {
-    visible: boolean;
-    start: number | null;
-    productName?: string | undefined;
-    imageUrl?: string | undefined;
-    priceFrom: string;
-    priceNow: string;
-    buttonText: string;
-    countdown: number;
-  };
+  salesWhere: "chat" | "video" | "both";
+  offers: readonly OfferSlot[];
+  offerImageUrl?: string | undefined;
+  offerClosed: boolean;
   agent: { on: boolean; name: string };
   tab: RoomTab;
   onTab: (tab: RoomTab) => void;
@@ -59,46 +67,48 @@ export type RoomPreviewProps = {
   onBuy?: (() => void) | undefined;
 };
 
-const hlRing = "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]";
-const initials = (name: string) =>
-  name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase())
-    .join("") || "?";
-
 export function RoomPreview(props: RoomPreviewProps) {
-  const phone = props.device === "phone";
-  const hl = (key: string) => (props.highlight === key ? hlRing : "");
-  const offerOpen = props.offer.visible && props.t >= (props.offer.start ?? 0);
-  const offerTab = props.offer.visible && (offerOpen || props.forceOffer);
+  const phone = props.device !== "desktop";
+  const landscape = props.device === "phone-landscape";
+  const hl = (key: string) =>
+    props.highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
+  const open = activeOffer(props.offers, props.t);
+  // No separador Oferta do editor, mostra-se a primeira oferta mesmo antes de abrir.
+  const shown = open ?? (props.forceOffer ? props.offers[0] ?? null : null);
+  const offerTab = shown !== null;
   const tab: RoomTab = props.tab === "offer" && !offerTab ? "chat" : props.tab;
-  const lastSale = [...props.sales].reverse().find((s) => s.at <= props.t && props.t - s.at < 8);
+  const lastSale =
+    props.salesWhere === "chat" ? undefined : [...props.sales].reverse().find((s) => s.at <= props.t && props.t - s.at < 8);
+  let said: string | null = null;
+  for (const line of props.speech) {
+    if (line.at > props.t) break;
+    said = props.t - line.at < 7 ? line.text : null;
+  }
 
   const videoCard = (
     <div
       className={cn(
-        "relative aspect-video overflow-hidden bg-black",
-        phone ? "w-full" : "rounded-2xl shadow-[0_0_0_1px_#2E2E2E]",
+        "relative overflow-hidden bg-black",
+        landscape ? "h-full w-full" : "aspect-video w-full",
+        !phone && "rounded-2xl ring-1 ring-room-line",
       )}
     >
       {props.video.url ? (
-        <SyncedVideo url={props.video.url} t={props.t} playing={props.playing} muted={props.video.muted} />
+        <PreviewPlayer url={props.video.url} provider={props.video.provider} t={props.t} playing={props.playing} volume={props.volume} />
       ) : (
-        <div className="absolute inset-0 grid content-center gap-3.5 bg-[radial-gradient(120%_90%_at_85%_10%,rgba(232,68,12,.2),transparent_55%),linear-gradient(160deg,#22262e,#111316)] px-[8%]">
-          <p className={cn("font-bold uppercase tracking-[0.16em] text-[#F28E63]", phone ? "text-[9px]" : "text-[15px]")}>
-            Sessão ao vivo
+        <div className="absolute inset-0 grid content-center gap-3 bg-[radial-gradient(120%_90%_at_85%_10%,rgba(232,68,12,.2),transparent_55%),linear-gradient(160deg,#22262e,#111316)] px-[8%] text-white">
+          <p className={cn("font-bold uppercase tracking-[0.16em] text-[#F28E63]", phone ? "text-[10px]" : "text-[15px]")}>
+            Sem vídeo
           </p>
-          <p className={cn("max-w-[600px] font-extrabold leading-[1.08] tracking-tight", phone ? "text-[21px]" : "text-[50px]")}>
-            {props.title}
+          <p className={cn("max-w-[640px] font-extrabold leading-[1.1] tracking-tight", phone ? "text-[20px]" : "text-[44px]")}>
+            Escolha o vídeo na etapa Vídeo
           </p>
         </div>
       )}
-      <div className={cn("absolute flex", phone ? "left-2 top-2 gap-1" : "left-3.5 top-3.5 gap-1.5")}>
+      <div className={cn("absolute flex", phone ? "left-2.5 top-2.5 gap-1" : "left-3.5 top-3.5 gap-1.5")}>
         <span
           className={cn(
-            "inline-flex items-center rounded-md bg-[#E5243B] font-bold uppercase tracking-[0.04em]",
+            "inline-flex items-center rounded-md bg-[#E5243B] font-bold uppercase tracking-[0.04em] text-white",
             phone ? "h-6 gap-1.5 px-2 text-[11px]" : "h-[30px] gap-[7px] px-3 text-[13px]",
           )}
         >
@@ -108,7 +118,7 @@ export function RoomPreview(props: RoomPreviewProps) {
         {props.viewers !== null ? (
           <span
             className={cn(
-              "inline-flex items-center rounded-md bg-[rgba(20,20,20,.72)] font-medium tabular-nums",
+              "inline-flex items-center rounded-md bg-black/70 font-medium tabular-nums text-white",
               phone ? "h-6 gap-1.5 px-2 text-[11px]" : "h-[30px] gap-[7px] px-3 text-sm",
               hl("viewers"),
             )}
@@ -136,79 +146,77 @@ export function RoomPreview(props: RoomPreviewProps) {
           </span>
         </div>
       ) : null}
-      {!props.playing ? (
-        <button
-          type="button"
-          onClick={props.onTogglePlay}
-          aria-label="Tocar"
-          className={cn(
-            "absolute left-1/2 top-1/2 grid -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/55 backdrop-blur",
-            phone ? "size-12" : "size-[76px]",
-          )}
-        >
-          <Play className={cn("fill-white text-white", phone ? "size-5" : "size-8")} />
-        </button>
-      ) : (
-        <button type="button" onClick={props.onTogglePlay} aria-label="Pausar" className="absolute inset-0" />
-      )}
+      {props.captionsOn ? <CaptionLine text={said} compact={phone} /> : null}
+      <button
+        type="button"
+        onClick={props.onTogglePlay}
+        aria-label={props.playing ? "Pausar" : "Tocar"}
+        className="absolute inset-0"
+      >
+        {!props.playing && props.video.url ? (
+          <span
+            className={cn(
+              "absolute left-1/2 top-1/2 grid -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/55 backdrop-blur",
+              phone ? "size-12" : "size-[76px]",
+            )}
+          >
+            <Play className={cn("fill-white text-white", phone ? "size-5" : "size-8")} />
+          </span>
+        ) : null}
+      </button>
+      <div className={cn("absolute", phone ? "bottom-2 right-2" : "bottom-3 right-3")}>
+        <VideoSettings
+          compact={phone}
+          volume={props.volume}
+          onVolume={props.onVolume}
+          captions={props.captionsOn}
+          onCaptions={props.onCaptions}
+          hasCaptions={props.speech.length > 0}
+          appearance={props.appearance}
+          onAppearance={props.onAppearance}
+        />
+      </div>
     </div>
   );
 
-  const hostRow = (
-    <div className={cn("flex items-center", phone ? "gap-2.5 px-4 py-3" : "mt-3.5 gap-3", hl("host"))}>
-      {props.host.avatarUrl ? (
-        <img
-          src={props.host.avatarUrl}
-          alt=""
-          className={cn("shrink-0 rounded-full object-cover", phone ? "size-9" : "size-11")}
-        />
-      ) : (
-        <span
-          className={cn(
-            "grid shrink-0 place-items-center rounded-full bg-[#2E2E2E] font-bold",
-            phone ? "size-9 text-xs" : "size-11 text-sm",
-          )}
-        >
-          {initials(props.host.name || "?")}
-        </span>
-      )}
-      <span className="min-w-0">
-        <b className={cn("flex items-center gap-1.5", phone ? "text-sm" : "text-[15px]")}>
-          {props.host.name || "Quem apresenta"}
-          <BadgeCheck className="size-4 shrink-0 fill-[#0095f6] text-[#141414]" aria-label="Verificado" />
-        </b>
-        {props.host.role ? (
-          <span className={cn("block text-[#A3A3A3]", phone ? "text-xs" : "text-[13px]")}>{props.host.role}</span>
-        ) : null}
-      </span>
-    </div>
+  const roomClass = cn(
+    "room-ambient text-room-text",
+    props.theme === "light" && "room-light",
+    landscape
+      ? "flex h-[393px] w-[852px] items-center justify-center bg-black"
+      : phone
+        ? "flex h-[852px] w-[393px] flex-col"
+        : "grid h-[720px] w-[1280px] grid-cols-[minmax(0,1fr)_380px] gap-6 p-6",
   );
+
+  if (landscape) {
+    // Deitado, o telemóvel mostra o vídeo em ecrã inteiro, como no YouTube.
+    return (
+      <div className={roomClass} style={{ fontFamily: ROOM_FONT }}>
+        <RoomPartsStyle />
+        <div className="aspect-video h-full">{videoCard}</div>
+      </div>
+    );
+  }
 
   return (
-    <div
-      className={cn("text-white", phone ? "flex h-[852px] w-[393px] flex-col bg-[#141414]" : "grid h-[720px] w-[1280px] grid-cols-[minmax(0,1fr)_380px] gap-6 bg-[#141414] p-6")}
-      style={{ fontFamily: ROOM_FONT }}
-    >
+    <div className={roomClass} style={{ fontFamily: ROOM_FONT }}>
       <RoomPartsStyle />
       {phone ? (
         <>
-          <div className="h-[54px] shrink-0" />
+          <div className="h-[54px] shrink-0 bg-black" />
           {videoCard}
-          {hostRow}
+          <RoomTitle compact kicker="" title={props.title} host={props.host} highlight={props.highlight} />
         </>
       ) : (
         <div className="min-w-0">
           {videoCard}
-          <div className="px-1 pt-[22px]">
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#E8440C]">Sessão ao vivo</p>
-            <h1 className={cn("mt-1.5 text-[28px] font-extrabold leading-tight tracking-tight", hl("title"))}>
-              {props.title}
-            </h1>
-            {hostRow}
+          <div className="px-1">
+            <RoomTitle kicker="Sessão ao vivo" title={props.title} host={props.host} highlight={props.highlight} />
           </div>
         </div>
       )}
-      <Panel {...props} tab={tab} offerTab={offerTab} offerOpen={offerOpen} hl={hl} phone={phone} />
+      <Panel {...props} tab={tab} shown={shown} open={open} hl={hl} phone={phone} />
     </div>
   );
 }
@@ -216,21 +224,27 @@ export function RoomPreview(props: RoomPreviewProps) {
 function Panel({
   phone,
   tab,
-  offerTab,
-  offerOpen,
+  shown,
+  open,
   hl,
   ...props
-}: RoomPreviewProps & { phone: boolean; tab: RoomTab; offerTab: boolean | undefined; offerOpen: boolean; hl: (k: string) => string }) {
+}: RoomPreviewProps & {
+  phone: boolean;
+  tab: RoomTab;
+  shown: OfferSlot | null;
+  open: OfferSlot | null;
+  hl: (k: string) => string;
+}) {
   const [text, setText] = useState("");
   const tabs: [RoomTab, string, typeof MessagesSquare][] = [
     ["chat", "Chat", MessagesSquare],
     ["support", "Suporte", Headset],
-    ...(offerTab ? ([["offer", "Oferta", ShoppingCart]] as [RoomTab, string, typeof MessagesSquare][]) : []),
+    ...(shown ? ([["offer", "Oferta", ShoppingCart]] as [RoomTab, string, typeof MessagesSquare][]) : []),
   ];
   const visible = props.comments.filter((c) => c.at <= props.t);
   const chatItems = [
     ...visible.map((c) => ({ key: c.id, at: c.at, kind: "msg" as const, c })),
-    ...props.sales
+    ...(props.salesWhere === "video" ? [] : props.sales)
       .filter((s) => s.at <= props.t)
       .map((s) => ({ key: `s-${s.id}`, at: s.at, kind: "sale" as const, s })),
     ...props.mine
@@ -240,18 +254,17 @@ function Panel({
   ]
     .sort((a, b) => a.at - b.at)
     .slice(phone ? -6 : -9);
-
   const supportMine = props.mine.filter((m) => m.tab === "support");
-  const countdownLeft = offerCountdownLeft(props.offer.countdown, props.offer.start, props.t);
+  const countdownLeft = shown ? offerCountdownLeft(shown.countdown, shown.start, props.t) : 0;
 
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-col overflow-hidden bg-[#1F1F1F]",
-        phone ? "flex-1 pb-[26px]" : "h-[672px] rounded-2xl shadow-[0_0_0_1px_#2E2E2E]",
+        "flex min-h-0 flex-col overflow-hidden bg-room-surface",
+        phone ? "flex-1 pb-[22px]" : "h-[672px] rounded-2xl ring-1 ring-room-line",
       )}
     >
-      <div className="mx-3 flex shrink-0 border-b border-[#2E2E2E]">
+      <div className="mx-3 flex shrink-0 border-b border-room-line">
         {tabs.map(([value, label, Icon]) => (
           <button
             key={value}
@@ -260,29 +273,30 @@ function Panel({
             className={cn(
               "relative flex flex-1 items-center justify-center gap-2 font-semibold transition",
               phone ? "h-[46px] text-sm" : "h-[54px] text-[15px]",
-              tab === value ? "text-[#E8440C]" : "text-[#A3A3A3] hover:text-[#E5E5E5]",
+              tab === value ? "text-primary" : "text-room-subtle hover:text-room-text",
             )}
           >
             <Icon className="size-4" />
             {label}
             {value === "offer" && tab !== "offer" ? <PulseDot /> : null}
-            {tab === value ? <span className="absolute inset-x-5 -bottom-px h-[3px] rounded-full bg-[#E8440C]" /> : null}
+            {tab === value ? <span className="absolute inset-x-5 -bottom-px h-[3px] rounded-full bg-primary" /> : null}
           </button>
         ))}
       </div>
 
-      {tab === "offer" ? (
+      {tab === "offer" && shown ? (
         <div className={cn("min-h-0 flex-1 overflow-hidden", hl("pitch"))}>
           <OfferCard
-            productName={props.offer.productName}
-            imageUrl={props.offer.imageUrl}
-            priceFrom={props.offer.priceFrom}
-            priceNow={props.offer.priceNow}
-            buttonText={props.offer.buttonText}
+            productName={shown.product}
+            imageUrl={shown.id === "main" ? props.offerImageUrl : undefined}
+            priceFrom={shown.priceFrom}
+            priceNow={shown.priceNow}
+            buttonText={shown.button || "Quero entrar"}
             onBuy={props.onBuy}
             countdownSeconds={countdownLeft}
-            showCountdown={props.offer.countdown > 0}
-            note={!offerOpen ? `Na sala, a oferta abre aos ${clock(props.offer.start ?? 0)}.` : null}
+            showCountdown={shown.countdown > 0}
+            closed={props.offerClosed}
+            note={!open ? `Na sala, esta oferta abre aos ${clock(shown.start)}.` : null}
             compact={phone}
             highlight={props.highlight}
           />
@@ -290,15 +304,15 @@ function Panel({
       ) : (
         <>
           {tab === "chat" && props.pin ? (
-            <div className={cn("mx-3 mt-3 flex shrink-0 items-center gap-2.5 rounded-xl bg-[#262626] px-3.5 py-3 text-sm", hl("pin"))}>
-              <Pin className="size-4 shrink-0 text-[#E8440C]" />
+            <div className={cn("mx-3 mt-3 flex shrink-0 items-center gap-2.5 rounded-xl bg-room-raised px-3.5 py-3 text-sm", hl("pin"))}>
+              <Pin className="size-4 shrink-0 text-primary" />
               <span className="min-w-0 truncate">{props.pin}</span>
             </div>
           ) : null}
           <div className="flex min-h-0 flex-1 flex-col justify-end gap-3.5 overflow-hidden p-4">
             {tab === "chat" ? (
               chatItems.length === 0 ? (
-                <p className="m-auto text-center text-sm text-[#737373]">As mensagens aparecem ao longo do vídeo.</p>
+                <p className="m-auto text-center text-sm text-room-subtle">As mensagens aparecem ao longo do vídeo.</p>
               ) : (
                 chatItems.map((item) =>
                   item.kind === "sale" ? (
@@ -311,28 +325,22 @@ function Panel({
                 )
               )
             ) : (
-              <SupportThread agent={props.agent} offer={props.offer} mine={supportMine} hl={hl} />
+              <SupportThread agent={props.agent} offer={props.offers[0] ?? null} mine={supportMine} hl={hl} />
             )}
           </div>
-          <form
-            className="flex shrink-0 gap-2 border-t border-[#2E2E2E] p-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const body = text.trim();
-              if (!body) return;
-              props.onSend(body, tab === "support" ? "support" : "chat");
+          <ChatComposer
+            compact={phone}
+            value={text}
+            onChange={setText}
+            onSubmit={() => {
+              props.onSend(text.trim(), tab === "support" ? "support" : "chat");
               setText("");
             }}
-          >
-            <input
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder={tab === "support" ? "Escreva à equipa..." : "Escreva um comentário..."}
-              className="h-11 min-w-0 flex-1 rounded-full bg-[#262626] px-4 text-sm text-[#F5F5F5] shadow-[0_0_0_1px_#2E2E2E] outline-none placeholder:text-[#7A7A7A] focus:shadow-[0_0_0_1px_#E8440C]"
-            />
-            {tab === "chat" ? <HeartButton onHeart={props.onHeart} reactions={props.reactions} compact={phone} /> : null}
-            <SendButton compact={phone} />
-          </form>
+            placeholder={tab === "support" ? "Escreva à equipa..." : "Chat..."}
+            withReactions={tab === "chat"}
+            onHeart={props.onHeart}
+            reactions={props.reactions}
+          />
         </>
       )}
     </div>
@@ -352,25 +360,32 @@ function Message({
   mine?: boolean | undefined;
   badge?: string | undefined;
 }) {
+  const initials =
+    author
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0]?.toUpperCase())
+      .join("") || "?";
   return (
     <div className="flex items-start gap-2.5">
       <span
         className={cn(
           "grid size-8 shrink-0 place-items-center rounded-full text-[11px] font-bold",
-          mine ? "bg-[#3A3A3A]" : agent ? "bg-[#E8440C]" : "bg-[#2E2E2E]",
+          mine ? "bg-room-line text-room-text" : agent ? "bg-primary text-white" : "bg-room-raised text-room-text ring-1 ring-room-line",
         )}
       >
-        {mine ? "EU" : initials(author)}
+        {mine ? "EU" : initials}
       </span>
       <div className="min-w-0">
-        <b className={cn("flex items-center gap-1.5 text-[13.5px] font-bold", agent && "text-[#F28E63]")}>
+        <b className={cn("flex items-center gap-1.5 text-[13.5px] font-bold", agent ? "text-primary" : "text-room-subtle")}>
           {author}
-          {agent ? <Zap className="size-3 text-[#F28E63]" /> : null}
+          {agent ? <Zap className="size-3" /> : null}
           {badge ? (
-            <em className="rounded bg-[#262626] px-1.5 py-px text-[10.5px] font-medium not-italic text-[#A3A3A3]">{badge}</em>
+            <em className="rounded bg-room-raised px-1.5 py-px text-[10.5px] font-medium not-italic text-room-subtle">{badge}</em>
           ) : null}
         </b>
-        <p className="break-words text-sm leading-[1.4] text-[#D4D4D4]">{text}</p>
+        <p className="break-words text-sm leading-[1.4] text-room-text">{text}</p>
       </div>
     </div>
   );
@@ -383,12 +398,12 @@ function SupportThread({
   hl,
 }: {
   agent: RoomPreviewProps["agent"];
-  offer: RoomPreviewProps["offer"];
+  offer: OfferSlot | null;
   mine: readonly PreviewMine[];
   hl: (k: string) => string;
 }) {
   const system = (text: string) => (
-    <span className="self-center rounded-full bg-[#262626] px-3 py-1.5 text-[12.5px] text-[#A3A3A3]">{text}</span>
+    <span className="self-center rounded-full bg-room-raised px-3 py-1.5 text-[12.5px] text-room-subtle">{text}</span>
   );
   return (
     <div className={cn("flex flex-col gap-3.5", agent.on && hl("support"))}>
@@ -399,7 +414,7 @@ function SupportThread({
             author={agent.name}
             agent
             text={
-              offer.priceNow
+              offer?.priceNow
                 ? `Marta, a vaga está por ${offer.priceNow}${offer.priceFrom ? ` em vez de ${offer.priceFrom}` : ""}. Está no separador Oferta.`
                 : "Marta, os valores aparecem no separador Oferta quando abrir."
             }
@@ -421,43 +436,74 @@ function SupportThread({
   );
 }
 
-/** O vídeo da sala a seguir o relógio do editor (o relógio manda, o vídeo acompanha). */
-export function SyncedVideo({
+/**
+ * O leitor da sala a seguir o relógio do editor (o relógio manda, o vídeo acompanha). Serve
+ * ficheiros, HLS e as plataformas (Vimeo, Panda, Bunny) com o mesmo leitor da sala pública.
+ */
+function PreviewPlayer({
   url,
+  provider,
   t,
   playing,
-  muted,
-  className,
+  volume,
 }: {
   url: string;
+  provider: string | null;
   t: number;
   playing: boolean;
-  muted: boolean;
-  className?: string | undefined;
+  volume: number;
 }) {
-  const ref = useRef<HTMLVideoElement>(null);
+  const media = useRef<HTMLVideoElement>(null);
+  const embed = /youtube|youtu\.be|vimeo|mediadelivery|pandavideo|\/embed\/|player\./i.test(url);
+  // Leitores embebidos não deixam pausar por fora: em pausa mostra-se a imagem parada por cima.
+  const [session, setSession] = useState(0);
+  const startAt = useRef(Math.floor(t));
   useEffect(() => {
-    const video = ref.current;
-    if (!video || video.readyState < 1) return;
-    if (Math.abs(video.currentTime - t) > (playing ? 1.2 : 0.25)) video.currentTime = t;
-  }, [t, playing]);
+    if (!embed || !playing) return;
+    startAt.current = Math.floor(t);
+    setSession((n) => n + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, embed]);
   useEffect(() => {
-    const video = ref.current;
+    const video = media.current;
     if (!video) return;
     if (playing) void video.play().catch(() => {});
     else video.pause();
   }, [playing]);
+  useEffect(() => {
+    const video = media.current;
+    if (!video || video.readyState < 1) return;
+    if (Math.abs(video.currentTime - t) > (playing ? 1.5 : 0.3)) video.currentTime = t;
+  }, [t, playing]);
+  useEffect(() => {
+    const video = media.current;
+    if (!video) return;
+    video.volume = volume;
+    video.muted = volume === 0;
+  }, [volume]);
+  if (embed && !playing) {
+    return (
+      <div className="absolute inset-0 grid place-items-center bg-[#111] text-xs text-white/60">
+        <span className="rounded-full bg-black/60 px-3 py-1">{clock(t)}</span>
+      </div>
+    );
+  }
   return (
-    <video
-      ref={ref}
-      src={url}
-      muted={muted}
-      playsInline
-      preload="metadata"
-      onLoadedMetadata={(e) => {
-        e.currentTarget.currentTime = t;
-      }}
-      className={cn("absolute inset-0 size-full object-cover", className)}
-    />
+    <div className="absolute inset-0 [&_video]:size-full [&_video]:object-cover">
+      <VideoPlayer
+        key={embed ? session : url}
+        url={url}
+        provider={provider}
+        controls={false}
+        mediaRef={media}
+        autoPlay={playing}
+        muted={volume === 0}
+        quiet
+        startAtSeconds={embed ? startAt.current : Math.floor(t)}
+        // O relógio do editor é que manda; o tempo do leitor não volta para trás.
+        onTime={() => {}}
+        className="size-full rounded-none"
+      />
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lifecycleLabel, sessionState, webinarLifecycle } from "./schedule";
+import { lifecycleLabel, sessionState, sessionWindow, webinarLifecycle } from "./schedule";
 
 const H = 3_600_000;
 const start = Date.parse("2026-10-12T19:00:00Z");
@@ -64,5 +64,50 @@ describe("regra do fim, igual à do varrimento da base de dados", () => {
     expect(sessionState(start, start + H, start + H - 1)).toBe("live");
     expect(sessionState(start, start + H, start + H)).toBe("finished");
     expect(sessionState(start, null, start + 100 * H)).toBe("live");
+  });
+});
+
+describe("repetição em vários dias e horas", () => {
+  // 12/10/2026 é segunda-feira.
+  const base = {
+    recurrence_enabled: true,
+    recurrence_days: [2, 4],
+    recurrence_times: ["20:00", "10:00"],
+    timezone: "UTC",
+    duration_seconds: 3600,
+  };
+
+  it("a próxima sessão é o primeiro dia e hora escolhidos que ainda não passaram", () => {
+    const monday = Date.parse("2026-10-12T12:00:00Z");
+    expect(sessionWindow(base, monday).startMs).toBe(Date.parse("2026-10-13T10:00:00Z"));
+    const tuesdayNoon = Date.parse("2026-10-13T12:00:00Z");
+    expect(sessionWindow(base, tuesdayNoon).startMs).toBe(Date.parse("2026-10-13T20:00:00Z"));
+    const tuesdayNight = Date.parse("2026-10-13T22:00:00Z");
+    expect(sessionWindow(base, tuesdayNight).startMs).toBe(Date.parse("2026-10-15T10:00:00Z"));
+  });
+
+  it("a meio de uma sessão, está a decorrer", () => {
+    const during = Date.parse("2026-10-13T20:30:00Z");
+    expect(sessionWindow(base, during)).toMatchObject({ live: true, startMs: Date.parse("2026-10-13T20:00:00Z") });
+  });
+
+  it("sem dias escolhidos segue a regra antiga (todos os dias à hora de início)", () => {
+    const daily = { recurrence_enabled: true, recurrence_start_time: "09:00", timezone: "UTC", duration_seconds: 600 };
+    expect(sessionWindow(daily, Date.parse("2026-10-12T12:00:00Z")).startMs).toBe(Date.parse("2026-10-13T09:00:00Z"));
+  });
+});
+
+describe("just in time sem noites", () => {
+  const jit = { schedule_mode: "jit", jit_interval_minutes: 15, jit_skip_night: true, timezone: "Africa/Luanda" };
+
+  it("entre as 22:00 e as 07:00 a sessão seguinte é às 07:00", () => {
+    // 23:10 em Luanda (UTC+1) = 22:10 UTC.
+    const night = Date.parse("2026-10-12T22:10:00Z");
+    expect(sessionWindow(jit, night)).toMatchObject({ live: false, startMs: Date.parse("2026-10-13T06:00:00Z") });
+  });
+
+  it("de dia recomeça de 15 em 15 minutos como sempre", () => {
+    const day = Date.parse("2026-10-12T14:05:00Z");
+    expect(sessionWindow(jit, day).startMs).toBe(Date.parse("2026-10-12T14:15:00Z"));
   });
 });

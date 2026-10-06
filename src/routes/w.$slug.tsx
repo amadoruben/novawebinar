@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
-import { z } from "zod";
 import { formatSessionStart } from "@/lib/schedule";
 import { detectDevice, lookupPlace, type GeoPlace } from "@/lib/live-presence";
 import { leadSource } from "@/lib/contacts";
@@ -11,7 +10,12 @@ import { retry } from "@/lib/utils";
 import { DEFAULT_PHONE_COUNTRY, phoneCountryForIso, type PhoneCountry } from "@/lib/phone-countries";
 import { WebinarRoom, type RoomProgressOptions } from "@/components/webinar-room";
 import { RoomSkeleton, getCachedRoomTheme, cacheRoomTheme } from "@/components/room-skeleton";
-import { EntryScreen, entryLiveLabel, isDirectVideo } from "@/components/room/entry-screen";
+import { EntryScreen, entryLiveLabel, isDirectVideo, resolveTheme } from "@/components/room/entry-screen";
+import type { Appearance } from "@/components/room/room-parts";
+import { parseEntryFields, validateEntry } from "@/lib/entry-fields";
+import { offerDeadlinePassed, parseExtraOffers } from "@/lib/room-logic";
+
+const APPEARANCE_KEY = "cw:room-appearance";
 import {
   getPublicRoom,
   joinPublicRoom,
@@ -127,11 +131,40 @@ export function PublicRoom({
   const trackProgress = useServerFn(trackPublicRoomProgress);
 
   const [viewer, setViewer] = useState<Viewer | null>(null);
-  const [form, setForm] = useState({ name: prefill?.name ?? "", email: prefill?.email ?? "", phone: "" });
+  // O que a pessoa escreve, campo a campo (pelo id do campo).
+  const [values, setValues] = useState<Record<string, string>>(() => ({
+    ...(prefill?.name ? { name: prefill.name } : {}),
+    ...(prefill?.email ? { email: prefill.email } : {}),
+  }));
   const [phoneCountry, setPhoneCountry] = useState<PhoneCountry>(DEFAULT_PHONE_COUNTRY);
-  const [entryMoment, setEntryMoment] = useState<"gate" | "card">(prefill ? "card" : "gate");
   const [entering, setEntering] = useState(false);
   const [error, setError] = useState("");
+  const [errorField, setErrorField] = useState<string | undefined>(undefined);
+
+  // Aparência: a do organizador, ou a que a pessoa escolheu no ⚙ do vídeo (fica neste browser).
+  const [viewerAppearance, setViewerAppearance] = useState<Appearance | null>(null);
+  const [prefersDark, setPrefersDark] = useState(true);
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(APPEARANCE_KEY);
+      if (saved === "system" || saved === "dark" || saved === "light") setViewerAppearance(saved);
+    } catch {
+      /* sem armazenamento: fica a do organizador */
+    }
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    setPrefersDark(media.matches);
+    const onChange = (event: MediaQueryListEvent) => setPrefersDark(event.matches);
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+  const chooseAppearance = useCallback((next: Appearance) => {
+    setViewerAppearance(next);
+    try {
+      window.localStorage.setItem(APPEARANCE_KEY, next);
+    } catch {
+      /* fica só nesta visita */
+    }
+  }, []);
   const [waiting, setWaiting] = useState(true);
 
   // O indicativo vem pré-selecionado pela localização por endereço de rede
@@ -383,8 +416,16 @@ export function PublicRoom({
       </main>
     );
 
-  const { webinar, comments, audience, socialProof, simulatedPurchases } = data;
-  const themeClass = webinar.room_theme === "light" ? "room-light" : "";
+  const { webinar, comments, audience, socialProof, simulatedPurchases, captions } = data;
+  const appearance: Appearance =
+    viewerAppearance ?? (webinar.room_theme_system ? "system" : webinar.room_theme === "light" ? "light" : "dark");
+  const theme = resolveTheme(appearance, prefersDark);
+  const themeClass = theme === "light" ? "room-light" : "";
+  const fields = parseEntryFields(webinar.entry_fields, {
+    collectPhone: webinar.registration_collect_phone,
+    requirePhone: webinar.registration_require_phone,
+  });
+  const offerClosedByDeadline = offerDeadlinePassed(webinar.offer_deadline, webinar.timezone, Date.now());
 
   const startMs = webinar.session_start ? new Date(webinar.session_start).getTime() : null;
   // Com o temporizador de arranque ligado, a sala abre antes da hora: as pessoas
@@ -443,6 +484,17 @@ export function PublicRoom({
       </main>
     );
 
+  // O prazo da oferta fecha também o replay.
+  if (roomMode === "replay" && offerClosedByDeadline && !testMode)
+    return (
+      <main className={`room-ambient flex min-h-dvh items-center justify-center px-6 text-center ${themeClass}`}>
+        <div className="max-w-sm space-y-3">
+          <h1 className="text-xl font-black text-room-text">O replay terminou</h1>
+          <p className="text-sm text-room-subtle">Esta gravação esteve disponível até ao fim do prazo da oferta.</p>
+        </div>
+      </main>
+    );
+
   if (webinar.status === "draft" && !testMode)
     return (
       <main
@@ -468,32 +520,26 @@ export function PublicRoom({
     );
 
   if (!viewer) {
-    const submit = async (event: React.FormEvent) => {
-      event.preventDefault();
+    const submit = async () => {
       setError("");
-      const schema = z.object({
-        name: z.string().trim().min(2, "Diga-nos o seu nome."),
-        email: z.string().trim().email("Indique um e-mail válido."),
-        phone: webinar.registration_require_phone
-          ? z.string().trim().min(6, "Indique um contacto.")
-          : z.string().trim().optional(),
-      });
-      const parsed = schema.safeParse(form);
-      if (!parsed.success) {
-        setError(parsed.error.issues[0]?.message ?? "Reveja os dados.");
+      setErrorField(undefined);
+      const checked = validateEntry(fields, values);
+      if (!checked.ok) {
+        setError(checked.message);
+        setErrorField(checked.field);
         return;
       }
-      // O número vai sempre com o indicativo do país escolhido (ex.: +351 912...).
-      const phoneNumber = form.phone.trim();
-      const fullPhone = phoneNumber ? `${phoneCountry.dial} ${phoneNumber}` : undefined;
+      // O número vai sempre com o indicativo do país escolhido (ex.: +244 923...).
+      const phone = checked.phone ? `${phoneCountry.dial} ${checked.phone}` : undefined;
       setEntering(true);
       try {
         const result = await join({
           data: {
             webinarId: webinar.id,
-            name: parsed.data.name,
-            email: parsed.data.email,
-            phone: webinar.registration_collect_phone ? fullPhone : undefined,
+            name: checked.name,
+            ...(checked.email ? { email: checked.email } : {}),
+            ...(phone ? { phone } : {}),
+            ...(Object.keys(checked.answers).length ? { answers: checked.answers } : {}),
             mode: roomMode,
             teste: testMode,
             ...audienceMeta(),
@@ -503,22 +549,22 @@ export function PublicRoom({
         window.localStorage.setItem(storageKey(slug), JSON.stringify(next));
         if (!testMode) trackPixels("lead");
         setViewer(next);
-      } catch {
-        setError("Não foi possível entrar agora. Tente novamente.");
+      } catch (cause) {
+        const message = cause instanceof Error && cause.message.length < 120 ? cause.message : "";
+        setError(message && !/indispon/i.test(message) ? message : "Não foi possível entrar agora. Tente novamente.");
       } finally {
         setEntering(false);
       }
     };
 
-    // Ao chegar: a aula a decorrer por trás e o botão. Ao clicar: os dados. Só depois a sala,
-    // com o chat e o número de pessoas.
+    // A página: o título com «Ao vivo», os campos e o botão. Quem preenche entra logo na sala.
     const live = entryLiveLabel(startMs, webinar.timezone, Date.now());
     const elapsed = startMs !== null && startMs <= Date.now() ? (Date.now() - startMs) / 1000 : 0;
     return (
       <EntryScreen
         className="min-h-dvh"
-        moment={entryMoment}
-        onOpen={() => setEntryMoment("card")}
+        theme={theme}
+        title={webinar.public_title}
         live={live.live}
         liveLabel={live.label}
         video={
@@ -526,22 +572,18 @@ export function PublicRoom({
             ? { url: webinar.video_url!, startSeconds: elapsed }
             : null
         }
-        fallback={{ kicker: "Sessão ao vivo", title: webinar.public_title }}
-        badge={webinar.registration_badge_text || undefined}
-        headline={webinar.registration_headline || webinar.public_title}
-        subtitle={webinar.registration_subtitle || undefined}
         buttonText={webinar.registration_button_text || "Entrar na sala"}
         progress={webinar.registration_progress_enabled ? webinar.registration_progress_value : null}
-        phone={{
-          show: webinar.registration_collect_phone,
-          required: webinar.registration_collect_phone && webinar.registration_require_phone,
-        }}
-        values={form}
-        onChange={setForm}
+        fields={fields}
+        values={values}
+        onChange={setValues}
         country={phoneCountry}
         onCountry={setPhoneCountry}
-        onSubmit={(event) => void submit(event)}
+        cardColor={webinar.entry_card_color}
+        buttonColor={webinar.entry_button_color}
+        onSubmit={() => void submit()}
         error={error}
+        errorField={errorField}
         entering={entering}
       />
     );
@@ -560,7 +602,19 @@ export function PublicRoom({
 
   return (
     <WebinarRoom
-      theme={webinar.room_theme === "light" ? "light" : "dark"}
+      theme={theme}
+      appearance={appearance}
+      onAppearance={chooseAppearance}
+      captions={captions}
+      offers={{
+        extra: parseExtraOffers(webinar.extra_offers),
+        closed: offerClosedByDeadline,
+        closeAtZero: webinar.offer_countdown_end === "close",
+        utm: webinar.offer_utm,
+      }}
+      sales={{ where: webinar.sales_where === "chat" || webinar.sales_where === "video" ? webinar.sales_where : "both", real: webinar.sales_show_real }}
+      audienceFormat={audience.format}
+      hostVerified={webinar.host_verified}
       mode={roomMode}
       startsAt={roomStartsAt}
       viewerName={viewer.name}

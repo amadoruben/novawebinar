@@ -17,7 +17,7 @@ export function clock(seconds: number) {
 /* ---------- Audiência ---------- */
 
 /** O formato que o organizador escolhe; a sala lê só o modo e a curva gravada. */
-export type AudienceFormat = "fala" | "dynamic" | "cresce" | "mista" | "real";
+export type AudienceFormat = "fala" | "dynamic" | "cresce" | "mista" | "real" | "off";
 
 export const AUDIENCE_FORMATS: {
   value: AudienceFormat;
@@ -47,6 +47,7 @@ export const AUDIENCE_FORMATS: {
     description: "Soma o número simulado a quem está mesmo a ver.",
   },
   { value: "real", label: "Só a real", description: "Mostra só quem está mesmo na sala." },
+  { value: "off", label: "Não mostrar", description: "A sala não mostra quantas pessoas estão a ver." },
 ];
 
 export type AudienceContext = {
@@ -62,7 +63,8 @@ export const CURVE_POINTS = 60;
 
 /** O modo que a sala entende para cada formato. */
 export function audienceModeFor(format: AudienceFormat): "real" | "simulated" | "hybrid" {
-  if (format === "real") return "real";
+  // «Não mostrar» esconde o número na sala pelo formato; o modo fica o real.
+  if (format === "real" || format === "off") return "real";
   return format === "mista" ? "hybrid" : "simulated";
 }
 
@@ -207,6 +209,71 @@ export function offerCountdownLeft(countdownSeconds: number, startSeconds: numbe
   if (countdownSeconds <= 0) return 0;
   const open = startSeconds ?? 0;
   return Math.max(0, Math.min(countdownSeconds, countdownSeconds - (t - open)));
+}
+
+/**
+ * Uma oferta no tempo do vídeo. A principal vem das colunas `cta_*`; as seguintes ficam em
+ * `extra_offers` (por exemplo, uma oferta especial até ao minuto 10 e depois a geral).
+ */
+export type OfferSlot = {
+  id: string;
+  /** Segundo do vídeo em que abre. */
+  start: number;
+  /** Segundo em que fecha; null fica até ao fim. */
+  end: number | null;
+  product: string;
+  priceFrom: string;
+  priceNow: string;
+  url: string;
+  button: string;
+  /** Segundos do cronómetro a partir de quando abre; 0 sem cronómetro. */
+  countdown: number;
+};
+
+/** As ofertas seguintes gravadas; o que não tiver minuto nem link fica de fora. */
+export function parseExtraOffers(raw: unknown): OfferSlot[] {
+  if (!Array.isArray(raw)) return [];
+  const out: OfferSlot[] = [];
+  for (const [i, item] of raw.entries()) {
+    if (typeof item !== "object" || item === null) continue;
+    const r = item as Record<string, unknown>;
+    const start = Number(r["start"]);
+    if (!Number.isFinite(start) || start < 0) continue;
+    const end = r["end"] == null || r["end"] === "" ? null : Number(r["end"]);
+    out.push({
+      id: String(r["id"] ?? `extra-${i}`).slice(0, 40),
+      start: Math.round(start),
+      end: end !== null && Number.isFinite(end) && end > start ? Math.round(end) : null,
+      product: String(r["product"] ?? "").slice(0, 120),
+      priceFrom: String(r["priceFrom"] ?? "").slice(0, 40),
+      priceNow: String(r["priceNow"] ?? "").slice(0, 40),
+      url: String(r["url"] ?? "").slice(0, 500),
+      button: String(r["button"] ?? "").slice(0, 60) || "Quero entrar",
+      countdown: Math.max(0, Math.round(Number(r["countdown"]) || 0)),
+    });
+  }
+  return out.sort((a, b) => a.start - b.start).slice(0, 4);
+}
+
+/**
+ * A oferta aberta no segundo `t`: a última que já abriu e ainda não fechou. Uma oferta que
+ * abre fecha a anterior, mesmo que esta não tenha fim marcado.
+ */
+export function activeOffer(offers: readonly OfferSlot[], t: number): OfferSlot | null {
+  const sorted = [...offers].sort((a, b) => a.start - b.start);
+  let current: OfferSlot | null = null;
+  for (const offer of sorted) {
+    if (offer.start > t) break;
+    current = offer.end === null || t < offer.end ? offer : null;
+  }
+  return current;
+}
+
+/** O prazo da oferta terminou: depois do fim desse dia, no fuso do webinar. */
+export function offerDeadlinePassed(deadline: string | null | undefined, timezone: string, nowMs: number) {
+  if (!deadline || !/^\d{4}-\d{2}-\d{2}$/.test(deadline)) return false;
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: timezone || "UTC" }).format(new Date(nowMs));
+  return today > deadline;
 }
 
 /** Onde a pessoa clicou para ir ao checkout. */

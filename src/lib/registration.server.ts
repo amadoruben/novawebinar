@@ -9,7 +9,7 @@ import { leadSource } from "@/lib/contacts";
 import { originAllowed, parseRegistration, RateLimiter, type RegistrationError } from "@/lib/registration";
 
 export const WEBINAR_REGISTRATION_COLUMNS =
-  "id, organization_id, status, slug, public_title, internal_name, webhook_url, webhook_enabled, schedule_mode, scheduled_at, session_end_time, recurrence_enabled, recurrence_pattern, recurrence_weekday, recurrence_start_time, recurrence_end_time, jit_interval_minutes, timezone, duration_seconds, video_sources(duration_seconds)";
+  "id, organization_id, status, slug, public_title, internal_name, webhook_url, webhook_enabled, schedule_mode, scheduled_at, session_end_time, recurrence_enabled, recurrence_pattern, recurrence_weekday, recurrence_start_time, recurrence_end_time, recurrence_days, recurrence_times, jit_interval_minutes, jit_skip_night, timezone, duration_seconds, entry_fields, registration_collect_phone, registration_require_phone, video_sources(duration_seconds)";
 
 export async function loadRegistrationWebinar(id: string) {
   const { data, error } = await supabaseAdmin
@@ -86,8 +86,11 @@ export async function openRegistrationSession(webinar: RegistrationWebinar, mode
 
 export type NewRegistration = {
   name: string;
-  email: string;
+  /** Sem e-mail quando a página só pede o WhatsApp. */
+  email: string | null;
   phone: string | null;
+  /** Respostas aos campos novos da página. */
+  answers?: Record<string, string>;
   mode: "live" | "replay";
   device: "mobile" | "desktop" | null;
   city: string | null;
@@ -106,7 +109,8 @@ export type NewRegistration = {
 export async function createRegistration(webinar: RegistrationWebinar, r: NewRegistration, sessionId: string | null) {
   // Sala de teste: entra como convidado. Sem email real nem telefone a base de dados não cria
   // contacto, por isso não há evento de inscrição nem automações; a sala comporta-se igual.
-  const email = r.teste && !r.email.endsWith("@sala.local") ? `teste-${crypto.randomUUID().slice(0, 8)}@sala.local` : r.email;
+  const internal = Boolean(r.email?.endsWith("@sala.local"));
+  const email = r.teste && !internal ? `teste-${crypto.randomUUID().slice(0, 8)}@sala.local` : r.email;
   const { data: participant, error } = await supabaseAdmin
     .from("participants")
     .insert({
@@ -131,6 +135,7 @@ export async function createRegistration(webinar: RegistrationWebinar, r: NewReg
       form_id: r.formId ?? null,
       consent_at: r.consentAt ?? null,
       submission_id: r.submissionId ?? null,
+      answers: r.answers ?? {},
     })
     .select("id, name, contact_id, webinar_session_id")
     .single();
@@ -147,7 +152,8 @@ export async function createRegistration(webinar: RegistrationWebinar, r: NewReg
     phone: r.phone,
     mode: r.mode,
   });
-  if (!r.teste && !r.email.endsWith("@sala.local")) {
+  // Quem entra só com o WhatsApp também é um contacto novo.
+  if (!r.teste && !internal && (r.email || r.phone)) {
     const { notifyOutgoing } = await import("@/lib/integrations.server");
     await notifyOutgoing(webinar.organization_id, "contact.registered", {
       webinar_id: webinar.id,

@@ -3,13 +3,12 @@ import { toast } from "sonner";
 import { BadgeCheck, ChevronRight, Copy, Flag, Link2, Loader2, Trash2, Upload, Users, Webhook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { slugify } from "@/lib/data";
 import whatsappIcon from "@/assets/local/whatsapp-icon.webp";
-import { Field, Section } from "../ui";
+import { Field, Section, SwitchRow } from "../ui";
 import type { EditorForm, FocusProps, SetForm } from "../form";
 
 /** Início: o nome do webinar, o endereço da sala e quem apresenta. */
@@ -77,7 +76,7 @@ export function StepInicio({
         </Field>
       </Section>
 
-      <Section icon={Users} title="Apresentador">
+      <Section icon={Users} title="Quem apresenta">
         <div className="flex items-center gap-3 rounded-xl border bg-white p-3">
           {form.host_avatar_url ? (
             <img src={form.host_avatar_url} alt="" className="size-12 shrink-0 rounded-full object-cover" />
@@ -89,7 +88,9 @@ export function StepInicio({
           <span className="min-w-0 flex-1">
             <b className="flex items-center gap-1.5 text-[15px] font-semibold">
               <span className="truncate">{form.host_name || "Quem apresenta"}</span>
-              <BadgeCheck className="size-[18px] shrink-0 fill-[#0095f6] text-white" aria-label="Verificado" />
+              {form.host_verified ? (
+                <BadgeCheck className="size-[18px] shrink-0 fill-[#0095f6] text-white" aria-label="Verificado" />
+              ) : null}
             </b>
             <span className="block truncate text-[12.5px] text-muted-foreground">{form.host_role || "Cargo"}</span>
           </span>
@@ -109,12 +110,29 @@ export function StepInicio({
             Foto
           </Button>
         </div>
-        <Field label="Nome">
-          <Input value={form.host_name} onChange={(e) => set({ host_name: e.target.value })} {...focus("host")} />
+        <Field label="Nome" hint="Uma pessoa ou a sua empresa.">
+          <Input
+            value={form.host_name}
+            onChange={(e) => set({ host_name: e.target.value })}
+            placeholder="Ex.: Amado Ruben ou Convertewebinar"
+            {...focus("host")}
+          />
         </Field>
-        <Field label="Cargo">
-          <Input value={form.host_role} onChange={(e) => set({ host_role: e.target.value })} {...focus("host")} />
+        <Field label="Descrição curta">
+          <Input
+            value={form.host_role}
+            onChange={(e) => set({ host_role: e.target.value })}
+            placeholder="Ex.: Estrategista de Negócios com IA"
+            {...focus("host")}
+          />
         </Field>
+        <SwitchRow
+          icon={BadgeCheck}
+          title="Selo de verificado"
+          description="Aparece ao lado do nome, na sala."
+          checked={form.host_verified}
+          onChange={(host_verified) => set({ host_verified })}
+        />
       </Section>
 
       <Section icon={Link2} title="Partilha e ligações">
@@ -154,25 +172,12 @@ export function StepInicio({
         <DialogContent className="max-w-[520px]">
           <DialogHeader>
             <DialogTitle className="text-base font-semibold">Cartão do link</DialogTitle>
-            <DialogDescription>Como o link da sala aparece quando é partilhado no WhatsApp.</DialogDescription>
+            <DialogDescription>
+              Quando alguém partilha o link da sala no WhatsApp, aparece este cartão. Sem mudar nada, usa o título do
+              webinar.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
-            <Field label="Título">
-              <Input
-                value={form.share_title}
-                onChange={(e) => set({ share_title: e.target.value })}
-                placeholder={form.public_title || "O título do webinar"}
-              />
-            </Field>
-            <Field label="Descrição">
-              <Textarea
-                rows={2}
-                value={form.share_description}
-                onChange={(e) => set({ share_description: e.target.value })}
-                placeholder="Ex.: Ao vivo, garanta o seu lugar"
-              />
-            </Field>
-            <ShareImage form={form} set={set} uploading={uploading} onUpload={(f) => onUpload(f, "share_image_url")} />
             <div className="rounded-xl bg-[#ece5dd] p-4">
               <div className="max-w-sm overflow-hidden rounded-xl rounded-tl-none bg-white p-1.5 shadow-sm">
                 {form.share_image_url ? (
@@ -182,11 +187,28 @@ export function StepInicio({
                   <p className="truncate text-sm font-semibold text-[#111b21]">
                     {form.share_title || form.public_title || "Título do webinar"}
                   </p>
-                  <p className="truncate text-xs text-[#667781]">{form.share_description || "Descrição"}</p>
+                  {form.share_description ? (
+                    <p className="truncate text-xs text-[#667781]">{form.share_description}</p>
+                  ) : null}
                 </div>
                 <p className="truncate px-2 py-1.5 text-sm text-[#027eb5]">{roomLink}</p>
               </div>
             </div>
+            <Field label="Título do cartão" hint="Vazio, usa o título do webinar.">
+              <Input
+                value={form.share_title}
+                onChange={(e) => set({ share_title: e.target.value })}
+                placeholder={form.public_title || "O título do webinar"}
+              />
+            </Field>
+            <Field label="Frase por baixo" hint="Opcional. Ex.: «Ao vivo hoje às 20:00»">
+              <Input
+                value={form.share_description}
+                onChange={(e) => set({ share_description: e.target.value })}
+                placeholder="Opcional"
+              />
+            </Field>
+            <ShareImage form={form} set={set} uploading={uploading} onUpload={(f) => onUpload(f, "share_image_url")} />
           </div>
         </DialogContent>
       </Dialog>

@@ -66,6 +66,18 @@ export function emptyEditorForm() {
     share_image_url: "",
     webhook_url: "",
     webhook_enabled: false,
+    host_verified: true,
+    room_theme_system: false,
+    entry_card_color: "#141414",
+    entry_button_color: "#E8440C",
+    offer_utm: true,
+    offer_countdown_end: "keep" as "keep" | "close",
+    offer_deadline: "",
+    sales_show_real: false,
+    sales_where: "both" as "chat" | "video" | "both",
+    recurrence_days: [] as number[],
+    recurrence_times: [] as string[],
+    jit_skip_night: false,
   };
 }
 

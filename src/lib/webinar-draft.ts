@@ -24,7 +24,7 @@ export type DraftFields = {
  */
 export const EDITOR_STEPS = [
   { id: "inicio", label: "Início", group: "antes" },
-  { id: "entrada", label: "Entrada", group: "antes" },
+  { id: "entrada", label: "Página", group: "antes" },
   { id: "video", label: "Vídeo", group: "sala" },
   { id: "chat", label: "Chat", group: "sala" },
   { id: "audiencia", label: "Audiência", group: "sala" },

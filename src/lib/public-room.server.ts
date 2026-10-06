@@ -12,6 +12,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { fetchAll } from "@/lib/fetch-all";
 import { PROVIDERS } from "@/lib/integrations";
 import { notifyOutgoing } from "@/lib/integrations.server";
+import { parseExtraOffers } from "@/lib/room-logic";
 import { sessionWindow } from "@/lib/schedule";
 
 const UNAVAILABLE = "Serviço temporariamente indisponível. Tente novamente.";
@@ -42,7 +43,7 @@ export async function loadPublicRoom(slug: string) {
   const { data: webinar, error: webinarError } = await supabaseAdmin
     .from("webinars")
     .select(
-      "id, organization_id, public_title, description, status, room_theme, host_name, host_role, host_avatar_url, chat_pin_title, chat_pin_message, offer_pin_title, offer_pin_message, scheduled_at, session_end_time, schedule_mode, recurrence_enabled, recurrence_pattern, recurrence_weekday, recurrence_start_time, recurrence_end_time, jit_interval_minutes, timezone, duration_seconds, replay_enabled, waiting_room_enabled, prelive_enabled, prelive_seconds, prelive_sound, prelive_message, prelive_template, prelive_appearance, easy_access, sync_video_with_start, cta_text, cta_url, cta_color, cta_price_original, cta_price_now, cta_image_url, cta_countdown_seconds, cta_start_seconds, cta_end_seconds, registration_headline, registration_subtitle, registration_button_text, registration_collect_phone, registration_require_phone, registration_cover_url, registration_badge_text, registration_progress_enabled, registration_progress_value, registration_scarcity_note, share_title, share_description, share_image_url, video_sources(source_url, provider, duration_seconds, storage_path)",
+      "id, organization_id, public_title, description, status, room_theme, host_name, host_role, host_avatar_url, chat_pin_title, chat_pin_message, offer_pin_title, offer_pin_message, scheduled_at, session_end_time, schedule_mode, recurrence_enabled, recurrence_pattern, recurrence_weekday, recurrence_start_time, recurrence_end_time, jit_interval_minutes, timezone, duration_seconds, replay_enabled, waiting_room_enabled, prelive_enabled, prelive_seconds, prelive_sound, prelive_message, prelive_template, prelive_appearance, easy_access, sync_video_with_start, cta_text, cta_url, cta_color, cta_price_original, cta_price_now, cta_image_url, cta_countdown_seconds, cta_start_seconds, cta_end_seconds, registration_headline, registration_subtitle, registration_button_text, registration_collect_phone, registration_require_phone, registration_cover_url, registration_badge_text, registration_progress_enabled, registration_progress_value, registration_scarcity_note, share_title, share_description, share_image_url, video_source_id, entry_fields, entry_card_color, entry_button_color, extra_offers, offer_deadline, offer_countdown_end, offer_utm, sales_show_real, sales_where, recurrence_days, recurrence_times, jit_skip_night, host_verified, room_theme_system, video_sources(source_url, provider, duration_seconds, storage_path)",
     )
     .eq("slug", slug)
     .maybeSingle();
@@ -69,7 +70,7 @@ export async function loadPublicRoom(slug: string) {
     ),
     supabaseAdmin
       .from("audience_configuration")
-      .select("mode, curve")
+      .select("mode, curve, format")
       .eq("webinar_id", webinar.id)
       .maybeSingle(),
     supabaseAdmin
@@ -90,6 +91,12 @@ export async function loadPublicRoom(slug: string) {
       .eq("organization_id", webinar.organization_id)
       .eq("enabled", true)
       .in("provider", ["meta_pixel", "tiktok_pixel", "google_tag"]),
+    // A transcrição do vídeo dá as legendas da sala.
+    supabaseAdmin
+      .from("webinar_transcripts")
+      .select("segments, video_source_id")
+      .eq("webinar_id", webinar.id)
+      .maybeSingle(),
   ]);
   // Uma sala sem comentários ou sem oferta por causa de uma leitura falhada
   // substituiria a sala boa de quem já está a assistir.
@@ -100,6 +107,7 @@ export async function loadPublicRoom(slug: string) {
     { data: socialProof },
     { data: simulated },
     { data: adIntegrations },
+    { data: transcript },
   ] = parts;
 
   // Os ids vão parar a endereços de scripts: validam-se outra vez aqui.
@@ -126,8 +134,18 @@ export async function loadPublicRoom(slug: string) {
     if (signed?.signedUrl) videoUrl = signed.signedUrl;
   }
 
+  // Legendas só da transcrição deste vídeo: a de um vídeo trocado diria outra coisa.
+  const captions =
+    transcript && transcript.video_source_id === webinar.video_source_id && Array.isArray(transcript.segments)
+      ? (transcript.segments as unknown[])
+          .map((segment) => segment as { at?: unknown; text?: unknown })
+          .filter((segment) => Number.isFinite(Number(segment.at)) && typeof segment.text === "string")
+          .map((segment) => ({ at: Number(segment.at), text: String(segment.text).slice(0, 300) }))
+      : [];
+
   return {
     pixels,
+    captions,
     webinar: {
       id: webinar.id,
       organization_id: webinar.organization_id,
@@ -142,6 +160,17 @@ export async function loadPublicRoom(slug: string) {
       offer_pin_message: webinar.offer_pin_message ?? "",
       status: webinar.status,
       room_theme: webinar.room_theme === "light" ? "light" : "dark",
+      room_theme_system: webinar.room_theme_system,
+      host_verified: webinar.host_verified,
+      entry_fields: webinar.entry_fields,
+      entry_card_color: webinar.entry_card_color,
+      entry_button_color: webinar.entry_button_color,
+      extra_offers: webinar.extra_offers,
+      offer_deadline: webinar.offer_deadline,
+      offer_countdown_end: webinar.offer_countdown_end,
+      offer_utm: webinar.offer_utm,
+      sales_show_real: webinar.sales_show_real,
+      sales_where: webinar.sales_where,
       scheduled_at: webinar.scheduled_at,
       session_start: session.startMs ? new Date(session.startMs).toISOString() : null,
       session_end: session.endMs ? new Date(session.endMs).toISOString() : null,
@@ -187,7 +216,7 @@ export async function loadPublicRoom(slug: string) {
       video_provider: source?.provider ?? null,
     },
     comments: comments ?? [],
-    audience: { mode: audience?.mode ?? "real", curve: audience?.curve ?? [] },
+    audience: { mode: audience?.mode ?? "real", curve: audience?.curve ?? [], format: audience?.format ?? null },
     socialProof: socialProof ?? null,
     simulatedPurchases: simulated ?? [],
   };
@@ -288,4 +317,42 @@ export async function loadRoomMessages(participantId: string) {
   if (error) throw new Error(UNAVAILABLE);
 
   return { messages: messages ?? [] };
+}
+
+/**
+ * Compras reais aprovadas para a sala: as do produto da oferta (o id do produto está no link
+ * do botão), desde `sinceMs`. Só o primeiro nome de quem comprou chega ao público.
+ */
+export async function loadRoomPurchases(webinarId: string, sinceMs: number) {
+  const { data: webinar, error } = await supabaseAdmin
+    .from("webinars")
+    .select("organization_id, cta_url, extra_offers, sales_show_real")
+    .eq("id", webinarId)
+    .maybeSingle();
+  if (error) throw new Error(UNAVAILABLE);
+  if (!webinar?.sales_show_real) return [];
+  const urls = [webinar.cta_url ?? "", ...parseExtraOffers(webinar.extra_offers).map((o) => o.url)].filter(Boolean);
+  if (urls.length === 0) return [];
+  // No máximo seis horas para trás: a sala mostra o que está a acontecer, não o histórico.
+  const since = new Date(Math.max(sinceMs, Date.now() - 6 * 3600_000)).toISOString();
+  const { data: rows, error: purchasesError } = await supabaseAdmin
+    .from("real_purchase_events")
+    .select("id, buyer_name, product_name, product_id, approved_at")
+    .eq("organization_id", webinar.organization_id)
+    .eq("status", "approved")
+    .gte("approved_at", since)
+    .order("approved_at", { ascending: true })
+    .limit(50);
+  if (purchasesError) throw new Error(UNAVAILABLE);
+  return (rows ?? [])
+    .filter((row) => {
+      const id = (row.product_id ?? "").trim();
+      return id.length >= 4 && urls.some((url) => url.includes(id));
+    })
+    .map((row) => ({
+      id: row.id,
+      buyer: (row.buyer_name ?? "").trim().split(/\s+/)[0] || "Alguém",
+      product: row.product_name ?? "",
+      at: row.approved_at,
+    }));
 }

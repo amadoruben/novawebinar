@@ -602,6 +602,7 @@ export type Database = {
       }
       audience_configuration: {
         Row: {
+          format: string | null
           created_at: string
           curve: Json
           id: string
@@ -611,6 +612,7 @@ export type Database = {
           webinar_id: string
         }
         Insert: {
+          format?: string | null
           created_at?: string
           curve?: Json
           id?: string
@@ -620,6 +622,7 @@ export type Database = {
           webinar_id: string
         }
         Update: {
+          format?: string | null
           created_at?: string
           curve?: Json
           id?: string
@@ -1512,6 +1515,7 @@ export type Database = {
       }
       participants: {
         Row: {
+          answers: Json
           utm_term: string | null
           consent_at: string | null
           form_id: string | null
@@ -1546,6 +1550,7 @@ export type Database = {
           first_progress_at: string | null
         }
         Insert: {
+          answers?: Json
           utm_term?: string | null
           consent_at?: string | null
           form_id?: string | null
@@ -1580,6 +1585,7 @@ export type Database = {
           first_progress_at?: string | null
         }
         Update: {
+          answers?: Json
           utm_term?: string | null
           consent_at?: string | null
           form_id?: string | null
@@ -2935,6 +2941,21 @@ export type Database = {
       }
       webinars: {
         Row: {
+          chat_settings: Json
+          entry_button_color: string
+          entry_card_color: string
+          entry_fields: Json
+          extra_offers: Json
+          host_verified: boolean
+          jit_skip_night: boolean
+          offer_countdown_end: string
+          offer_deadline: string | null
+          offer_utm: boolean
+          recurrence_days: number[]
+          recurrence_times: string[]
+          room_theme_system: boolean
+          sales_show_real: boolean
+          sales_where: string
           chat_pin_message: string
           chat_pin_title: string
           cover_url: string | null
@@ -3004,6 +3025,21 @@ export type Database = {
           webhook_url: string
         }
         Insert: {
+          chat_settings?: Json
+          entry_button_color?: string
+          entry_card_color?: string
+          entry_fields?: Json
+          extra_offers?: Json
+          host_verified?: boolean
+          jit_skip_night?: boolean
+          offer_countdown_end?: string
+          offer_deadline?: string | null
+          offer_utm?: boolean
+          recurrence_days?: number[]
+          recurrence_times?: string[]
+          room_theme_system?: boolean
+          sales_show_real?: boolean
+          sales_where?: string
           chat_pin_message?: string
           chat_pin_title?: string
           cover_url?: string | null
@@ -3073,6 +3109,21 @@ export type Database = {
           webhook_url?: string
         }
         Update: {
+          chat_settings?: Json
+          entry_button_color?: string
+          entry_card_color?: string
+          entry_fields?: Json
+          extra_offers?: Json
+          host_verified?: boolean
+          jit_skip_night?: boolean
+          offer_countdown_end?: string
+          offer_deadline?: string | null
+          offer_utm?: boolean
+          recurrence_days?: number[]
+          recurrence_times?: string[]
+          room_theme_system?: boolean
+          sales_show_real?: boolean
+          sales_where?: string
           chat_pin_message?: string
           chat_pin_title?: string
           cover_url?: string | null

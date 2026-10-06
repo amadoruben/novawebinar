@@ -15,13 +15,18 @@ import {
 import { useHearts, useLivePresence } from "@/lib/live-presence";
 import { Input } from "@/components/ui/input";
 import { VideoPlayer } from "@/components/video-player";
-import { checkoutLink } from "@/lib/room-logic";
+import { activeOffer, checkoutLink, type OfferSlot } from "@/lib/room-logic";
+import { useServerFn } from "@tanstack/react-start";
+import { getPublicRoomPurchases } from "@/lib/public-room.functions";
 import {
-  HeartButton,
+  CaptionLine,
+  ChatComposer,
   OfferCard,
   PulseDot,
   RoomPartsStyle,
-  SendButton,
+  RoomTitle,
+  VideoSettings,
+  type Appearance,
 } from "@/components/room/room-parts";
 import { useAudienceCount } from "@/components/audience-counter";
 import { cn, isHttpUrl } from "@/lib/utils";
@@ -197,8 +202,27 @@ export function WebinarRoom({
   onCtaClick,
   onProgress,
   checkoutOrigin,
+  appearance = "dark",
+  onAppearance,
+  captions = [],
+  offers,
+  sales,
+  audienceFormat,
+  hostVerified = true,
 }: {
   webinar: RoomWebinar;
+  /** A aparência escolhida (do organizador ou desta pessoa); `theme` é o resultado. */
+  appearance?: Appearance;
+  onAppearance?: ((appearance: Appearance) => void) | undefined;
+  /** A fala do vídeo, para as legendas. */
+  captions?: readonly { at: number; text: string }[];
+  /** As ofertas seguintes à principal, o prazo, o fecho no zero e a origem no link. */
+  offers?: { extra: readonly OfferSlot[]; closed: boolean; closeAtZero: boolean; utm: boolean } | undefined;
+  /** Onde aparecem as compras e se as reais da Kambafy entram na sala. */
+  sales?: { where: "chat" | "video" | "both"; real: boolean } | undefined;
+  /** «off»: a sala não mostra quantas pessoas estão a ver. */
+  audienceFormat?: string | null | undefined;
+  hostVerified?: boolean | undefined;
   /** O anúncio de onde a pessoa veio, para o link do checkout. */
   checkoutOrigin?: { source?: string | null; medium?: string | null; campaign?: string | null } | undefined;
   comments: RoomComment[];
@@ -264,7 +288,7 @@ export function WebinarRoom({
   const [soundOn, setSoundOn] = useState(false);
   const [volume, setVolume] = useState(1);
   const [playbackRate, setPlaybackRate] = useState(1);
-  const [showSettings, setShowSettings] = useState(false);
+  const [captionsOn, setCaptionsOn] = useState(false);
   const liveVideoRef = useRef<HTMLVideoElement>(null);
   const joinOffsetRef = useRef<number | null>(null);
   const [preliveEnding, setPreliveEnding] = useState(false);
@@ -545,20 +569,29 @@ export function WebinarRoom({
     };
   }, [onProgress, flushProgress]);
 
-  const ctaStart = webinar.cta_start_seconds ?? 0;
-  // Sem hora de fim definida (ou com um fim anterior ao início, por engano),
-  // a oferta fica visível até ao final da sessão.
-  const ctaEndRaw = webinar.cta_end_seconds;
-  const ctaEnd =
-    ctaEndRaw != null && ctaEndRaw > ctaStart ? ctaEndRaw : Number.POSITIVE_INFINITY;
-  // A oferta segue o vídeo: abre quando a pessoa chega ao momento configurado.
-  // Quem recua depois de a ter vista não a perde (já foi entregue).
-  const ctaSeenRef = useRef(false);
-  if (Boolean(webinar.cta_text) && contentPeak >= ctaStart && contentPeak <= ctaEnd) {
-    ctaSeenRef.current = true;
-  }
-  const ctaVisible =
-    Boolean(webinar.cta_text) && !waiting && ctaSeenRef.current && contentPeak <= ctaEnd;
+  // As ofertas no tempo do vídeo: a principal (colunas cta_*) e as seguintes. A que está aberta
+  // segue o ponto mais avançado que a pessoa viu: quem recua não perde a oferta já entregue.
+  const offerList = useMemo<OfferSlot[]>(() => {
+    const mainStart = webinar.cta_start_seconds ?? 0;
+    const main: OfferSlot[] = webinar.cta_text
+      ? [
+          {
+            id: "main",
+            start: mainStart,
+            end: webinar.cta_end_seconds != null && webinar.cta_end_seconds > mainStart ? webinar.cta_end_seconds : null,
+            product: socialProof?.product_name?.trim() ?? "",
+            priceFrom: webinar.cta_price_original ?? "",
+            priceNow: webinar.cta_price_now ?? "",
+            url: webinar.cta_url ?? "",
+            button: webinar.cta_text,
+            countdown: webinar.cta_countdown_seconds ?? 0,
+          },
+        ]
+      : [];
+    return [...main, ...(offers?.extra ?? [])];
+  }, [webinar, socialProof?.product_name, offers?.extra]);
+  const currentOffer = waiting ? null : activeOffer(offerList, contentPeak);
+  const ctaVisible = currentOffer !== null;
 
   useEffect(() => {
     if (!ctaVisible || ctaLogged) return;
@@ -566,25 +599,28 @@ export function WebinarRoom({
     onCtaView?.();
   }, [ctaVisible, ctaLogged, onCtaView]);
 
-  // Quando a oferta abre, o separador dela salta para a frente.
+  // Quando uma oferta abre, o separador dela salta para a frente.
   useEffect(() => {
-    if (ctaVisible) setTab("offer");
+    if (currentOffer) setTab("offer");
     else setTab((prev) => (prev === "offer" ? "chat" : prev));
-  }, [ctaVisible]);
+  }, [currentOffer?.id]);
 
-  // Contador regressivo da oferta. Fixa-se ao relógio real no instante em que a
-  // oferta abre, para continuar a andar mesmo depois de a transmissão terminar
-  // (aí o relógio da sessão fica parado no fim do vídeo).
-  const countdownTotal = webinar.cta_countdown_seconds ?? 0;
-  const offerWallStartRef = useRef<number | null>(null);
-  if (ctaVisible && offerWallStartRef.current === null) {
-    offerWallStartRef.current = Date.now() - Math.max(0, contentPeak - ctaStart) * 1000;
+  // Contador regressivo da oferta aberta. Fixa-se ao relógio real no instante em que ela abre,
+  // para continuar a andar mesmo depois de a transmissão terminar.
+  const countdownTotal = currentOffer?.countdown ?? 0;
+  const offerWallStartRef = useRef<{ id: string; at: number } | null>(null);
+  if (currentOffer && offerWallStartRef.current?.id !== currentOffer.id) {
+    offerWallStartRef.current = {
+      id: currentOffer.id,
+      at: Date.now() - Math.max(0, contentPeak - currentOffer.start) * 1000,
+    };
   }
-  if (!ctaVisible) offerWallStartRef.current = null;
-  const offerElapsed = offerWallStartRef.current
-    ? (now - offerWallStartRef.current) / 1000
-    : Math.max(0, contentPeak - ctaStart);
+  if (!currentOffer) offerWallStartRef.current = null;
+  const offerElapsed = offerWallStartRef.current ? (now - offerWallStartRef.current.at) / 1000 : 0;
   const offerRemaining = Math.max(0, Math.round(countdownTotal - offerElapsed));
+  // O botão fecha no fim do prazo, ou quando o cronómetro chega a zero se assim foi escolhido.
+  const offerClosed =
+    Boolean(offers?.closed) || (Boolean(offers?.closeAtZero) && countdownTotal > 0 && offerRemaining === 0);
 
   // Notificação de compra visível neste segundo, dentro da janela configurada.
   // Cada notificação tem o seu momento definido à mão, por isso não há janela
@@ -664,7 +700,47 @@ export function WebinarRoom({
 
   const proofColor = purchaseColorClasses(socialProof?.notification_color);
 
-  const purchaseToast = activePurchase ? (
+  // Compras reais da Kambafy: chegam no momento em que acontecem (de 20 em 20 segundos).
+  const fetchRealPurchases = useServerFn(getPublicRoomPurchases);
+  const [realPurchases, setRealPurchases] = useState<{ id: string; buyer: string; product: string; arrived: Date }[]>([]);
+  const realSinceRef = useRef(Date.now() - 10 * 60 * 1000);
+  useEffect(() => {
+    if (!sales?.real || mode !== "live") return;
+    let stopped = false;
+    const load = async () => {
+      try {
+        const rows = await fetchRealPurchases({ data: { webinarId: webinar.id, since: realSinceRef.current } });
+        if (stopped || rows.length === 0) return;
+        setRealPurchases((prev) => {
+          const known = new Set(prev.map((p) => p.id));
+          const fresh = rows
+            .filter((row) => !known.has(row.id))
+            .map((row) => ({ id: row.id, buyer: row.buyer, product: row.product, arrived: new Date() }));
+          return fresh.length ? [...prev, ...fresh] : prev;
+        });
+      } catch {
+        /* tenta outra vez na próxima volta */
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), 20_000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [sales?.real, mode, webinar.id, fetchRealPurchases]);
+
+  // Onde aparecem as compras: no vídeo (aviso), no chat (linha) ou nos dois.
+  const showToasts = (sales?.where ?? "both") !== "chat";
+  const showChatSales = (sales?.where ?? "both") !== "video";
+  const latestReal = realPurchases[realPurchases.length - 1];
+  const realActive = latestReal && now - latestReal.arrived.getTime() < 7000 ? latestReal : null;
+  const toastPurchase = activePurchase
+    ? { name: activePurchase.buyer_name, text: activePurchase.message || `comprou ${activePurchase.product_name}` }
+    : realActive
+      ? { name: realActive.buyer, text: `comprou ${realActive.product || "a vaga"}` }
+      : null;
+  const purchaseToast = showToasts && toastPurchase ? (
     <div
       className={`pointer-events-none absolute z-20 max-w-[min(20rem,80%)] rounded-2xl p-3 shadow-lg ring-1 backdrop-blur ${proofColor.panel} ${proofColor.ring} ${proofPosition} ${proofAnimation}`}
     >
@@ -674,10 +750,8 @@ export function WebinarRoom({
         </span>
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-white">
-            {activePurchase.buyer_name}{" "}
-            <span className="font-normal text-white/85">
-              {activePurchase.message || `comprou ${activePurchase.product_name}`}
-            </span>
+            {toastPurchase.name}{" "}
+            <span className="font-normal text-white/85">{toastPurchase.text}</span>
           </p>
         </div>
       </div>
@@ -719,14 +793,18 @@ export function WebinarRoom({
   }, [visibleComments.length, sent.length, supportMessages.length, tab]);
 
   // O link vem da base de dados: só http(s) chega ao browser do participante.
-  const ctaUrl = isHttpUrl(webinar.cta_url) ? webinar.cta_url : null;
+  const ctaUrl = currentOffer && isHttpUrl(currentOffer.url) ? currentOffer.url : null;
 
   // Cada clique leva até ao checkout a origem da pessoa, onde clicou e em que minuto.
   const clickCta = () => {
+    if (offerClosed) return;
     setCheckout(true);
     onCtaClick?.();
     if (!ctaUrl) return;
-    const link = checkoutLink(ctaUrl, { ...checkoutOrigin, place: "sala", seconds: contentSeconds });
+    const link =
+      offers?.utm === false
+        ? ctaUrl
+        : checkoutLink(ctaUrl, { ...checkoutOrigin, place: "sala", seconds: contentSeconds });
     window.open(link, "_blank", "noopener");
   };
 
@@ -742,8 +820,7 @@ export function WebinarRoom({
     }
   };
 
-  const sendMessage = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const sendMessage = async () => {
     const body = text.trim();
     if (!body) return;
     setText("");
@@ -791,7 +868,7 @@ export function WebinarRoom({
             {waiting ? "Em breve" : finished ? "Terminou" : mode === "live" ? "Ao vivo" : "Replay"}
           </span>
         )}
-        {!finished ? (
+        {!finished && audienceFormat !== "off" ? (
           <span className="inline-flex h-[26px] items-center gap-1.5 rounded-xs bg-[var(--room-overlay)] px-2.5 text-xs font-medium tabular-nums text-white backdrop-blur-sm">
             <Eye className="size-3.5 shrink-0" strokeWidth={1.5} aria-hidden />
             {(prelive ? preliveViewers : viewers).toLocaleString("pt-PT")}
@@ -877,71 +954,37 @@ export function WebinarRoom({
     />
   ) : null;
 
-  // Controlos próprios do leitor: som e definições. Aparecem ao passar o rato
-  // sobre o vídeo, sem nunca mostrar botões de play/pause nativos.
-  const isMuted = !soundOn || volume === 0;
+  // As definições do vídeo, como no YouTube: volume, legendas, qualidade e aparência.
+  // Sem velocidade nem avançar: a sessão parece sempre ao vivo.
+  const changeVolume = (next: number) => {
+    setVolume(next);
+    if (next > 0 && !soundOn) enableSound();
+  };
   const videoControls = videoNode ? (
-    <div
-      className="group absolute inset-0 z-30 hidden cursor-default sm:block"
-      onMouseLeave={() => setShowSettings(false)}
-    >
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/75 via-black/30 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-      <div className="absolute inset-x-0 bottom-0 flex items-end justify-end gap-2 px-3 pb-3 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-        <div className="pointer-events-auto flex h-8 items-center gap-2 rounded-lg bg-black/60 px-2 text-white ring-1 ring-white/10 backdrop-blur-sm">
-          <button
-            type="button"
-            onClick={() => {
-              if (!soundOn) {
-                enableSound();
-                setVolume(volume > 0 ? volume : 1);
-              } else {
-                setVolume(isMuted ? 1 : 0);
-              }
-            }}
-            className="flex size-7 items-center justify-center rounded-md hover:bg-white/10"
-            aria-label={isMuted ? "Ligar som" : "Desligar som"}
-          >
-            {isMuted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
-          </button>
-          <div className="relative flex h-1 w-20 cursor-pointer items-center rounded-full bg-white/25" role="slider" aria-label="Volume" aria-valuenow={Math.round(volume * 100)} aria-valuemin={0} aria-valuemax={100}>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={volume}
-              onChange={(e) => {
-                const next = Number(e.target.value);
-                setVolume(next);
-                if (next > 0 && !soundOn) enableSound();
-              }}
-              className="h-full w-full appearance-none bg-transparent [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-white"
-            />
-            <div
-              className="pointer-events-none absolute h-1 rounded-full bg-white"
-              style={{ width: `${volume * 100}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setShowSettings((s) => !s)}
-            className="pointer-events-auto flex size-8 items-center justify-center rounded-lg bg-black/60 text-white ring-1 ring-white/10 backdrop-blur-sm hover:bg-black/80"
-            aria-label="Definições"
-          >
-            <Settings className="size-4" />
-          </button>
-          {showSettings && (
-            <div className="absolute bottom-full right-0 mb-2 w-44 rounded-xl border border-white/10 bg-black/85 p-2 text-white shadow-2xl ring-1 ring-black/50 backdrop-blur-md">
-              <p className="px-2 text-[10px] text-white/50">Qualidade: Automático</p>
-            </div>
-          )}
-        </div>
+    <div className="pointer-events-none absolute inset-0 z-30">
+      <div className="pointer-events-auto absolute bottom-3 right-3">
+        <VideoSettings
+          volume={soundOn ? volume : 0}
+          onVolume={changeVolume}
+          captions={captionsOn}
+          onCaptions={setCaptionsOn}
+          hasCaptions={captions.length > 0}
+          appearance={appearance}
+          onAppearance={(next) => onAppearance?.(next)}
+        />
       </div>
     </div>
   ) : null;
+  // A legenda do momento: a frase dita há menos de sete segundos.
+  const caption = useMemo(() => {
+    if (!captionsOn || captions.length === 0) return null;
+    let current: { at: number; text: string } | null = null;
+    for (const line of captions) {
+      if (line.at > contentSeconds) break;
+      current = line;
+    }
+    return current && contentSeconds - current.at < 7 ? current.text : null;
+  }, [captionsOn, captions, contentSeconds]);
 
   const needsAudioUnlock =
     !soundOn && !prelive && !waiting && !finished && Boolean(webinar.video_url);
@@ -993,6 +1036,7 @@ export function WebinarRoom({
             )}
           />
         )}
+        {!showPrelive && !needsAudioUnlock ? <CaptionLine text={caption} /> : null}
         {!showPrelive && !needsAudioUnlock && videoControls}
       </div>
 
@@ -1097,8 +1141,19 @@ export function WebinarRoom({
 
   /** Compras já anunciadas: entram no chat no seu momento, com a hora correta. */
   const purchaseFeed = useMemo(() => {
-    if (!socialProof?.enabled || waiting) return [];
-    return proofSchedule
+    if (!showChatSales || waiting) return [];
+    const real = realPurchases.map((p) => ({
+      key: `real-${p.id}`,
+      author: p.buyer,
+      avatarUrl: null as string | null,
+      message: `comprou ${p.product || "a vaga"}`,
+      at: p.arrived,
+      mine: false,
+      purchase: true,
+      source: undefined as SentMessage | undefined,
+    }));
+    if (!socialProof?.enabled) return real;
+    return [...real, ...proofSchedule
       .filter((slot) => shownPurchasesRef.current.has(slot.purchase.id))
       .map((slot) => {
         const key = `purchase-${slot.purchase.id}`;
@@ -1115,8 +1170,8 @@ export function WebinarRoom({
           purchase: true,
           source: undefined as SentMessage | undefined,
         };
-      });
-  }, [proofSchedule, socialProof?.enabled, activePurchase, waiting]);
+      })];
+  }, [proofSchedule, socialProof?.enabled, activePurchase, waiting, showChatSales, realPurchases]);
 
   /** Chat público por ordem cronológica real: o que eu escrevi fica no momento em que escrevi. */
   const chatThread = useMemo(() => {
@@ -1261,21 +1316,21 @@ export function WebinarRoom({
     </div>
   );
 
-  const productName = socialProof?.product_name?.trim();
-  const offerPanel = (
+  const offerPanel = currentOffer ? (
     <div className="flex-1 overflow-y-auto overscroll-contain">
       <OfferCard
-        productName={productName || undefined}
-        imageUrl={webinar.cta_image_url || undefined}
-        priceFrom={webinar.cta_price_original}
-        priceNow={webinar.cta_price_now}
-        buttonText={webinar.cta_text ?? "Quero entrar"}
+        productName={currentOffer.product || undefined}
+        imageUrl={currentOffer.id === "main" ? webinar.cta_image_url || undefined : undefined}
+        priceFrom={currentOffer.priceFrom}
+        priceNow={currentOffer.priceNow}
+        buttonText={currentOffer.button || "Quero entrar"}
         onBuy={clickCta}
         countdownSeconds={offerRemaining}
         showCountdown={countdownTotal > 0}
+        closed={offerClosed}
       />
     </div>
-  );
+  ) : null;
 
   // Aviso durante a contagem de arranque: o vídeo ainda não entrou no ar e o
   // som precisa de um toque para ser desbloqueado.
@@ -1394,38 +1449,36 @@ export function WebinarRoom({
           Esta é uma gravação. O chat está fechado — vê as mensagens tal como aconteceram ao vivo.
         </p>
       ) : null}
-      <form
-        className={`${tab === "offer" || mode === "replay" ? "hidden " : "flex "}gap-2 border-t border-room-line p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]`}
-        onSubmit={sendMessage}
-      >
-        <Input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onFocus={() => {
-            const viewport = window.visualViewport;
-            const room = roomRef.current;
-            if (viewport && room && !window.matchMedia("(min-width: 1024px)").matches) {
-              room.classList.add("live-room-shell--keyboard");
-              room.style.setProperty("--room-visible-height", `${Math.round(viewport.height)}px`);
-              room.style.setProperty("--room-visible-top", `${Math.round(viewport.offsetTop)}px`);
-              window.scrollTo({ top: 0, behavior: "instant" });
-            }
-            window.setTimeout(() => {
-              const node = feedRef.current;
-              if (node) node.scrollTop = node.scrollHeight;
-            }, 180);
-          }}
-          onBlur={() => {
-            roomRef.current?.classList.remove("live-room-shell--keyboard");
-          }}
-          placeholder={tab === "support" ? "Escreva à equipa..." : "Escreva um comentário..."}
-          enterKeyHint="send"
-          className="h-11 rounded-full border-room-line bg-room-raised px-4 text-base text-room-text placeholder:text-room-subtle focus-visible:ring-primary/40"
-        />
-        {/* O coração e as reações só existem no separador Chat. */}
-        {tab === "chat" ? <HeartButton onHeart={sendHeart} reactions={hearts} /> : null}
-        <SendButton />
-      </form>
+      {tab === "offer" || mode === "replay" ? null : (
+        <div className="pb-[max(0px,env(safe-area-inset-bottom))]">
+          <ChatComposer
+            value={text}
+            onChange={setText}
+            onSubmit={() => void sendMessage()}
+            placeholder={tab === "support" ? "Escreva à equipa..." : "Chat..."}
+            withReactions={tab === "chat"}
+            onHeart={sendHeart}
+            reactions={hearts}
+            inputProps={{
+              onFocus: () => {
+                const viewport = window.visualViewport;
+                const room = roomRef.current;
+                if (viewport && room && !window.matchMedia("(min-width: 1024px)").matches) {
+                  room.classList.add("live-room-shell--keyboard");
+                  room.style.setProperty("--room-visible-height", `${Math.round(viewport.height)}px`);
+                  room.style.setProperty("--room-visible-top", `${Math.round(viewport.offsetTop)}px`);
+                  window.scrollTo({ top: 0, behavior: "instant" });
+                }
+                window.setTimeout(() => {
+                  const node = feedRef.current;
+                  if (node) node.scrollTop = node.scrollHeight;
+                }, 180);
+              },
+              onBlur: () => roomRef.current?.classList.remove("live-room-shell--keyboard"),
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 
@@ -1443,55 +1496,20 @@ export function WebinarRoom({
             {soundPrompt}
             {purchaseToast}
           </div>
-          <div className="px-5 pb-2 pt-1 lg:px-1 lg:pb-0 lg:pt-6">
-            <p className="hidden text-[11px] font-bold uppercase tracking-[0.22em] text-primary lg:block">
-              {waiting
-                ? "Sessão agendada"
-                : finished
-                  ? "Sessão terminada"
-                  : mode === "live"
-                    ? "Sessão ao vivo"
-                    : "Sessão em replay"}
-            </p>
-            <h1 className="hidden text-lg font-bold leading-snug tracking-tight text-room-text lg:mt-1.5 lg:block lg:text-2xl lg:font-extrabold">
-              {webinar.public_title}
-            </h1>
-            {webinar.host_name ? (
-              <div className="mt-0 flex items-center gap-3 lg:mt-3.5">
-                {webinar.host_avatar_url ? (
-                  <img
-                    src={webinar.host_avatar_url}
-                    alt={webinar.host_name}
-                    className="size-10 shrink-0 rounded-full object-cover ring-1 ring-room-line"
-                  />
-                ) : (
-                  <span
-                    className={`flex size-10 shrink-0 items-center justify-center rounded-full text-xs font-bold ${avatarTone(webinar.host_name)}`}
-                  >
-                    {initials(webinar.host_name) || webinar.host_name[0]?.toUpperCase()}
-                  </span>
-                )}
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-room-text">
-                    <span className="flex min-w-0 items-center gap-1">
-                      <span className="truncate">{webinar.host_name}</span>
-                      <BadgeCheck
-                        className="size-4 shrink-0 fill-[#0095f6] text-room-surface"
-                        aria-label="Verificado"
-                      />
-                    </span>
-                  </p>
-                  {webinar.host_role ? (
-                    <p className="truncate text-xs text-room-subtle">{webinar.host_role}</p>
-                  ) : null}
-                </div>
-              </div>
+          <div className="lg:hidden">
+            <RoomTitle compact kicker="" title={webinar.public_title} host={{ name: webinar.host_name ?? "", role: webinar.host_role ?? "", avatarUrl: webinar.host_avatar_url ?? "", verified: hostVerified }} />
+          </div>
+          <div className="hidden px-1 lg:block">
+            <RoomTitle
+              kicker={
+                waiting ? "Sessão agendada" : finished ? "Sessão terminada" : mode === "live" ? "Sessão ao vivo" : "Sessão em replay"
+              }
+              title={webinar.public_title}
+              host={{ name: webinar.host_name ?? "", role: webinar.host_role ?? "", avatarUrl: webinar.host_avatar_url ?? "", verified: hostVerified }}
+            />
+            {webinar.description ? (
+              <p className="mt-4 max-w-2xl text-sm leading-relaxed text-room-subtle">{webinar.description}</p>
             ) : null}
-            {webinar.description && (
-              <p className="mt-3.5 hidden max-w-2xl text-sm leading-relaxed text-room-subtle lg:block">
-                {webinar.description}
-              </p>
-            )}
           </div>
         </section>
         <aside className="flex min-h-0 flex-1 flex-col overflow-hidden lg:sticky lg:top-6 lg:h-[calc(100dvh-3rem)]">

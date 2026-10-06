@@ -1,11 +1,15 @@
 import { useMemo, useRef } from "react";
-import { Activity, ChevronDown, Eye, Users } from "lucide-react";
+import { Activity, ChevronDown, EyeOff, Radio, Users } from "lucide-react";
 import { AUDIENCE_FORMATS, clock, curveValueAt, type AudienceFormat } from "@/lib/room-logic";
 import { Field, Note, Section } from "../ui";
 import type { EditorClock } from "./video";
 
-const RANGE = 2000;
-const STEP = 10;
+const SCALES = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000];
+
+/** A escala da barra: sempre com folga acima do máximo, para os dois pontos nunca se taparem. */
+export function audienceScale(max: number) {
+  return SCALES.find((s) => s >= max * 1.25) ?? Math.ceil((max * 1.25) / 10000) * 10000;
+}
 
 /** Audiência: quantas pessoas a sala mostra e como o número muda ao longo do vídeo. */
 export function StepAudiencia({
@@ -29,34 +33,40 @@ export function StepAudiencia({
   clock: EditorClock;
   onFocusViewers: (on: boolean) => void;
 }) {
-  const simulated = format !== "real";
+  const simulated = format !== "real" && format !== "off";
   const chosen = AUDIENCE_FORMATS.find((f) => f.value === format)!;
-  const top = Math.max(RANGE, max);
-  const setMin = (v: number) => onRange(Math.max(0, Math.min(v, max - STEP)), max);
-  const setMax = (v: number) => onRange(min, Math.max(v, min + STEP));
+  const top = audienceScale(max);
+  const step = Math.max(1, Math.round(top / 400));
+  const setMin = (v: number) => onRange(Math.max(0, Math.min(v, max - step)), max);
+  const setMax = (v: number) => onRange(min, Math.max(v, min + step));
 
   return (
     <>
-      <Section icon={Users} title="Quantidade" help="audiencia">
-        {simulated ? (
+      <Section icon={Users} title="Quantas pessoas a sala mostra" help="audiencia">
+        {format === "off" ? (
+          <Note icon={EyeOff}>A sala não mostra quantas pessoas estão a ver.</Note>
+        ) : format === "real" ? (
+          <Note icon={Radio}>A sala mostra só quem está mesmo a ver, sem número simulado.</Note>
+        ) : (
           <>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              De
-              <NumberBox value={min} onChange={setMin} label="Mínimo" onFocus={onFocusViewers} />a
-              <NumberBox value={max} onChange={setMax} label="Máximo" onFocus={onFocusViewers} />
-              pessoas
+            <div className="grid grid-cols-2 gap-2.5">
+              <CountBox label="No mínimo" value={min} onChange={setMin} onFocus={onFocusViewers} />
+              <CountBox label="No máximo" value={max} onChange={setMax} onFocus={onFocusViewers} />
             </div>
             <div className="relative h-8">
-              <div className="absolute inset-x-2.5 top-1/2 h-1 -translate-y-1/2 rounded-full bg-gray-200" />
+              <div className="absolute inset-x-2.5 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-gray-200" />
               <div
-                className="absolute top-1/2 h-1 -translate-y-1/2 rounded-full bg-foreground"
-                style={{ left: `calc(10px + (100% - 20px) * ${min / top})`, right: `calc(10px + (100% - 20px) * ${1 - max / top})` }}
+                className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground"
+                style={{
+                  left: `calc(10px + (100% - 20px) * ${min / top})`,
+                  right: `calc(10px + (100% - 20px) * ${1 - max / top})`,
+                }}
               />
               <input
                 type="range"
                 min={0}
                 max={top}
-                step={STEP}
+                step={step}
                 value={min}
                 onChange={(e) => setMin(Number(e.target.value))}
                 aria-label="Mínimo de pessoas"
@@ -66,7 +76,7 @@ export function StepAudiencia({
                 type="range"
                 min={0}
                 max={top}
-                step={STEP}
+                step={step}
                 value={max}
                 onChange={(e) => setMax(Number(e.target.value))}
                 aria-label="Máximo de pessoas"
@@ -80,8 +90,6 @@ export function StepAudiencia({
             </div>
             <style>{RANGE_CSS}</style>
           </>
-        ) : (
-          <Note icon={Eye}>A sala mostra só quem está mesmo a ver.</Note>
         )}
       </Section>
 
@@ -107,7 +115,7 @@ export function StepAudiencia({
       </Section>
 
       {simulated && curve.length > 1 ? (
-        <Section icon={Eye} title="Como fica">
+        <Section icon={Radio} title="Como fica ao vivo">
           <Chart curve={curve} pitch={pitch} clock={c} />
         </Section>
       ) : null}
@@ -115,29 +123,34 @@ export function StepAudiencia({
   );
 }
 
-const RANGE_CSS = `.cw-range{appearance:none;-webkit-appearance:none;background:transparent;pointer-events:none;height:32px;margin:0}.cw-range::-webkit-slider-thumb{-webkit-appearance:none;pointer-events:auto;width:20px;height:20px;border-radius:50%;background:#fff;border:2px solid #171717;cursor:grab}.cw-range::-moz-range-thumb{pointer-events:auto;width:16px;height:16px;border-radius:50%;background:#fff;border:2px solid #171717;cursor:grab}.cw-range:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px rgba(0,114,245,.35)}`;
+const RANGE_CSS = `.cw-range{appearance:none;-webkit-appearance:none;background:transparent;pointer-events:none;height:32px;margin:0}.cw-range::-webkit-slider-thumb{-webkit-appearance:none;pointer-events:auto;width:22px;height:22px;border-radius:50%;background:#fff;border:2px solid #171717;box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:grab}.cw-range::-moz-range-thumb{pointer-events:auto;width:18px;height:18px;border-radius:50%;background:#fff;border:2px solid #171717;cursor:grab}.cw-range:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px rgba(0,114,245,.35)}`;
 
-function NumberBox({
+function CountBox({
+  label,
   value,
   onChange,
-  label,
   onFocus,
 }: {
+  label: string;
   value: number;
   onChange: (v: number) => void;
-  label: string;
   onFocus: (on: boolean) => void;
 }) {
   return (
-    <input
-      inputMode="numeric"
-      aria-label={label}
-      value={value}
-      onChange={(e) => onChange(Number(e.target.value.replace(/\D/g, "")) || 0)}
-      onFocus={() => onFocus(true)}
-      onBlur={() => onFocus(false)}
-      className="h-[38px] w-[86px] rounded-sm bg-white text-center font-mono text-[15px] font-semibold text-foreground tabular-nums shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-400)] outline-none focus:shadow-[inset_0_0_0_1px_var(--foreground)]"
-    />
+    <label className="grid gap-1 rounded-xl border bg-white px-3 py-2.5 focus-within:border-foreground focus-within:shadow-[inset_0_0_0_1px_var(--foreground)]">
+      <span className="text-[12px] text-muted-foreground">{label}</span>
+      <span className="flex items-baseline gap-1.5">
+        <input
+          inputMode="numeric"
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value.replace(/\D/g, "")) || 0)}
+          onFocus={() => onFocus(true)}
+          onBlur={() => onFocus(false)}
+          className="w-full min-w-0 bg-transparent font-mono text-[22px] font-semibold tabular-nums outline-none"
+        />
+        <span className="text-[12px] text-muted-foreground">pessoas</span>
+      </span>
+    </label>
   );
 }
 
@@ -193,7 +206,7 @@ function Chart({ curve, pitch, clock: c }: { curve: readonly number[]; pitch: nu
           <path d={path.area} fill="#12A594" opacity={0.12} />
           <path d={path.line} fill="none" stroke="#12A594" strokeWidth={1.75} vectorEffect="non-scaling-stroke" />
         </svg>
-        {pitch !== null ? (
+        {pitch !== null && pitch <= d ? (
           <div className="absolute inset-y-0 border-l border-dashed border-foreground/70" style={{ left: `${(pitch / d) * 100}%` }}>
             <span className="absolute -left-px top-0 -translate-x-full whitespace-nowrap rounded bg-foreground px-1.5 py-px text-[10.5px] font-semibold text-background">
               Oferta {clock(pitch)}

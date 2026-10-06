@@ -12,6 +12,7 @@ import {
   Phone,
   Play,
   Plus,
+  RotateCw,
   Smartphone,
   Video,
   X,
@@ -42,14 +43,17 @@ function useSize<T extends HTMLElement>() {
   return [ref, size] as const;
 }
 
-/** O computador ocupa a largura com respiro dos lados; o telemóvel nunca fica abaixo de 570 px. */
-export function deviceScale(device: Device, width: number, height: number, full = false) {
+/**
+ * A escala que faz o aparelho caber inteiro no espaço (largura e altura), sem deformar e sem
+ * nunca crescer acima do tamanho real. Assim a sala fica fixa e toda à vista.
+ */
+export function deviceScale(device: Device, width: number, height: number, landscape = false) {
+  const pad = 12;
   if (device === "desktop") {
-    const side = Math.min(72, Math.max(32, width * 0.06));
-    return Math.max(0.1, Math.min((width - 2 * side) / DESK.w, 1));
+    return Math.max(0.1, Math.min((width - 2 * pad) / DESK.w, (height - 2 * pad - 26) / DESK.h, 1));
   }
-  const target = Math.max(570, Math.min(height, full ? 790 : 790));
-  return Math.max(0.1, Math.min(width / PHONE.w, target / PHONE.h));
+  const [w, h] = landscape ? [PHONE.h, PHONE.w] : [PHONE.w, PHONE.h];
+  return Math.max(0.1, Math.min((width - 2 * pad) / w, (height - 2 * pad) / h, 1));
 }
 
 export function Scaled({ k, w, h, children }: { k: number; w: number; h: number; children: ReactNode }) {
@@ -123,7 +127,29 @@ export function IosStatus({ dark }: { dark?: boolean | undefined }) {
   );
 }
 
-export function PhoneFrame({ k, light, children }: { k: number; light?: boolean | undefined; children: ReactNode }) {
+export function PhoneFrame({
+  k,
+  light,
+  landscape,
+  children,
+}: {
+  k: number;
+  light?: boolean | undefined;
+  landscape?: boolean | undefined;
+  children: ReactNode;
+}) {
+  if (landscape) {
+    return (
+      <Scaled k={k} w={PHONE.h} h={PHONE.w}>
+        <div className="relative h-[425px] w-[878px] rounded-[70px] bg-[#0A0A0B] p-[13px] shadow-[0_0_0_2px_#D9D5CD,0_0_0_3.5px_#A7A298,0_40px_70px_-20px_rgba(0,0,0,.45)]">
+          <div className="relative h-[393px] w-[852px] overflow-hidden rounded-[57px] bg-black">
+            <div className="absolute left-6 top-1/2 z-[9] h-[124px] w-9 -translate-y-1/2 rounded-[20px] bg-black" />
+            {children}
+          </div>
+        </div>
+      </Scaled>
+    );
+  }
   return (
     <Scaled k={k} w={PHONE.w} h={PHONE.h}>
       <div className="relative h-[878px] w-[425px] px-[3px]">
@@ -149,27 +175,27 @@ export function PhoneFrame({ k, light, children }: { k: number; light?: boolean 
   );
 }
 
-/** O aparelho certo, à escala do espaço disponível. */
+/** O aparelho certo, inteiro no espaço disponível, alinhado em cima. */
 export function DeviceStage({
   device,
+  landscape,
   url,
   highlightUrl,
   light,
-  full,
   children,
 }: {
   device: Device;
+  landscape?: boolean | undefined;
   url: string;
   highlightUrl?: boolean | undefined;
   light?: boolean | undefined;
-  full?: boolean | undefined;
   children: ReactNode;
 }) {
   const [ref, size] = useSize<HTMLDivElement>();
-  const k = deviceScale(device, size.w, size.h, full);
+  const k = deviceScale(device, size.w, size.h, landscape);
   return (
-    <div ref={ref} className={cn("flex w-full min-w-0 justify-center", full ? "min-h-[calc(100dvh-56px)] items-start py-6" : "min-h-full items-center")}>
-      {size.w > 0 ? (
+    <div ref={ref} className="flex size-full min-h-0 min-w-0 items-start justify-center overflow-hidden p-3">
+      {size.w > 0 && size.h > 0 ? (
         device === "desktop" ? (
           <div style={{ width: DESK.w * k }}>
             <BrowserFrame url={url} k={k} highlightUrl={highlightUrl}>
@@ -177,12 +203,28 @@ export function DeviceStage({
             </BrowserFrame>
           </div>
         ) : (
-          <PhoneFrame k={k} light={light}>
+          <PhoneFrame k={k} light={light} landscape={landscape}>
             {children}
           </PhoneFrame>
         )
       ) : null}
     </div>
+  );
+}
+
+/** Rodar o telemóvel: ao alto ou deitado. */
+export function RotateButton({ landscape, onChange }: { landscape: boolean; onChange: (landscape: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!landscape)}
+      title={landscape ? "Pôr ao alto" : "Deitar o telemóvel"}
+      aria-label={landscape ? "Pôr o telemóvel ao alto" : "Deitar o telemóvel"}
+      aria-pressed={landscape}
+      className="grid size-[34px] shrink-0 place-items-center rounded-lg border bg-white transition hover:bg-gray-100"
+    >
+      <RotateCw className="size-[15px]" />
+    </button>
   );
 }
 
@@ -284,7 +326,7 @@ export function FullScreen({
           </button>
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4">{children}</div>
+      <div className="min-h-0 flex-1 px-4 pb-4">{children}</div>
     </div>
   );
 }
