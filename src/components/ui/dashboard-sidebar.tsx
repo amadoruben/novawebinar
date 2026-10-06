@@ -194,7 +194,7 @@ export function SidebarNav({
         <item.icon
           className={cn(
             "size-[18px] shrink-0",
-            active ? "text-primary" : "text-gray-700 group-hover:text-foreground",
+            active ? "text-brand" : "text-gray-700 group-hover:text-foreground",
           )}
           strokeWidth={1.75}
         />

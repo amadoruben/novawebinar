@@ -11,7 +11,11 @@ import { IconButton, type IconButtonTone } from "./core";
 
 const cardTone = {
   default: { card: "bg-card text-foreground", sub: "text-muted-foreground", btn: "white" },
-  white: { card: "bg-white text-foreground", sub: "text-muted-foreground", btn: "light" },
+  white: {
+    card: "bg-white text-foreground shadow-[inset_0_0_0_1px_var(--border-card)]",
+    sub: "text-muted-foreground",
+    btn: "light",
+  },
   inverse: { card: "bg-navy text-white", sub: "text-gray-400", btn: "white" },
   glass: {
     card: "glass glass-edge text-foreground",
@@ -29,8 +33,8 @@ export type WidgetAction = {
 };
 
 /**
- * Cartão bento: 32px, plano (sem borda nem sombra), título à esquerda e 2–3
- * botões circulares à direita. Um cartão "inverse" por vista marca a métrica
+ * Cartão (material base do Geist): branco, 12px, aresta de 1px, título
+ * heading-16 à esquerda e 2–3 botões de ícone à direita. Um cartão "inverse" por vista marca a métrica
  * principal.
  */
 export function WidgetCard({
@@ -73,11 +77,13 @@ export function WidgetCard({
         >
           <div className="min-w-0 flex-1">
             {title && (
-              <h3 className="text-lg font-normal leading-tight tracking-[-0.025em] sm:text-xl">
+              <h3 className="text-base font-semibold leading-6 tracking-[var(--tracking-title)]">
                 {title}
               </h3>
             )}
-            {subtitle && <div className={cn("mt-1 text-xs leading-relaxed", t.sub)}>{subtitle}</div>}
+            {subtitle && (
+              <div className={cn("mt-1 text-xs leading-relaxed", t.sub)}>{subtitle}</div>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             {headerRight}
@@ -101,12 +107,12 @@ export function WidgetCard({
 }
 
 const metricSize = {
-  sm: "text-[28px]",
-  md: "text-[32px] sm:text-[40px]",
-  lg: "text-[40px] sm:text-[56px]",
+  sm: "text-[24px]",
+  md: "text-[28px] sm:text-[32px]",
+  lg: "text-[40px] sm:text-[48px]",
 } as const;
 
-/** Número grande em Regular, unidade menor ao lado (formato pt-PT feito fora). */
+/** Número grande em SemiBold (heading-32 do Geist), unidade menor ao lado (formato pt-PT feito fora). */
 export function Metric({
   value,
   unit,
@@ -133,16 +139,21 @@ export function Metric({
       )}
       <div
         className={cn(
-          "flex items-baseline whitespace-nowrap font-normal leading-none tracking-[var(--tracking-display)] tabular-nums",
+          "flex items-baseline whitespace-nowrap font-semibold leading-none tracking-[var(--tracking-display)] tabular-nums",
           metricSize[size],
         )}
       >
         {prefix && <span className="mr-0.5 self-start text-[0.55em]">{prefix}</span>}
         <span className="truncate">{value}</span>
-        {unit && <span className="ml-1 text-[0.5em] tracking-normal">{unit}</span>}
+        {unit && <span className="ml-1 text-[0.5em] font-normal tracking-normal">{unit}</span>}
       </div>
       {sub && (
-        <div className={cn("text-[11px] leading-snug", inverse ? "text-gray-400" : "text-muted-foreground")}>
+        <div
+          className={cn(
+            "text-[11px] leading-snug",
+            inverse ? "text-gray-400" : "text-muted-foreground",
+          )}
+        >
           {sub}
         </div>
       )}
@@ -173,7 +184,10 @@ export function ProgressRow({
   return (
     <div className={cn("flex items-center gap-2.5 text-xs", className)}>
       {count != null && <span className="min-w-6 text-sm tabular-nums">{count}</span>}
-      <span className="w-24 shrink-0 truncate text-gray-700" title={typeof label === "string" ? label : undefined}>
+      <span
+        className="w-24 shrink-0 truncate text-gray-700"
+        title={typeof label === "string" ? label : undefined}
+      >
         {label}
       </span>
       <div className="relative h-[26px] flex-1 overflow-hidden rounded-sm bg-white ring-1 ring-[var(--border-card)] ring-inset">
@@ -234,7 +248,11 @@ export function Avatar({
       )}
       style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }}
     >
-      {src ? <img src={src} alt={name ?? ""} className="size-full object-cover" /> : initialsOf(name)}
+      {src ? (
+        <img src={src} alt={name ?? ""} className="size-full object-cover" />
+      ) : (
+        initialsOf(name)
+      )}
     </span>
   );
 }
@@ -298,8 +316,10 @@ export function EmptyState({
           <Icon className="size-5" strokeWidth={1.5} />
         </span>
       )}
-      <h2 className="text-lg font-normal tracking-[-0.02em]">{title}</h2>
-      {description && <p className="mt-1.5 max-w-md text-sm text-muted-foreground">{description}</p>}
+      <h2 className="text-base font-semibold tracking-[var(--tracking-title)]">{title}</h2>
+      {description && (
+        <p className="mt-1.5 max-w-md text-sm text-muted-foreground">{description}</p>
+      )}
       {action && <div className="mt-5">{action}</div>}
     </div>
   );

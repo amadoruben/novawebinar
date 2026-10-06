@@ -20,7 +20,7 @@ function Panel({
   return (
     <section className={cn("min-w-0 rounded-card bg-card p-5 sm:p-6", className)}>
       <header className="mb-5 flex items-start justify-between gap-3">
-        <h2 className="text-lg font-normal leading-tight tracking-[-0.025em] sm:text-xl">{title}</h2>
+        <h2 className="text-base font-semibold leading-6 tracking-[var(--tracking-title)]">{title}</h2>
         <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-gray-700">
           <Icon className="size-4" />
         </span>
@@ -70,7 +70,7 @@ export function AudienceInsights({
               <p className="text-xs text-muted-foreground">{step.label}</p>
               <strong
                 className={cn(
-                  "mt-1 block text-[28px] leading-none font-normal tracking-[var(--tracking-display)] tabular-nums",
+                  "mt-1 block text-[28px] leading-none font-semibold tracking-[var(--tracking-display)] tabular-nums",
                   i === funnel.length - 1 && "text-primary",
                 )}
               >
@@ -144,7 +144,7 @@ export function AudienceInsights({
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                  <strong className="text-xl font-normal tracking-[-0.03em]">{mobileShare}%</strong>
+                  <strong className="text-xl font-semibold tracking-[var(--tracking-title)]">{mobileShare}%</strong>
                   <span className="text-[11px] text-muted-foreground">Telemóvel</span>
                 </div>
               </div>

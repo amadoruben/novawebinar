@@ -1,3 +1,3 @@
-/* Plus Jakarta Sans — no font binaries were provided; loaded from Google Fonts. Weights: Regular 400, Medium 500, SemiBold 600, Bold 700. */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
-@font-face{font-family:'Plus Jakarta Sans';font-style:normal;font-weight:200 800;font-display:swap;src:url('https://cdn.jsdelivr.net/fontsource/fonts/plus-jakarta-sans:vf@latest/latin-wght-normal.woff2') format('woff2')}
+/* 5/10: Geist Sans e Geist Mono (Vercel) no painel; Plus Jakarta Sans só na sala do participante.
+   Na aplicação as letras vêm do @fontsource-variable; aqui, para as páginas de referência, do Google Fonts. */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');

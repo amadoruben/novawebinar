@@ -168,7 +168,7 @@ function Dashboard() {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span
-                  className={`inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 ${live ? "bg-primary text-white" : "bg-white text-foreground"}`}
+                  className={`inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 ${live ? "bg-live text-white" : "bg-chip text-foreground"}`}
                 >
                   <Radio className="size-3.5" strokeWidth={1.5} />
                   {stage}
@@ -182,7 +182,7 @@ function Dashboard() {
               {isLoading ? (
                 <div className="mt-4 h-9 w-72 max-w-full animate-pulse rounded-sm bg-chip" />
               ) : (
-                <h2 className="mt-4 text-[26px] leading-[1.15] font-normal tracking-[-0.03em] sm:text-[30px]">
+                <h2 className="mt-4 text-[22px] leading-7 font-semibold tracking-[var(--tracking-heading)] sm:text-[24px] sm:leading-8">
                   {highlight ? highlight.public_title || highlight.internal_name : "Transforme audiência em vendas"}
                 </h2>
               )}
@@ -262,7 +262,7 @@ function Dashboard() {
                         height: `${Math.max(34, (bar.value / highlightStats.registered) * 100)}%`,
                       }}
                     >
-                      <span className="text-[22px] leading-none tracking-[var(--tracking-display)] tabular-nums">
+                      <span className="text-[22px] leading-none font-semibold tracking-[var(--tracking-display)] tabular-nums">
                         {nf.format(bar.value)}
                       </span>
                       <span className={`text-[10px] ${bar.accent ? "text-white/80" : "text-muted-foreground"}`}>
@@ -293,7 +293,7 @@ function Dashboard() {
               {upcomingWebinars.slice(0, 3).map(({ webinar: w, lifecycle }, i) => (
                 <li
                   key={w.id}
-                  className={`rounded-md px-4 py-3 ${i === 0 ? "bg-accent" : "bg-white"}`}
+                  className={`rounded-md px-4 py-3 ${i === 0 ? "bg-accent" : "bg-chip"}`}
                 >
                   <p className="truncate text-sm">{w.public_title || w.internal_name}</p>
                   <p className={`mt-0.5 text-xs ${i === 0 ? "text-accent-700" : "text-muted-foreground"}`}>
@@ -303,7 +303,7 @@ function Dashboard() {
               ))}
             </ol>
           ) : (
-            <p className="rounded-md bg-white px-4 py-4 text-sm text-muted-foreground">
+            <p className="rounded-md bg-chip px-4 py-4 text-sm text-muted-foreground">
               Nenhuma sessão futura agendada. Marque a próxima data na agenda do webinar.
             </p>
           )}

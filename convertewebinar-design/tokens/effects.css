@@ -1,18 +1,26 @@
 :root{
+/* 5/10: materiais do Geist (vercel.com/geist/materials). A aresta de 1px faz
+   parte da sombra; escolher pelo papel de elevação e nunca empilhar dois. */
 --shadow-none:none;
---shadow-soft:0 1px 2px rgba(15,27,45,.04);
---shadow-pop:0 8px 24px rgba(15,27,45,.08);
---shadow-float:0 24px 60px rgba(15,27,45,.14);
+--shadow-border:0 0 0 1px var(--ds-gray-alpha-400);
+--shadow-soft:0 2px 2px rgba(0,0,0,.04);                                   /* material-small */
+--shadow-medium:0 2px 2px rgba(0,0,0,.04),0 8px 8px -8px rgba(0,0,0,.04); /* material-medium */
+--shadow-pop:var(--shadow-border),0 1px 1px rgba(0,0,0,.02),0 4px 8px -4px rgba(0,0,0,.04),0 16px 24px -8px rgba(0,0,0,.06); /* material-menu */
+--shadow-float:0 0 0 1px rgba(0,0,0,.08),0 32px 72px -12px rgba(0,0,0,.06),0 8px 32px -12px rgba(0,0,0,.08),0 8px 24px -12px rgba(0,0,0,.12); /* material-modal */
 --glow-accent:0 0 24px 6px rgba(232,68,12,.5);
 
 --blur-glass:18px;
 
-/* Signature diagonal hatch used for highlighted chart bars / ranges */
+/* Tracejado dos destaques nos gráficos */
 --hatch:repeating-linear-gradient(-45deg,var(--chart-hatch) 0 1.5px,transparent 1.5px 7px);
 --hatch-light:repeating-linear-gradient(-45deg,var(--silver) 0 1.5px,transparent 1.5px 7px); /* @kind other */
 
---focus-ring:0 0 0 3px rgba(232,68,12,.28); /* @kind other */
+/* Foco do Geist: anel azul com 2px de folga (botões, ligações, caixas) e, nos
+   campos, aresta mais escura com halo cinza. */
+--focus-ring:0 0 0 2px var(--ds-background-100),0 0 0 4px var(--ds-blue-700); /* @kind other */
+--focus-field:0 0 0 3px rgba(0,0,0,.16); /* @kind other — halo à volta da aresta de 1px */
 --ease-standard:cubic-bezier(.2,.7,.2,1); /* @kind other */
---duration-fast:140ms; /* @kind other */
---duration-base:220ms; /* @kind other */
+--ease-swift:cubic-bezier(.175,.885,.32,1.1); /* @kind other */
+--duration-fast:150ms; /* @kind other */
+--duration-base:200ms; /* @kind other */
 }

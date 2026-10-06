@@ -45,7 +45,7 @@ export function PanelHeader({
   return (
     <header className="flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <h2 className="text-lg font-normal leading-tight tracking-[-0.025em] sm:text-xl">{title}</h2>
+        <h2 className="text-base font-semibold leading-6 tracking-[var(--tracking-title)]">{title}</h2>
         {description && <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>}
       </div>
       {action}
@@ -59,7 +59,7 @@ export function OpenLink({ label, children }: { label: string; children: ReactEl
     <Slot
       aria-label={label}
       title={label}
-      className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-foreground transition-colors duration-[var(--duration-fast)] hover:bg-navy hover:text-white"
+      className="inline-flex size-9 shrink-0 items-center justify-center rounded-sm bg-chip text-foreground transition-colors duration-[var(--duration-fast)] hover:bg-navy hover:text-white"
     >
       {cloneElement(children, {}, <ArrowUpRight className="size-4" strokeWidth={1.5} />)}
     </Slot>
@@ -91,11 +91,11 @@ export function StatTile({
   const body = (
     <>
       <div className="flex items-start justify-between gap-3">
-        <span className="text-[15px] leading-tight tracking-[-0.01em]">{label}</span>
+        <span className="text-sm leading-tight text-muted-foreground">{label}</span>
         <span
           className={cn(
-            "inline-flex size-9 shrink-0 items-center justify-center rounded-full transition-colors",
-            to ? "bg-white group-hover:bg-primary group-hover:text-white" : "bg-white text-muted-foreground",
+            "inline-flex size-8 shrink-0 items-center justify-center rounded-sm transition-colors",
+            to ? "bg-chip group-hover:bg-primary group-hover:text-white" : "bg-chip text-muted-foreground",
           )}
           aria-hidden
         >
@@ -109,7 +109,7 @@ export function StatTile({
         </>
       ) : (
         <>
-          <strong className="mt-4 block text-[34px] leading-none font-normal tracking-[var(--tracking-display)] tabular-nums sm:text-[40px]">
+          <strong className="mt-4 block text-[28px] leading-none font-semibold tracking-[var(--tracking-display)] tabular-nums sm:text-[32px]">
             {error ? "—" : value}
           </strong>
           <p className={cn("mt-2 text-xs leading-relaxed text-muted-foreground", alert && !error && "text-destructive")}>
@@ -153,7 +153,7 @@ const TONES: Record<Tone, string> = {
   destructive: "bg-destructive-soft text-destructive",
   warning: "bg-warning-soft text-warning",
   info: "bg-info-soft text-info",
-  muted: "bg-white text-gray-700",
+  muted: "bg-chip text-gray-700",
 };
 
 function ContactLink({ contact }: { contact: { id: string; name: string } }) {
@@ -274,7 +274,7 @@ export function RecentActivity({ organizationId }: { organizationId: string | un
       ) : isError ? (
         <p className="mt-4 text-sm text-destructive">Não foi possível carregar a actividade. Recarregue a página.</p>
       ) : !data?.length ? (
-        <div className="mt-4 rounded-lg bg-white px-4 py-8 text-center">
+        <div className="mt-4 rounded-lg bg-chip px-4 py-8 text-center">
           <p className="text-sm">Ainda não há actividade</p>
           <p className="mx-auto mt-1 max-w-sm text-xs text-muted-foreground">
             Aparece aqui quando alguém se inscreve, vê a oferta, inicia um pagamento ou quando uma automação é executada.
@@ -316,7 +316,7 @@ export function DailyParticipants({
       ) : error ? (
         <p className="text-sm text-destructive">Não foi possível carregar as entradas.</p>
       ) : total === 0 ? (
-        <div className="flex h-56 flex-col items-center justify-center rounded-lg bg-white px-4 text-center">
+        <div className="flex h-56 flex-col items-center justify-center rounded-lg bg-chip px-4 text-center">
           <p className="text-sm">Sem entradas nos últimos {days.length} dias</p>
           <p className="mt-1 max-w-sm text-xs text-muted-foreground">
             Cada pessoa que entra na sala conta aqui uma vez por dia, mesmo que use dois aparelhos.
@@ -327,7 +327,7 @@ export function DailyParticipants({
           <div className="flex items-end gap-6">
             <div>
               <p className="text-xs text-gray-700">No período</p>
-              <p className="mt-1 text-[40px] leading-none tracking-[var(--tracking-display)] tabular-nums">
+              <p className="mt-1 text-[32px] leading-none font-semibold tracking-[var(--tracking-display)] tabular-nums">
                 {nf.format(total)}
               </p>
             </div>
@@ -540,7 +540,7 @@ export function Funnel({
           <div className="flex items-end justify-between gap-4">
             <div>
               <p className="text-xs text-gray-700">Conversão de quem assistiu</p>
-              <p className="mt-1 text-[40px] leading-none tracking-[var(--tracking-display)] tabular-nums">
+              <p className="mt-1 text-[32px] leading-none font-semibold tracking-[var(--tracking-display)] tabular-nums">
                 {new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 1 }).format(conversion)}
                 <span className="ml-0.5 text-[20px]">%</span>
               </p>

@@ -10,16 +10,18 @@ import { cn } from "@/lib/utils";
  */
 
 const iconButtonTone = {
-  light: "bg-chip text-foreground hover:bg-gray-250",
-  white: "bg-white text-foreground hover:bg-gray-100",
+  light: "bg-chip text-foreground hover:bg-gray-150",
+  /* Geist secondary: branco com aresta, visível também sobre cartões brancos. */
+  white:
+    "bg-white text-foreground shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-400)] hover:bg-gray-100",
   dark: "bg-navy text-white hover:bg-navy-soft",
-  accent: "bg-primary text-white hover:bg-accent-strong",
-  ghost: "bg-transparent text-foreground hover:bg-[var(--hover-ghost)]",
+  accent: "bg-primary text-primary-foreground hover:bg-primary-hover",
+  ghost: "bg-transparent text-foreground hover:bg-[var(--ds-gray-alpha-200)]",
 } as const;
 
 export type IconButtonTone = keyof typeof iconButtonTone;
 
-/** Botão circular com ícone. Activo = laranja cheio com ícone branco. */
+/** Botão quadrado com ícone (Geist: lado = altura, raio 6; 8 a partir de 40px). Activo = preto. */
 export const IconButton = React.forwardRef<
   HTMLButtonElement,
   Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "children"> & {
@@ -46,7 +48,8 @@ export const IconButton = React.forwardRef<
       title={label}
       aria-pressed={active ?? undefined}
       className={cn(
-        "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-full transition-[background-color,transform] duration-[var(--duration-fast)] ease-standard active:scale-[.94] focus-visible:outline-none focus-visible:ring-focus disabled:pointer-events-none disabled:opacity-40",
+        "inline-flex shrink-0 cursor-pointer items-center justify-center transition-[background-color,box-shadow] duration-[var(--duration-fast)] ease-in-out focus-visible:outline-none focus-visible:ring-focus disabled:pointer-events-none disabled:opacity-40",
+        size >= 40 ? "rounded-md" : "rounded-sm",
         iconButtonTone[active ? "accent" : tone],
         className,
       )}
@@ -59,8 +62,8 @@ export const IconButton = React.forwardRef<
 });
 
 const chipTone = {
-  light: "bg-white text-foreground",
-  white: "bg-white text-foreground",
+  light: "bg-white text-foreground shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-400)]",
+  white: "bg-white text-foreground shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-400)]",
   chip: "bg-chip text-foreground",
   dark: "bg-navy text-white",
 } as const;
@@ -95,7 +98,7 @@ export function Chip({
         "inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-pill text-[13px] transition-colors duration-[var(--duration-fast)]",
         size === "sm" ? "h-[30px] text-xs" : caption ? "h-[46px]" : "h-10",
         Icon ? "pl-1.5 pr-4" : size === "sm" ? "px-3" : "px-4",
-        active ? "bg-primary text-white" : chipTone[tone],
+        active ? "bg-primary text-primary-foreground" : chipTone[tone],
         onClick && !active && "cursor-pointer hover:bg-chip",
         className,
       )}
@@ -113,7 +116,12 @@ export function Chip({
       )}
       <span className="flex flex-col leading-[1.15]">
         {caption && (
-          <span className={cn("text-[10px]", active || tone === "dark" ? "text-gray-400" : "text-muted-foreground")}>
+          <span
+            className={cn(
+              "text-[10px]",
+              active || tone === "dark" ? "text-gray-400" : "text-muted-foreground",
+            )}
+          >
             {caption}
           </span>
         )}

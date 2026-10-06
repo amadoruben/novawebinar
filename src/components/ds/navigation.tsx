@@ -16,7 +16,7 @@ export type NavTabItem<T extends string = string> = {
   count?: number | null | undefined;
 };
 
-/** Pílulas de navegação: activa = laranja cheio, restantes cinza claro. */
+/** Separadores secundários do Geist: 32px, raio 6, label-13; activo em cinza 200. */
 export function NavTabs<T extends string>({
   items,
   value,
@@ -49,10 +49,12 @@ export function NavTabs<T extends string>({
             aria-current={active ? "page" : undefined}
             onClick={() => onChange(it.id)}
             className={cn(
-              "inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-pill transition-[background-color,color] duration-[var(--duration-fast)] ease-standard focus-visible:outline-none focus-visible:ring-focus",
-              size === "sm" ? "h-8 px-3.5 text-xs" : "h-10 px-[18px] text-[13px]",
-              it.icon && (size === "sm" ? "pl-2.5" : "pl-3.5"),
-              active ? "bg-primary text-white" : "bg-card text-foreground hover:bg-chip",
+              "inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-sm transition-[background-color,color] duration-[var(--duration-fast)] ease-in-out focus-visible:outline-none focus-visible:ring-focus",
+              size === "sm" ? "h-7 px-2.5 text-xs" : "h-8 px-3 text-[13px]",
+              it.icon && (size === "sm" ? "pl-2" : "pl-2.5"),
+              active
+                ? "bg-gray-150 text-foreground"
+                : "text-gray-600 hover:bg-[var(--hover-ghost)] hover:text-foreground",
             )}
           >
             {it.icon && <it.icon className="size-[15px]" strokeWidth={1.5} />}
@@ -61,7 +63,7 @@ export function NavTabs<T extends string>({
               <span
                 className={cn(
                   "ml-0.5 rounded-pill px-1.5 text-[11px] tabular-nums",
-                  active ? "bg-white/20 text-white" : "bg-white text-muted-foreground",
+                  active ? "bg-white text-foreground" : "bg-gray-100 text-muted-foreground",
                 )}
               >
                 {it.count}
@@ -74,14 +76,25 @@ export function NavTabs<T extends string>({
   );
 }
 
-export type BackLink = { to: string; params?: Record<string, string> | undefined; label?: string | undefined };
+export type BackLink = {
+  to: string;
+  params?: Record<string, string> | undefined;
+  label?: string | undefined;
+};
 
-export type Crumb = { label: React.ReactNode; to?: string | undefined; params?: Record<string, string> };
+export type Crumb = {
+  label: React.ReactNode;
+  to?: string | undefined;
+  params?: Record<string, string>;
+};
 
 /** Migalhas pequenas em cinza; a última a azul-noite. */
 export function Breadcrumb({ items, className }: { items: Crumb[]; className?: string }) {
   return (
-    <nav aria-label="Localização" className={cn("flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground", className)}>
+    <nav
+      aria-label="Localização"
+      className={cn("flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground", className)}
+    >
       {items.map((it, i) => {
         const last = i === items.length - 1;
         return (
@@ -96,7 +109,10 @@ export function Breadcrumb({ items, className }: { items: Crumb[]; className?: s
                 {it.label}
               </Link>
             ) : (
-              <span className={cn("truncate", last && "text-foreground")} aria-current={last ? "page" : undefined}>
+              <span
+                className={cn("truncate", last && "text-foreground")}
+                aria-current={last ? "page" : undefined}
+              >
                 {it.label}
               </span>
             )}
@@ -108,8 +124,8 @@ export function Breadcrumb({ items, className }: { items: Crumb[]; className?: s
 }
 
 /**
- * Cabeçalho de página da referência: botão voltar opcional, migalhas, título
- * de 34px em Regular e a barra de ferramentas em pílulas à direita.
+ * Cabeçalho de página: botão voltar opcional, migalhas, título heading-32
+ * (heading-24 no compacto) do Geist e a barra de ferramentas à direita.
  */
 export function PageHeader({
   title,
@@ -130,7 +146,13 @@ export function PageHeader({
   className?: string | undefined;
 }) {
   return (
-    <div className={cn("flex flex-wrap items-end justify-between gap-x-6 gap-y-4", compact ? "mb-5" : "mb-7", className)}>
+    <div
+      className={cn(
+        "flex flex-wrap items-end justify-between gap-x-6 gap-y-4",
+        compact ? "mb-5" : "mb-7",
+        className,
+      )}
+    >
       <div className="flex min-w-0 items-end gap-4">
         {back && (
           <Link
@@ -138,7 +160,7 @@ export function PageHeader({
             params={back.params as never}
             aria-label={back.label ?? "Voltar"}
             title={back.label ?? "Voltar"}
-            className="mb-0.5 hidden size-10 shrink-0 items-center justify-center rounded-full bg-white text-foreground transition-colors hover:bg-gray-100 sm:inline-flex"
+            className="mb-0.5 hidden size-9 shrink-0 items-center justify-center rounded-sm bg-white text-foreground shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-400)] transition-colors hover:bg-gray-100 sm:inline-flex"
           >
             <ArrowLeft className="size-[17px]" strokeWidth={1.5} />
           </Link>
@@ -147,13 +169,19 @@ export function PageHeader({
           {crumbs && crumbs.length > 0 && <Breadcrumb items={crumbs} className="mb-2" />}
           <h1
             className={cn(
-              "truncate font-normal leading-[1.1] tracking-[-0.03em]",
-              compact ? "text-[24px] md:text-[28px]" : "text-[28px] md:text-[34px]",
+              "truncate font-semibold tracking-[var(--tracking-heading)]",
+              compact
+                ? "text-[20px] leading-[26px] md:text-[24px] md:leading-8"
+                : "text-[24px] leading-8 md:text-[32px] md:leading-10",
             )}
           >
             {title}
           </h1>
-          {description && <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted-foreground">{description}</p>}
+          {description && (
+            <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+              {description}
+            </p>
+          )}
         </div>
       </div>
       {toolbar && <div className="flex flex-wrap items-center gap-2">{toolbar}</div>}
@@ -200,7 +228,7 @@ export function SideRail({
   );
 }
 
-/** Barra inferior no telemóvel: ícone numa pílula laranja suave quando activo. */
+/** Barra inferior no telemóvel: activo = pílula cinza com ícone laranja, como no menu. */
 export function BottomNav({
   items,
   isActive,
@@ -220,7 +248,7 @@ export function BottomNav({
       <span
         className={cn(
           "flex h-7 w-11 items-center justify-center rounded-pill transition-colors duration-[var(--duration-fast)]",
-          active ? "bg-accent" : "bg-transparent",
+          active ? "bg-chip text-brand" : "bg-transparent",
         )}
       >
         <Icon className="size-5" strokeWidth={active ? 1.8 : 1.5} />
@@ -231,7 +259,7 @@ export function BottomNav({
   const itemClass = (active: boolean) =>
     cn(
       "flex min-h-[52px] min-w-0 flex-1 flex-col items-center justify-center gap-1 text-[11px] tracking-[-0.01em] transition-colors",
-      active ? "font-semibold text-primary" : "font-medium text-muted-foreground",
+      active ? "font-medium text-foreground" : "text-muted-foreground",
     );
   return (
     <nav
@@ -245,7 +273,12 @@ export function BottomNav({
       {items.map((it) => {
         const active = isActive(it);
         return (
-          <Link key={it.to} to={it.to as never} aria-current={active ? "page" : undefined} className={itemClass(active)}>
+          <Link
+            key={it.to}
+            to={it.to as never}
+            aria-current={active ? "page" : undefined}
+            className={itemClass(active)}
+          >
             {cell(active, it.icon, it.label)}
           </Link>
         );

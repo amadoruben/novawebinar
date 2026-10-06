@@ -1,23 +1,57 @@
 :root{
-/* Palette B · Azul-noite — vivid "live" orange + deep navy + light grays */
+/* 5/10: estrutura de cor do Geist (Vercel, vercel.com/geist/colors).
+   Cada escala vai de 100 a 1000 e cada degrau tem um papel:
+   100 fundo do componente · 200 hover · 300 activo
+   400 borda · 500 borda em hover · 600 borda activa
+   700 fundo de alto contraste · 800 o seu hover
+   900 texto e ícone secundários · 1000 texto e ícone principais.
+   Os valores são os sRGB do Geist em modo claro. */
+--ds-background-100:#FFFFFF; /* fundo de cartões, campos e janelas */
+--ds-background-200:#FAFAFA; /* fundo da aplicação */
+
+--ds-gray-100:#F2F2F2;
+--ds-gray-200:#EBEBEB;
+--ds-gray-300:#E6E6E6;
+--ds-gray-400:#EBEBEB;
+--ds-gray-500:#C9C9C9;
+--ds-gray-600:#A8A8A8;
+--ds-gray-700:#8F8F8F;
+--ds-gray-800:#7D7D7D;
+--ds-gray-900:#4D4D4D;
+--ds-gray-1000:#171717;
+
+--ds-gray-alpha-100:rgba(0,0,0,.05);
+--ds-gray-alpha-200:rgba(0,0,0,.08);
+--ds-gray-alpha-300:rgba(0,0,0,.10);
+--ds-gray-alpha-400:rgba(0,0,0,.08);
+--ds-gray-alpha-500:rgba(0,0,0,.21);
+--ds-gray-alpha-600:rgba(0,0,0,.24);
+
+--ds-blue-100:#F0F7FF;
+--ds-blue-300:#E0F0FF;
+--ds-blue-700:#0072F5;
+--ds-blue-900:#0068D6;
+
+--ds-red-100:#FFF0F0;
+--ds-red-300:#FFE5E5;
+--ds-red-700:#E5484D;
+--ds-red-800:#DA2F35;
+--ds-red-900:#CB2A2F;
+
+--ds-amber-300:#FEF0CD;
+--ds-amber-700:#FFB224;
+--ds-amber-900:#A35200;
+
+--ds-green-300:#DAF6DA;
+--ds-green-700:#45A557;
+--ds-green-900:#297A3A;
+
+/* Marca: o laranja fica para o logótipo, o ícone activo do menu e a sala
+   (CTA da oferta, AO VIVO). Nas acções do painel manda o preto do Geist. */
 --orange:#E8440C;
---navy:#0F1B2D;
---navy-soft:#1C2A40;
---blue:#3B6FE0;
---light-gray:#F1F3F6;
---onyx:#0F1B2D;
---mist:#E6EAF0;
---silver:#C5CCD8;
---slate:#8792A6;
---graphite:#1C2A40;
---black:#0F1B2D;
---white:#FFFFFF;
-/* Fundo da aplicação (menu e conteúdo), separados só pela linha fina. */
---paper:#FCFCFC;
-/* Live room (attendee view) */
+--brand:var(--orange);
 --live-red:#E5243B;
 
-/* Orange ramp — #E8440C + derived tints/shade */
 --accent:#E8440C;
 --accent-strong:#C93A08;
 --accent-soft:#FDE4D9;
@@ -29,71 +63,85 @@
 --accent-600:#C93A08;
 --accent-700:#A82F05;
 --accent-deep:#8A2604;
---button-primary:var(--accent);
---button-primary-hover:var(--accent-strong);
 --gradient-accent:linear-gradient(140deg,#E8440C 0%,#C93A08 45%,#8A2604 100%); /* @kind color */
 
-/* Light grays (cool) → navy */
---gray-50:#FAFBFC;
---gray-100:#F4F6F9;
---gray-150:#E6EAF0;
---gray-200:#F1F3F6;
---gray-250:#DCE1E8;
---gray-300:#C5CCD8;
---gray-400:#A5AEBE;
---gray-500:#8792A6;
---gray-600:#56627A;
---gray-700:#34405A;
---gray-800:#1C2A40;
---gray-900:#0F1B2D;
---ink-soft:#34405A;
+/* Nomes antigos (navy, mist, gray-50…900) passam a apontar para o neutro do
+   Geist. Ficam porque o código os usa; código novo usa os papéis abaixo. */
+--navy:var(--ds-gray-1000);
+--navy-soft:#383838; /* hover do botão principal do Geist (22%) */
+--blue:var(--ds-blue-700);
+--light-gray:var(--ds-gray-100);
+--onyx:var(--ds-gray-1000);
+--mist:var(--ds-gray-200);
+--silver:var(--ds-gray-500);
+--slate:var(--ds-gray-700);
+--graphite:var(--navy-soft);
+--black:var(--ds-gray-1000);
+--white:#FFFFFF;
+--paper:var(--ds-background-200);
 
-/* Semantic aliases
-   29/09: fundo da aplicação #FCFCFC (--paper), igual no menu e no conteúdo, e cartões no
-   cinza claro #F1F3F6, para os painéis e os textos se destacarem do fundo.
-   Dentro dos cartões, barras, pílulas e botões ficam brancos (como no estudo). */
---bg-canvas:var(--paper);
---surface-sidebar:var(--paper);
---surface-card:var(--light-gray);
---surface-card-raised:var(--white);
---surface-chip:var(--mist);
---surface-inverse:var(--navy);
+--gray-50:var(--ds-background-200);
+--gray-100:var(--ds-gray-100);
+--gray-150:var(--ds-gray-200);
+--gray-200:var(--ds-gray-100);
+--gray-250:var(--ds-gray-400);
+--gray-300:var(--ds-gray-500);
+--gray-400:var(--ds-gray-600);
+--gray-500:var(--ds-gray-700);
+--gray-600:var(--ds-gray-900);
+--gray-700:#383838;
+--gray-800:#262626;
+--gray-900:var(--ds-gray-1000);
+--ink-soft:var(--ds-gray-900);
+
+/* Papéis.
+   Fundo da aplicação #FAFAFA, igual no menu e no conteúdo, separados por uma
+   linha. Cartões, campos e janelas em branco com aresta fina (material do
+   Geist); dentro do cartão, os controlos secundários vão a cinza 100. */
+--bg-canvas:var(--ds-background-200);
+--surface-sidebar:var(--ds-background-200);
+--surface-card:var(--ds-background-100);
+--surface-card-raised:var(--ds-background-100);
+--surface-chip:var(--ds-gray-100);
+--surface-inverse:var(--ds-gray-1000);
 --surface-inverse-soft:var(--navy-soft);
---surface-accent:var(--accent);
+--surface-accent:var(--orange);
 --surface-accent-soft:var(--accent-soft);
---surface-glass:rgba(255,255,255,.74);
+--surface-glass:rgba(255,255,255,.8);
 
---text-primary:var(--navy);
---text-secondary:#465166; /* 29/09: mais escuro para ler melhor sobre os cartões cinza */
---text-tertiary:#8792A6;
+--text-primary:var(--ds-gray-1000);
+--text-secondary:var(--ds-gray-900);
+--text-tertiary:var(--ds-gray-700);
 --text-on-inverse:var(--white);
 --text-on-accent:var(--white);
 --text-on-accent-large:var(--white);
---text-accent:var(--accent);
---text-info:var(--blue);
+--text-accent:var(--orange);
+--text-info:var(--ds-blue-900);
 
---border-subtle:rgba(15,27,45,.06);
---border-card:rgba(15,27,45,.08); /* aresta fina dos cartões sobre o fundo #FCFCFC */
---border-hairline:#DCE1E8;
---chart-line:#C5CCD8;
---chart-hatch:#34405A; /* relevo do destaque mais marcado */
---chart-bar:#C5CCD8; /* barras visíveis sobre o cartão cinza */
---chart-marker:#56627A;
+--border-subtle:var(--ds-gray-alpha-200);
+--border-card:var(--ds-gray-alpha-400); /* aresta dos cartões e das janelas */
+--border-hairline:var(--ds-gray-400);
+--chart-line:var(--ds-gray-500);
+--chart-hatch:var(--ds-gray-900);
+--chart-bar:var(--ds-gray-500);
+--chart-marker:var(--ds-gray-900);
 
 --hover-dark:var(--navy-soft);
---hover-ghost:rgba(15,27,45,.05);
+--hover-ghost:var(--ds-gray-alpha-100);
 --overlay-light:rgba(255,255,255,.55);
---overlay-on-inverse:rgba(255,255,255,.12);
+--overlay-on-inverse:rgba(255,255,255,.14);
 
-/* Estado operacional (extensão para a aplicação: execuções, pagamentos, erros).
-   Só em texto, pontos e selos pequenos — nunca como cor de superfície grande.
-   O vermelho de erro é distinto do Laranja live e do vermelho AO VIVO da sala. */
---status-success:#1D8A5E;
---status-success-soft:#DDF1E7;
---status-warning:#A86400;
---status-warning-soft:#FBEBCF;
---status-danger:#CC2B3B;
---status-danger-soft:#FBE1E3;
---status-info:var(--blue);
---status-info-soft:#E1E9FB;
+/* Estado: texto no degrau 900, fundo suave no 300 (selos do Geist).
+   Só em texto, pontos e selos; nunca em superfícies grandes. */
+--status-success:var(--ds-green-900);
+--status-success-soft:var(--ds-green-300);
+--status-warning:var(--ds-amber-900);
+--status-warning-soft:var(--ds-amber-300);
+--status-danger:var(--ds-red-900);
+--status-danger-soft:var(--ds-red-300);
+--status-info:var(--ds-blue-900);
+--status-info-soft:var(--ds-blue-300);
+
+--button-primary:var(--ds-gray-1000);
+--button-primary-hover:var(--navy-soft);
 }

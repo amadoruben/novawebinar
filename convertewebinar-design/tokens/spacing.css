@@ -10,25 +10,26 @@
 --space-9:40px;
 --space-10:56px;
 
---card-padding:24px;
+--card-padding:24px; /* padding dos cartões e das janelas do Geist */
 --grid-gap:12px;
---page-padding:32px;
+--page-padding:24px; /* margem de página do Geist */
 
---control-sm:32px;
---control-md:40px;
---control-lg:48px;
+--control-sm:32px; /* alturas do Geist: small 32 · medium 36 · large 40 */
+--control-md:36px;
+--control-lg:40px;
 
-/* 29/09: escala mais contida (painéis a 16px, como as referências de produto).
-   Botões, campos e separadores continuam em pílula. */
---radius-xs:6px;
---radius-sm:8px;
---radius-md:10px;
+/* 5/10: raios do Geist. Controlos 6px (8px no tamanho grande); cartões,
+   menus e janelas 12px; ecrã inteiro 16px. Selos e avatares em pílula. */
+--radius-xs:4px;
+--radius-sm:6px;
+--radius-md:8px;
 --radius-lg:12px;
---radius-xl:16px;
---radius-2xl:20px;
+--radius-xl:12px;
+--radius-2xl:16px;
 --radius-pill:999px;
 
---radius-card:var(--radius-xl);
---radius-bar:var(--radius-sm);
+--radius-card:var(--radius-lg);
+--radius-control:var(--radius-sm);
+--radius-bar:var(--radius-xs);
 --radius-tag:var(--radius-xs);
 }

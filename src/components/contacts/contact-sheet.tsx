@@ -452,7 +452,7 @@ function ContactLine({
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md bg-gray-100 px-3 py-3">
-      <strong className="block text-[22px] leading-none font-normal tracking-[var(--tracking-display)] tabular-nums">{value}</strong>
+      <strong className="block text-[22px] leading-none font-semibold tracking-[var(--tracking-display)] tabular-nums">{value}</strong>
       <span className="text-xs text-muted-foreground">{label}</span>
     </div>
   );

@@ -1,12 +1,17 @@
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
 @import "@fontsource-variable/plus-jakarta-sans";
 @import "@fontsource-variable/inter";
 @import "@fontsource/ibm-plex-mono/500.css";
 
 /*
- * Design system Convertewebinar.
+ * Design system Convertewebinar, com a estrutura do Geist (Vercel) desde 5/10:
+ * escalas de cor 100–1000 por papel, letra Geist, materiais (aresta + sombra),
+ * controlos de 32/36/40px com 6px de raio e cartões de 12px. A sala do
+ * participante mantém o seu desenho, o laranja e a Plus Jakarta Sans.
  *
  * A fonte de verdade é ./convertewebinar-design/tokens: cores, tipografia,
  * espaçamento, raios, efeitos e sala. Nada de valores soltos nos componentes:
@@ -25,21 +30,28 @@
 /*
  * Ponte shadcn/Tailwind → tokens. As classes bg-primary, bg-card, text-muted-
  * foreground, rounded-xl… resolvem para os tokens da referência.
- * "accent" do Tailwind = superfície laranja suave (--accent-soft); o laranja
- * cheio é "primary". Raios com os mesmos nomes da referência.
+ * "primary" é o preto do Geist (gray-1000) no painel e o laranja dentro da
+ * sala (.room-ambient). "brand" é sempre o laranja; "accent" é o laranja
+ * suave (--accent-soft). Raios com os mesmos nomes da referência.
  */
 @theme inline {
-  --font-sans: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
-  --radius-xs: 6px;
-  --radius-sm: 8px;
-  --radius-md: 10px;
+  /* Iguais a typography.css (escritos por extenso: o mesmo nome não pode
+     apontar para si próprio). */
+  --font-sans: "Geist Variable", "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-room: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  /* Raios do Geist: controlos 6, grandes 8, cartões/menus/janelas 12, ecrã 16. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
   --radius-lg: 12px;
-  --radius-xl: 16px;
+  --radius-xl: 12px;
   /* No código, rounded-2xl sempre foi "cartão": fica no raio do cartão. */
-  --radius-2xl: 16px;
-  --radius-3xl: 20px;
-  --radius-4xl: 20px;
-  --radius-card: 16px;
+  --radius-2xl: 12px;
+  --radius-3xl: 16px;
+  --radius-4xl: 16px;
+  --radius-card: 12px;
+  --radius-control: 6px;
   --radius-pill: 999px;
   --color-background: var(--bg-canvas);
   --color-foreground: var(--navy);
@@ -47,8 +59,10 @@
   --color-card-foreground: var(--navy);
   --color-popover: var(--white);
   --color-popover-foreground: var(--navy);
-  --color-primary: var(--orange);
-  --color-primary-foreground: var(--white);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-brand: var(--brand);
   --color-secondary: var(--gray-150);
   --color-secondary-foreground: var(--navy);
   --color-muted: var(--gray-100);
@@ -67,21 +81,21 @@
   --color-info-foreground: var(--white);
   --color-border: var(--gray-250);
   --color-input: var(--gray-250);
-  --color-ring: var(--orange);
+  --color-ring: var(--ds-blue-700);
   --color-ring-offset-background: var(--bg-canvas);
-  --color-chart-1: var(--navy);
+  --color-chart-1: var(--ds-gray-1000);
   --color-chart-2: var(--orange);
-  --color-chart-3: var(--gray-400);
-  --color-chart-4: var(--accent-300);
-  --color-chart-5: var(--gray-600);
+  --color-chart-3: var(--ds-gray-600);
+  --color-chart-4: var(--ds-blue-700);
+  --color-chart-5: var(--ds-gray-900);
   --color-sidebar: var(--surface-sidebar);
   --color-sidebar-foreground: var(--navy);
-  --color-sidebar-primary: var(--orange);
+  --color-sidebar-primary: var(--brand);
   --color-sidebar-primary-foreground: var(--white);
   --color-sidebar-accent: var(--gray-150);
   --color-sidebar-accent-foreground: var(--navy);
   --color-sidebar-border: var(--gray-250);
-  --color-sidebar-ring: var(--orange);
+  --color-sidebar-ring: var(--ds-blue-700);
   /* Paleta da referência como utilitários (bg-navy, text-gray-600, bg-canvas…).
      A escala gray-* é a cinza fria da referência, não a do Tailwind. */
   --color-gray-50: var(--gray-50);
@@ -117,20 +131,40 @@
   --color-room-text: var(--room-ink);
   --color-room-subtle: var(--room-ink-2);
   --ease-standard: cubic-bezier(0.2, 0.7, 0.2, 1);
+  /* Escalas do Geist pelo nome original, para código novo: bg-ds-gray-100,
+     text-ds-gray-900, border-ds-gray-400, text-ds-red-900… */
+  --color-ds-background-100: var(--ds-background-100);
+  --color-ds-background-200: var(--ds-background-200);
+  --color-ds-gray-100: var(--ds-gray-100);
+  --color-ds-gray-200: var(--ds-gray-200);
+  --color-ds-gray-300: var(--ds-gray-300);
+  --color-ds-gray-400: var(--ds-gray-400);
+  --color-ds-gray-500: var(--ds-gray-500);
+  --color-ds-gray-600: var(--ds-gray-600);
+  --color-ds-gray-700: var(--ds-gray-700);
+  --color-ds-gray-800: var(--ds-gray-800);
+  --color-ds-gray-900: var(--ds-gray-900);
+  --color-ds-gray-1000: var(--ds-gray-1000);
+  --color-ds-blue-700: var(--ds-blue-700);
+  --color-ds-blue-900: var(--ds-blue-900);
+  --color-ds-red-900: var(--ds-red-900);
+  --color-ds-amber-900: var(--ds-amber-900);
+  --color-ds-green-900: var(--ds-green-900);
 }
 
 :root {
   /* Nomes antigos usados em código (var(--primary) em estilos inline, etc.). */
-  --radius: 16px;
+  --radius: 12px;
   --background: var(--bg-canvas);
   --foreground: var(--navy);
   --card: var(--surface-card);
-  --primary: var(--orange);
+  --primary: var(--ds-gray-1000);
   --primary-foreground: var(--white);
+  --primary-hover: var(--navy-soft);
   --muted: var(--gray-100);
   --muted-foreground: var(--text-secondary);
   --border: var(--gray-250);
-  --ring: var(--orange);
+  --ring: var(--ds-blue-700);
   --success: var(--status-success);
   --warning: var(--status-warning);
   --destructive: var(--status-danger);
@@ -138,6 +172,21 @@
   --room-glow: transparent;
   --shadow-raised: var(--shadow-soft);
   --shadow-overlay: var(--shadow-pop);
+}
+
+/* A sala do participante (inscrição, espera, sala, repetição) mantém o seu
+   desenho: laranja nas acções e Plus Jakarta Sans. */
+.room-ambient,
+.prelive-dark {
+  --primary: var(--orange);
+  --primary-hover: var(--accent-strong);
+  --ring: var(--orange);
+  --focus-ring: 0 0 0 3px rgba(232, 68, 12, 0.28);
+  --tracking-body: -0.01em;
+  --tracking-heading: -0.025em;
+  --tracking-display: -0.035em;
+  font-family: var(--font-room);
+  letter-spacing: var(--tracking-body);
 }
 
 /* O temporizador mantém sempre o visual escuro dos modelos, independentemente
@@ -229,30 +278,30 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
-    font-size: 0.9375rem;
+    /* copy-14 do Geist: o texto mais comum. */
+    font-size: 0.875rem;
     font-weight: 400;
-    line-height: 1.5;
+    line-height: 1.43;
     letter-spacing: var(--tracking-body);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     font-variant-numeric: tabular-nums;
   }
 
-  /* Títulos em Regular/Medium com tracking negativo: a hierarquia vem do
-     tamanho e do espaço, não do peso. */
+  /* Títulos do Geist: SemiBold com tracking negativo (heading-14 a 20 a
+     -0.02em; heading-24 para cima a -0.04em). */
   h1,
   h2,
   h3,
   h4,
   h5,
   h6 {
-    font-weight: 500;
-    line-height: 1.22;
-    letter-spacing: var(--tracking-body);
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: var(--tracking-title);
   }
 
   h1 {
-    font-weight: 400;
     letter-spacing: var(--tracking-heading);
   }
 
@@ -263,40 +312,52 @@
   }
 
   ::selection {
-    background: var(--accent-soft);
-    color: var(--navy);
+    background: var(--ds-blue-300);
+    color: var(--ds-gray-1000);
+  }
+
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
   }
 }
 
-/* Pesos da referência: Regular por omissão, Medium para ênfase, SemiBold raro.
-   A landing pública mantém a sua tipografia. */
+/* Material base do Geist: todo o cartão branco leva a aresta de 1px. Fica na
+   camada components para que um shadow-* explícito a possa substituir. */
+@layer components {
+  .bg-card {
+    box-shadow: inset 0 0 0 1px var(--border-card);
+  }
+}
+
+/* Pesos do Geist: 400 texto, 500 botões e rótulos, 600 títulos; nada acima
+   de 600. A landing pública mantém a sua tipografia. */
 .font-bold:not(:where(.nova-landing, .nova-landing *)),
 .font-extrabold:not(:where(.nova-landing, .nova-landing *)),
 .font-black:not(:where(.nova-landing, .nova-landing *)) {
   font-weight: 600;
 }
-.font-semibold:not(:where(.nova-landing, .nova-landing *)) {
-  font-weight: 500;
-}
-.font-medium:not(:where(.nova-landing, .nova-landing *)) {
-  font-weight: 500;
-}
-/* Números e títulos grandes em Regular com tracking de display. */
+/* Tamanhos grandes com o tracking dos headings do Geist. */
 .text-2xl:not(:where(.nova-landing, .nova-landing *)),
 .text-3xl:not(:where(.nova-landing, .nova-landing *)),
 .text-4xl:not(:where(.nova-landing, .nova-landing *)),
 .text-5xl:not(:where(.nova-landing, .nova-landing *)) {
-  font-weight: 400;
   letter-spacing: var(--tracking-heading);
-  line-height: 1.12;
 }
-.text-xl:not(:where(.nova-landing, .nova-landing *)) {
-  letter-spacing: var(--tracking-heading);
+.text-xl:not(:where(.nova-landing, .nova-landing *)),
+.text-lg:not(:where(.nova-landing, .nova-landing *)) {
+  letter-spacing: var(--tracking-title);
 }
 
-/* Cartões: aresta fina para se destacarem do fundo #FCFCFC (sem sombra). */
-.rounded-card.bg-card {
-  box-shadow: inset 0 0 0 1px var(--border-card);
+/* A sala mantém os pesos e os números grandes da referência anterior. */
+:where(.room-ambient, .prelive-dark) .font-semibold {
+  font-weight: 500;
+}
+:where(.room-ambient, .prelive-dark) :is(.text-2xl, .text-3xl, .text-4xl, .text-5xl) {
+  font-weight: 400;
+  line-height: 1.12;
 }
 
 /* Relevo diagonal da referência: barra/faixa em destaque, células vazias. */
@@ -352,6 +413,10 @@
 }
 @utility ring-focus {
   box-shadow: var(--focus-ring);
+}
+/* Foco dos campos do Geist: aresta mais escura e halo cinza. */
+@utility ring-field {
+  box-shadow: var(--focus-field);
 }
 
 /* Corações enviados na sala ao vivo */

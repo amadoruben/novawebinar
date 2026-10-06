@@ -53,12 +53,12 @@ export function Metric({
   return (
     <article className="min-w-0 rounded-card bg-card p-5 sm:p-6">
       <div className="flex items-start justify-between gap-3">
-        <span className="block text-[15px] leading-tight tracking-[-0.01em]">{label}</span>
-        <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-muted-foreground">
+        <span className="block text-sm leading-tight text-muted-foreground">{label}</span>
+        <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm bg-chip text-muted-foreground">
           <Icon className="size-4" strokeWidth={1.5} />
         </span>
       </div>
-      <strong className="mt-4 block break-words text-[32px] leading-none font-normal tracking-[var(--tracking-display)] tabular-nums sm:text-[40px]">
+      <strong className="mt-4 block break-words text-[28px] leading-none font-semibold tracking-[var(--tracking-display)] tabular-nums sm:text-[32px]">
         {value}
       </strong>
       {change && <p className="mt-2 text-xs text-muted-foreground">{change}</p>}
@@ -79,7 +79,7 @@ export function EmptySection({
 }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-card bg-card px-6 py-14 text-center">
-      <h2 className="text-lg font-normal tracking-[-0.02em]">{title}</h2>
+      <h2 className="text-base font-semibold tracking-[var(--tracking-title)]">{title}</h2>
       <p className="mt-2 max-w-md text-sm text-muted-foreground">{description}</p>
       {actionLabel && actionTo && (
         <Button className="mt-5" asChild>
@@ -308,7 +308,7 @@ export function WebinarTable({
     <div className="overflow-hidden rounded-card bg-card">
       <div className="flex items-center justify-between px-5 pt-5 pb-3 sm:px-6 sm:pt-6">
         <div>
-          <h2 className="text-lg font-normal tracking-[-0.025em] sm:text-xl">{title}</h2>
+          <h2 className="text-base font-semibold tracking-[var(--tracking-title)]">{title}</h2>
           <p className="mt-1 text-xs text-muted-foreground">Acompanhe desempenho e sessões</p>
         </div>
       </div>

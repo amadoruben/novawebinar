@@ -54,6 +54,14 @@ No source defined a component inventory, so this set is derived from what the sc
 - **Emoji:** nunca na interface. Só aparecem dentro de mensagens de chat simuladas, como os participantes escreveriam.
 
 ## VISUAL FOUNDATIONS
+
+> **5/10/2026: o painel segue a estrutura do Geist (vercel.com/geist).** Os valores estão em `tokens/` e prevalecem sobre o resto desta secção.
+> - **Cor:** escalas 100–1000 por papel (`--ds-gray-*`, `--ds-blue/red/amber/green-*`). Fundo `#FAFAFA`; cartões, campos e janelas brancos com aresta de 1px; texto `#171717` e `#4D4D4D`.
+> - **Acção principal:** preto (`primary`). O laranja (`brand`) fica no logótipo, no ícone activo do menu e na sala.
+> - **Letra:** Geist e Geist Mono. Texto a 14px, títulos SemiBold com tracking negativo (heading-32/24/16), botões em Medium.
+> - **Forma:** controlos com 32/36/40px de altura e 6px de raio (8px no grande); cartões, menus e janelas com 12px; selos e avatares em pílula.
+> - **Sombras e foco:** sombras como os materiais do Geist. O foco é um anel azul com folga, e nos campos uma aresta mais escura com halo cinza.
+> - **Sala do participante:** mantém o desenho de baixo (Plus Jakarta Sans, laranja, pílulas). Os ícones do menu não mudaram.
 - **Palette** (option B · Azul-noite, chosen from `explorations/paleta-*.html`): Laranja live `#E8440C` (primary: buttons, active states, AO VIVO badges, hero card; hover `#C93A08`, soft `#FDE4D9`) + Azul-noite `#0F1B2D` (text, dark cards, secondary dark buttons; soft `#1C2A40`) + Light gray neutrals (canvas `#F1F3F6`, surface `#FAFBFC`, chip `#E6EAF0`, hairline `#DCE1E8`, text 2 `#56627A`, text 3 `#8792A6`). Azul info `#3B6FE0` is a rare support color (replay, info links).
 - **Type:** Plus Jakarta Sans only (Regular 400 / Medium 500 / SemiBold 600 / Bold 700). Regular for titles and numbers, Medium for buttons/labels when emphasis is needed, SemiBold/Bold rarely. Tight negative tracking on anything ≥20px (-0.025 to -0.04em). Scale: Heading 34, Title 28, Body 16 (+ 20 subtitle, 14 label, 12 caption, 10 micro, 56–96 display).
 - **Shape:** everything is soft. Cards 32px radius; pills and icon buttons fully round; bars 10–16px; tags 6px; flow nodes 16px. No sharp corners anywhere.
