@@ -232,8 +232,8 @@ function WebinarPreview(props: RoomPreviewProps) {
     <div
       className={cn(
         "relative overflow-hidden bg-black",
-        landscape ? "h-full w-full" : "aspect-video w-full",
-        !phone && "rounded-2xl ring-1 ring-room-line",
+        "aspect-video w-full",
+        !phone && "room-panel rounded-2xl ring-1 ring-room-line",
       )}
     >
       {props.video.url ? (
@@ -323,7 +323,7 @@ function WebinarPreview(props: RoomPreviewProps) {
     "room-ambient text-room-text",
     props.theme === "light" && "room-light",
     landscape
-      ? "flex h-[393px] w-[852px] items-center justify-center bg-black"
+      ? "flex h-[393px] w-[852px] bg-black"
       : phone
         ? "flex flex-col"
         : tablet
@@ -342,12 +342,16 @@ function WebinarPreview(props: RoomPreviewProps) {
     ...(tabletWide ? { width: TABLET_WIDE.w, height: TABLET_WIDE.h, paddingTop: TABLET_WIDE.top + 16 } : null),
   };
   if (landscape) {
-    // Deitado, o telemóvel mostra o vídeo em ecrã inteiro, como no YouTube.
+    // Deitado, como no YouTube: o vídeo inteiro à esquerda e o chat à direita, de cima a baixo.
     return (
       <div className={roomClass} style={style}>
         <RoomPartsStyle />
         <LiveStyle />
-        <div className="aspect-video h-full">{videoCard}</div>
+        <div className="grid min-w-0 flex-1 place-items-center bg-black pl-11">{videoCard}</div>
+        <div className="relative flex w-[330px] shrink-0 flex-col border-l border-room-line">
+          <Panel {...props} tab={tab} shown={shown} open={open} hl={hl} phone={phone} afterVideo={afterVideo} notice={live.notify && props.agent.on} />
+          {social.sheet}
+        </div>
       </div>
     );
   }
@@ -377,6 +381,7 @@ function WebinarPreview(props: RoomPreviewProps) {
         </div>
       )}
       <div className={cn("relative flex min-h-0 flex-col", phone ? "flex-1" : tablet ? "mt-4 flex-1 overflow-hidden rounded-2xl" : "overflow-hidden rounded-2xl")}>
+        {/* No tema claro, o painel e o vídeo ganham uma borda que se vê (como no YouTube): `room-panel`. */}
         <Panel {...props} tab={tab} shown={shown} open={open} hl={hl} phone={phone} afterVideo={afterVideo} notice={live.notify && props.agent.on} />
         {social.sheet}
       </div>
@@ -397,8 +402,11 @@ function LivePreview(props: RoomPreviewProps) {
   const phone = props.device === "phone" || props.device === "phone-landscape" || props.device === "tablet";
   const landscape = props.device === "phone-landscape";
   const portrait = phone && !landscape;
+  const tablet = props.device === "tablet";
   const tall = tallScreen(props.device);
   const horizontal = (props.videoShape ?? live.desk) !== "vertical";
+  // No tablet ao alto, o topo e o chat ficam numa coluna centrada, como no telemóvel.
+  const column = tablet ? "left-1/2 w-[600px] -translate-x-1/2" : "inset-x-3";
   const [hint, setHint] = useState(true);
   const hl = (key: string) =>
     props.highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
@@ -442,7 +450,19 @@ function LivePreview(props: RoomPreviewProps) {
         items={feed}
         onNotice={() => props.onTab("support")}
         panel={!phone}
-        className={!phone ? "min-h-0 flex-1 pr-0" : landscape ? "max-h-[120px]" : cardOpen ? "max-h-[150px]" : "max-h-[250px]"}
+        className={
+          !phone
+            ? "min-h-0 flex-1 pr-0"
+            : landscape
+              ? "min-h-0 flex-1"
+              : tablet
+                ? cardOpen
+                  ? "max-h-[36cqh]"
+                  : "max-h-[46cqh]"
+                : cardOpen
+                  ? "max-h-[150px]"
+                  : "max-h-[250px]"
+        }
       />
       {offer && cardOpen ? (
         <div className={hl("pitch")}>
@@ -540,6 +560,8 @@ function LivePreview(props: RoomPreviewProps) {
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[120px] bg-[linear-gradient(180deg,rgba(0,0,0,.24),rgba(0,0,0,.07)_55%,transparent)]" />
       {/* O escurecido de baixo só quando o chat está por cima do vídeo. */}
       {phone ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[42%]" style={{ background: LIVE_SCRIM }} /> : null}
+      {/* Deitado, o chat fica à direita: uma sombra por trás dele, para se ler sobre qualquer vídeo. */}
+      {landscape ? <div className="pointer-events-none absolute inset-y-0 right-0 w-[48%] bg-[linear-gradient(270deg,rgba(0,0,0,.62),rgba(0,0,0,.3)_60%,transparent)]" /> : null}
     </>
   );
   const settings = (
@@ -592,7 +614,7 @@ function LivePreview(props: RoomPreviewProps) {
         <LiveStyle />
         <div className="relative size-full overflow-hidden bg-black [container-type:size]">
           {video}
-          <div className={cn("absolute inset-x-3 z-20", !portrait && "top-3")} style={portrait ? { top: tall.top } : undefined}>
+          <div className={cn("absolute z-20", portrait ? column : "inset-x-3 top-3")} style={portrait ? { top: tall.top } : undefined}>
             <LiveTopBar
               host={host}
               follow={follow}
@@ -610,7 +632,7 @@ function LivePreview(props: RoomPreviewProps) {
           ) : null}
           {/* Em baixo, acima da barra do iPhone: a caixa de escrever fica com folga, como numa app. */}
           <div
-            className={cn("absolute z-20 flex flex-col", portrait ? "inset-x-3" : "bottom-3 left-3.5 w-[400px]")}
+            className={cn("absolute z-20 flex flex-col", portrait ? column : "bottom-3 right-3.5 top-16 w-[340px] justify-end")}
             style={portrait ? { bottom: props.device === "tablet" ? 24 : 38 } : undefined}
           >
             {lower}
@@ -687,7 +709,7 @@ function Panel({
     <div
       className={cn(
         "flex min-h-0 flex-col overflow-hidden bg-room-surface",
-        phone ? "flex-1 pb-[22px]" : "flex-1 rounded-2xl ring-1 ring-room-line",
+        phone ? "flex-1 pb-[22px]" : "room-panel flex-1 rounded-2xl ring-1 ring-inset ring-room-line",
       )}
     >
       <div className="mx-3 flex shrink-0 border-b border-room-line">
@@ -795,6 +817,20 @@ function Panel({
 }
 
 /**
+ * Os vídeos da pré-visualização abertos (o último é o que está à frente, ex.: o ecrã completo). O
+ * iPhone só deixa tocar com som dentro do próprio toque, por isso o play do editor chama
+ * `playPreviewWithSound` no clique, antes de o estado mudar.
+ */
+const previewMedia: HTMLVideoElement[] = [];
+export function playPreviewWithSound(volume: number) {
+  const video = previewMedia.at(-1);
+  if (!video) return;
+  video.muted = volume === 0;
+  video.volume = volume;
+  void video.play().catch(() => {});
+}
+
+/**
  * O leitor da sala a seguir o relógio do editor (o relógio manda, o vídeo acompanha). Serve
  * ficheiros, HLS e as plataformas (Vimeo, Panda, Bunny) com o mesmo leitor da sala pública.
  */
@@ -813,6 +849,15 @@ function PreviewPlayer({
 }) {
   const media = useRef<HTMLVideoElement>(null);
   const embed = /youtube|youtu\.be|vimeo|mediadelivery|pandavideo|\/embed\/|player\./i.test(url);
+  useEffect(() => {
+    const video = media.current;
+    if (!video) return;
+    previewMedia.push(video);
+    return () => {
+      const i = previewMedia.indexOf(video);
+      if (i >= 0) previewMedia.splice(i, 1);
+    };
+  }, [url]);
   // Leitores embebidos não deixam pausar por fora: em pausa mostra-se a imagem parada por cima.
   const [session, setSession] = useState(0);
   const startAt = useRef(Math.floor(t));

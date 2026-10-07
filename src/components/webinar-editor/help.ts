@@ -287,30 +287,42 @@ export const HELP = {
     title: "Quem está no chat",
     what: "De onde são as pessoas do chat e quantas escrevem. Cada uma escreve no português do seu país, com nome e apelido de lá.",
     steps: [
-      "Escolha os «Países»: Angola, Moçambique, Brasil e Portugal, sozinhos ou misturados.",
+      "Em «Países», carregue em «Escolher países» e marque um ou mais: Angola, Moçambique, Brasil, Portugal. Para tirar um, carregue no X dele.",
       "Confira em «Nomes» exemplos de quem vai escrever.",
-      "Escolha o «Volume do chat»: «Menos», «Normal» ou «Mais».",
+      "Escolha o «Volume do chat»: «Menos», «Normal», «Mais» ou «Escolher» (escreve quantos comentários por minuto, até 60).",
       "Carregue em «Seguinte» para passar a «Como escrevem».",
     ],
     example:
-      "Webinar para Angola e Portugal, com 600 pessoas na sala: «Normal» dá cerca de 12 comentários por minuto, escritos por nomes como Edson Mateus, Kátia Domingos, Inês e Tiago.",
+      "Webinar para Angola e Portugal, com 600 pessoas na sala: «Normal» dá cerca de 12 comentários por minuto, escritos por nomes como Edson Mateus, Kátia Domingos, Inês e Tiago. Num lançamento com 5 000 pessoas, «Escolher» com 40 por minuto.",
     tips: [
       "O volume segue a Audiência: quando o número de pessoas desce, o chat acalma.",
-      "Se a sala não mostra o número de pessoas, o ritmo é o de uma sala com 100.",
+      "Sem nenhum país escolhido, não dá para gerar os comentários.",
     ],
+  },
+  paises: {
+    title: "Países do chat",
+    what: "De onde são as pessoas que escrevem no chat. Cada país muda a forma de escrever (o português de lá) e os nomes. Vários países misturam-se na mesma aula.",
+    steps: [
+      "Carregue em «Escolher países» e marque os países do seu público.",
+      "Veja cada país numa linha, com a forma de escrever.",
+      "Para tirar um país, carregue no X ao lado dele; para juntar outro, em «Adicionar país».",
+    ],
+    example:
+      "Público de Luanda e de Maputo: escolhe Angola e Moçambique. No chat aparecem «Kátia Domingos: Boa noite, a ver de Luanda» e «Célia Macuácua: Boa noite, malta de Maputo aqui».",
+    tips: ["Escolha só os países do seu público: um chat com países que não são os seus parece falso."],
   },
   tom: {
     title: "Como escrevem",
-    what: "O tom das mensagens e se levam emojis. Por baixo do tom, vê três mensagens de exemplo, com nomes dos países escolhidos.",
+    what: "O tom das mensagens e, à parte, se levam emojis. Por baixo do tom, vê três mensagens de exemplo, com nomes dos países escolhidos.",
     steps: [
       "Escolha o «Tom»: «Natural», «Vendas» ou «Formal».",
       "Leia as três mensagens de exemplo no tom escolhido.",
-      "Ligue «Com emojis» para um chat mais animado.",
+      "Ligue ou desligue «Com emojis»: vale para qualquer tom, também o formal.",
       "Carregue em «Seguinte» para passar a «Para parecer real».",
     ],
     example:
-      "No tom «Natural»: «Faz sentido, nunca tinha pensado nisso assim». No tom «Vendas»: «Quero entrar. Até quando dá para comprar?». Numa aula de contabilidade em Lisboa, «Natural» sem emojis soa mais verdadeiro.",
-    tips: ["No tom «Formal» não há emojis."],
+      "No tom «Natural»: «Faz sentido, nunca tinha pensado nisso assim». No tom «Vendas»: «Quero entrar. Até quando dá para comprar?». Numa aula de contabilidade em Lisboa, «Formal» com poucos emojis: «Excelente explicação 👏».",
+    tips: ["O sistema não decide por si: o tom e os emojis escolhem-se em separado."],
   },
   realismo: {
     title: "Para parecer real",
@@ -355,16 +367,16 @@ export const HELP = {
     ],
   },
   comoFicou: {
-    title: "Como ficou",
-    what: "A lista de todos os comentários, minuto a minuto, e a mensagem fixada no topo do chat.",
+    title: "Comentários gerados",
+    what: "A lista de todos os comentários, minuto a minuto, para ver e corrigir um a um, e a mensagem fixada no topo do chat.",
     steps: [
-      "Clique num comentário: a sala vai para esse minuto e mostra-o.",
-      "Passe o rato por cima de um comentário e carregue no caixote do lixo para o apagar.",
+      "Carregue num comentário: a sala vai para esse minuto e o comentário abre para editar.",
+      "Mude o minuto na roda, o nome ou a mensagem, e carregue em «Guardar» (ou «Apagar» para o tirar).",
       "Carregue em «Ver o chat a correr na sala» para o ver ao ritmo do vídeo.",
       "Escreva a «Mensagem fixada no chat», que fica no topo do chat.",
     ],
     example:
-      "248 comentários de 64 pessoas. Aos 18:20 aparece «Quanto custa em kwanzas?», que a Edna prefere tirar: apaga-o e fixa no chat «Bem-vindos! Escrevam de que cidade estão a ver».",
+      "248 comentários de 64 pessoas. Aos 18:20 aparece «Quanto custa em kwanzas?», cedo demais: a Edna abre-o, passa-o para 21:05, depois do preço, e guarda. Fixa no chat «Bem-vindos! Escrevam de que cidade estão a ver».",
   },
   avisoSuporte: {
     title: "Aviso do Suporte",

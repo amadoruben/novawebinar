@@ -9,8 +9,8 @@ import { CHAT_COUNTRIES, type ChatCountryCode } from "@/lib/chat-variants";
 
 export type { ChatCountryCode } from "@/lib/chat-variants";
 export type ChatTone = "natural" | "vendas" | "formal";
-/** Quanto se escreve, em relação ao normal para o número de pessoas na sala. */
-export type ChatVolume = "menos" | "normal" | "mais";
+/** Quanto se escreve, em relação ao normal para o número de pessoas na sala; «escolher» usa `perMinute`. */
+export type ChatVolume = "menos" | "normal" | "mais" | "escolher";
 export type ChatTag = "manual" | "late" | "answer" | "aluno" | "reply";
 
 export type ChatAlunos = {
@@ -26,6 +26,9 @@ export type ChatAlunos = {
 export type ChatRules = {
   tone: ChatTone;
   volume: ChatVolume;
+  /** Comentários por minuto quando o volume é «escolher» (lançamentos grandes). */
+  perMinute: number;
+  /** Com emojis ou sem: escolhe quem apresenta, em qualquer tom. */
   emoji: boolean;
   countries: ChatCountryCode[];
   alunos: ChatAlunos;
@@ -42,8 +45,10 @@ export type ChatRules = {
 export const DEFAULT_CHAT_RULES: ChatRules = {
   tone: "natural",
   volume: "normal",
+  perMinute: 12,
   emoji: true,
-  countries: ["ao"],
+  // Não vem nenhum país escolhido: quem apresenta escolhe de onde são as pessoas do chat.
+  countries: [],
   alunos: { on: true, product: "", count: 3, when: "oferta" },
   answersOn: true,
   answers: 4,
@@ -66,7 +71,8 @@ export function parseChatRules(raw: unknown): ChatRules {
       ? (["ao", "br", "pt"] as ChatCountryCode[])
       : codes.filter((c) => c === legacyCountry);
   const legacyLevel = { baixa: "menos", media: "normal", alta: "mais" }[String(r["level"])] as ChatVolume | undefined;
-  const volume = (["menos", "normal", "mais"] as const).find((v) => v === r["volume"]) ?? legacyLevel ?? "normal";
+  const volume = (["menos", "normal", "mais", "escolher"] as const).find((v) => v === r["volume"]) ?? legacyLevel ?? "normal";
+  const perMinute = Math.min(60, Math.max(1, Math.round(Number(r["perMinute"]) || DEFAULT_CHAT_RULES.perMinute)));
   const a = r["alunos"];
   const alunos: ChatAlunos =
     typeof a === "number"
@@ -75,7 +81,7 @@ export function parseChatRules(raw: unknown): ChatRules {
         ? {
             on: Boolean((a as ChatAlunos).on),
             product: String((a as ChatAlunos).product ?? "").slice(0, 80),
-            count: Math.min(8, Math.max(1, Number((a as ChatAlunos).count) || 3)),
+            count: Math.min(15, Math.max(1, Number((a as ChatAlunos).count) || 3)),
             when: (a as ChatAlunos).when === "aula" ? "aula" : "oferta",
           }
         : DEFAULT_CHAT_RULES.alunos;
@@ -85,8 +91,9 @@ export function parseChatRules(raw: unknown): ChatRules {
   return {
     tone,
     volume,
+    perMinute,
     emoji: bool("emoji"),
-    countries: countries.length ? countries : ["ao"],
+    countries,
     alunos,
     answersOn: bool("answersOn"),
     answers,
@@ -101,13 +108,13 @@ export function parseChatRules(raw: unknown): ChatRules {
 /**
  * Quantos comentários por minuto e quantas pessoas diferentes escrevem, para o número de pessoas
  * na sala: com 50 pessoas, cerca de 4 por minuto; com 600, 12; com 5000, 30. «Menos» e «mais»
- * tiram ou juntam metade.
+ * tiram ou juntam metade; «escolher» usa o número escrito (até 60, para lançamentos grandes).
  */
-export function chatPace(audience: number, volume: ChatVolume) {
+export function chatPace(audience: number, volume: ChatVolume, chosen = DEFAULT_CHAT_RULES.perMinute) {
   const v = Math.max(5, audience);
   const base = Math.min(30, Math.max(2, 0.55 * Math.pow(v, 0.48)));
-  const factor = { menos: 0.6, normal: 1, mais: 1.5 }[volume];
-  const perMinute = Math.round(Math.min(40, base * factor));
+  const perMinute =
+    volume === "escolher" ? Math.min(60, Math.max(1, Math.round(chosen))) : Math.round(Math.min(40, base * { menos: 0.6, normal: 1, mais: 1.5 }[volume]));
   const people = Math.min(2000, Math.max(12, Math.round(v * 0.12)));
   return { perMinute: Math.max(1, perMinute), people };
 }
@@ -214,8 +221,8 @@ export function applyChatRealism<T extends ChatDraft>(
   },
 ): (T | ChatDraft)[] {
   const d = ctx.durationSeconds > 0 ? ctx.durationSeconds : Number.POSITIVE_INFINITY;
-  const formal = rules.tone === "formal";
-  const withEmoji = rules.emoji && !formal;
+  // Os emojis e a escrita de telemóvel escolhem-se à parte do tom (também no formal).
+  const withEmoji = rules.emoji;
   const countries = rules.countries.length ? rules.countries : (["ao"] as ChatCountryCode[]);
   const cap = (t: number) => Math.max(0, Math.min(d, Math.round(t)));
 
@@ -225,7 +232,7 @@ export function applyChatRealism<T extends ChatDraft>(
     let message = withEmoji ? c.message : stripEmoji(c.message);
     // Mais emojis: uma em cada três mensagens sem nenhum ganha um.
     if (withEmoji && i % 3 === 1 && stripEmoji(message) === message) message = `${message} ${HAPPY[i % HAPPY.length]}`;
-    if (rules.mobile && !formal && i % 4 === 2) message = mobileText(message);
+    if (rules.mobile && i % 4 === 2) message = mobileText(message);
     const at = cap(c.at + (rules.delay ? 3 + ((i * 7) % 13) : 0));
     return { ...c, message: message || c.message, at };
   });

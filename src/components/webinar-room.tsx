@@ -1082,7 +1082,7 @@ export function WebinarRoom({
 
   // No Live o ecrã de cada estado enche o palco ao alto; no webinar tem a proporção do vídeo.
   // No Webinar, o telemóvel deitado mostra o vídeo em ecrã inteiro, como no YouTube.
-  const frame = liveLayout ? "size-full" : "aspect-video max-lg:landscape:h-full max-lg:landscape:w-auto max-lg:landscape:max-w-full";
+  const frame = liveLayout ? "size-full" : "aspect-video";
   const liveArea = (
     <div
       className={cn(
@@ -1550,8 +1550,8 @@ export function WebinarRoom({
   // No Live do telemóvel o chat já está por cima do vídeo: a folha só tem o Suporte e a Oferta.
   const sheetMode = liveLayout && !wide;
   const panel = (
-    <div className="flex min-h-0 flex-1 flex-col bg-room-surface text-room-text md:rounded-2xl md:ring-1 md:ring-room-line">
-      <div className="mx-3 -mt-2 mb-0 flex items-center gap-1 border-b border-room-line md:mt-0">
+    <div className="room-panel flex min-h-0 flex-1 flex-col bg-room-surface text-room-text md:portrait:rounded-2xl md:portrait:ring-1 md:portrait:ring-inset md:portrait:ring-room-line lg:rounded-2xl lg:ring-1 lg:ring-inset lg:ring-room-line">
+      <div className="mx-3 -mt-2 mb-0 flex items-center gap-1 border-b border-room-line md:portrait:mt-0 max-lg:landscape:mt-0 lg:mt-0">
         {(
           [
             ...(sheetMode ? [] : [["chat", "Chat", MessagesSquare]]),
@@ -1743,7 +1743,13 @@ export function WebinarRoom({
           items={feedItems}
           onNotice={() => setSheet("support")}
           panel={wide}
-          className={wide ? "min-h-0 flex-1 pr-0" : offerCardOpen ? "max-h-[18cqh]" : "max-h-[30cqh]"}
+          className={
+            wide
+              ? "min-h-0 flex-1 pr-0"
+              : offerCardOpen
+                ? "max-h-[18cqh] md:portrait:max-h-[36cqh] max-lg:landscape:max-h-none max-lg:landscape:min-h-0 max-lg:landscape:flex-1"
+                : "max-h-[30cqh] md:portrait:max-h-[46cqh] max-lg:landscape:max-h-none max-lg:landscape:min-h-0 max-lg:landscape:flex-1"
+          }
         />
         {pin}
         {liveOffer && offerCardOpen ? (
@@ -1784,6 +1790,7 @@ export function WebinarRoom({
       <>
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[120px] bg-[linear-gradient(180deg,rgba(0,0,0,.24),rgba(0,0,0,.07)_55%,transparent)]" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[42%]" style={{ background: LIVE_SCRIM }} />
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 hidden w-[48%] bg-[linear-gradient(270deg,rgba(0,0,0,.62),rgba(0,0,0,.3)_60%,transparent)] max-lg:landscape:block" />
       </>
     );
 
@@ -1832,7 +1839,7 @@ export function WebinarRoom({
         <div className="relative min-h-0 flex-1 overflow-hidden bg-black [container-type:size]">
           {player}
           {shades}
-          <div className="absolute inset-x-3 top-[max(12px,env(safe-area-inset-top))] z-20">
+          <div className="absolute inset-x-3 top-[max(12px,env(safe-area-inset-top))] z-20 md:portrait:inset-x-auto md:portrait:left-1/2 md:portrait:w-[600px] md:portrait:-translate-x-1/2">
             <LiveTopBar host={host} follow={follow} onHost={openFollow} status={status} viewers={viewerCount} extra={settings} />
           </div>
           {soundPrompt}
@@ -1844,7 +1851,10 @@ export function WebinarRoom({
               style={{ top: "calc(30% + 28.125cqw + 14px)" }}
             />
           ) : null}
-          <div className="absolute inset-x-3.5 bottom-[max(16px,env(safe-area-inset-bottom))] z-20 flex flex-col">{lower}</div>
+          {/* Em baixo, o chat. No tablet ao alto, numa coluna centrada; deitado, à direita, de cima a baixo (como no YouTube). */}
+          <div className="absolute inset-x-3.5 bottom-[max(16px,env(safe-area-inset-bottom))] z-20 flex flex-col md:portrait:inset-x-auto md:portrait:left-1/2 md:portrait:w-[600px] md:portrait:-translate-x-1/2 max-lg:landscape:left-auto max-lg:landscape:right-3.5 max-lg:landscape:top-16 max-lg:landscape:w-[min(340px,42vw)] max-lg:landscape:justify-end">
+            {lower}
+          </div>
           {sheets}
         </div>
         {groupDialog}
@@ -1859,12 +1869,11 @@ export function WebinarRoom({
     >
       <RoomPartsStyle />
       <LiveStyle />
-      <div className="mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col md:gap-4 md:p-6 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-6">
-        <section className="flex min-w-0 shrink-0 flex-col">
+      <div className="mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col md:portrait:gap-4 md:portrait:p-6 max-lg:landscape:flex-row lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-6 lg:p-6">
+        <section className="flex min-w-0 shrink-0 flex-col max-lg:landscape:flex-1 max-lg:landscape:justify-center max-lg:landscape:bg-black max-lg:landscape:pl-[env(safe-area-inset-left)]">
           <div
             className={cn(
-              "relative ring-1 ring-room-line md:overflow-hidden md:rounded-2xl",
-              "max-lg:landscape:fixed max-lg:landscape:inset-0 max-lg:landscape:z-40 max-lg:landscape:grid max-lg:landscape:place-items-center max-lg:landscape:rounded-none max-lg:landscape:bg-black max-lg:landscape:ring-0",
+              "room-panel relative ring-1 ring-room-line md:portrait:overflow-hidden md:portrait:rounded-2xl max-lg:landscape:ring-0 lg:overflow-hidden lg:rounded-2xl",
               theme === "light" ? "bg-room-surface" : "bg-black shadow-[0_30px_80px_-20px_rgb(0_0_0/0.8)]",
             )}
           >
@@ -1878,7 +1887,7 @@ export function WebinarRoom({
               <RotateHint onClose={() => setRotateHint(false)} />
             </div>
           ) : null}
-          <div className="md:hidden">
+          <div className="md:portrait:hidden max-lg:landscape:hidden lg:hidden">
             <RoomTitle
               compact
               kicker=""
@@ -1888,7 +1897,7 @@ export function WebinarRoom({
               onHost={openFollow}
             />
           </div>
-          <div className="hidden px-1 md:block">
+          <div className="hidden px-1 md:portrait:block lg:block">
             <RoomTitle
               kicker={
                 waiting ? "Sessão agendada" : finished ? "Sessão terminada" : mode === "live" ? "Sessão ao vivo" : "Sessão em replay"
@@ -1903,7 +1912,7 @@ export function WebinarRoom({
             ) : null}
           </div>
         </section>
-        <aside className="relative flex min-h-0 flex-1 flex-col overflow-hidden md:rounded-2xl lg:sticky lg:top-6 lg:h-[calc(100dvh-3rem)]">
+        <aside className="relative flex min-h-0 flex-1 flex-col overflow-hidden md:portrait:rounded-2xl max-lg:landscape:w-[min(340px,42vw)] max-lg:landscape:flex-none max-lg:landscape:border-l max-lg:landscape:border-room-line lg:sticky lg:top-6 lg:h-[calc(100dvh-3rem)] lg:rounded-2xl">
           {panel}
           {/* As redes abrem por cima do painel, como no Live. */}
           {followSheet}

@@ -72,17 +72,19 @@ export function StepVendas({
           disabled={busy}
         />
         {enabled ? (
-          <Field label="Quantas compras" hint="Espalham-se do pitch até ao fim do vídeo.">
-            <div className="flex flex-wrap items-center gap-2">
-              <Stepper value={count} min={1} max={50} onChange={onCount} unit="compras" />
+          <Field label="Quantas compras" hint="Espalham-se do pitch até ao fim do vídeo. Escolha uma rápida ou acerte com − e +.">
+            {/* Uma só caixa: o número ao centro e, por baixo, as quantidades rápidas. */}
+            <div className="grid gap-2 rounded-xl border bg-white p-2">
+              <Stepper value={count} min={1} max={50} onChange={onCount} unit="compras" className="w-full justify-between shadow-none" />
               <Seg
+                full
                 small
                 label="Quantidades rápidas"
                 value={String(count)}
                 onChange={(v) => {
                   if (!busy) onCount(Number(v));
                 }}
-                options={[3, 6, 10, 20].map((n) => ({ value: String(n), label: String(n) }))}
+                options={[3, 6, 10, 20, 30].map((n) => ({ value: String(n), label: String(n) }))}
               />
             </div>
           </Field>
@@ -234,11 +236,16 @@ function SalesChart({
           <path d={path.line} fill="none" stroke={color} strokeWidth={1.75} vectorEffect="non-scaling-stroke" />
         </svg>
         {pitch !== null && pitch <= d ? (
-          <div className="absolute inset-y-0 border-l border-dashed border-foreground/70" style={{ left: `${x(pitch)}%` }}>
-            <span className="absolute -left-px top-0 -translate-x-full whitespace-nowrap rounded bg-foreground px-1.5 py-px text-[10.5px] font-semibold text-background">
+          <>
+            <div className="absolute inset-y-0 border-l border-dashed border-foreground/70" style={{ left: `${x(pitch)}%` }} />
+            {/* A etiqueta da oferta fica sempre dentro do gráfico, mesmo perto das bordas. */}
+            <span
+              className="absolute top-0 -translate-x-1/2 whitespace-nowrap rounded bg-foreground px-1.5 py-px text-[10.5px] font-semibold text-background"
+              style={{ left: `clamp(44px, ${x(pitch)}%, calc(100% - 44px))` }}
+            >
               Oferta {clock(pitch)}
             </span>
-          </div>
+          </>
         ) : null}
         {sorted.map((s, i) => (
           <button

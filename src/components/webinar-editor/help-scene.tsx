@@ -30,6 +30,7 @@ const SCENES: Record<HelpTopic, Scene> = {
   seguirMomentos: { screen: "room", spot: "follow" },
   chat: { screen: "room", spot: "chat" },
   chatQuem: { screen: "room", spot: "chat" },
+  paises: { screen: "room", spot: "chat" },
   tom: { screen: "room", spot: "chat" },
   realismo: { screen: "room", spot: "chat" },
   perguntas: { screen: "room", spot: "chat" },

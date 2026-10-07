@@ -12,6 +12,7 @@ import {
   Gift,
   Lock,
   Mic,
+  Minus,
   Monitor,
   Pause,
   Phone,
@@ -23,6 +24,7 @@ import {
   Tablet,
   Video,
   X,
+  ZoomIn,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clock } from "@/lib/room-logic";
@@ -263,6 +265,7 @@ export function DeviceStage({
   light,
   dock,
   dark,
+  zoom,
   children,
 }: {
   device: Device;
@@ -273,6 +276,8 @@ export function DeviceStage({
   dock?: Dock | undefined;
   /** No ecrã completo (fundo escuro). */
   dark?: boolean | undefined;
+  /** Zoom em relação ao tamanho real (1 = 100%); sem zoom, o aparelho cabe inteiro no espaço. */
+  zoom?: number | null | undefined;
   children: ReactNode;
 }) {
   const [ref, size] = useSize<HTMLDivElement>();
@@ -291,11 +296,13 @@ export function DeviceStage({
     observer.observe(node);
     return () => observer.disconnect();
   }, [shown]);
-  const wrapped = rowH > 52;
-  const k = deviceScale(device, size.w, size.h - (has ? (open ? rowH + 22 : 20) : 0), landscape);
+  const fit = deviceScale(device, size.w, size.h - (has ? (open ? rowH + 22 : 20) : 0), landscape);
+  const k = zoom ?? fit;
   const frameW = frameSize(device, Boolean(landscape)).w * k;
+  // Com zoom, o aparelho fica maior do que o espaço e desliza-se, com a barra à direita (como no ManyChat).
   return (
-    <div ref={ref} className="flex size-full min-h-0 min-w-0 flex-col items-center justify-center overflow-hidden">
+    <div ref={ref} className={cn("size-full min-h-0 min-w-0", zoom ? "scrollbar-thin overflow-auto" : "overflow-hidden")}>
+    <div className={cn("flex min-h-full min-w-full flex-col items-center", zoom ? "w-max px-4 py-4" : "h-full justify-center")}>
       {size.w > 0 && size.h > 0 ? (
         device === "desktop" ? (
           <LaptopFrame k={k} url={url} highlightUrl={highlightUrl}>
@@ -312,7 +319,7 @@ export function DeviceStage({
         )
       ) : null}
       {shown ? (
-        <div className="flex shrink-0 flex-col items-center" style={{ width: Math.min(Math.max(frameW, 560), size.w - 16) }}>
+        <div className="flex shrink-0 flex-col items-center" style={{ width: zoom ? Math.max(frameW, 560) : Math.min(Math.max(frameW, 560), size.w - 16) }}>
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
@@ -327,7 +334,7 @@ export function DeviceStage({
             <div className="min-h-0 overflow-hidden">
               <div
                 ref={rowRef}
-                className={cn("flex flex-wrap items-center gap-2 pb-0.5 pt-1", device === "desktop" && !wrapped ? "justify-between" : "justify-center")}
+                className="flex flex-wrap items-center justify-center gap-2 pb-0.5 pt-1"
               >
                 {dock?.play}
                 {dock?.tabs}
@@ -336,6 +343,45 @@ export function DeviceStage({
           </div>
         </div>
       ) : null}
+    </div>
+    </div>
+  );
+}
+
+const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+
+/**
+ * O zoom do aparelho: o primeiro clique liga-o (100%, o tamanho real); depois «−» e «+» reduzem e
+ * aumentam, e «Ajustar» volta ao aparelho inteiro no espaço.
+ */
+export function ZoomControl({ zoom, onZoom, dark }: { zoom: number | null; onZoom: (zoom: number | null) => void; dark?: boolean | undefined }) {
+  const btn = cn("grid h-7 min-w-7 place-items-center rounded-[7px] px-1.5 transition disabled:opacity-40", segItem(false, dark));
+  if (zoom === null) {
+    return (
+      <button
+        type="button"
+        onClick={() => onZoom(1)}
+        title="Zoom: ver o aparelho ao tamanho real e deslizar"
+        className={cn("inline-flex h-[34px] shrink-0 items-center gap-1.5 rounded-[10px] px-2.5 text-[12px] font-medium", dark ? SEG_BOX.dark : SEG_BOX.light, segItem(false, dark))}
+      >
+        <ZoomIn className="size-3.5" />
+        Zoom
+      </button>
+    );
+  }
+  const i = ZOOMS.findIndex((z) => z >= zoom);
+  return (
+    <div className={cn("inline-flex h-[34px] shrink-0 items-center gap-0.5 rounded-[10px] p-[3px] text-[12px] font-medium", dark ? SEG_BOX.dark : SEG_BOX.light)} role="group" aria-label="Zoom">
+      <button type="button" className={btn} onClick={() => onZoom(ZOOMS[Math.max(0, i - 1)]!)} disabled={i <= 0} aria-label="Reduzir">
+        <Minus className="size-3.5" />
+      </button>
+      <span className={cn("grid h-7 min-w-[46px] place-items-center rounded-[7px] font-mono tabular-nums", segItem(true, dark))}>{Math.round(zoom * 100)}%</span>
+      <button type="button" className={btn} onClick={() => onZoom(ZOOMS[Math.min(ZOOMS.length - 1, i + 1)]!)} disabled={i >= ZOOMS.length - 1} aria-label="Aumentar">
+        <Plus className="size-3.5" />
+      </button>
+      <button type="button" className={cn(btn, "px-2")} onClick={() => onZoom(null)} title="O aparelho inteiro no espaço">
+        Ajustar
+      </button>
     </div>
   );
 }
@@ -405,7 +451,7 @@ export function ScreenTabs({ tabs, dark }: { tabs: readonly ScreenTab[]; dark?: 
       role="tablist"
       aria-label="Ecrãs"
       className={cn(
-        "inline-flex max-w-full gap-0.5 overflow-x-auto rounded-xl p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        "inline-flex h-9 max-w-full items-center gap-0.5 overflow-x-auto rounded-[10px] p-[3px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
         dark ? SEG_BOX.dark : SEG_BOX.light,
       )}
     >
@@ -416,7 +462,7 @@ export function ScreenTabs({ tabs, dark }: { tabs: readonly ScreenTab[]; dark?: 
           role="tab"
           aria-selected={t.active}
           onClick={t.onClick}
-          className={cn("h-8 shrink-0 whitespace-nowrap rounded-lg px-3.5 text-[13px] font-medium transition", segItem(t.active, dark))}
+          className={cn("h-[30px] shrink-0 whitespace-nowrap rounded-[7px] px-3 text-[12.5px] font-medium transition", segItem(t.active, dark))}
         >
           {t.label}
         </button>
@@ -459,7 +505,7 @@ export function PlayChip({
   const d = Math.max(1, duration);
   const go = (delta: number) => onSeek(Math.max(0, Math.min(duration, t + delta)));
   const icon = cn(
-    "inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 font-mono text-[11.5px] font-semibold tabular-nums transition",
+    "inline-flex h-[30px] shrink-0 items-center gap-1 rounded-[7px] px-2 font-mono text-[11.5px] font-semibold tabular-nums transition",
     dark ? "text-[#D4D4D4] hover:bg-white/10" : "text-[#444] hover:bg-black/[0.06]",
   );
   const playButton = (
@@ -471,7 +517,7 @@ export function PlayChip({
       }}
       aria-label={playing ? "Pausar" : "Tocar"}
       className={cn(
-        "grid size-8 shrink-0 place-items-center rounded-full transition",
+        "grid size-[30px] shrink-0 place-items-center rounded-full transition",
         dark ? "bg-white text-[#0A0A0A]" : "bg-white text-foreground shadow-[0_1px_3px_rgba(0,0,0,.18)] hover:shadow-[0_2px_6px_rgba(0,0,0,.2)]",
       )}
     >
@@ -487,7 +533,7 @@ export function PlayChip({
   // Fechado: o play e o minuto, compacto.
   if (!open) {
     return (
-      <span className={cn("inline-flex h-10 shrink-0 items-center gap-0.5 rounded-xl p-1 pr-1.5", dark ? SEG_BOX.dark : SEG_BOX.light)}>
+      <span className={cn("inline-flex h-9 shrink-0 items-center gap-0.5 rounded-[10px] p-[3px] pr-1.5", dark ? SEG_BOX.dark : SEG_BOX.light)}>
         {playButton}
         <button type="button" onClick={() => setOpen(true)} aria-label="Abrir o leitor" className="rounded-lg py-1.5 transition hover:bg-black/[0.04]">
           {time}
@@ -500,7 +546,7 @@ export function PlayChip({
     <div className="@container min-w-[min(100%,300px)] max-w-[640px] flex-1">
       <div
         className={cn(
-          "flex flex-wrap items-center gap-x-0.5 gap-y-1 rounded-xl p-1 @max-[440px]:px-2 @max-[440px]:pt-2",
+          "flex min-h-9 flex-wrap items-center gap-x-0.5 gap-y-1 rounded-[10px] p-[3px] @max-[440px]:px-2 @max-[440px]:pt-2",
           dark ? SEG_BOX.dark : SEG_BOX.light,
         )}
       >
@@ -524,7 +570,7 @@ export function PlayChip({
           }}
           onPointerLeave={() => setHover(null)}
           aria-label="Minuto do vídeo"
-          className="group relative mx-2 flex h-8 min-w-[90px] flex-1 touch-none select-none items-center @max-[440px]:order-first @max-[440px]:mx-1 @max-[440px]:basis-full"
+          className="group relative mx-2 flex h-[30px] min-w-[90px] flex-1 touch-none select-none items-center @max-[440px]:order-first @max-[440px]:mx-1 @max-[440px]:basis-full"
         >
           <SliderPrimitive.Track className={cn("relative h-1 grow overflow-hidden rounded-full", dark ? "bg-white/15" : "bg-black/10")}>
             <SliderPrimitive.Range className={cn("absolute h-full", dark ? "bg-white" : "bg-foreground")} />
@@ -605,12 +651,15 @@ export function FullScreen({
   device,
   onDevice,
   onClose,
+  tools,
   children,
 }: {
   name: string;
   device: Device;
   onDevice: (device: Device) => void;
   onClose: () => void;
+  /** À esquerda da escolha do aparelho (o zoom). */
+  tools?: ReactNode;
   children: ReactNode;
 }) {
   useEffect(() => {
@@ -622,6 +671,7 @@ export function FullScreen({
     <div className="fixed inset-0 z-[80] flex flex-col bg-[#0A0A0A] text-[#EDEDED]" role="dialog" aria-label={name}>
       <div className="flex h-14 shrink-0 items-center gap-3 px-4">
         <b className="min-w-0 flex-1 truncate text-sm">{name}</b>
+        {tools}
         <DeviceToggle dark device={device} onChange={onDevice} />
         <button
           type="button"

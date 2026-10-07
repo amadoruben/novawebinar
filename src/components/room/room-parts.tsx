@@ -31,7 +31,7 @@ import { cn } from "@/lib/utils";
  * vêm dos tokens da sala (room-*), por isso o tema escuro e o claro servem as duas.
  */
 
-const ROOM_PARTS_CSS = `@keyframes cwRxUp{0%{opacity:0;transform:translate(0,0) scale(.6)}8%{opacity:1;transform:translate(0,-14px) scale(1)}28%{transform:translate(var(--sway),-62px)}50%{transform:translate(calc(var(--sway) * -1),-112px)}72%{opacity:.85;transform:translate(var(--sway),-160px)}100%{opacity:0;transform:translate(0,calc(-1 * var(--h,210px))) scale(.92)}}.cw-rx{animation:cwRxUp 2.4s linear forwards}@keyframes cwDot{50%{opacity:.35}}.cw-dot{animation:cwDot 1.4s ease-in-out infinite}@keyframes cwPop{0%{transform:scale(1)}40%{transform:scale(1.25)}100%{transform:scale(1)}}.cw-pop{animation:cwPop .3s ease}@media (prefers-reduced-motion:reduce){.cw-rx{display:none}.cw-dot,.cw-pop{animation:none}}`;
+const ROOM_PARTS_CSS = `@keyframes cwRxUp{0%{opacity:0;transform:translate(0,0) scale(.6)}8%{opacity:1;transform:translate(0,-14px) scale(1)}28%{transform:translate(var(--sway),-62px)}50%{transform:translate(calc(var(--sway) * -1),-112px)}72%{opacity:.85;transform:translate(var(--sway),-160px)}100%{opacity:0;transform:translate(0,calc(-1 * var(--h,210px))) scale(.92)}}.cw-rx{animation:cwRxUp 2.4s linear forwards}@keyframes cwDot{50%{opacity:.35}}.cw-dot{animation:cwDot 1.4s ease-in-out infinite}@keyframes cwPop{0%{transform:scale(1)}40%{transform:scale(1.25)}100%{transform:scale(1)}}.cw-pop{animation:cwPop .3s ease}@media (prefers-reduced-motion:reduce){.cw-rx{display:none}.cw-dot,.cw-pop{animation:none}}.room-light .room-panel{--tw-ring-color:#CACACA}`;
 
 export function RoomPartsStyle() {
   return <style>{ROOM_PARTS_CSS}</style>;
@@ -97,7 +97,7 @@ export function RoomTitle({
   return (
     <div className={compact ? "px-4 py-3" : "pt-5"}>
       {!compact ? (
-        <p className="text-[13px] font-bold uppercase tracking-[0.2em] text-primary">{kicker}</p>
+        <p className="text-[14.5px] font-bold uppercase tracking-[0.2em] text-primary">{kicker}</p>
       ) : null}
       {title ? (
         <h1
@@ -380,10 +380,9 @@ export function ChatComposer({
   );
 }
 
+const EMOJI_FONT = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+
 /** O coração: as reações sobem a direito por cima dele, com um leve balanço, como no YouTube. */
-const HEART_REDS = ["#FF2E43", "#FF4A5C", "#E8172F"];
-const HEART_PATH =
-  "M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z";
 
 /**
  * O coração das reações: um contorno; enquanto a pessoa toca enche-se de vermelho (sabe que reagiu)
@@ -411,18 +410,18 @@ export function HeartButton({
       {/* Sem máscara nem caixa: no Safari uma máscara vazia desenhava um rectângulo preto. */}
       {reactions.length > 0 ? (
         <span aria-hidden className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 h-[230px] w-12 -translate-x-1/2 [--h:210px]">
-          {reactions.map((r, i) => {
+          {reactions.map((r) => {
             const size = Math.max(26, Math.min(34, r.size ?? 30));
             const sway = Math.max(-7, Math.min(7, Math.round(r.offset / 5))) || 4;
             return (
-              <svg
+              // O coração do emoji (❤️), como nas reações do iPhone: no iPhone e no Mac é o da Apple.
+              <span
                 key={r.id}
-                viewBox="0 0 24 24"
-                className="cw-rx absolute bottom-0 opacity-0 drop-shadow-[0_2px_4px_rgba(0,0,0,.35)]"
-                style={{ left: `calc(50% - ${size / 2}px)`, width: size, height: size, "--sway": `${sway}px` } as CSSProperties}
+                className="cw-rx absolute bottom-0 leading-none opacity-0 drop-shadow-[0_2px_4px_rgba(0,0,0,.3)]"
+                style={{ left: `calc(50% - ${size / 2}px)`, fontFamily: EMOJI_FONT, fontSize: size * 0.86, width: size, height: size, "--sway": `${sway}px` } as CSSProperties}
               >
-                <path d={HEART_PATH} fill={HEART_REDS[i % HEART_REDS.length]} />
-              </svg>
+                ❤️
+              </span>
             );
           })}
         </span>
@@ -437,10 +436,13 @@ export function HeartButton({
         title="Reagir"
         className={className}
       >
-        <Heart
-          key={pressed ? "on" : "off"}
-          className={cn("size-5", iconClassName, pressed ? "cw-pop fill-[#FF2E43] text-[#FF2E43]" : "")}
-        />
+        {pressed ? (
+          <span key="on" className="cw-pop grid size-5 place-items-center text-[17px] leading-none" style={{ fontFamily: EMOJI_FONT }}>
+            ❤️
+          </span>
+        ) : (
+          <Heart key="off" className={cn("size-5", iconClassName)} />
+        )}
       </button>
     </span>
   );

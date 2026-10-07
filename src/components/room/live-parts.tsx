@@ -112,11 +112,11 @@ export function LiveBadge({ label = "Ao vivo", tone = "live" }: { label?: string
   return (
     <span
       className={cn(
-        "lv-badge-font inline-flex h-[23px] items-center gap-[5px] rounded-[5px] pl-1.5 pr-[7px] pt-px text-[14px] font-bold uppercase leading-none tracking-[0.04em] text-white",
+        "lv-badge-font inline-flex h-[26px] items-center gap-[6px] rounded-[6px] pl-[7px] pr-2 pt-px text-[15.5px] font-bold uppercase leading-none tracking-[0.04em] text-white",
         tone === "live" ? "bg-[linear-gradient(90deg,#E11D48,#E3141F)]" : tone === "replay" ? "bg-[#2563EB]" : "bg-black/45",
       )}
     >
-      {tone === "live" ? <i className="lv-dot -mt-px block size-[5px] rounded-full bg-white" /> : null}
+      {tone === "live" ? <i className="lv-dot -mt-px block size-[6px] rounded-full bg-white" /> : null}
       {label}
     </span>
   );
@@ -124,8 +124,8 @@ export function LiveBadge({ label = "Ao vivo", tone = "live" }: { label?: string
 
 export function LiveViewers({ count }: { count: number }) {
   return (
-    <span className="lv-badge-font inline-flex h-[23px] items-center gap-[3px] rounded-[5px] bg-black/[0.42] px-1.5 pt-px text-[14px] font-semibold leading-none tabular-nums text-white">
-      <Eye className="-mt-px size-3" />
+    <span className="lv-badge-font inline-flex h-[26px] items-center gap-1 rounded-[6px] bg-black/[0.42] px-[7px] pt-px text-[15.5px] font-semibold leading-none tabular-nums text-white">
+      <Eye className="-mt-px size-3.5" />
       {count.toLocaleString("pt-PT")}
     </span>
   );
@@ -209,30 +209,31 @@ export function LiveTopBar({
   onHost?: (() => void) | undefined;
   status: { label: string; tone: "live" | "replay" | "muted" } | null;
   viewers: number | null;
-  /** Por baixo de «Ao vivo», à direita (o ⚙ do vídeo). */
+  /** À direita de «Ao vivo», na mesma linha (o ⚙ do vídeo). */
   extra?: ReactNode;
 }) {
+  // Uma só linha, tudo centrado na vertical: a foto e o nome à esquerda; «Ao vivo», as pessoas e o ⚙ à direita.
   return (
-    <div className="flex items-center justify-between gap-1 text-white">
-      <div className="flex min-w-0 items-center gap-[7px]">
+    <div className="flex h-10 items-center justify-between gap-2 text-white">
+      <div className="flex min-w-0 items-center gap-2">
         <button type="button" onClick={onHost} disabled={!onHost} aria-label={`Ver as redes de ${host.name}`} className="shrink-0 rounded-full">
-          <Avatar host={host} size={34} />
+          <Avatar host={host} size={36} />
         </button>
         <button
           type="button"
           onClick={onHost}
           disabled={!onHost}
-          className="flex min-w-0 items-center gap-[5px] text-[14px] font-[600] leading-tight [text-shadow:0_1px_3px_rgba(0,0,0,.45)]"
+          className="flex min-w-0 items-center gap-[5px] text-[15px] font-[600] leading-tight [text-shadow:0_1px_3px_rgba(0,0,0,.45)]"
         >
           <span className="truncate">{host.name}</span>
           {host.verified && host.name ? <HostBadge /> : null}
         </button>
         {follow ? <FollowButton label={follow.label} onClick={follow.onClick} /> : null}
       </div>
-      <div className="relative flex shrink-0 items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1.5">
         {status ? <LiveBadge label={status.label} tone={status.tone} /> : null}
         {viewers !== null ? <LiveViewers count={viewers} /> : null}
-        {extra ? <div className="absolute right-0 top-[calc(100%+8px)]">{extra}</div> : null}
+        {extra ? <div className="ml-0.5 grid place-items-center">{extra}</div> : null}
       </div>
     </div>
   );

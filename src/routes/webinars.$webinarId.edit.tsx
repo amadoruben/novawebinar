@@ -112,6 +112,7 @@ import {
   DeviceStage,
   DeviceToggle,
   ExpandButton,
+  ZoomControl,
   FullScreen,
   PlayChip,
   RotateButton,
@@ -121,7 +122,7 @@ import {
   type Device,
   type ScreenTab,
 } from "@/components/webinar-editor/preview";
-import { RoomPreview, type PreviewMine, type RoomTab } from "@/components/webinar-editor/room-preview";
+import { playPreviewWithSound, RoomPreview, type PreviewMine, type RoomTab } from "@/components/webinar-editor/room-preview";
 import type { RiskZone } from "@/components/webinar-editor/timeline-dock";
 import { PublishPage, type LaunchIssue } from "@/components/webinar-editor/publish-page";
 import { StepInicio } from "@/components/webinar-editor/steps/inicio";
@@ -186,14 +187,15 @@ const SCREENS: [EditorStep, string][] = [
 
 /** As regras do chat no pedido ao gerador: o português de cada país e o volume da audiência. */
 function generatorSettings(rules: ChatRules, audience: number): AiSettings {
-  const pace = chatPace(audience, rules.volume);
+  const pace = chatPace(audience, rules.volume, rules.perMinute);
   return {
     ...defaultAiSettings,
     variant: chatVariant(rules.countries),
-    level: rules.volume === "menos" ? "low" : rules.volume === "mais" ? "high" : "medium",
+    level: pace.perMinute <= 5 ? "low" : pace.perMinute >= 15 ? "high" : "medium",
     frequency: Math.max(1, Math.round(60 / pace.perMinute)),
     participants: pace.people,
-    emojis: rules.emoji && rules.tone !== "formal" ? "high" : "low",
+    // Os emojis são escolha de quem apresenta, em qualquer tom.
+    emojis: rules.emoji ? "high" : "low",
     tone: rules.tone === "vendas" ? "excited" : rules.tone === "formal" ? "professional" : "natural",
   };
 }
@@ -430,14 +432,14 @@ function EditWebinar() {
     t,
     duration: Math.max(1, duration),
     playing,
-    toggle: () => setPlaying((p) => !p),
+    toggle: () => togglePlay(),
     seek,
   };
   /** Leva o vídeo uns segundos antes e toca, para ver acontecer na sala. */
   const watchAt = (seconds: number, tab: RoomTab | null = null) => {
     setRoomTab(tab);
     seek(Math.max(0, seconds - 3));
-    setPlaying(true);
+    if (!playing) togglePlay();
   };
 
   /* ---------- Pré-visualização ---------- */
@@ -463,7 +465,19 @@ function EditWebinar() {
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const [mine, setMine] = useState<PreviewMine[]>([]);
   const [reactions, setReactions] = useState<Reaction[]>([]);
+  // Sem som até ao primeiro play; aí liga-se, a não ser que a pessoa o tenha tirado no ⚙.
   const [volume, setVolume] = useState(0);
+  const soundChosen = useRef(false);
+  const [zoom, setZoom] = useState<number | null>(null);
+  /** Tocar ou pausar. O som liga-se no próprio toque, porque o iPhone não deixa ligá-lo depois. */
+  function togglePlay() {
+    if (!playing) {
+      const next = soundChosen.current ? volume : volume || 1;
+      if (next !== volume) setVolume(next);
+      playPreviewWithSound(next);
+    }
+    setPlaying((p) => !p);
+  }
   const [captionsOn, setCaptionsOn] = useState(false);
   const [published, setPublished] = useState(false);
   const [agentState, setAgentState] = useState({ on: false, name: "Equipa" });
@@ -1049,6 +1063,10 @@ function EditWebinar() {
       setStep("video");
       return;
     }
+    if (chatRules.countries.length === 0) {
+      toast.error("Escolha primeiro de que países são as pessoas do chat, em «Quem está no chat».");
+      return;
+    }
     const ok = await save({ silent: true });
     if (!ok) return;
     startAiJob({
@@ -1154,6 +1172,19 @@ function EditWebinar() {
       toast.error(friendlyError(error));
       return false;
     }
+  };
+
+  const editComment = async (id: string, patch: { at: number; author: string; message: string }) => {
+    const { error } = await supabase
+      .from("scheduled_comments")
+      .update({ offset_seconds: Math.max(0, Math.round(patch.at)), author_name: patch.author, message: patch.message })
+      .eq("id", id);
+    if (error) {
+      toast.error(friendlyError(error));
+      return false;
+    }
+    invalidate(["scheduled-comments"]);
+    return true;
   };
 
   const removeComment = async (id: string) => {
@@ -1337,11 +1368,14 @@ function EditWebinar() {
       onAppearance={setPreviewAppearance}
       t={t}
       playing={playing}
-      onTogglePlay={() => setPlaying((p) => !p)}
+      onTogglePlay={togglePlay}
       duration={duration}
       video={{ url: videoUrl, provider: selectedVideo?.provider ?? null }}
       volume={volume}
-      onVolume={setVolume}
+      onVolume={(v) => {
+        soundChosen.current = true;
+        setVolume(v);
+      }}
       captionsOn={captionsOn}
       onCaptions={setCaptionsOn}
       speech={speech}
@@ -1450,12 +1484,13 @@ function EditWebinar() {
   ];
   const play =
     screen === "room" && duration > 0 && !needsVideo ? (
-      <PlayChip t={t} duration={duration} playing={playing} onToggle={() => setPlaying((p) => !p)} onSeek={seek} marks={playMarks} />
+      <PlayChip t={t} duration={duration} playing={playing} onToggle={togglePlay} onSeek={seek} marks={playMarks} />
     ) : null;
 
   const tools = (
     <span className="flex shrink-0 items-center gap-2">
       {screenDevice !== "desktop" && screen === "room" ? <RotateButton landscape={landscape} onChange={setLandscape} /> : null}
+      {wide ? <ZoomControl zoom={zoom} onZoom={setZoom} /> : null}
       <ExpandButton onClick={() => setFull(true)} />
       {screen !== "whatsapp" ? <DeviceToggle device={device} onChange={setDevice} /> : null}
     </span>
@@ -1692,6 +1727,7 @@ function EditWebinar() {
                     onImport={(file) => void importSheet(file)}
                     onWrite={writeComment}
                     onRemove={(id) => void removeComment(id)}
+                    onEdit={editComment}
                     onShow={(comment) => {
                       // A sala vai para o minuto do comentário e realça-o no chat.
                       setPlaying(false);
@@ -1832,6 +1868,7 @@ function EditWebinar() {
                   url={`${roomOrigin}/w/${roomSlug}`}
                   highlightUrl={focusKey === "url"}
                   light={screen === "whatsapp" || (screen !== "room" && previewTheme === "light")}
+                  zoom={zoom}
                   dock={{ play, tabs: tabs.length ? <ScreenTabs tabs={tabs} /> : null }}
                 >
                   {screenBody}
@@ -1849,6 +1886,7 @@ function EditWebinar() {
           device={screenDevice}
           onDevice={setDevice}
           onClose={() => setFull(false)}
+          tools={<ZoomControl dark zoom={zoom} onZoom={setZoom} />}
         >
           <DeviceStage
             device={screenDevice}
@@ -1856,10 +1894,11 @@ function EditWebinar() {
             url={`${roomOrigin}/w/${roomSlug}`}
             light={screen === "whatsapp"}
             dark
+            zoom={zoom}
             dock={{
               play:
                 screen === "room" && duration > 0 && !needsVideo ? (
-                  <PlayChip t={t} duration={duration} playing={playing} onToggle={() => setPlaying((p) => !p)} onSeek={seek} marks={playMarks} dark />
+                  <PlayChip t={t} duration={duration} playing={playing} onToggle={togglePlay} onSeek={seek} marks={playMarks} dark />
                 ) : null,
               tabs: tabs.length ? <ScreenTabs tabs={tabs} dark /> : null,
             }}

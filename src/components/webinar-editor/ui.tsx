@@ -578,18 +578,20 @@ export function Stepper({
   max,
   onChange,
   unit,
+  className,
 }: {
   value: number;
   min: number;
   max: number;
   onChange: (value: number) => void;
   unit?: string | undefined;
+  className?: string | undefined;
 }) {
   const set = (v: number) => onChange(Math.min(max, Math.max(min, Math.round(v) || min)));
   const btn =
     "grid size-9 shrink-0 place-items-center rounded-md text-foreground transition hover:bg-[var(--ds-gray-alpha-200)] disabled:opacity-40";
   return (
-    <div className="inline-flex h-11 items-center gap-1 rounded-lg bg-white px-1 shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-400)]">
+    <div className={cn("inline-flex h-11 items-center gap-1 rounded-lg bg-white px-1 shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-400)]", className)}>
       <button type="button" className={btn} onClick={() => set(value - 1)} disabled={value <= min} aria-label="Menos">
         <Minus className="size-4" />
       </button>

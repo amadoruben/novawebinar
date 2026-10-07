@@ -74,11 +74,11 @@ describe("regras do chat simulado", () => {
     expect(late.some((c) => c.message.includes("Maputo"))).toBe(true);
   });
 
-  it("sem emojis ou no tom formal, as mensagens saem sem emojis", () => {
-    for (const rules of [{ ...DEFAULT_CHAT_RULES, emoji: false }, { ...DEFAULT_CHAT_RULES, tone: "formal" as const }]) {
-      const out = applyChatRealism(drafts, rules, ctx);
-      expect(out.every((c) => stripEmoji(c.message) === c.message)).toBe(true);
-    }
+  it("sem emojis, as mensagens saem sem emojis; no tom formal, os emojis são escolha de quem apresenta", () => {
+    const none = applyChatRealism(drafts, { ...DEFAULT_CHAT_RULES, emoji: false }, ctx);
+    expect(none.every((c) => stripEmoji(c.message) === c.message)).toBe(true);
+    const formal = applyChatRealism(drafts, { ...DEFAULT_CHAT_RULES, tone: "formal" as const, emoji: true }, ctx);
+    expect(formal.some((c) => stripEmoji(c.message) !== c.message)).toBe(true);
   });
 
   it("nenhuma mensagem se repete", () => {
@@ -117,6 +117,15 @@ describe("países, volume e regras antigas", () => {
     expect(chatPace(5000, "normal").perMinute).toBe(30);
     expect(chatPace(600, "mais").perMinute).toBeGreaterThan(chatPace(600, "menos").perMinute);
     expect(chatPace(600, "normal").people).toBe(72);
+    // Lançamentos grandes: o número por minuto escolhe-se à mão, até 60.
+    expect(chatPace(600, "escolher", 45).perMinute).toBe(45);
+    expect(chatPace(600, "escolher", 400).perMinute).toBe(60);
+  });
+
+  it("um webinar novo não tem nenhum país escolhido", () => {
+    expect(parseChatRules(null).countries).toEqual([]);
+    expect(parseChatRules({ countries: [] }).countries).toEqual([]);
+    expect(parseChatRules({ countries: ["br", "ao"] }).countries).toEqual(["ao", "br"]);
   });
 
   it("as regras antigas (um país, intensidade, alunos em número) ainda se lêem", () => {

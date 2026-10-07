@@ -15,6 +15,9 @@ import {
   Pencil,
   Pin,
   Play,
+  Plus,
+  Globe,
+  X,
   ShieldCheck,
   Headset,
   MessageSquarePlus,
@@ -25,12 +28,13 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { clock } from "@/lib/room-logic";
 import { CHAT_COUNTRIES, type ChatCountryCode } from "@/lib/chat-variants";
 import { alunoExample, chatPace, chatTagLabel, lateExample, namePool, type ChatRules } from "@/lib/chat-realism";
-import { Field, HelpButton, MinuteWheel, Seg, Stepper, SwitchRow, Tag, TimeChip } from "../ui";
+import { Field, HelpButton, MinuteWheel, Note, PickerButton, Seg, Stepper, SwitchRow, Tag, TimeChip } from "../ui";
 import type { HelpTopic } from "../help";
 import type { EditorClock } from "./video";
 import type { EditorForm, FocusProps, SetForm } from "../form";
@@ -72,6 +76,7 @@ export function StepChat({
   onImport,
   onWrite,
   onRemove,
+  onEdit,
   onShow,
   onWatch,
   notify,
@@ -97,6 +102,8 @@ export function StepChat({
   onImport: (file: File) => void;
   onWrite: (at: number, message: string) => Promise<boolean>;
   onRemove: (id: string) => void;
+  /** Muda o minuto, o nome ou a mensagem de um comentário. */
+  onEdit: (id: string, patch: { at: number; author: string; message: string }) => Promise<boolean>;
   /** Mostra este comentário na sala (o vídeo vai para o minuto dele). */
   onShow: (comment: ChatComment) => void;
   /** Toca a sala a partir deste segundo. */
@@ -109,22 +116,14 @@ export function StepChat({
   const toggle = (part: Part) => setOpen((current) => (current === part ? null : part));
   const fileRef = useRef<HTMLInputElement>(null);
   const people = new Set(comments.map((x) => x.author)).size;
-  const pace = chatPace(audience ?? 100, rules.volume);
+  const pace = chatPace(audience ?? 100, rules.volume, rules.perMinute);
   const chosen = CHAT_COUNTRIES.filter((x) => rules.countries.includes(x.code));
   const names = namePool(rules.countries);
   const tone = TONES.find((t) => t.value === rules.tone)!;
   const activeRules = [rules.delay, rules.mobile, rules.late, rules.talk, rules.follow].filter(Boolean).length;
   const current = [...comments].reverse().find((x) => x.at <= c.t)?.id;
   const product0 = rules.alunos.product.trim() || product.trim();
-  const emoji = (i: number) => (rules.emoji && rules.tone !== "formal" ? ` ${TONE_EMOJI[i % TONE_EMOJI.length]}` : "");
-  const toggleCountry = (code: ChatCountryCode) => {
-    const next = rules.countries.includes(code) ? rules.countries.filter((x) => x !== code) : [...rules.countries, code];
-    if (next.length === 0) {
-      toast.error("Escolha pelo menos um país.");
-      return;
-    }
-    onRules({ countries: CHAT_COUNTRIES.map((x) => x.code).filter((x) => next.includes(x)) });
-  };
+  const emoji = (i: number) => (rules.emoji ? ` ${TONE_EMOJI[i % TONE_EMOJI.length]}` : "");
 
   return (
     <div className="grid gap-2.5">
@@ -132,40 +131,27 @@ export function StepChat({
         icon={Users}
         help="chatQuem"
         title="Quem está no chat"
-        summary={`${chosen.map((x) => `${x.flag} ${x.name}`).join(" + ")} · ~${pace.perMinute} por minuto`}
+        summary={`${chosen.length ? chosen.map((x) => `${x.flag} ${x.name}`).join(" + ") : "Escolha os países"} · ~${pace.perMinute} por minuto`}
         open={open === "quem"}
         onToggle={() => toggle("quem")}
       >
-        <Field label="Países" hint="Cada pessoa escreve no português do seu país, com nome e apelido de lá. Vários países misturam-se.">
-          <div className="flex flex-wrap gap-1.5">
-            {CHAT_COUNTRIES.map((x) => {
-              const on = rules.countries.includes(x.code);
-              return (
-                <button
-                  key={x.code}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => toggleCountry(x.code)}
-                  className={cn(
-                    "inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition",
-                    on ? "border-foreground bg-foreground text-background" : "bg-white hover:bg-gray-50",
-                  )}
-                >
-                  <span className="text-base leading-none">{x.flag}</span>
-                  {x.name}
-                  {on ? <Check className="size-3.5" /> : null}
-                </button>
-              );
-            })}
-            <span className="inline-flex h-9 items-center rounded-full border border-dashed px-3 text-[12.5px] text-muted-foreground">
-              Outros países · em breve
-            </span>
-          </div>
+        <Field
+          label={
+            <>
+              Países
+              <HelpButton topic="paises" />
+            </>
+          }
+          hint="Cada pessoa escreve no português do seu país, com nome e apelido de lá. Vários países misturam-se."
+        >
+          <CountryPicker value={rules.countries} onChange={(countries) => onRules({ countries })} />
         </Field>
-        <div className="rounded-xl bg-gray-50 px-3 py-2.5 text-[12.5px] text-muted-foreground">
-          <span className="font-medium text-foreground">Nomes: </span>
-          {names.slice(0, 4).join(", ")}…
-        </div>
+        {chosen.length ? (
+          <div className="rounded-xl bg-gray-50 px-3 py-2.5 text-[12.5px] text-muted-foreground">
+            <span className="font-medium text-foreground">Nomes: </span>
+            {names.slice(0, 4).join(", ")}…
+          </div>
+        ) : null}
         <Field label="Volume do chat">
           <div className="grid gap-2 rounded-xl border bg-white p-3">
             <div className="flex items-baseline justify-between gap-3">
@@ -178,13 +164,20 @@ export function StepChat({
               full
               small
               value={rules.volume}
-              onChange={(volume) => onRules({ volume })}
+              onChange={(volume) => onRules({ volume, ...(volume === "escolher" ? { perMinute: pace.perMinute } : {}) })}
               options={[
                 { value: "menos", label: "Menos" },
                 { value: "normal", label: "Normal" },
                 { value: "mais", label: "Mais" },
+                { value: "escolher", label: "Escolher" },
               ]}
             />
+            {rules.volume === "escolher" ? (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[12.5px] leading-snug text-muted-foreground">Para lançamentos grandes: até 60 por minuto.</span>
+                <Stepper value={rules.perMinute} min={1} max={60} onChange={(perMinute) => onRules({ perMinute })} unit="/min" />
+              </div>
+            ) : null}
             <p className="text-[12px] leading-snug text-muted-foreground">
               {audience !== null
                 ? `Segue a Audiência: uma sala com cerca de ${audience.toLocaleString("pt-PT")} pessoas. Quando a audiência desce, o chat acalma.`
@@ -198,7 +191,7 @@ export function StepChat({
       <Part
         icon={MessageCircle}
         title="Como escrevem"
-        summary={`${tone.label} · ${rules.emoji && rules.tone !== "formal" ? "com emojis" : "sem emojis"}`}
+        summary={`${tone.label} · ${rules.emoji ? "com emojis" : "sem emojis"}`}
         open={open === "escrita"}
         onToggle={() => toggle("escrita")}
         help="tom"
@@ -219,12 +212,10 @@ export function StepChat({
         </div>
         <SwitchLine
           title="Com emojis"
-          description="Mais emojis, como num chat ao vivo: 🔥 👏 🙌 😍"
+          description="Em qualquer tom, escolhe aqui: 🔥 👏 🙌 😍"
           checked={rules.emoji}
           onChange={(v) => onRules({ emoji: v })}
-          disabled={rules.tone === "formal"}
         />
-        {rules.tone === "formal" ? <p className="-mt-1 text-[12px] text-muted-foreground">No tom formal não há emojis.</p> : null}
         <Done onClick={() => setOpen("real")} label="Seguinte" />
       </Part>
 
@@ -289,23 +280,27 @@ export function StepChat({
                   placeholder={product.trim() || "Ex.: Mentoria Grupo Primo"}
                 />
               </Field>
-              <div className="grid grid-cols-[auto_minmax(0,1fr)] items-end gap-3">
-                <Field label="Quantos">
-                  <Stepper value={rules.alunos.count} min={1} max={8} onChange={(count) => onRules({ alunos: { ...rules.alunos, count } })} />
-                </Field>
-                <Field label="Quando">
-                  <Seg
-                    full
-                    small
-                    value={rules.alunos.when}
-                    onChange={(when) => onRules({ alunos: { ...rules.alunos, when } })}
-                    options={[
-                      { value: "oferta", label: "Na oferta" },
-                      { value: "aula", label: "Na aula" },
-                    ]}
-                  />
-                </Field>
+              {/* Quantos e quando, um por linha: o nome à esquerda e a escolha à direita, alinhados. */}
+              <div className="flex items-center justify-between gap-3">
+                <span className="min-w-0">
+                  <b className="block text-[13px] font-medium">Quantos alunos</b>
+                  <span className="block text-[12px] text-muted-foreground">De 1 a 15, espaçados.</span>
+                </span>
+                <Stepper value={rules.alunos.count} min={1} max={15} onChange={(count) => onRules({ alunos: { ...rules.alunos, count } })} />
               </div>
+              <Field label="Quando aparecem">
+                <Seg
+                  full
+                  small
+                  label="Quando aparecem"
+                  value={rules.alunos.when}
+                  onChange={(when) => onRules({ alunos: { ...rules.alunos, when } })}
+                  options={[
+                    { value: "oferta", label: "Depois da oferta abrir" },
+                    { value: "aula", label: "Ao longo da aula" },
+                  ]}
+                />
+              </Field>
               <ExampleLine author={names[3] ?? "Kátia Domingos"} text={alunoExample(product0) + emoji(2)} tag="Aluno do curso" />
               <p className="text-[12px] text-muted-foreground">
                 {rules.alunos.when === "oferta"
@@ -402,12 +397,12 @@ export function StepChat({
           <>
             <div className="grid gap-1.5 rounded-xl bg-gray-50 px-3.5 py-3 text-[12.5px] text-muted-foreground">
               <span className="flex items-center gap-2">
-                <Check className="size-3.5 text-[#1D8A5E]" />~{pace.perMinute} por minuto, de {pace.people} pessoas de{" "}
-                {chosen.map((x) => x.name).join(", ")}
+                <Check className="size-3.5 text-[#1D8A5E]" />~{pace.perMinute} por minuto, de {pace.people} pessoas
+                {chosen.length ? ` de ${chosen.map((x) => x.name).join(", ")}` : " (escolha os países em «Quem está no chat»)"}
               </span>
               <span className="flex items-center gap-2">
                 <Check className="size-3.5 text-[#1D8A5E]" />
-                Tom {tone.label.toLowerCase()}, {rules.emoji && rules.tone !== "formal" ? "com emojis" : "sem emojis"}
+                Tom {tone.label.toLowerCase()}, {rules.emoji ? "com emojis" : "sem emojis"}
               </span>
               <span className="flex items-center gap-2">
                 <Check className="size-3.5 text-[#1D8A5E]" />
@@ -437,7 +432,7 @@ export function StepChat({
                 Rever os comentários gerados
               </Button>
             ) : (
-              <Button variant="dark" onClick={onGenerate} disabled={job?.running}>
+              <Button variant="dark" onClick={onGenerate} disabled={job?.running || chosen.length === 0}>
                 {job?.running ? <Loader2 className="animate-spin" /> : <Zap />}
                 Gerar comentários com IA
               </Button>
@@ -483,7 +478,7 @@ export function StepChat({
       <Part
         icon={MessagesSquare}
         help="comoFicou"
-        title="Como ficou"
+        title="Comentários gerados"
         summary={comments.length ? `${comments.length} comentários de ${people} pessoas` : "Ainda sem comentários"}
         open={open === "ficou"}
         onToggle={() => toggle("ficou")}
@@ -492,8 +487,10 @@ export function StepChat({
           <p className="text-[13px] text-muted-foreground">Gere os comentários em «Gerar comentários».</p>
         ) : (
           <>
-            <p className="text-[12.5px] text-muted-foreground">Clique num comentário: a sala vai para esse minuto e mostra-o.</p>
-            <CommentList comments={comments} current={current} onShow={onShow} onRemove={onRemove} />
+            <p className="text-[12.5px] text-muted-foreground">
+              Clique num comentário: a sala vai para esse minuto e mostra-o, e pode mudar o minuto, o nome e a mensagem.
+            </p>
+            <CommentList comments={comments} current={current} clock={c} onShow={onShow} onRemove={onRemove} onEdit={onEdit} />
             <Button variant="outline" onClick={() => onWatch(c.t < 40 || c.t > c.duration - 20 ? Math.min(63, c.duration) : c.t)}>
               <Play className="fill-current" />
               Ver o chat a correr na sala
@@ -662,17 +659,23 @@ function RuleRow({
 function CommentList({
   comments,
   current,
+  clock: c,
   onShow,
   onRemove,
+  onEdit,
 }: {
   comments: readonly ChatComment[];
   current: string | undefined;
+  clock: EditorClock;
   onShow: (comment: ChatComment) => void;
   onRemove: (id: string) => void;
+  onEdit: (id: string, patch: { at: number; author: string; message: string }) => Promise<boolean>;
 }) {
   const box = useRef<HTMLDivElement>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   // A mensagem do minuto actual fica à vista dentro da lista, sem mexer no resto do painel.
   useEffect(() => {
+    if (editing) return;
     const list = box.current;
     const node = list?.querySelector<HTMLElement>(`[data-id="${current}"]`);
     if (!list || !node) return;
@@ -680,15 +683,40 @@ function CommentList({
     if (top < list.scrollTop || top + node.offsetHeight > list.scrollTop + list.clientHeight) {
       list.scrollTop = Math.max(0, top - list.clientHeight / 2);
     }
-  }, [current]);
+  }, [current, editing]);
   return (
-    <div ref={box} className="relative max-h-[360px] divide-y overflow-y-auto rounded-xl border bg-white">
+    <div ref={box} className="relative max-h-[420px] divide-y overflow-y-auto rounded-xl border bg-white">
       {comments.map((x) => {
         const tag = chatTagLabel(x.type, x.message);
         const on = x.id === current;
+        if (editing === x.id) {
+          return (
+            <CommentEditor
+              key={x.id}
+              comment={x}
+              clock={c}
+              onCancel={() => setEditing(null)}
+              onRemove={() => {
+                onRemove(x.id);
+                setEditing(null);
+              }}
+              onSave={async (patch) => {
+                if (await onEdit(x.id, patch)) setEditing(null);
+              }}
+            />
+          );
+        }
         return (
           <div key={x.id} data-id={x.id} className={cn("group flex items-start gap-2.5 px-3 py-2.5", on ? "bg-[#FDE4D9]/50" : "hover:bg-gray-50")}>
-            <button type="button" onClick={() => onShow(x)} className="flex min-w-0 flex-1 items-start gap-2.5 text-left" title="Ver na sala">
+            <button
+              type="button"
+              onClick={() => {
+                onShow(x);
+                setEditing(x.id);
+              }}
+              className="flex min-w-0 flex-1 items-start gap-2.5 text-left"
+              title="Ver na sala e editar"
+            >
               <TimeChip seconds={x.at} active={on} />
               <span className="min-w-0">
                 <b className="flex flex-wrap items-center gap-1.5 text-[12.5px] font-semibold">
@@ -698,18 +726,138 @@ function CommentList({
                 <span className="block break-words text-[13px] text-foreground/85">{x.message}</span>
               </span>
             </button>
-            <button
-              type="button"
-              onClick={() => onRemove(x.id)}
-              aria-label="Apagar o comentário"
-              title="Apagar o comentário"
-              className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground opacity-0 hover:bg-[var(--ds-gray-alpha-200)] hover:text-foreground group-hover:opacity-100 focus:opacity-100"
-            >
-              <Trash2 className="size-3.5" />
-            </button>
+            <Pencil className="mt-1 size-3.5 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100" />
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** Editar um comentário: o minuto na roda (a sala vai para lá), o nome e a mensagem. */
+function CommentEditor({
+  comment,
+  clock: c,
+  onCancel,
+  onRemove,
+  onSave,
+}: {
+  comment: ChatComment;
+  clock: EditorClock;
+  onCancel: () => void;
+  onRemove: () => void;
+  onSave: (patch: { at: number; author: string; message: string }) => Promise<void>;
+}) {
+  const [at, setAt] = useState(comment.at);
+  const [author, setAuthor] = useState(comment.author);
+  const [message, setMessage] = useState(comment.message);
+  const [busy, setBusy] = useState(false);
+  return (
+    <div data-id={comment.id} className="grid gap-2 bg-[#FAFAFA] px-3 py-3">
+      <div className="grid grid-cols-[104px_minmax(0,1fr)] gap-2">
+        <PickerButton
+          className="h-9 px-2.5"
+          value={<span className="font-mono text-[14px]">{clock(at)}</span>}
+          title="Minuto do comentário"
+          hint="Rode os minutos e os segundos. A sala vai para esse momento."
+        >
+          <MinuteWheel
+            value={at}
+            maxSeconds={c.duration}
+            onChange={(s) => {
+              setAt(s);
+              c.seek(s);
+            }}
+          />
+        </PickerButton>
+        <Input value={author} onChange={(e) => setAuthor(e.target.value.slice(0, 60))} aria-label="Nome" className="h-9" />
+      </div>
+      <Input value={message} onChange={(e) => setMessage(e.target.value.slice(0, 280))} aria-label="Mensagem" />
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onRemove} className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-destructive hover:underline">
+          <Trash2 className="size-3.5" />
+          Apagar
+        </button>
+        <span className="flex-1" />
+        <Button variant="ghost" size="sm" onClick={onCancel}>
+          Cancelar
+        </Button>
+        <Button
+          variant="dark"
+          size="sm"
+          disabled={busy || !message.trim() || !author.trim()}
+          onClick={async () => {
+            setBusy(true);
+            await onSave({ at, author: author.trim(), message: message.trim() });
+            setBusy(false);
+          }}
+        >
+          {busy ? <Loader2 className="animate-spin" /> : null}
+          Guardar
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Os países do chat, um por linha: escolhem-se na lista e tiram-se no X. Não vem nenhum escolhido. */
+function CountryPicker({ value, onChange }: { value: readonly ChatCountryCode[]; onChange: (countries: ChatCountryCode[]) => void }) {
+  const chosen = CHAT_COUNTRIES.filter((x) => value.includes(x.code));
+  const toggle = (code: ChatCountryCode) =>
+    onChange(CHAT_COUNTRIES.map((x) => x.code).filter((x) => (x === code ? !value.includes(x) : value.includes(x))));
+  return (
+    <div className="grid gap-2">
+      {chosen.length ? (
+        <ul className="grid gap-1.5">
+          {chosen.map((x) => (
+            <li key={x.code} className="flex h-12 items-center gap-3 rounded-xl border bg-white pl-3 pr-1.5">
+              <span className="text-[22px] leading-none">{x.flag}</span>
+              <span className="min-w-0 flex-1">
+                <b className="block text-[13.5px] font-semibold">{x.name}</b>
+                <span className="block truncate text-[12px] text-muted-foreground">Português de {x.name}, com nomes de lá</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => toggle(x.code)}
+                aria-label={`Tirar ${x.name}`}
+                className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-chip hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <Note icon={Globe}>Ainda nenhum país. Escolha de onde são as pessoas que escrevem no chat.</Note>
+      )}
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" className="justify-self-start">
+            <Plus />
+            {chosen.length ? "Adicionar país" : "Escolher países"}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-[240px] p-1">
+          {CHAT_COUNTRIES.map((x) => {
+            const on = value.includes(x.code);
+            return (
+              <button
+                key={x.code}
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={on}
+                onClick={() => toggle(x.code)}
+                className="flex h-10 w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium hover:bg-chip"
+              >
+                <span className="text-lg leading-none">{x.flag}</span>
+                <span className="flex-1 text-left">{x.name}</span>
+                {on ? <Check className="size-4" /> : null}
+              </button>
+            );
+          })}
+          <p className="px-2.5 pb-1.5 pt-1 text-[12px] text-muted-foreground">Outros países: em breve.</p>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
