@@ -1,4 +1,5 @@
 import type { WebinarStatus } from "@/lib/data";
+import { LIVE_DEFAULTS, type LiveSettings, type RoomFormat } from "@/lib/room-logic";
 import {
   DEFAULT_PRELIVE_TEMPLATE,
   normalizeAppearance,
@@ -68,6 +69,10 @@ export function emptyEditorForm() {
     webhook_enabled: false,
     host_verified: true,
     room_theme_system: false,
+    // Guardado em chat_settings.room_format (ver roomFormat).
+    room_format: "webinar" as RoomFormat,
+    // Guardado em chat_settings.live (ver liveSettings).
+    live: { ...LIVE_DEFAULTS, links: {}, moments: [] } as LiveSettings,
     entry_card_color: "#141414",
     entry_button_color: "#E8440C",
     offer_utm: true,

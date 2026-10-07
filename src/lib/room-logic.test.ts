@@ -3,6 +3,13 @@ import {
   activeOffer,
   offerDeadlinePassed,
   isGroupLink,
+  roomFormat,
+  liveSettings,
+  followMomentAt,
+  profileHandle,
+  followWebLink,
+  followAppLink,
+  suggestFollowMoments,
   parseExtraOffers,
   buildFormatCurve,
   checkoutLink,
@@ -164,5 +171,78 @@ describe("ofertas por grupo e prazo de cada oferta", () => {
     ]);
     expect(a!.deadline).toBe("2026-10-20");
     expect(b!.deadline).toBeNull();
+  });
+});
+
+describe("formato da sala", () => {
+  it("só é Live quando foi escolhido; o resto (e o que já existia) fica Webinar", () => {
+    expect(roomFormat({ tone: "natural", room_format: "live" })).toBe("live");
+    expect(roomFormat({ room_format: "outra" })).toBe("webinar");
+    expect(roomFormat({})).toBe("webinar");
+    expect(roomFormat(null)).toBe("webinar");
+  });
+});
+
+describe("definições do Live", () => {
+  it("lê o que foi gravado e completa o resto com o valor por omissão", () => {
+    const live = liveSettings({
+      room_format: "live",
+      live: {
+        desk: "vertical",
+        badge: "blue",
+        links: { instagram: " https://www.instagram.com/amadorubenn/ ", youtube: "", x: "y" },
+        moments: [{ start: 130, end: 160 }, { start: 50, end: 40 }, { start: 10, end: 40 }],
+        notify: false,
+        offerColor: "azul",
+      },
+    });
+    expect(live.desk).toBe("vertical");
+    expect(live.badge).toBe("blue");
+    expect(live.links).toEqual({ instagram: "https://www.instagram.com/amadorubenn/" });
+    expect(live.moments).toEqual([{ start: 10, end: 40 }, { start: 130, end: 160 }]);
+    expect(live.notify).toBe(false);
+    expect(live.offerColor).toBe("azul");
+    expect(liveSettings(null)).toMatchObject({ desk: "horizontal", badge: "white", notify: true, offerColor: "laranja" });
+    expect(liveSettings({ live: { offerColor: "rosa" } }).offerColor).toBe("laranja");
+  });
+
+  it("o + Seguir só aparece dentro dos momentos", () => {
+    const m = [{ start: 120, end: 150 }];
+    expect(followMomentAt(m, 119)).toBe(false);
+    expect(followMomentAt(m, 120)).toBe(true);
+    expect(followMomentAt(m, 150)).toBe(false);
+    expect(followMomentAt([], 10)).toBe(false);
+  });
+
+  it("tira o @ do link e no YouTube pede para subscrever", () => {
+    expect(profileHandle("https://www.instagram.com/amadorubenn/")).toBe("@amadorubenn");
+    expect(profileHandle("https://www.tiktok.com/@amadoruben?lang=pt")).toBe("@amadoruben");
+    expect(followWebLink("youtube", "https://www.youtube.com/@amadorubenn")).toBe("https://www.youtube.com/@amadorubenn?sub_confirmation=1");
+    expect(followWebLink("youtube", "https://www.youtube.com/@x?sub_confirmation=1")).toBe("https://www.youtube.com/@x?sub_confirmation=1");
+    expect(followWebLink("instagram", "https://www.instagram.com/x/")).toBe("https://www.instagram.com/x/");
+  });
+
+  it("no Android abre a app no perfil, com o site como plano B; no resto fica o link", () => {
+    const ig = followAppLink("instagram", "https://www.instagram.com/amadorubenn/", "android");
+    expect(ig).toBe(
+      "intent://www.instagram.com/_u/amadorubenn/#Intent;scheme=https;package=com.instagram.android;S.browser_fallback_url=https%3A%2F%2Fwww.instagram.com%2Famadorubenn%2F;end",
+    );
+    expect(followAppLink("tiktok", "https://www.tiktok.com/@x", "android")).toContain("package=com.zhiliaoapp.musically");
+    expect(followAppLink("instagram", "https://www.instagram.com/x/", "ios")).toBe("https://www.instagram.com/x/");
+    expect(followAppLink("instagram", "não é link", "android")).toBe("não é link");
+  });
+
+  it("sugere os minutos em que se pede para seguir e junta os que estão colados", () => {
+    const lines = [
+      { at: 12, text: "Boa noite a todos" },
+      { at: 95, text: "Sigam-me no Instagram para não perderem nada" },
+      { at: 110, text: "e inscrevam-se no canal" },
+      { at: 400, text: "Me segue lá no TikTok" },
+      { at: 500, text: "Vamos continuar a aula" },
+    ];
+    expect(suggestFollowMoments(lines)).toEqual([
+      { start: 95, end: 140 },
+      { start: 400, end: 430 },
+    ]);
   });
 });

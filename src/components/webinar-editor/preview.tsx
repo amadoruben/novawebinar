@@ -13,6 +13,7 @@ import {
   Play,
   Plus,
   RotateCw,
+  SlidersHorizontal,
   Smartphone,
   Video,
   X,
@@ -295,6 +296,76 @@ export function ScreenTabs({ tabs, dark }: { tabs: readonly ScreenTab[]; dark?: 
           {t.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * O formato da sala, por baixo do aparelho, ao lado dos ecrãs: Clássico ou Live. O botão de
+ * afinar abre a etapa Vídeo, onde cada formato se personaliza.
+ */
+export function FormatSwitch<T extends string>({
+  value,
+  options,
+  onChange,
+  onCustomize,
+  dark,
+}: {
+  value: T;
+  options: readonly { id: T; name: string; hint: string }[];
+  onChange: (value: T) => void;
+  onCustomize?: (() => void) | undefined;
+  dark?: boolean | undefined;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Formato da sala"
+      className={cn(
+        "inline-flex max-w-full items-center gap-0.5 rounded-xl p-1",
+        dark ? "bg-[#1F1F1F]" : "bg-white shadow-[0_1px_2px_rgba(0,0,0,.06),0_0_0_1px_rgba(0,0,0,.06)]",
+      )}
+    >
+      <span className={cn("pl-2 pr-1.5 text-[12px] font-medium", dark ? "text-[#A1A1A1]" : "text-muted-foreground")}>Formato</span>
+      {options.map((o) => {
+        const on = o.id === value;
+        return (
+          <button
+            key={o.id}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            title={o.hint}
+            onClick={() => onChange(o.id)}
+            className={cn(
+              "h-8 shrink-0 whitespace-nowrap rounded-lg px-3.5 text-[13px] font-medium transition",
+              on
+                ? dark
+                  ? "bg-[#EDEDED] text-[#0A0A0A]"
+                  : "bg-foreground text-background"
+                : dark
+                  ? "text-[#A1A1A1] hover:text-[#EDEDED]"
+                  : "text-muted-foreground hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground",
+            )}
+          >
+            {o.name}
+          </button>
+        );
+      })}
+      {onCustomize ? (
+        <button
+          type="button"
+          onClick={onCustomize}
+          aria-label="Personalizar o formato"
+          title="Personalizar"
+          className={cn(
+            "grid size-8 shrink-0 place-items-center rounded-lg transition",
+            dark ? "text-[#A1A1A1] hover:text-[#EDEDED]" : "text-muted-foreground hover:bg-[var(--ds-gray-alpha-100)] hover:text-foreground",
+          )}
+        >
+          <SlidersHorizontal className="size-4" />
+        </button>
+      ) : null}
     </div>
   );
 }

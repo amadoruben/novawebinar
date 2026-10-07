@@ -9,6 +9,7 @@ import {
   useWorkspace,
 } from "@/lib/data";
 import { useSimulatedPurchases, useSocialProof } from "@/components/social-proof-editor";
+import { liveSettings, roomFormat } from "@/lib/room-logic";
 
 /**
  * Vista interna da sala, usada pela equipa a partir do estúdio. Não cria
@@ -86,6 +87,8 @@ export function InternalWebinarRoom({
       preliveTemplate={w.prelive_template ?? null}
       preliveAppearance={w.prelive_appearance}
       theme={(webinar as { room_theme?: string }).room_theme === "light" ? "light" : "dark"}
+      format={roomFormat((webinar as { chat_settings?: unknown }).chat_settings)}
+      live={liveSettings((webinar as { chat_settings?: unknown }).chat_settings)}
       viewerName={workspace?.fullName ?? "Equipa"}
       comments={comments}
       audienceMode={audience?.mode ?? "real"}

@@ -10,6 +10,7 @@ import {
   Moon,
   Pause,
   Play,
+  RectangleVertical,
   Upload,
   Video as VideoIcon,
   X,
@@ -25,6 +26,8 @@ import { cn } from "@/lib/utils";
 import { clock } from "@/lib/room-logic";
 import { formatBytes, type VideoUploadProgress } from "@/lib/video-upload";
 import type { Appearance } from "@/components/room/room-parts";
+import { ROOM_FORMATS, type LiveSettings, type RoomFormat } from "@/lib/room-logic";
+import { LiveOptions } from "../live-options";
 import { CountPill, Note, Section, TimeChip } from "../ui";
 
 export type VideoSourceLite = {
@@ -56,7 +59,7 @@ export type VideoUploadApi = {
   cancel: () => void;
 };
 
-/** Vídeo: carregar o vídeo, ver a transcrição e escolher a aparência da sala. */
+/** Vídeo: carregar o vídeo, ver a transcrição e escolher o formato e a aparência da sala. */
 export function StepVideo({
   video,
   library,
@@ -68,6 +71,11 @@ export function StepVideo({
   onAddLink,
   appearance,
   onAppearance,
+  format,
+  onFormat,
+  live,
+  onLive,
+  hostVerified,
 }: {
   video: VideoSourceLite | null;
   library: readonly VideoSourceLite[];
@@ -79,6 +87,12 @@ export function StepVideo({
   onAddLink: (input: { name: string; provider: "hls" | Platform; url: string }) => Promise<boolean>;
   appearance: Appearance;
   onAppearance: (appearance: Appearance) => void;
+  /** Clássico (vídeo deitado, chat ao lado) ou Live (vídeo com o chat por cima). */
+  format: RoomFormat;
+  onFormat: (format: RoomFormat) => void;
+  live: LiveSettings;
+  onLive: (patch: Partial<LiveSettings>) => void;
+  hostVerified: boolean;
 }) {
   const [dialog, setDialog] = useState(false);
   const [full, setFull] = useState(false);
@@ -132,6 +146,43 @@ export function StepVideo({
           </div>
         </section>
       )}
+
+      <Section icon={RectangleVertical} title="Formato da sala">
+        <div className="grid grid-cols-2 gap-2.5" role="radiogroup" aria-label="Formato da sala">
+          {ROOM_FORMATS.map(({ id: value, name: label, hint: sub }) => {
+            const on = format === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => onFormat(value)}
+                className="group grid gap-2 text-left"
+              >
+                <span
+                  className={cn(
+                    "relative block overflow-hidden rounded-xl ring-1 ring-black/10 transition",
+                    on ? "ring-2 ring-foreground ring-offset-2" : "group-hover:ring-black/25",
+                  )}
+                >
+                  {value === "webinar" ? <RoomThumb theme="dark" /> : <LiveThumb />}
+                  {on ? (
+                    <span className="absolute right-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-foreground text-background">
+                      <Check className="size-3" />
+                    </span>
+                  ) : null}
+                </span>
+                <span className="grid leading-tight">
+                  <span className={cn("text-[13px]", on ? "font-semibold" : "font-medium text-muted-foreground")}>{label}</span>
+                  <span className="text-[12px] text-muted-foreground">{sub}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </Section>
+      {format === "live" ? <LiveOptions live={live} onLive={onLive} clock={c} transcript={transcript} hostVerified={hostVerified} /> : null}
 
       {video ? (
         <Section icon={Mic} title="Transcrição" aside={transcript.length ? <CountPill>{transcript.length} frases</CountPill> : null}>
@@ -257,6 +308,23 @@ function RoomThumb({ theme }: { theme: Appearance }) {
     <span className="relative block aspect-[16/10]">
       <span className="absolute inset-0">{half(true)}</span>
       <span className="absolute inset-0 [clip-path:polygon(100%_0,100%_100%,0_100%)]">{half(false)}</span>
+    </span>
+  );
+}
+
+/** O formato Live em miniatura: o vídeo ao alto ao centro, com o selo e o chat por cima. */
+function LiveThumb() {
+  return (
+    <span className="grid aspect-[16/10] place-items-center bg-[#141414] py-1.5">
+      <span className="relative block h-full aspect-[9/16] overflow-hidden rounded-[5px] bg-[linear-gradient(165deg,#6B7280,#2A2F38_70%)]">
+        <i className="absolute left-1 top-1 block h-1.5 w-3 rounded-[2px] bg-[#E5243B]" />
+        <span className="absolute inset-x-1 bottom-1 grid gap-[3px]">
+          {[0.85, 0.6, 0.75].map((w, i) => (
+            <i key={i} className="block h-[3px] rounded-full bg-white/75" style={{ width: `${w * 100}%` }} />
+          ))}
+          <i className="mt-0.5 block h-2 rounded-full bg-white/20 ring-1 ring-white/50" />
+        </span>
+      </span>
     </span>
   );
 }

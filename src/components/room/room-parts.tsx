@@ -1,9 +1,10 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import {
   Captions,
   Check,
   ChevronLeft,
   ChevronRight,
+  Eye,
   Heart,
   Monitor,
   Moon,
@@ -27,7 +28,7 @@ import { cn } from "@/lib/utils";
  * vêm dos tokens da sala (room-*), por isso o tema escuro e o claro servem as duas.
  */
 
-const ROOM_PARTS_CSS = `@keyframes cwRxUp{0%{opacity:0;transform:translate(0,0) scale(.6)}8%{opacity:1;transform:translate(0,-14px) scale(1)}28%{transform:translate(var(--sway),-62px)}50%{transform:translate(calc(var(--sway) * -1),-112px)}72%{opacity:.85;transform:translate(var(--sway),-160px)}100%{opacity:0;transform:translate(0,calc(-1 * var(--h,210px))) scale(.92)}}.cw-rx{animation:cwRxUp 2.4s linear forwards}@keyframes cwDot{50%{opacity:.35}}.cw-dot{animation:cwDot 1.4s ease-in-out infinite}@media (prefers-reduced-motion:reduce){.cw-rx{display:none}.cw-dot{animation:none}}`;
+const ROOM_PARTS_CSS = `@keyframes cwRxUp{0%{opacity:0;transform:translate(0,0) scale(.6)}8%{opacity:1;transform:translate(0,-14px) scale(1)}28%{transform:translate(var(--sway),-62px)}50%{transform:translate(calc(var(--sway) * -1),-112px)}72%{opacity:.85;transform:translate(var(--sway),-160px)}100%{opacity:0;transform:translate(0,calc(-1 * var(--h,210px))) scale(.92)}}.cw-rx{animation:cwRxUp 2.4s linear forwards}@keyframes cwDot{50%{opacity:.35}}.cw-dot{animation:cwDot 1.4s ease-in-out infinite}@keyframes cwPop{0%{transform:scale(1)}40%{transform:scale(1.25)}100%{transform:scale(1)}}.cw-pop{animation:cwPop .3s ease}@media (prefers-reduced-motion:reduce){.cw-rx{display:none}.cw-dot,.cw-pop{animation:none}}`;
 
 export function RoomPartsStyle() {
   return <style>{ROOM_PARTS_CSS}</style>;
@@ -266,7 +267,7 @@ export function CaptionLine({ text, compact }: { text: string | null; compact?: 
 
 /* ---------- Escrever no chat ---------- */
 
-const EMOJIS = ["😀", "😂", "😍", "🥰", "😮", "🤔", "👏", "🙌", "👍", "💪", "🔥", "💯", "❤️", "🎉", "🙏", "✅", "😅", "🤩", "😢", "👀", "💡", "🚀", "⭐", "🇦🇴", "🇧🇷", "🇵🇹"];
+export const EMOJIS = ["😀", "😂", "😍", "🥰", "😮", "🤔", "👏", "🙌", "👍", "💪", "🔥", "💯", "❤️", "🎉", "🙏", "✅", "😅", "🤩", "😢", "👀", "💡", "🚀", "⭐", "🇦🇴", "🇧🇷", "🇵🇹"];
 
 /**
  * A caixa de escrever, como o chat ao vivo do YouTube: o campo com os emojis, o botão de comentar
@@ -282,6 +283,8 @@ export function ChatComposer({
   reactions,
   compact,
   inputProps,
+  onVideo,
+  extra,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -292,13 +295,18 @@ export function ChatComposer({
   reactions?: readonly Reaction[] | undefined;
   compact?: boolean | undefined;
   inputProps?: React.InputHTMLAttributes<HTMLInputElement> | undefined;
+  /** Por cima do vídeo (formato Live): transparente, letra branca. */
+  onVideo?: boolean | undefined;
+  /** Um botão a mais antes do coração (no Live, o Suporte). */
+  extra?: ReactNode;
 }) {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const ready = Boolean(value.trim());
   const round = cn("grid shrink-0 place-items-center rounded-full transition", compact ? "size-10" : "size-11");
+  const glass = "bg-black/30 text-white ring-1 ring-white/35 backdrop-blur-md";
   return (
     <form
-      className="flex items-center gap-2 border-t border-room-line px-3 py-3"
+      className={cn("flex items-center gap-2", !onVideo && "border-t border-room-line px-3 py-3")}
       onSubmit={(event) => {
         event.preventDefault();
         if (ready) onSubmit();
@@ -306,7 +314,8 @@ export function ChatComposer({
     >
       <div
         className={cn(
-          "flex min-w-0 flex-1 items-center rounded-full bg-room-raised pl-4 pr-1 ring-1 ring-room-line focus-within:ring-primary/60",
+          "flex min-w-0 flex-1 items-center rounded-full pl-4 pr-1 ring-1 focus-within:ring-primary/60",
+          onVideo ? "bg-black/30 ring-white/35 backdrop-blur-md" : "bg-room-raised ring-room-line",
           compact ? "h-10" : "h-11",
         )}
       >
@@ -318,7 +327,8 @@ export function ChatComposer({
           enterKeyHint="send"
           maxLength={200}
           className={cn(
-            "min-w-0 flex-1 bg-transparent text-room-text outline-none placeholder:text-room-subtle",
+            "min-w-0 flex-1 bg-transparent outline-none",
+            onVideo ? "text-white placeholder:text-white/75" : "text-room-text placeholder:text-room-subtle",
             compact ? "text-[14px]" : "text-[15px]",
           )}
         />
@@ -328,7 +338,10 @@ export function ChatComposer({
               type="button"
               aria-label="Emojis"
               title="Emojis"
-              className="grid size-9 shrink-0 place-items-center rounded-full text-room-subtle transition hover:text-room-text"
+              className={cn(
+                "grid size-9 shrink-0 place-items-center rounded-full transition",
+                onVideo ? "text-white/80 hover:text-white" : "text-room-subtle hover:text-room-text",
+              )}
             >
               <Smile className="size-5" />
             </button>
@@ -356,16 +369,21 @@ export function ChatComposer({
         disabled={!ready}
         className={cn(
           round,
-          ready ? "bg-primary text-primary-foreground hover:brightness-110" : "bg-room-raised text-room-subtle ring-1 ring-room-line",
+          ready
+            ? "bg-primary text-primary-foreground hover:brightness-110"
+            : onVideo
+              ? cn(glass, "text-white/70")
+              : "bg-room-raised text-room-subtle ring-1 ring-room-line",
         )}
       >
         <SendHorizontal className="size-[18px]" />
       </button>
+      {extra}
       {withReactions && onHeart ? (
         <HeartButton
           onHeart={onHeart}
           reactions={reactions ?? []}
-          className={cn(round, "bg-room-raised text-room-text ring-1 ring-room-line hover:text-[#FF3B5C]")}
+          className={cn(round, onVideo ? glass : "bg-room-raised text-room-text ring-1 ring-room-line", "transition active:scale-90")}
         />
       ) : null}
     </form>
@@ -373,40 +391,66 @@ export function ChatComposer({
 }
 
 /** O coração: as reações sobem a direito por cima dele, com um leve balanço, como no YouTube. */
+const HEART_REDS = ["#FF2E43", "#FF4A5C", "#E8172F"];
+const HEART_PATH =
+  "M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z";
+
+/**
+ * O coração das reações: um contorno; enquanto a pessoa toca enche-se de vermelho (sabe que reagiu)
+ * e sobem corações vermelhos, a direito e com um leve balanço. Um vermelho só das reações.
+ */
 export function HeartButton({
   onHeart,
   reactions,
   className,
+  iconClassName,
 }: {
   onHeart: () => void;
   reactions: readonly Reaction[];
   className: string;
+  iconClassName?: string | undefined;
 }) {
+  const [pressed, setPressed] = useState(0);
+  useEffect(() => {
+    if (!pressed) return;
+    const timer = window.setTimeout(() => setPressed(0), 650);
+    return () => window.clearTimeout(timer);
+  }, [pressed]);
   return (
     <span className="relative shrink-0">
       {/* Sem máscara nem caixa: no Safari uma máscara vazia desenhava um rectângulo preto. */}
       {reactions.length > 0 ? (
-      <span
-        aria-hidden
-        className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 h-[230px] w-12 -translate-x-1/2 [--h:210px]"
-      >
-        {reactions.map((r) => {
-          const size = r.size ?? 24;
-          const sway = Math.max(-7, Math.min(7, Math.round(r.offset / 5))) || 4;
-          return (
-            <span
-              key={r.id}
-              className="cw-rx absolute bottom-0 leading-none opacity-0"
-              style={{ left: `calc(50% - ${size / 2}px)`, fontSize: size, "--sway": `${sway}px` } as CSSProperties}
-            >
-              ❤️
-            </span>
-          );
-        })}
-      </span>
+        <span aria-hidden className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 h-[230px] w-12 -translate-x-1/2 [--h:210px]">
+          {reactions.map((r, i) => {
+            const size = Math.max(26, Math.min(34, r.size ?? 30));
+            const sway = Math.max(-7, Math.min(7, Math.round(r.offset / 5))) || 4;
+            return (
+              <svg
+                key={r.id}
+                viewBox="0 0 24 24"
+                className="cw-rx absolute bottom-0 opacity-0 drop-shadow-[0_2px_4px_rgba(0,0,0,.35)]"
+                style={{ left: `calc(50% - ${size / 2}px)`, width: size, height: size, "--sway": `${sway}px` } as CSSProperties}
+              >
+                <path d={HEART_PATH} fill={HEART_REDS[i % HEART_REDS.length]} />
+              </svg>
+            );
+          })}
+        </span>
       ) : null}
-      <button type="button" onClick={onHeart} aria-label="Reagir com um coração" title="Reagir" className={className}>
-        <Heart className="size-5" />
+      <button
+        type="button"
+        onClick={() => {
+          setPressed((n) => n + 1);
+          onHeart();
+        }}
+        aria-label="Enviar um coração"
+        title="Reagir"
+        className={className}
+      >
+        <Heart
+          key={pressed ? "on" : "off"}
+          className={cn("size-5", iconClassName, pressed ? "cw-pop fill-[#FF2E43] text-[#FF2E43]" : "")}
+        />
       </button>
     </span>
   );
@@ -420,6 +464,7 @@ export function ChatLine({
   tone = "people",
   badge,
   big,
+  onVideo,
 }: {
   author: string;
   text: string;
@@ -428,6 +473,8 @@ export function ChatLine({
   badge?: string | undefined;
   /** Letra maior (sala no computador). */
   big?: boolean | undefined;
+  /** Por cima do vídeo (formato Live): letra branca com sombra, como no Instagram. */
+  onVideo?: boolean | undefined;
 }) {
   const initials =
     author
@@ -445,19 +492,41 @@ export function ChatLine({
           className={cn(
             "grid shrink-0 place-items-center rounded-full font-bold",
             big ? "size-8 text-[11.5px]" : "size-7 text-[10.5px]",
-            tone === "agent" ? "bg-primary text-white" : "bg-room-raised text-room-text ring-1 ring-room-line",
+            tone === "agent"
+              ? "bg-primary text-white"
+              : onVideo
+                ? "bg-white/20 text-white ring-1 ring-white/30 backdrop-blur"
+                : "bg-room-raised text-room-text ring-1 ring-room-line",
           )}
         >
           {tone === "mine" ? "EU" : initials}
         </span>
       )}
-      <p className={cn("min-w-0 break-words leading-[1.45] text-room-text", big ? "pt-0.5 text-[16px]" : "pt-0.5 text-[14.5px]")}>
-        <span className={cn("mr-2 font-semibold", tone === "agent" ? "text-primary" : "text-room-subtle")}>
+      <p
+        className={cn(
+          "min-w-0 break-words leading-[1.45]",
+          onVideo ? "text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.6)]" : "text-room-text",
+          big ? "pt-0.5 text-[16px]" : onVideo ? "pt-0.5 text-[15px]" : "pt-0.5 text-[14.5px]",
+        )}
+      >
+        <span
+          className={cn(
+            "mr-2 font-semibold",
+            tone === "agent" ? "text-primary" : onVideo ? "text-white/80" : "text-room-subtle",
+          )}
+        >
           {author}
           {tone === "agent" ? <Zap className="ml-1 inline size-3 align-[-1px]" /> : null}
         </span>
         {badge ? (
-          <span className="mr-2 rounded bg-room-raised px-1.5 py-px align-[1px] text-[11px] font-medium text-room-subtle">{badge}</span>
+          <span
+            className={cn(
+              "mr-2 rounded px-1.5 py-px align-[1px] text-[11px] font-medium [text-shadow:none]",
+              onVideo ? "bg-white/20 text-white" : "bg-room-raised text-room-subtle",
+            )}
+          >
+            {badge}
+          </span>
         ) : null}
         {text}
       </p>
@@ -613,12 +682,21 @@ export function OfferCard({
 }
 
 /** A linha de uma compra no chat, na cor escolhida nas Vendas. */
-export function SaleLine({ text, color }: { text: string; color?: string | null | undefined }) {
+export function SaleLine({
+  text,
+  color,
+  onVideo,
+}: {
+  text: string;
+  color?: string | null | undefined;
+  /** Por cima do vídeo: a cor cheia e a letra branca. */
+  onVideo?: boolean | undefined;
+}) {
   const c = saleColor(color);
   return (
     <div
-      className="inline-flex items-center gap-2 self-start rounded-[10px] px-3 py-2 text-[14px] font-semibold"
-      style={{ background: c.soft, color: c.ink }}
+      className="inline-flex items-center gap-2 self-start justify-self-start rounded-[10px] px-3 py-2 text-[14px] font-semibold"
+      style={onVideo ? { background: c.solid, color: "#fff" } : { background: c.soft, color: c.ink }}
     >
       <ShoppingCart className="size-4 shrink-0" />
       <span className="min-w-0">{text}</span>
@@ -630,3 +708,38 @@ export function SaleLine({ text, color }: { text: string; color?: string | null 
 export function PulseDot() {
   return <span aria-hidden className="cw-dot size-[7px] rounded-full bg-[#E8440C]" />;
 }
+
+/* ---------- Formato Live (vídeo ao alto, chat por cima) ---------- */
+
+/**
+ * O fundo da sala Live à volta do vídeo, como no Instagram no computador: o próprio vídeo,
+ * desfocado, enche os lados (sem faixas pretas). Desenha quatro imagens por segundo num canvas
+ * pequeno; com Vimeo ou YouTube embebidos não há imagem a que chegar e fica o fundo da sala.
+ */
+export function AmbientVideo({ media, className }: { media: RefObject<HTMLVideoElement | null>; className?: string | undefined }) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const video = media.current;
+      const context = canvas.current?.getContext("2d");
+      if (!video || !context || video.readyState < 2 || !video.videoWidth) return;
+      context.drawImage(video, 0, 0, context.canvas.width, context.canvas.height);
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [media]);
+  return (
+    <canvas
+      ref={canvas}
+      width={24}
+      height={24}
+      aria-hidden
+      className={cn("pointer-events-none absolute inset-0 size-full scale-125 opacity-60 blur-3xl", className)}
+    />
+  );
+}
+
+/** O vídeo ao alto a cobrir o palco do Live (as unidades cq medem o palco), sem faixas pretas. */
+export const LIVE_COVER =
+  "absolute left-1/2 top-1/2 h-[max(100cqh,177.78cqw)] w-[max(100cqw,56.25cqh)] -translate-x-1/2 -translate-y-1/2";
+/** Num ecrã deitado o vídeo ao alto fica inteiro, ao centro, com o fundo desfocado à volta. */
+export const LIVE_CONTAIN = "absolute left-1/2 top-1/2 h-full w-[56.25cqh] -translate-x-1/2 -translate-y-1/2";

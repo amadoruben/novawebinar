@@ -633,6 +633,8 @@ export function PublicRoom({
       sales={{ where: webinar.sales_where === "chat" || webinar.sales_where === "video" ? webinar.sales_where : "both", real: webinar.sales_show_real }}
       audienceFormat={audience.format}
       hostVerified={webinar.host_verified}
+      format={webinar.room_format}
+      live={webinar.live}
       onJoinGroup={sendGroupJoin}
       prefill={{
         name: values["name"] ?? "",

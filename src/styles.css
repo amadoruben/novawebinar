@@ -6,6 +6,9 @@
 @import "@fontsource-variable/plus-jakarta-sans";
 @import "@fontsource-variable/inter";
 @import "@fontsource/ibm-plex-mono/500.css";
+/* O «Ao vivo» da sala Live: letra estreita, para ocupar pouco. */
+@import "@fontsource/barlow-condensed/600.css";
+@import "@fontsource/barlow-condensed/700.css";
 
 /*
  * Design system Convertewebinar, com a estrutura do Geist (Vercel) desde 5/10:

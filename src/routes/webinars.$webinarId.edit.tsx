@@ -73,6 +73,9 @@ import {
   inferAudienceFormat,
   offerDeadlinePassed,
   parseExtraOffers,
+  liveSettings,
+  roomFormat,
+  ROOM_FORMATS,
   type AudienceContext,
   type AudienceFormat,
   type OfferSlot,
@@ -113,6 +116,7 @@ import {
   PlayChip,
   RotateButton,
   ScreenTabs,
+  FormatSwitch,
   WaitingPreview,
   WhatsAppPreview,
   type Device,
@@ -289,6 +293,8 @@ function EditWebinar() {
       webhook_enabled: webinar.webhook_enabled ?? false,
       host_verified: webinar.host_verified,
       room_theme_system: webinar.room_theme_system,
+      room_format: roomFormat(webinar.chat_settings),
+      live: liveSettings(webinar.chat_settings),
       entry_card_color: webinar.entry_card_color,
       entry_button_color: webinar.entry_button_color,
       offer_utm: webinar.offer_utm,
@@ -792,7 +798,12 @@ function EditWebinar() {
           registration_progress_value: Math.min(100, Math.max(0, Number(form.registration_progress_value) || 0)),
           entry_card_color: form.entry_card_color,
           entry_button_color: form.entry_button_color,
-          chat_settings: chatRules as unknown as Json,
+          // As regras do chat e o formato da sala (ao lado ou por cima do vídeo) ficam juntos.
+          chat_settings: {
+            ...chatRules,
+            room_format: form.room_format,
+            live: { ...form.live, links: Object.fromEntries(Object.entries(form.live.links).map(([k, v]) => [k, (v ?? "").trim()]).filter(([, v]) => v)) },
+          } as unknown as Json,
           share_title: form.share_title.trim(),
           share_description: form.share_description.trim(),
           share_image_url: form.share_image_url.trim() || null,
@@ -1272,6 +1283,8 @@ function EditWebinar() {
   const room = (
     <RoomPreview
       device={screenDevice === "phone" ? (rotated ? "phone-landscape" : "phone") : "desktop"}
+      live={form.room_format === "live"}
+      liveSettings={form.live}
       theme={previewTheme}
       appearance={previewAppearance}
       onAppearance={setPreviewAppearance}
@@ -1380,6 +1393,17 @@ function EditWebinar() {
             onClick: () => setStep(target),
           }))
         : [];
+  // O formato da sala escolhe-se por baixo do aparelho, ao lado dos ecrãs.
+  const formatSwitch = (dark?: boolean) =>
+    screen === "room" ? (
+      <FormatSwitch
+        dark={dark}
+        value={form.room_format}
+        options={ROOM_FORMATS}
+        onChange={(room_format) => set({ room_format })}
+        onCustomize={step !== "video" ? () => setStep("video") : undefined}
+      />
+    ) : null;
   const play =
     screen === "room" && duration > 0 && !needsVideo ? (
       <PlayChip t={t} duration={duration} playing={playing} onToggle={() => setPlaying((p) => !p)} />
@@ -1553,6 +1577,11 @@ function EditWebinar() {
                     onAppearance={(a) =>
                       set(a === "system" ? { room_theme_system: true } : { room_theme_system: false, room_theme: a })
                     }
+                    format={form.room_format}
+                    onFormat={(room_format) => set({ room_format })}
+                    live={form.live}
+                    onLive={(patch) => setForm((prev) => ({ ...prev, live: { ...prev.live, ...patch } }))}
+                    hostVerified={form.host_verified}
                   />
                 ) : step === "chat" ? (
                   <StepChat
@@ -1729,10 +1758,11 @@ function EditWebinar() {
                 </DeviceStage>
               </div>
               {/* Os ecrãs ficam em baixo, como no ManyChat. */}
-              {tabs.length || play ? (
+              {tabs.length || play || screen === "room" ? (
                 <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 px-3 pb-3.5 pt-1">
                   {play}
                   {tabs.length ? <ScreenTabs tabs={tabs} /> : null}
+                  {formatSwitch()}
                 </div>
               ) : null}
             </section>
@@ -1752,6 +1782,7 @@ function EditWebinar() {
                 <PlayChip t={t} duration={duration} playing={playing} onToggle={() => setPlaying((p) => !p)} dark />
               ) : null}
               {tabs.length ? <ScreenTabs tabs={tabs} dark /> : null}
+              {formatSwitch(true)}
             </>
           }
         >

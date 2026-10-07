@@ -1,13 +1,48 @@
-import { useEffect, useRef, useState } from "react";
-import { Eye, Headset, MessagesSquare, Pin, Play, ShoppingCart, Zap } from "lucide-react";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { Eye, Headset, MessagesSquare, Pin, Play, ShoppingCart, X, Zap } from "lucide-react";
 import { VideoPlayer } from "@/components/video-player";
 import { cn } from "@/lib/utils";
-import { activeOffer, clock, isGroupLink, offerCountdownLeft, type OfferSlot } from "@/lib/room-logic";
+import {
+  activeOffer,
+  clock,
+  FOLLOW_NETWORKS,
+  followMomentAt,
+  followWebLink,
+  isGroupLink,
+  LIVE_DEFAULTS,
+  offerCountdownLeft,
+  profileHandle,
+  type FollowNetwork,
+  type LiveSettings,
+  type OfferSlot,
+} from "@/lib/room-logic";
+import {
+  LIVE_SCRIM,
+  LiveBadge,
+  LiveComposer,
+  LiveFeed,
+  LiveFollowSheet,
+  LiveOfferCard,
+  LiveOfferSheet,
+  LiveOfferSlim,
+  LivePanelHead,
+  LiveStyle,
+  LiveSupportSheet,
+  LiveTopBar,
+  LiveViewers,
+  liveOfferVars,
+  type LiveFeedItem,
+  type LiveOffer,
+  type LiveSupportMessage,
+} from "@/components/room/live-parts";
 import { ROOM_FONT } from "@/components/room/entry-screen";
 import {
+  AmbientVideo,
   CaptionLine,
   ChatComposer,
   ChatLine,
+  LIVE_CONTAIN,
+  LIVE_COVER,
   OfferCard,
   PulseDot,
   RoomPartsStyle,
@@ -69,20 +104,19 @@ export type RoomPreviewProps = {
   reactions: readonly Reaction[];
   onHeart: () => void;
   onBuy?: (() => void) | undefined;
+  /** Formato Live: o vídeo com o chat por cima no telemóvel, e o chat num painel ao lado no computador. */
+  live?: boolean | undefined;
+  liveSettings?: LiveSettings | undefined;
 };
 
-export function RoomPreview(props: RoomPreviewProps) {
-  const phone = props.device !== "desktop";
-  const landscape = props.device === "phone-landscape";
-  const hl = (key: string) =>
-    props.highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
+/** O que a sala mostra no segundo t: a oferta aberta, a compra a aparecer e a frase dita. */
+function roomMoment(props: RoomPreviewProps) {
   const open = activeOffer(props.offers, props.t);
   // O vídeo acabou, mas a oferta fecha depois: a sala fica aberta para compras.
   const afterVideo = props.duration > 0 && props.t >= props.duration - 0.5 && open !== null && (open.end ?? 0) > props.duration;
   // No separador Oferta do editor, mostra-se a primeira oferta mesmo antes de abrir.
   const shown = open ?? (props.forceOffer ? props.offers[0] ?? null : null);
-  const offerTab = shown !== null;
-  const tab: RoomTab = props.tab === "offer" && !offerTab ? "chat" : props.tab;
+  const tab: RoomTab = props.tab === "offer" && !shown ? "chat" : props.tab;
   const lastSale =
     props.salesWhere === "chat" ? undefined : [...props.sales].reverse().find((s) => s.at <= props.t && props.t - s.at < 8);
   let said: string | null = null;
@@ -90,6 +124,32 @@ export function RoomPreview(props: RoomPreviewProps) {
     if (line.at > props.t) break;
     said = props.t - line.at < 7 ? line.text : null;
   }
+  return { open, afterVideo, shown, tab, lastSale, said };
+}
+
+/** As últimas mensagens do chat no segundo t: comentários, compras e o que se escreveu. */
+function chatItemsAt(props: Pick<RoomPreviewProps, "comments" | "sales" | "salesWhere" | "mine" | "t">, limit: number) {
+  return [
+    ...props.comments.filter((c) => c.at <= props.t).map((c) => ({ key: c.id, at: c.at, kind: "msg" as const, c })),
+    ...(props.salesWhere === "video" ? [] : props.sales)
+      .filter((s) => s.at <= props.t)
+      .map((s) => ({ key: `s-${s.id}`, at: s.at, kind: "sale" as const, s })),
+    ...props.mine
+      .map((m, i) => ({ m, i }))
+      .filter(({ m }) => m.tab === "chat" && m.at <= props.t + 1)
+      .map(({ m, i }) => ({ key: `m-${i}`, at: m.at, kind: "mine" as const, m })),
+  ]
+    .sort((a, b) => a.at - b.at)
+    .slice(-limit);
+}
+
+export function RoomPreview(props: RoomPreviewProps) {
+  if (props.live) return <LivePreview {...props} />;
+  const phone = props.device !== "desktop";
+  const landscape = props.device === "phone-landscape";
+  const hl = (key: string) =>
+    props.highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
+  const { open, afterVideo, shown, tab, lastSale, said } = roomMoment(props);
 
   const videoCard = (
     <div
@@ -111,26 +171,11 @@ export function RoomPreview(props: RoomPreviewProps) {
           </p>
         </div>
       )}
-      <div className={cn("absolute flex", phone ? "left-2.5 top-2.5 gap-1" : "left-3.5 top-3.5 gap-1.5")}>
-        <span
-          className={cn(
-            "inline-flex items-center rounded-md bg-[#E5243B] font-bold uppercase tracking-[0.04em] text-white",
-            phone ? "h-6 gap-1.5 px-2 text-[11px]" : "h-[30px] gap-[7px] px-3 text-[13px]",
-          )}
-        >
-          <i className="cw-dot size-2 rounded-full bg-white" />
-          Ao vivo
-        </span>
+      <div className={cn("absolute z-[1] flex items-center gap-[5px]", phone ? "left-2.5 top-2.5" : "left-[18px] top-[18px]")}>
+        <LiveBadge />
         {props.viewers !== null ? (
-          <span
-            className={cn(
-              "inline-flex items-center rounded-md bg-black/70 font-medium tabular-nums text-white",
-              phone ? "h-6 gap-1.5 px-2 text-[11px]" : "h-[30px] gap-[7px] px-3 text-sm",
-              hl("viewers"),
-            )}
-          >
-            <Eye className={phone ? "size-3" : "size-4"} />
-            {props.viewers.toLocaleString("pt-PT")}
+          <span className={hl("viewers")}>
+            <LiveViewers count={props.viewers} />
           </span>
         ) : null}
       </div>
@@ -212,6 +257,7 @@ export function RoomPreview(props: RoomPreviewProps) {
     return (
       <div className={roomClass} style={{ fontFamily: ROOM_FONT }}>
         <RoomPartsStyle />
+        <LiveStyle />
         <div className="aspect-video h-full">{videoCard}</div>
       </div>
     );
@@ -220,6 +266,7 @@ export function RoomPreview(props: RoomPreviewProps) {
   return (
     <div className={roomClass} style={{ fontFamily: ROOM_FONT }}>
       <RoomPartsStyle />
+      <LiveStyle />
       {phone ? (
         <>
           <div className="h-[54px] shrink-0 bg-black" />
@@ -239,6 +286,289 @@ export function RoomPreview(props: RoomPreviewProps) {
   );
 }
 
+/**
+ * A sala em formato Live, com as mesmas peças da sala pública: no telemóvel o vídeo enche o ecrã e
+ * o chat fica por cima; no computador o vídeo (16:9 ou 9:16) tem o chat num painel ao lado.
+ */
+function LivePreview(props: RoomPreviewProps) {
+  const media = useRef<HTMLVideoElement>(null);
+  const [text, setText] = useState("");
+  const [offerMin, setOfferMin] = useState(false);
+  const [offerOpen, setOfferOpen] = useState(false);
+  const [followOpen, setFollowOpen] = useState(false);
+  const [tapped, setTapped] = useState<Partial<Record<FollowNetwork, boolean>>>({});
+  const live = props.liveSettings ?? LIVE_DEFAULTS;
+  const phone = props.device !== "desktop";
+  const landscape = props.device === "phone-landscape";
+  const portrait = phone && !landscape;
+  const horizontal = live.desk !== "vertical";
+  const hl = (key: string) =>
+    props.highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
+  const { open, afterVideo, shown, lastSale, said } = roomMoment(props);
+  const supportOpen = props.tab === "support";
+  useEffect(() => {
+    setOfferMin(false);
+    setOfferOpen(false);
+  }, [shown?.id]);
+
+  const countdownLeft = shown ? offerCountdownLeft(shown.countdown, shown.start, props.t) : 0;
+  const offer: LiveOffer | null = shown
+    ? {
+        product: shown.product,
+        priceFrom: shown.priceFrom,
+        priceNow: shown.priceNow,
+        button: shown.button || "Quero minha vaga",
+        countdown: shown.countdown > 0 ? countdownLeft : null,
+        closed: shown.id === "main" && props.offerClosed,
+      }
+    : null;
+  const cardOpen = Boolean(offer) && !offerMin && !offerOpen;
+
+  // As redes de quem apresenta e o + Seguir, só nos momentos escolhidos e fora da oferta.
+  const networks = FOLLOW_NETWORKS.filter((n) => live.links[n.id]).map((n) => {
+    const web = followWebLink(n.id, live.links[n.id] ?? "");
+    return { id: n.id, name: n.name, handle: profileHandle(web), href: web, done: Boolean(tapped[n.id]) };
+  });
+  const followLabel = networks.length === 1 && networks[0]?.id === "youtube" ? "Subscrever" : "Seguir";
+  const follow = networks.length > 0 && !open && followMomentAt(live.moments, props.t) ? { label: followLabel, onClick: () => setFollowOpen(true) } : null;
+  const openFollow = networks.length ? () => setFollowOpen(true) : undefined;
+  const host = { name: props.host.name, avatarUrl: props.host.avatarUrl, verified: props.host.verified };
+  const teamName = props.host.name ? `Equipa de ${props.host.name}` : "Equipa";
+
+  const feed: LiveFeedItem[] = chatItemsAt(props, 12).map((item) =>
+    item.kind === "sale"
+      ? { key: item.key, kind: "sale", text: `${item.s.buyer} comprou ${item.s.product}`, color: props.saleColor }
+      : item.kind === "mine"
+        ? { key: item.key, kind: "mine", text: item.m.text }
+        : { key: item.key, kind: "msg", author: item.c.author, text: item.c.message },
+  );
+  // No editor, o Suporte mostra um exemplo: a pergunta de uma pessoa e a resposta do Agente.
+  const thread: LiveSupportMessage[] = [
+    { key: "q", text: "Qual é o preço da vaga?", fromTeam: false },
+    ...(props.agent.on
+      ? [
+          {
+            key: "a",
+            fromTeam: true,
+            text: shown?.priceNow
+              ? `A vaga está por ${shown.priceNow}${shown.priceFrom ? ` em vez de ${shown.priceFrom}` : ""}, enquanto a oferta estiver aberta.`
+              : "Os valores aparecem na oferta quando ela abrir.",
+          },
+        ]
+      : []),
+    ...props.mine.filter((m) => m.tab === "support").map((m, i) => ({ key: `m${i}`, text: m.text, fromTeam: false })),
+  ];
+
+  const lower = (
+    <>
+      <LiveFeed
+        items={feed}
+        onNotice={() => props.onTab("support")}
+        className={!phone ? "min-h-0 flex-1 pr-0" : landscape ? "max-h-[120px]" : cardOpen ? "max-h-[150px]" : "max-h-[250px]"}
+      />
+      {offer && cardOpen ? (
+        <div className={hl("pitch")}>
+          <LiveOfferCard offer={offer} onBuy={() => props.onBuy?.()} onMinimize={() => setOfferMin(true)} />
+        </div>
+      ) : null}
+      {offer && !cardOpen && !offerOpen ? <LiveOfferSlim offer={offer} onOpen={() => setOfferOpen(true)} /> : null}
+      <LiveComposer
+        value={text}
+        onChange={setText}
+        onSubmit={() => {
+          props.onSend(text.trim(), "chat");
+          setText("");
+        }}
+        bag={offer ? { blink: !cardOpen && !offerOpen, onClick: () => setOfferOpen(true) } : null}
+        support={{ unread: props.agent.on && !supportOpen ? 1 : 0, open: supportOpen, onClick: () => props.onTab(supportOpen ? "chat" : "support") }}
+        onHeart={props.onHeart}
+        reactions={props.reactions}
+      />
+    </>
+  );
+
+  const sheets = (
+    <>
+      {supportOpen ? <LiveSupportSheet thread={thread} teamName={teamName} onClose={() => props.onTab("chat")} /> : null}
+      {offerOpen && shown ? (
+        <LiveOfferSheet
+          countdown={offer?.countdown ?? null}
+          onClose={() => setOfferOpen(false)}
+          onSupport={() => {
+            setOfferOpen(false);
+            props.onTab("support");
+          }}
+        >
+          <OfferCard
+            productName={shown.product}
+            imageUrl={shown.id === "main" ? props.offerImageUrl : undefined}
+            priceFrom={shown.priceFrom}
+            priceNow={shown.priceNow}
+            buttonText={shown.button || "Quero minha vaga"}
+            onBuy={props.onBuy}
+            countdownSeconds={countdownLeft}
+            showCountdown={shown.countdown > 0}
+            closed={shown.id === "main" && props.offerClosed}
+            group={isGroupLink(shown.url)}
+            compact
+          />
+        </LiveOfferSheet>
+      ) : null}
+      {followOpen ? (
+        <LiveFollowSheet
+          host={host}
+          badge={live.badge}
+          networks={networks}
+          note={phone ? "Cada rede abre diretamente na app. A aula continua aqui." : "Cada rede abre numa janela pequena ao lado. A aula continua aqui."}
+          onClose={() => setFollowOpen(false)}
+          onTap={(id) => setTapped((prev) => ({ ...prev, [id]: true }))}
+        />
+      ) : null}
+    </>
+  );
+
+  // O vídeo ao alto cobre o palco; o deitado enche o palco 16:9 ou, no telemóvel ao alto, fica inteiro acima do chat.
+  const videoBox = !horizontal
+    ? landscape
+      ? LIVE_CONTAIN
+      : LIVE_COVER
+    : portrait
+      ? "absolute inset-x-0 top-[40%] aspect-video w-full -translate-y-1/2"
+      : "absolute inset-0";
+  const ambient = (portrait && horizontal) || (landscape && !horizontal);
+  const video = (
+    <>
+      {ambient ? <AmbientVideo media={media} /> : null}
+      {props.video.url ? (
+        <div className={videoBox}>
+          <PreviewPlayer url={props.video.url} provider={props.video.provider} t={props.t} playing={props.playing} volume={props.volume} mediaRef={media} />
+        </div>
+      ) : (
+        <div className="absolute inset-0 grid content-center gap-2 bg-[radial-gradient(120%_90%_at_85%_10%,rgba(232,68,12,.25),transparent_55%),linear-gradient(160deg,#22262e,#111316)] px-[10%] text-white">
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#F28E63]">Sem vídeo</p>
+          <p className="text-[22px] font-extrabold leading-[1.1] tracking-tight">Escolha o vídeo na etapa Vídeo</p>
+        </div>
+      )}
+      <button type="button" onClick={props.onTogglePlay} aria-label={props.playing ? "Pausar" : "Tocar"} className="absolute inset-0">
+        {!props.playing && props.video.url ? (
+          <span className="absolute left-1/2 top-[40%] grid size-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/55 backdrop-blur">
+            <Play className="size-6 fill-white text-white" />
+          </span>
+        ) : null}
+      </button>
+      {props.captionsOn ? (
+        <div className={cn("pointer-events-none absolute inset-x-0 top-0", phone ? "h-[55%]" : "h-full")}>
+          <CaptionLine text={said} compact />
+        </div>
+      ) : null}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[120px] bg-[linear-gradient(180deg,rgba(0,0,0,.24),rgba(0,0,0,.07)_55%,transparent)]" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[42%]" style={{ background: LIVE_SCRIM }} />
+    </>
+  );
+  const settings = (
+    <VideoSettings
+      compact
+      volume={props.volume}
+      onVolume={props.onVolume}
+      captions={props.captionsOn}
+      onCaptions={props.onCaptions}
+      hasCaptions={props.speech.length > 0}
+      appearance={props.appearance}
+      onAppearance={props.onAppearance}
+    />
+  );
+  const saleToast = lastSale ? (
+    <div
+      className={cn(
+        "absolute left-3 z-20 flex items-center gap-2 rounded-[14px] py-1.5 pl-1.5 pr-2.5 text-white shadow-[0_12px_30px_rgba(0,0,0,.4)]",
+        portrait ? "top-[104px]" : "top-[56px]",
+      )}
+      style={{ background: saleColor(props.saleColor).solid }}
+    >
+      <span className="grid size-[26px] place-items-center rounded-full bg-white/25">
+        <ShoppingCart className="size-3" />
+      </span>
+      <span>
+        <b className="block text-xs font-bold">
+          {lastSale.buyer} comprou {lastSale.product}
+        </b>
+        <small className="text-[10.5px] text-white/80">agora mesmo</small>
+      </span>
+    </div>
+  ) : null;
+  const ended = afterVideo ? (
+    <div className="absolute inset-0 z-[5] grid place-items-center bg-black/90 px-6 text-center text-white">
+      <div className="grid justify-items-center gap-1.5">
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#F28E63]">A aula terminou</p>
+        <p className="text-[19px] font-extrabold leading-tight">As inscrições continuam abertas</p>
+        <p className="text-[11.5px] text-white/75">Mais {Math.round(((open?.end ?? props.duration) - props.duration) / 60)} min. A oferta está aqui em baixo.</p>
+      </div>
+    </div>
+  ) : null;
+  const style = { fontFamily: ROOM_FONT, ...liveOfferVars(live.offerColor) };
+
+  if (phone) {
+    return (
+      <div className={cn("room-ambient text-white", landscape ? "h-[393px] w-[852px]" : "h-[852px] w-[393px]")} style={style}>
+        <RoomPartsStyle />
+        <LiveStyle />
+        <div className="relative size-full overflow-hidden bg-black [container-type:size]">
+          {video}
+          <div className={cn("absolute inset-x-3 z-20", portrait ? "top-[54px]" : "top-3")}>
+            <LiveTopBar
+              host={host}
+              badge={live.badge}
+              follow={follow}
+              onHost={openFollow}
+              status={{ label: "Ao vivo", tone: "live" }}
+              viewers={props.viewers}
+              extra={settings}
+            />
+          </div>
+          {saleToast}
+          {ended}
+          <div className={cn("absolute z-20 flex flex-col", portrait ? "inset-x-3.5 bottom-[26px]" : "bottom-3 left-3.5 w-[400px]")}>{lower}</div>
+          {sheets}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="room-ambient relative flex h-[720px] w-[1280px] items-center justify-center overflow-hidden bg-[#0B0B0B] text-white"
+      style={style}
+    >
+      <RoomPartsStyle />
+      <LiveStyle />
+      <AmbientVideo media={media} />
+      <div className="pointer-events-none absolute inset-0 bg-[rgba(10,10,10,.35)]" />
+      <div
+        className="relative flex overflow-hidden rounded-[20px] shadow-[0_40px_100px_-30px_rgba(0,0,0,.9)] ring-1 ring-white/[0.12]"
+        style={{ height: horizontal ? 464 : 672 }}
+      >
+        <section className={cn("relative h-full shrink-0 overflow-hidden bg-black [container-type:size]", horizontal ? "w-[824px]" : "w-[378px]")}>
+          {video}
+          <div className={cn("absolute left-[18px] top-[19px] z-20 flex items-center gap-[5px]", hl("viewers"))}>
+            <LiveBadge />
+            {props.viewers !== null ? <LiveViewers count={props.viewers} /> : null}
+          </div>
+          <div className="absolute bottom-3 right-3 z-20">{settings}</div>
+          {saleToast}
+          {ended}
+        </section>
+        <aside className={cn("relative flex h-full shrink-0 flex-col border-l border-white/[0.08] bg-[rgba(22,22,22,.94)]", horizontal ? "w-[400px]" : "w-[420px]")}>
+          <div className={hl("title")}>
+            <LivePanelHead title={props.title} host={host} badge={live.badge} follow={follow} onHost={openFollow} />
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">{lower}</div>
+          {sheets}
+        </aside>
+      </div>
+    </div>
+  );
+}
+
 function Panel({
   phone,
   tab,
@@ -246,6 +576,7 @@ function Panel({
   open,
   hl,
   afterVideo,
+  sheet,
   ...props
 }: RoomPreviewProps & {
   phone: boolean;
@@ -254,26 +585,17 @@ function Panel({
   open: OfferSlot | null;
   hl: (k: string) => string;
   afterVideo: boolean;
+  /** Dentro da folha do Live (telemóvel): sem o separador Chat. */
+  sheet?: boolean | undefined;
 }) {
   const [text, setText] = useState("");
   const tabs: [RoomTab, string, typeof MessagesSquare][] = [
-    ["chat", "Chat", MessagesSquare],
+    // No Live do telemóvel o chat já está por cima do vídeo: a folha só tem o Suporte e a Oferta.
+    ...(sheet ? [] : ([["chat", "Chat", MessagesSquare]] as [RoomTab, string, typeof MessagesSquare][])),
     ["support", "Suporte", Headset],
     ...(shown ? ([["offer", "Oferta", ShoppingCart]] as [RoomTab, string, typeof MessagesSquare][]) : []),
   ];
-  const visible = props.comments.filter((c) => c.at <= props.t);
-  const chatItems = [
-    ...visible.map((c) => ({ key: c.id, at: c.at, kind: "msg" as const, c })),
-    ...(props.salesWhere === "video" ? [] : props.sales)
-      .filter((s) => s.at <= props.t)
-      .map((s) => ({ key: `s-${s.id}`, at: s.at, kind: "sale" as const, s })),
-    ...props.mine
-      .map((m, i) => ({ m, i }))
-      .filter(({ m }) => m.tab === "chat" && m.at <= props.t + 1)
-      .map(({ m, i }) => ({ key: `m-${i}`, at: m.at, kind: "mine" as const, m })),
-  ]
-    .sort((a, b) => a.at - b.at)
-    .slice(phone ? -6 : -9);
+  const chatItems = chatItemsAt(props, phone ? 6 : 9);
   const supportMine = props.mine.filter((m) => m.tab === "support");
   const countdownLeft = shown ? offerCountdownLeft(shown.countdown, shown.start, props.t) : 0;
 
@@ -433,14 +755,18 @@ function PreviewPlayer({
   t,
   playing,
   volume,
+  mediaRef,
 }: {
   url: string;
   provider: string | null;
   t: number;
   playing: boolean;
   volume: number;
+  /** Para o fundo desfocado do Live. */
+  mediaRef?: RefObject<HTMLVideoElement | null> | undefined;
 }) {
-  const media = useRef<HTMLVideoElement>(null);
+  const ownMedia = useRef<HTMLVideoElement>(null);
+  const media = mediaRef ?? ownMedia;
   const embed = /youtube|youtu\.be|vimeo|mediadelivery|pandavideo|\/embed\/|player\./i.test(url);
   // Leitores embebidos não deixam pausar por fora: em pausa mostra-se a imagem parada por cima.
   const [session, setSession] = useState(0);

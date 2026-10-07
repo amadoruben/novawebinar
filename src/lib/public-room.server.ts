@@ -12,7 +12,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { fetchAll } from "@/lib/fetch-all";
 import { PROVIDERS } from "@/lib/integrations";
 import { notifyOutgoing } from "@/lib/integrations.server";
-import { parseExtraOffers } from "@/lib/room-logic";
+import { liveSettings, parseExtraOffers, roomFormat } from "@/lib/room-logic";
 import { sessionWindow } from "@/lib/schedule";
 
 const UNAVAILABLE = "Serviço temporariamente indisponível. Tente novamente.";
@@ -43,7 +43,7 @@ export async function loadPublicRoom(slug: string) {
   const { data: webinar, error: webinarError } = await supabaseAdmin
     .from("webinars")
     .select(
-      "id, organization_id, public_title, description, status, room_theme, host_name, host_role, host_avatar_url, chat_pin_title, chat_pin_message, offer_pin_title, offer_pin_message, scheduled_at, session_end_time, schedule_mode, recurrence_enabled, recurrence_pattern, recurrence_weekday, recurrence_start_time, recurrence_end_time, jit_interval_minutes, timezone, duration_seconds, replay_enabled, waiting_room_enabled, prelive_enabled, prelive_seconds, prelive_sound, prelive_message, prelive_template, prelive_appearance, easy_access, sync_video_with_start, cta_text, cta_url, cta_color, cta_price_original, cta_price_now, cta_image_url, cta_countdown_seconds, cta_start_seconds, cta_end_seconds, registration_headline, registration_subtitle, registration_button_text, registration_collect_phone, registration_require_phone, registration_cover_url, registration_badge_text, registration_progress_enabled, registration_progress_value, registration_scarcity_note, share_title, share_description, share_image_url, video_source_id, entry_fields, entry_card_color, entry_button_color, extra_offers, offer_deadline, offer_countdown_end, offer_utm, sales_show_real, sales_where, recurrence_days, recurrence_times, jit_skip_night, host_verified, room_theme_system, video_sources(source_url, provider, duration_seconds, storage_path)",
+      "id, organization_id, public_title, description, status, room_theme, host_name, host_role, host_avatar_url, chat_pin_title, chat_pin_message, offer_pin_title, offer_pin_message, scheduled_at, session_end_time, schedule_mode, recurrence_enabled, recurrence_pattern, recurrence_weekday, recurrence_start_time, recurrence_end_time, jit_interval_minutes, timezone, duration_seconds, replay_enabled, waiting_room_enabled, prelive_enabled, prelive_seconds, prelive_sound, prelive_message, prelive_template, prelive_appearance, easy_access, sync_video_with_start, cta_text, cta_url, cta_color, cta_price_original, cta_price_now, cta_image_url, cta_countdown_seconds, cta_start_seconds, cta_end_seconds, registration_headline, registration_subtitle, registration_button_text, registration_collect_phone, registration_require_phone, registration_cover_url, registration_badge_text, registration_progress_enabled, registration_progress_value, registration_scarcity_note, share_title, share_description, share_image_url, video_source_id, entry_fields, entry_card_color, entry_button_color, extra_offers, offer_deadline, offer_countdown_end, offer_utm, sales_show_real, sales_where, recurrence_days, recurrence_times, jit_skip_night, host_verified, room_theme_system, chat_settings, video_sources(source_url, provider, duration_seconds, storage_path)",
     )
     .eq("slug", slug)
     .maybeSingle();
@@ -161,6 +161,8 @@ export async function loadPublicRoom(slug: string) {
       status: webinar.status,
       room_theme: webinar.room_theme === "light" ? "light" : "dark",
       room_theme_system: webinar.room_theme_system,
+      room_format: roomFormat(webinar.chat_settings),
+      live: liveSettings(webinar.chat_settings),
       host_verified: webinar.host_verified,
       entry_fields: webinar.entry_fields,
       entry_card_color: webinar.entry_card_color,

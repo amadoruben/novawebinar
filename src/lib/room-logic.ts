@@ -232,6 +232,142 @@ export type OfferSlot = {
   deadline?: string | null | undefined;
 };
 
+/**
+ * Como a sala se mostra. No ecrã chamam-se «Clássico» (vídeo deitado, chat ao lado) e «Live»
+ * (vídeo com o chat por cima, como no Instagram).
+ */
+export type RoomFormat = "webinar" | "live";
+
+export const ROOM_FORMATS: readonly { id: RoomFormat; name: string; hint: string }[] = [
+  { id: "webinar", name: "Clássico", hint: "Vídeo deitado e o chat ao lado" },
+  { id: "live", name: "Live", hint: "Vídeo com o chat por cima, como no Instagram" },
+];
+
+/**
+ * O formato fica nas definições do chat (`chat_settings.room_format`): o que muda é o lugar do chat,
+ * ao lado do vídeo ou por cima dele, e assim não precisa de uma coluna nova.
+ */
+export function roomFormat(chatSettings: unknown): RoomFormat {
+  return (chatSettings as { room_format?: unknown } | null)?.room_format === "live" ? "live" : "webinar";
+}
+
+/* ---------- Definições do formato Live (em `chat_settings.live`) ---------- */
+
+export type FollowNetwork = "instagram" | "youtube" | "tiktok";
+/** Um momento do vídeo em que o + Seguir aparece (quando o apresentador pede para seguir). */
+export type FollowMoment = { start: number; end: number };
+export type LiveOfferColor = "laranja" | "vermelho" | "verde" | "azul" | "roxo";
+
+export type LiveSettings = {
+  /** No computador: o vídeo deitado (16:9) ou ao alto (9:16). O resto da sala é igual. */
+  desk: "horizontal" | "vertical";
+  /** O selo de verificado: branco com o visto transparente, ou azul. */
+  badge: "white" | "blue";
+  /** Os perfis que o + Seguir mostra; uma rede sem link não aparece. */
+  links: Partial<Record<FollowNetwork, string>>;
+  moments: FollowMoment[];
+  /** Avisa no chat, só para a pessoa, quando o Suporte respondeu e ela ainda não viu. */
+  notify: boolean;
+  offerColor: LiveOfferColor;
+};
+
+export const LIVE_DEFAULTS: LiveSettings = {
+  desk: "horizontal",
+  badge: "white",
+  links: {},
+  moments: [],
+  notify: true,
+  offerColor: "laranja",
+};
+
+export const FOLLOW_NETWORKS: readonly { id: FollowNetwork; name: string; example: string; android: string }[] = [
+  { id: "instagram", name: "Instagram", example: "https://www.instagram.com/perfil", android: "com.instagram.android" },
+  { id: "youtube", name: "YouTube", example: "https://www.youtube.com/@canal", android: "com.google.android.youtube" },
+  { id: "tiktok", name: "TikTok", example: "https://www.tiktok.com/@perfil", android: "com.zhiliaoapp.musically" },
+];
+
+const LIVE_OFFER_COLORS: readonly LiveOfferColor[] = ["laranja", "vermelho", "verde", "azul", "roxo"];
+
+/** Lê as definições do Live; o que faltar ou vier estragado fica com o valor por omissão. */
+export function liveSettings(chatSettings: unknown): LiveSettings {
+  const raw = (chatSettings as { live?: unknown } | null)?.live;
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return { ...LIVE_DEFAULTS, links: {}, moments: [] };
+  const r = raw as Record<string, unknown>;
+  const linksRaw = typeof r["links"] === "object" && r["links"] !== null ? (r["links"] as Record<string, unknown>) : {};
+  const links: LiveSettings["links"] = {};
+  for (const n of FOLLOW_NETWORKS) {
+    const url = linksRaw[n.id];
+    if (typeof url === "string" && url.trim()) links[n.id] = url.trim();
+  }
+  const moments = Array.isArray(r["moments"])
+    ? (r["moments"] as unknown[])
+        .map((m) => m as { start?: unknown; end?: unknown })
+        .filter((m) => Number.isFinite(Number(m.start)) && Number.isFinite(Number(m.end)) && Number(m.end) > Number(m.start))
+        .map((m) => ({ start: Math.max(0, Math.round(Number(m.start))), end: Math.round(Number(m.end)) }))
+        .sort((a, b) => a.start - b.start)
+    : [];
+  return {
+    desk: r["desk"] === "vertical" ? "vertical" : "horizontal",
+    badge: r["badge"] === "blue" ? "blue" : "white",
+    links,
+    moments,
+    notify: r["notify"] !== false,
+    offerColor: LIVE_OFFER_COLORS.find((c) => c === r["offerColor"]) ?? "laranja",
+  };
+}
+
+/** O + Seguir aparece só dentro de um dos momentos escolhidos. */
+export function followMomentAt(moments: readonly FollowMoment[], seconds: number) {
+  return moments.some((m) => seconds >= m.start && seconds < m.end);
+}
+
+/** O @ do perfil, tirado do link (instagram.com/perfil/ → @perfil). */
+export function profileHandle(url: string) {
+  const last = url.replace(/[?#].*$/, "").split("/").filter(Boolean).pop() ?? "";
+  return last ? `@${last.replace(/^@/, "")}` : "";
+}
+
+/** O link que a pessoa abre: no YouTube já vem com o pedido para subscrever. */
+export function followWebLink(network: FollowNetwork, url: string) {
+  const clean = url.trim();
+  if (network !== "youtube" || /sub_confirmation=/.test(clean)) return clean;
+  return `${clean}${clean.includes("?") ? "&" : "?"}sub_confirmation=1`;
+}
+
+/**
+ * No Android, um link «intent» abre a app da rede directamente no perfil e, sem a app, o site.
+ * No iPhone o próprio link https abre a app (link universal), por isso fica igual.
+ */
+export function followAppLink(network: FollowNetwork, web: string, platform: "android" | "ios" | "other") {
+  if (platform !== "android") return web;
+  let u: URL;
+  try {
+    u = new URL(web);
+  } catch {
+    return web;
+  }
+  const pkg = FOLLOW_NETWORKS.find((n) => n.id === network)?.android ?? "";
+  const path = network === "instagram" ? `${u.host}/_u/${u.pathname.replace(/^\/+/, "")}` : `${u.host}${u.pathname}${u.search}`;
+  return `intent://${path}#Intent;scheme=https;package=${pkg};S.browser_fallback_url=${encodeURIComponent(web)};end`;
+}
+
+/**
+ * Os minutos em que o apresentador pede para seguir ou subscrever, tirados da transcrição:
+ * cada frase com «sigam», «segue», «inscrevam-se»… abre um momento de 30 s. Momentos colados juntam-se.
+ */
+export function suggestFollowMoments(lines: readonly { at: number; text: string }[], length = 30): FollowMoment[] {
+  const asks = /\b(sigam|siga|segue[mn]?|me segue|inscrev\w*|subscrev\w*|ativ[ae]m? o sininho)\b/i;
+  const out: FollowMoment[] = [];
+  for (const line of lines) {
+    if (!asks.test(line.text)) continue;
+    const start = Math.max(0, Math.round(line.at));
+    const last = out[out.length - 1];
+    if (last && start <= last.end) last.end = Math.max(last.end, start + length);
+    else out.push({ start, end: start + length });
+  }
+  return out.slice(0, 6);
+}
+
 /** Um link de grupo (WhatsApp ou Telegram): o botão pede os dados antes de abrir o grupo. */
 export function isGroupLink(url: string | null | undefined) {
   return /^https?:\/\/(chat\.whatsapp\.com|t\.me|telegram\.me)\//i.test((url ?? "").trim());
