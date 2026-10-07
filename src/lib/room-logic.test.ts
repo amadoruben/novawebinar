@@ -193,6 +193,7 @@ describe("opções da sala", () => {
         links: { instagram: " https://www.instagram.com/amadorubenn/ ", youtube: "", x: "y" },
         moments: [{ start: 130, end: 160 }, { start: 50, end: 40 }, { start: 10, end: 40 }],
         notify: false,
+        hideFollowed: false,
         offerColor: "azul",
       },
     });
@@ -200,9 +201,10 @@ describe("opções da sala", () => {
     expect(live.links).toEqual({ instagram: "https://www.instagram.com/amadorubenn/" });
     expect(live.moments).toEqual([{ start: 10, end: 40 }, { start: 130, end: 160 }]);
     expect(live.notify).toBe(false);
+    expect(live.hideFollowed).toBe(false);
     // As cores gravadas por nome passam ao código hex; um código escreve-se em maiúsculas.
     expect(live.offerColor).toBe("#2563EB");
-    expect(liveSettings(null)).toMatchObject({ desk: "horizontal", notify: true, offerColor: "#E8440C" });
+    expect(liveSettings(null)).toMatchObject({ desk: "horizontal", notify: true, hideFollowed: true, offerColor: "#E8440C" });
     expect(liveSettings({ live: { offerColor: "rosa" } }).offerColor).toBe("#E8440C");
     expect(liveSettings({ live: { offerColor: "#ff00aa" } }).offerColor).toBe("#FF00AA");
     expect(liveSettings({ live: { offerColor: "#ff00a" } }).offerColor).toBe("#E8440C");

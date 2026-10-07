@@ -38,18 +38,20 @@ import {
   type LiveSupportMessage,
 } from "@/components/room/live-parts";
 import { ROOM_FONT } from "@/components/room/entry-screen";
-import { SCREENS } from "./preview";
+import { SCREENS, TABLET_WIDE } from "./preview";
 import {
   CaptionLine,
   ChatComposer,
   ChatLine,
   LIVE_CONTAIN,
   LIVE_COVER,
+  LIVE_TOP,
   LIVE_WIDE,
   OfferCard,
   PulseDot,
   RoomPartsStyle,
   RoomTitle,
+  RotateHint,
   SaleLine,
   saleColor,
   SupportNotice,
@@ -68,7 +70,7 @@ export type RoomTab = "chat" | "support" | "offer";
 export type PreviewComment = { id: string; at: number; author: string; message: string; agent?: boolean };
 export type PreviewSale = { id: string; at: number; buyer: string; product: string };
 export type PreviewMine = { at: number; text: string; tab: "chat" | "support" };
-export type PreviewDevice = "desktop" | "tablet" | "phone" | "phone-landscape";
+export type PreviewDevice = "desktop" | "tablet" | "tablet-landscape" | "phone" | "phone-landscape";
 
 /** O ecrã ao alto: telemóvel ou tablet (a sala é a mesma, com outro tamanho e outra barra de estado). */
 function tallScreen(device: PreviewDevice) {
@@ -117,6 +119,8 @@ export type RoomPreviewProps = {
   live?: boolean | undefined;
   /** As opções da sala, iguais nos dois formatos: redes, momentos do + Seguir, cor do botão e aviso. */
   liveSettings?: LiveSettings | undefined;
+  /** A forma do vídeo, lida do ficheiro: manda sobre a opção gravada, como na sala (nunca se corta um vídeo deitado). */
+  videoShape?: LiveSettings["desk"] | null | undefined;
 };
 
 /** As redes de quem apresenta e o + Seguir (só nos momentos escolhidos e fora da oferta), nos dois formatos. */
@@ -130,14 +134,20 @@ function useFollow(props: RoomPreviewProps, offerOpen: boolean) {
   });
   const label = networks.length === 1 && networks[0]?.id === "youtube" ? "Subscrever" : "Seguir";
   const show = () => setOpen(true);
-  const follow = networks.length > 0 && !offerOpen && followMomentAt(live.moments, props.t) ? { label, onClick: show } : null;
+  // Como na sala: quem tocou numa rede e fechou deixa de ver o + Seguir, se a opção estiver ligada.
+  const [followed, setFollowed] = useState(false);
+  const follow =
+    networks.length > 0 && !offerOpen && !(followed && live.hideFollowed) && followMomentAt(live.moments, props.t) ? { label, onClick: show } : null;
   const host = { name: props.host.name, avatarUrl: props.host.avatarUrl, verified: props.host.verified };
   const sheet = open ? (
     <LiveFollowSheet
       host={host}
       networks={networks}
       note={props.device === "desktop" ? "Cada rede abre numa janela pequena ao lado. A aula continua aqui." : "Cada rede abre diretamente na app. A aula continua aqui."}
-      onClose={() => setOpen(false)}
+      onClose={() => {
+        if (networks.some((n) => n.done)) setFollowed(true);
+        setOpen(false);
+      }}
       onTap={(id) => setTapped((prev) => ({ ...prev, [id]: true }))}
     />
   ) : null;
@@ -204,8 +214,13 @@ export function RoomPreview(props: RoomPreviewProps) {
 
 /** O formato Webinar: o vídeo deitado e o chat ao lado (no telemóvel, por baixo). */
 function WebinarPreview(props: RoomPreviewProps) {
-  const phone = props.device !== "desktop";
+  const phone = props.device === "phone" || props.device === "phone-landscape";
   const landscape = props.device === "phone-landscape";
+  // O tablet usa as peças do computador (letra e botões do tamanho certo): ao alto, uma por baixo da
+  // outra; deitado, o vídeo e o chat lado a lado.
+  const tablet = props.device === "tablet";
+  const tabletWide = props.device === "tablet-landscape";
+  const [hint, setHint] = useState(true);
   const hl = (key: string) =>
     props.highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
   const { open, afterVideo, shown, tab, lastSale, said } = roomMoment(props);
@@ -311,7 +326,11 @@ function WebinarPreview(props: RoomPreviewProps) {
       ? "flex h-[393px] w-[852px] items-center justify-center bg-black"
       : phone
         ? "flex flex-col"
-        : "grid h-[720px] w-[1280px] grid-cols-[minmax(0,1fr)_380px] gap-6 p-6",
+        : tablet
+          ? "flex flex-col gap-1 px-6 pb-6"
+          : tabletWide
+            ? "grid grid-cols-[minmax(0,1fr)_360px] gap-6 px-6 pb-6"
+            : "grid h-[720px] w-[1280px] grid-cols-[minmax(0,1fr)_380px] gap-6 p-6",
   );
   const tall = tallScreen(props.device);
 
@@ -319,6 +338,8 @@ function WebinarPreview(props: RoomPreviewProps) {
     fontFamily: ROOM_FONT,
     ...liveOfferVars(live.offerColor),
     ...(phone && !landscape ? { width: tall.w, height: tall.h } : null),
+    ...(tablet ? { width: tall.w, height: tall.h, paddingTop: tall.top + 20 } : null),
+    ...(tabletWide ? { width: TABLET_WIDE.w, height: TABLET_WIDE.h, paddingTop: TABLET_WIDE.top + 16 } : null),
   };
   if (landscape) {
     // Deitado, o telemóvel mostra o vídeo em ecrã inteiro, como no YouTube.
@@ -339,6 +360,12 @@ function WebinarPreview(props: RoomPreviewProps) {
         <>
           <div className="shrink-0 bg-black" style={{ height: tall.top }} />
           {videoCard}
+          {/* Como ver melhor: o vídeo deitado vê-se maior com o telemóvel deitado. */}
+          {hint && props.video.url ? (
+            <div className="flex justify-center px-3 pt-2.5">
+              <RotateHint onClose={() => setHint(false)} />
+            </div>
+          ) : null}
           <RoomTitle compact kicker="" title={props.title} host={props.host} highlight={props.highlight} follow={followButton(false)} onHost={social.onHost} />
         </>
       ) : (
@@ -349,7 +376,7 @@ function WebinarPreview(props: RoomPreviewProps) {
           </div>
         </div>
       )}
-      <div className={cn("relative flex min-h-0 flex-col", phone ? "flex-1" : "overflow-hidden rounded-2xl")}>
+      <div className={cn("relative flex min-h-0 flex-col", phone ? "flex-1" : tablet ? "mt-4 flex-1 overflow-hidden rounded-2xl" : "overflow-hidden rounded-2xl")}>
         <Panel {...props} tab={tab} shown={shown} open={open} hl={hl} phone={phone} afterVideo={afterVideo} notice={live.notify && props.agent.on} />
         {social.sheet}
       </div>
@@ -366,11 +393,13 @@ function LivePreview(props: RoomPreviewProps) {
   const [offerMin, setOfferMin] = useState(false);
   const [offerOpen, setOfferOpen] = useState(false);
   const live = props.liveSettings ?? LIVE_DEFAULTS;
-  const phone = props.device !== "desktop";
+  // O tablet ao alto é como o telemóvel (chat por cima do vídeo); deitado, como o computador.
+  const phone = props.device === "phone" || props.device === "phone-landscape" || props.device === "tablet";
   const landscape = props.device === "phone-landscape";
   const portrait = phone && !landscape;
   const tall = tallScreen(props.device);
-  const horizontal = live.desk !== "vertical";
+  const horizontal = (props.videoShape ?? live.desk) !== "vertical";
+  const [hint, setHint] = useState(true);
   const hl = (key: string) =>
     props.highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
   const { open, afterVideo, shown, lastSale, said } = roomMoment(props);
@@ -475,7 +504,7 @@ function LivePreview(props: RoomPreviewProps) {
       ? LIVE_COVER
       : LIVE_CONTAIN
     : portrait
-      ? "absolute inset-x-0 top-[30%] aspect-video w-full -translate-y-1/2"
+      ? LIVE_TOP
       : landscape
         ? "absolute left-1/2 top-1/2 aspect-video w-[min(100cqw,177.78cqh)] -translate-x-1/2 -translate-y-1/2"
         : LIVE_WIDE;
@@ -575,6 +604,10 @@ function LivePreview(props: RoomPreviewProps) {
           </div>
           {saleToast}
           {ended}
+          {/* Por baixo do vídeo deitado, no preto: como ver melhor (só no telemóvel ao alto). */}
+          {hint && horizontal && portrait && props.device === "phone" && props.video.url ? (
+            <RotateHint onClose={() => setHint(false)} className="absolute left-1/2 z-20 -translate-x-1/2" style={{ top: "calc(30% + 28.125cqw + 14px)" }} />
+          ) : null}
           {/* Em baixo, acima da barra do iPhone: a caixa de escrever fica com folga, como numa app. */}
           <div
             className={cn("absolute z-20 flex flex-col", portrait ? "inset-x-3" : "bottom-3 left-3.5 w-[400px]")}
@@ -588,9 +621,13 @@ function LivePreview(props: RoomPreviewProps) {
     );
   }
 
-  // Computador: ecrã inteiro, o vídeo à esquerda e o painel de cima a baixo à direita, no tema da sala.
+  // Computador (e tablet deitado): ecrã inteiro, o vídeo à esquerda e o painel de cima a baixo à direita, no tema da sala.
+  const wideTablet = props.device === "tablet-landscape";
   return (
-    <div className={cn("room-ambient flex h-[720px] w-[1280px] overflow-hidden bg-black text-room-text", light)} style={style}>
+    <div
+      className={cn("room-ambient flex overflow-hidden bg-black text-room-text", light)}
+      style={{ ...style, ...(wideTablet ? { width: TABLET_WIDE.w, height: TABLET_WIDE.h, paddingTop: TABLET_WIDE.top } : { width: 1280, height: 720 }) }}
+    >
       <RoomPartsStyle />
       <LiveStyle />
       <section className="relative min-w-0 flex-1 overflow-hidden bg-black text-white [container-type:size]">
@@ -650,7 +687,7 @@ function Panel({
     <div
       className={cn(
         "flex min-h-0 flex-col overflow-hidden bg-room-surface",
-        phone ? "flex-1 pb-[22px]" : "h-[672px] rounded-2xl ring-1 ring-room-line",
+        phone ? "flex-1 pb-[22px]" : "flex-1 rounded-2xl ring-1 ring-room-line",
       )}
     >
       <div className="mx-3 flex shrink-0 border-b border-room-line">
@@ -707,7 +744,8 @@ function Panel({
               <span className="min-w-0 truncate">{props.pin}</span>
             </div>
           ) : null}
-          <div className="flex min-h-0 flex-1 flex-col justify-end gap-3.5 overflow-hidden p-4">
+          {/* As mensagens mais antigas desvanecem em cima, em vez de ficarem cortadas a meio. */}
+          <div className="flex min-h-0 flex-1 flex-col justify-end gap-3.5 overflow-hidden p-4 [mask-image:linear-gradient(transparent,#000_28px)]">
             {tab === "chat" ? (
               chatItems.length === 0 && !notice ? (
                 <p className="m-auto text-center text-sm text-room-subtle">As mensagens aparecem ao longo do vídeo.</p>

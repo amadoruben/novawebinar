@@ -14,11 +14,8 @@ import {
   type LiveSettings,
 } from "@/lib/room-logic";
 import type { Appearance } from "@/components/room/room-parts";
-import { MinuteWheel, Note, PickerButton, Section, Seg, Swatches } from "./ui";
+import { Note, Section, SwitchRow, Swatches, TimeWindow } from "./ui";
 import type { EditorClock } from "./steps/video";
-
-/** Quanto tempo o + Seguir fica à vista em cada momento. */
-const LENGTHS = [15, 30, 60] as const;
 
 /**
  * Depois de escolher o formato, a sala personaliza-se igual nos dois (Webinar e Live): a aparência,
@@ -160,91 +157,91 @@ export function RoomOptions({
 
       <Section icon={Clock} title="Quando aparece o + Seguir" help="seguirMomentos">
         <p className="text-[12.5px] leading-snug text-muted-foreground">
-          Nos minutos em que pede para seguir, e nunca durante a oferta. Escolha o minuto exacto na roda ou use os da transcrição.
+          Em cada momento, o botão aparece num minuto e sai noutro. Nunca aparece durante a oferta.
         </p>
         {live.moments.length ? (
-          <div className="grid gap-2">
+          <ol className="grid gap-2">
             {live.moments.map((m, i) => {
-              const length = m.end - m.start;
               const patch = (next: FollowMoment) =>
                 onLive({ moments: live.moments.map((x, j) => (j === i ? next : x)).sort((a, b) => a.start - b.start) });
               return (
-                <div key={`${m.start}-${i}`} className="grid gap-2 rounded-xl border bg-white p-2.5">
+                <li key={`${m.start}-${i}`} className="grid gap-2 rounded-xl border bg-white p-3">
                   <div className="flex items-center gap-2">
-                    <PickerButton
-                      className="h-9 min-w-0 flex-1"
-                      value={
-                        <>
-                          <span className="font-normal text-muted-foreground">Aos </span>
-                          <span className="font-mono">{clock(m.start)}</span>
-                        </>
-                      }
-                      title="Quando aparece o + Seguir"
-                      hint="Rode os minutos e os segundos. A sala vai para esse momento."
-                    >
-                      <MinuteWheel
-                        value={m.start}
-                        maxSeconds={Math.max(1, c.duration - 5)}
-                        onChange={(start) => {
-                          patch({ start, end: start + length });
-                          c.seek(Math.max(0, start - 2));
-                        }}
-                      />
-                    </PickerButton>
+                    <span className="grid size-5 shrink-0 place-items-center rounded-full bg-[#0072F5] font-mono text-[11px] font-semibold text-white">{i + 1}</span>
+                    <b className="text-[13px] font-semibold">Momento {i + 1}</b>
+                    <span className="text-[12px] text-muted-foreground">· {m.end - m.start} s à vista</span>
                     <button
                       type="button"
-                      aria-label="Tirar este momento"
+                      aria-label={`Tirar o momento ${i + 1}`}
                       onClick={() => onLive({ moments: live.moments.filter((_, j) => j !== i) })}
-                      className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-chip hover:text-foreground"
+                      className="ml-auto grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-chip hover:text-foreground"
                     >
                       <X className="size-4" />
                     </button>
                   </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[12.5px] text-muted-foreground">Fica à vista</span>
-                    <Seg
-                      small
-                      label="Fica à vista"
-                      value={String(length)}
-                      onChange={(v) => patch({ start: m.start, end: m.start + Number(v) })}
-                      options={LENGTHS.map((x) => ({ value: String(x), label: `${x} s` }))}
-                    />
-                  </div>
-                </div>
+                  <TimeWindow
+                    labels={["Aparece aos", "Sai aos"]}
+                    start={m.start}
+                    end={m.end}
+                    max={Math.max(1, c.duration)}
+                    onStart={(start) => {
+                      // Mudar o início leva o fim com ele, mantendo o tempo à vista.
+                      patch({ start, end: Math.min(Math.max(c.duration, start + 5), start + (m.end - m.start)) });
+                      c.seek(Math.max(0, start - 2));
+                    }}
+                    onEnd={(end) => patch({ start: m.start, end: Math.max(m.start + 5, end) })}
+                  />
+                </li>
               );
             })}
-          </div>
+          </ol>
         ) : (
           <Note icon={Clock}>Ainda sem momentos: o + Seguir não aparece sozinho.</Note>
         )}
-        <Button
-          variant="outline"
-          size="sm"
-          className="justify-self-start"
+        <button
+          type="button"
           disabled={taken({ start: here, end: here + 30 })}
           onClick={() => addMoment({ start: here, end: here + 30 })}
+          className="flex items-center gap-2.5 rounded-xl border border-dashed bg-white px-3 py-2.5 text-left text-[13.5px] font-medium transition hover:border-foreground/40 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <Plus />
-          Adicionar momento ({clock(here)})
-        </Button>
+          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-foreground text-background">
+            <Plus className="size-3.5" />
+          </span>
+          <span className="min-w-0">
+            Adicionar momento aos <span className="font-mono">{clock(here)}</span>
+            <span className="block text-[12px] font-normal text-muted-foreground">Leve o vídeo ao minuto em que pede para seguir.</span>
+          </span>
+        </button>
         {suggestions.length ? (
           <div className="grid gap-1.5">
-            <span className="text-[12.5px] font-medium text-muted-foreground">Na transcrição, pede para seguir em:</span>
+            <span className="text-[12.5px] font-medium text-muted-foreground">Sugeridos pela transcrição (quando diz «sigam»):</span>
             <div className="flex flex-wrap gap-1.5">
               {suggestions.map((m) => (
                 <button
                   key={m.start}
                   type="button"
                   onClick={() => addMoment(m)}
-                  className="inline-flex h-8 items-center gap-1 rounded-lg bg-chip px-2.5 font-mono text-[13px] tabular-nums transition hover:bg-[#FDE4D9] hover:text-[#A82F05]"
+                  className="inline-flex h-8 items-center gap-1 rounded-lg bg-chip px-2.5 font-mono text-[13px] tabular-nums transition hover:bg-[#E0F0FF] hover:text-[#0068D6]"
                 >
                   <Plus className="size-3.5" />
-                  {clock(m.start)}
+                  {clock(m.start)} → {clock(m.end)}
                 </button>
               ))}
             </div>
           </div>
         ) : null}
+        <div className="rounded-xl border bg-white p-3">
+          <SwitchRow
+            title="Quem já segue deixa de ver"
+            description={
+              live.hideFollowed
+                ? "Quem tocou numa rede não volta a ver o + Seguir nos momentos seguintes."
+                : "O + Seguir aparece em todos os momentos, mesmo a quem já segue."
+            }
+            checked={live.hideFollowed}
+            onChange={(hideFollowed) => onLive({ hideFollowed })}
+          />
+        </div>
         {!hasLink && live.moments.length ? (
           <p className="text-[12.5px] text-warning">Ponha pelo menos um link em Botão Seguir, senão o botão não aparece.</p>
         ) : null}

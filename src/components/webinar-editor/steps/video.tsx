@@ -191,22 +191,28 @@ export function StepVideo({
           })}
         </div>
         {format === "live" ? (
-          <Field label="No computador" hint={
-            live.desk === "horizontal"
-              ? `${detected === "horizontal" ? "O vídeo é deitado, por isso ficou esta opção. " : ""}No computador fica em 16:9, com fundo preto; no telemóvel, inteiro no terço de cima, com o chat por baixo.`
-              : `${detected === "vertical" ? "O vídeo é ao alto, por isso ficou esta opção. " : ""}No telemóvel enche o ecrã; no computador fica ao alto, ao centro, com fundo preto.`
-          }>
-            <Seg
-              full
-              label="Vídeo no computador"
-              value={live.desk}
-              onChange={(desk) => onLive({ desk })}
-              options={[
-                { value: "horizontal", label: <><Monitor className="size-3.5" />Horizontal (16:9)</> },
-                { value: "vertical", label: <><RectangleVertical className="size-3.5" />Vertical (9:16)</> },
-              ]}
-            />
-          </Field>
+          detected ? (
+            // A forma vem do ficheiro: não se escolhe, para nunca cortar nem esticar o vídeo.
+            <Note icon={detected === "horizontal" ? Monitor : RectangleVertical}>
+              <b className="font-semibold text-foreground">{detected === "horizontal" ? "Vídeo deitado (16:9)." : "Vídeo ao alto (9:16)."}</b>{" "}
+              {detected === "horizontal"
+                ? "No telemóvel fica inteiro no terço de cima, com as bordas a desvanecer para o preto e o chat por baixo; no computador, inteiro com fundo preto. Nunca se corta."
+                : "No telemóvel enche o ecrã; no computador fica ao alto, ao centro, com fundo preto."}
+            </Note>
+          ) : (
+            <Field label="O vídeo é" hint="Não deu para ler a forma do vídeo (vídeo de outra plataforma). Escolha a forma dele: um vídeo do YouTube é deitado.">
+              <Seg
+                full
+                label="Forma do vídeo"
+                value={live.desk}
+                onChange={(desk) => onLive({ desk })}
+                options={[
+                  { value: "horizontal", label: <><Monitor className="size-3.5" />Deitado (16:9)</> },
+                  { value: "vertical", label: <><RectangleVertical className="size-3.5" />Ao alto (9:16)</> },
+                ]}
+              />
+            </Field>
+          )
         ) : null}
       </Section>
       <RoomOptions live={live} onLive={onLive} appearance={appearance} onAppearance={onAppearance} clock={c} transcript={transcript} />

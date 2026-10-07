@@ -1312,13 +1312,15 @@ function EditWebinar() {
   const screenName = { entry: "Página de entrada", room: "Sala ao vivo", waiting: "Sala de espera", whatsapp: "WhatsApp" }[screen];
   const ScreenIcon = { entry: LogIn, room: Radio, waiting: CalendarDays, whatsapp: MessagesSquare }[screen];
   const screenDevice: Device = screen === "whatsapp" ? "phone" : device;
-  const rotated = screenDevice === "phone" && landscape && screen === "room";
+  // Só a sala roda (o telemóvel e o tablet deitados); a página e a espera ficam ao alto.
+  const rotated = screenDevice !== "desktop" && landscape && screen === "room";
   const live = entryLiveLabel(nextWindow.startMs, form.timezone, Date.now());
 
   const room = (
     <RoomPreview
-      device={screenDevice === "phone" ? (rotated ? "phone-landscape" : "phone") : screenDevice}
+      device={screenDevice === "desktop" ? "desktop" : rotated ? `${screenDevice}-landscape` : screenDevice}
       live={form.room_format === "live"}
+      videoShape={videoShape}
       liveSettings={form.live}
       theme={previewTheme}
       appearance={previewAppearance}
@@ -1443,7 +1445,7 @@ function EditWebinar() {
 
   const tools = (
     <span className="flex shrink-0 items-center gap-2">
-      {screenDevice === "phone" && screen === "room" ? <RotateButton landscape={landscape} onChange={setLandscape} /> : null}
+      {screenDevice !== "desktop" && screen === "room" ? <RotateButton landscape={landscape} onChange={setLandscape} /> : null}
       <ExpandButton onClick={() => setFull(true)} />
       {screen !== "whatsapp" ? <DeviceToggle device={device} onChange={setDevice} /> : null}
     </span>
@@ -1549,7 +1551,7 @@ function EditWebinar() {
                 <h1 className="text-[17px] font-semibold tracking-tight">{active.title}</h1>
                 <HelpButton topic={active.help} />
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-3.5 [scrollbar-width:thin]">
+              <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-3.5">
                 {needsVideo ? (
                   <div className="grid justify-items-start gap-3 rounded-xl border bg-white p-4">
                     <span className="grid size-10 place-items-center rounded-full bg-chip">
@@ -1702,7 +1704,7 @@ function EditWebinar() {
                     pitch={pitchSeconds ?? suggestedPitch}
                     clock={editorClock}
                     marks={{
-                      offers: offers.map((o) => ({ start: o.start, end: o.end ?? duration, main: o.id === "main" })),
+                      offers: offers.map((o) => ({ start: o.start, end: o.end ?? duration, main: o.id === "main", name: o.product })),
                       follows: form.live.moments,
                       sales: shownSales.map((x) => x.at),
                     }}

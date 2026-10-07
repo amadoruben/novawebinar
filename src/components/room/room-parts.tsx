@@ -9,6 +9,7 @@ import {
   Heart,
   Monitor,
   Moon,
+  RotateCw,
   SendHorizontal,
   Settings,
   ShoppingCart,
@@ -19,6 +20,7 @@ import {
   Volume1,
   Volume2,
   VolumeX,
+  X,
   Zap,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -113,7 +115,8 @@ export function RoomTitle({
       )}
       {host.name ? (
         <div className={cn("flex items-center", compact ? "gap-2.5" : "mt-4 gap-3.5", hl("host"))}>
-          <button type="button" onClick={onHost} disabled={!onHost} className="flex min-w-0 flex-1 items-center gap-[inherit] text-left">
+          {/* O + Seguir fica logo a seguir ao nome, como no Instagram e no YouTube, e não no outro lado do ecrã. */}
+          <button type="button" onClick={onHost} disabled={!onHost} className="flex min-w-0 items-center gap-[inherit] text-left">
           {host.avatarUrl ? (
             <img
               src={host.avatarUrl}
@@ -726,5 +729,38 @@ export const LIVE_COVER =
  */
 export const LIVE_WIDE =
   "absolute left-1/2 top-1/2 aspect-video w-[min(calc(100cqw-64px),calc((100cqh-112px)*16/9))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl";
+/**
+ * O vídeo deitado no telemóvel ao alto (Live): inteiro, no terço de cima, sem cortar nem esticar. As
+ * bordas de cima e de baixo desvanecem para o preto, como no cinema, em vez de uma linha dura.
+ */
+export const LIVE_TOP =
+  "absolute inset-x-0 top-[30%] aspect-video w-full -translate-y-1/2 [mask-image:linear-gradient(180deg,transparent,#000_9%,#000_88%,transparent)]";
 /** Num ecrã deitado o vídeo ao alto fica inteiro, ao centro, em fundo preto. */
 export const LIVE_CONTAIN = "absolute left-1/2 top-1/2 h-full w-[56.25cqh] -translate-x-1/2 -translate-y-1/2";
+
+/**
+ * A dica de como ver melhor: um vídeo deitado vê-se maior com o ecrã deitado. Fecha-se no X; na sala,
+ * esconde-se sozinha quando a pessoa roda o ecrã.
+ */
+export function RotateHint({ onClose, className, style }: { onClose: () => void; className?: string; style?: CSSProperties }) {
+  return (
+    <div
+      role="note"
+      className={cn(
+        "flex w-max max-w-[calc(100%-24px)] items-center gap-2 whitespace-nowrap rounded-full bg-black/75 py-1 pl-1 pr-1 text-[12.5px] text-white shadow-[0_6px_18px_rgba(0,0,0,.35)] ring-1 ring-white/10 backdrop-blur-md",
+        className,
+      )}
+      style={style}
+    >
+      <span className="grid size-7 shrink-0 place-items-center rounded-full bg-white/15">
+        <RotateCw className="size-3.5" />
+      </span>
+      <span className="min-w-0 leading-tight">
+        <b className="font-semibold">Melhor na horizontal:</b> rode o ecrã
+      </span>
+      <button type="button" onClick={onClose} aria-label="Fechar a dica" className="grid size-7 shrink-0 place-items-center rounded-full transition hover:bg-white/15">
+        <X className="size-3.5" />
+      </button>
+    </div>
+  );
+}

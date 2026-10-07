@@ -39,9 +39,12 @@ const PHONE = { w: 425, h: 878 };
 const TABLET = { w: 860, h: 1220 };
 /** O ecrã por dentro da moldura e a altura da barra de estado, no telemóvel e no tablet. */
 export const SCREENS = { phone: { w: 393, h: 852, top: 54 }, tablet: { w: 820, h: 1180, top: 32 } } as const;
+/** O tablet deitado (1180×820). */
+export const TABLET_WIDE = { w: 1180, h: 820, top: 32 } as const;
 
 function frameSize(device: Device, landscape: boolean) {
-  return device === "desktop" ? LAPTOP : device === "tablet" ? TABLET : landscape ? { w: PHONE.h, h: PHONE.w } : PHONE;
+  const frame = device === "desktop" ? LAPTOP : device === "tablet" ? TABLET : PHONE;
+  return landscape && device !== "desktop" ? { w: frame.h, h: frame.w } : frame;
 }
 
 function useSize<T extends HTMLElement>() {
@@ -199,13 +202,32 @@ export function PhoneFrame({
   );
 }
 
-/** O tablet ao alto: moldura fina, a câmara em cima e uma barra de estado pequena. */
-export function TabletFrame({ k, light, children }: { k: number; light?: boolean | undefined; children: ReactNode }) {
+/** O tablet ao alto ou deitado: moldura fina, a câmara e uma barra de estado pequena. */
+export function TabletFrame({
+  k,
+  light,
+  landscape,
+  children,
+}: {
+  k: number;
+  light?: boolean | undefined;
+  landscape?: boolean | undefined;
+  children: ReactNode;
+}) {
+  const [w, h] = landscape ? [TABLET.h, TABLET.w] : [TABLET.w, TABLET.h];
   return (
-    <Scaled k={k} w={TABLET.w} h={TABLET.h}>
-      <div className="relative h-[1220px] w-[860px] rounded-[52px] bg-[#0A0A0B] p-5 shadow-[0_0_0_2px_#D9D5CD,0_0_0_3.5px_#A7A298,0_40px_70px_-20px_rgba(0,0,0,.45)]">
-        <i className="absolute left-1/2 top-[7px] size-[7px] -translate-x-1/2 rounded-full bg-[#1D1D22] ring-1 ring-[#2B2B31]" />
-        <div className="relative h-[1180px] w-[820px] overflow-hidden rounded-[32px] bg-black">
+    <Scaled k={k} w={w} h={h}>
+      <div
+        className="relative rounded-[52px] bg-[#0A0A0B] p-5 shadow-[0_0_0_2px_#D9D5CD,0_0_0_3.5px_#A7A298,0_40px_70px_-20px_rgba(0,0,0,.45)]"
+        style={{ width: w, height: h }}
+      >
+        <i
+          className={cn(
+            "absolute size-[7px] rounded-full bg-[#1D1D22] ring-1 ring-[#2B2B31]",
+            landscape ? "left-[7px] top-1/2 -translate-y-1/2" : "left-1/2 top-[7px] -translate-x-1/2",
+          )}
+        />
+        <div className="relative overflow-hidden rounded-[32px] bg-black" style={{ width: w - 40, height: h - 40 }}>
           <div
             className={cn("absolute inset-x-0 top-0 z-[8] flex h-8 items-center justify-between px-6 text-[14px] font-semibold", light ? "text-black" : "text-white")}
             style={{ fontFamily: '-apple-system, "SF Pro Text", "Helvetica Neue", sans-serif' }}
@@ -280,7 +302,7 @@ export function DeviceStage({
             {children}
           </LaptopFrame>
         ) : device === "tablet" ? (
-          <TabletFrame k={k} light={light}>
+          <TabletFrame k={k} light={light} landscape={landscape}>
             {children}
           </TabletFrame>
         ) : (
@@ -318,14 +340,14 @@ export function DeviceStage({
   );
 }
 
-/** Rodar o telemóvel: ao alto ou deitado. */
+/** Rodar o telemóvel ou o tablet: ao alto ou deitado. */
 export function RotateButton({ landscape, onChange }: { landscape: boolean; onChange: (landscape: boolean) => void }) {
   return (
     <button
       type="button"
       onClick={() => onChange(!landscape)}
-      title={landscape ? "Pôr ao alto" : "Deitar o telemóvel"}
-      aria-label={landscape ? "Pôr o telemóvel ao alto" : "Deitar o telemóvel"}
+      title={landscape ? "Pôr ao alto" : "Deitar o ecrã"}
+      aria-label={landscape ? "Pôr o ecrã ao alto" : "Deitar o ecrã"}
       aria-pressed={landscape}
       className="grid size-[34px] shrink-0 place-items-center rounded-lg border bg-white transition hover:bg-gray-100"
     >
@@ -440,117 +462,126 @@ export function PlayChip({
     "inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 font-mono text-[11.5px] font-semibold tabular-nums transition",
     dark ? "text-[#D4D4D4] hover:bg-white/10" : "text-[#444] hover:bg-black/[0.06]",
   );
+  const playButton = (
+    <button
+      type="button"
+      onClick={() => {
+        onToggle();
+        setOpen(true);
+      }}
+      aria-label={playing ? "Pausar" : "Tocar"}
+      className={cn(
+        "grid size-8 shrink-0 place-items-center rounded-full transition",
+        dark ? "bg-white text-[#0A0A0A]" : "bg-white text-foreground shadow-[0_1px_3px_rgba(0,0,0,.18)] hover:shadow-[0_2px_6px_rgba(0,0,0,.2)]",
+      )}
+    >
+      {playing ? <Pause className="size-3.5 fill-current" /> : <Play className="ml-px size-3.5 fill-current" />}
+    </button>
+  );
+  const time = (
+    <span className="shrink-0 px-1.5 font-mono text-[12.5px] tabular-nums">
+      <b className="font-semibold">{clock(t)}</b>
+      <span className={dark ? "text-[#8F8F8F]" : "text-muted-foreground"}> / {clock(duration)}</span>
+    </span>
+  );
+  // Fechado: o play e o minuto, compacto.
+  if (!open) {
+    return (
+      <span className={cn("inline-flex h-10 shrink-0 items-center gap-0.5 rounded-xl p-1 pr-1.5", dark ? SEG_BOX.dark : SEG_BOX.light)}>
+        {playButton}
+        <button type="button" onClick={() => setOpen(true)} aria-label="Abrir o leitor" className="rounded-lg py-1.5 transition hover:bg-black/[0.04]">
+          {time}
+        </button>
+      </span>
+    );
+  }
+  // Aberto: ocupa a linha. Num sítio estreito (telemóvel), a barra sobe para cima e os botões ficam por baixo.
   return (
-    <span className={cn("inline-flex h-10 min-w-0 shrink-0 items-center gap-0.5 rounded-xl p-1", open ? "pr-1" : "pr-3", dark ? SEG_BOX.dark : SEG_BOX.light)}>
-      {open ? (
+    <div className="@container min-w-[min(100%,300px)] max-w-[640px] flex-1">
+      <div
+        className={cn(
+          "flex flex-wrap items-center gap-x-0.5 gap-y-1 rounded-xl p-1 @max-[440px]:px-2 @max-[440px]:pt-2",
+          dark ? SEG_BOX.dark : SEG_BOX.light,
+        )}
+      >
         <button type="button" onClick={() => go(-jump)} aria-label={`Recuar ${jumpLabel(jump)}`} title={`Recuar ${jumpLabel(jump)}`} className={icon}>
           <RotateCcw className="size-3.5" />
           {jumpLabel(jump)}
         </button>
-      ) : null}
-      <button
-        type="button"
-        onClick={() => {
-          onToggle();
-          setOpen(true);
-        }}
-        aria-label={playing ? "Pausar" : "Tocar"}
-        className={cn(
-          "grid size-8 shrink-0 place-items-center rounded-full transition",
-          dark ? "bg-white text-[#0A0A0A]" : "bg-white text-foreground shadow-[0_1px_3px_rgba(0,0,0,.18)] hover:shadow-[0_2px_6px_rgba(0,0,0,.2)]",
-        )}
-      >
-        {playing ? <Pause className="size-3.5 fill-current" /> : <Play className="ml-px size-3.5 fill-current" />}
-      </button>
-      {open ? (
-        <>
-          <button type="button" onClick={() => go(jump)} aria-label={`Avançar ${jumpLabel(jump)}`} title={`Avançar ${jumpLabel(jump)}`} className={icon}>
-            {jumpLabel(jump)}
-            <RotateCw className="size-3.5" />
-          </button>
-          <SliderPrimitive.Root
-            value={[Math.min(t, duration)]}
-            max={d}
-            step={1}
-            onValueChange={([v]) => onSeek(v ?? 0)}
-            onPointerMove={(e) => {
-              const box = e.currentTarget.getBoundingClientRect();
-              setHover(Math.max(0, Math.min(1, (e.clientX - box.left) / box.width)) * d);
-            }}
-            onPointerLeave={() => setHover(null)}
-            aria-label="Minuto do vídeo"
-            className="group relative mx-2 flex h-8 w-[200px] touch-none select-none items-center"
-          >
-            <SliderPrimitive.Track className={cn("relative h-1 grow overflow-hidden rounded-full", dark ? "bg-white/15" : "bg-black/10")}>
-              <SliderPrimitive.Range className={cn("absolute h-full", dark ? "bg-white" : "bg-foreground")} />
-            </SliderPrimitive.Track>
-            {marks.map((m, i) => (
-              <span
-                key={`${m.tone}-${m.at}-${i}`}
-                title={`${m.label} · ${clock(m.at)}`}
-                className={cn(
-                  "pointer-events-none absolute top-1/2 h-2.5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full",
-                  m.tone === "offer" ? "bg-[#E8440C]" : "bg-[#0072F5]",
-                )}
-                style={{ left: `${(Math.min(m.at, d) / d) * 100}%` }}
-              />
-            ))}
-            <SliderPrimitive.Thumb
+        {playButton}
+        <button type="button" onClick={() => go(jump)} aria-label={`Avançar ${jumpLabel(jump)}`} title={`Avançar ${jumpLabel(jump)}`} className={icon}>
+          {jumpLabel(jump)}
+          <RotateCw className="size-3.5" />
+        </button>
+        <SliderPrimitive.Root
+          value={[Math.min(t, duration)]}
+          max={d}
+          step={1}
+          onValueChange={([v]) => onSeek(v ?? 0)}
+          onPointerMove={(e) => {
+            const box = e.currentTarget.getBoundingClientRect();
+            setHover(Math.max(0, Math.min(1, (e.clientX - box.left) / box.width)) * d);
+          }}
+          onPointerLeave={() => setHover(null)}
+          aria-label="Minuto do vídeo"
+          className="group relative mx-2 flex h-8 min-w-[90px] flex-1 touch-none select-none items-center @max-[440px]:order-first @max-[440px]:mx-1 @max-[440px]:basis-full"
+        >
+          <SliderPrimitive.Track className={cn("relative h-1 grow overflow-hidden rounded-full", dark ? "bg-white/15" : "bg-black/10")}>
+            <SliderPrimitive.Range className={cn("absolute h-full", dark ? "bg-white" : "bg-foreground")} />
+          </SliderPrimitive.Track>
+          {marks.map((m, i) => (
+            <span
+              key={`${m.tone}-${m.at}-${i}`}
+              title={`${m.label} · ${clock(m.at)}`}
               className={cn(
-                "block size-3.5 rounded-full shadow-[0_1px_3px_rgba(0,0,0,.3)] transition-transform focus-visible:outline-none group-hover:scale-110",
-                dark ? "bg-white" : "bg-foreground",
+                "pointer-events-none absolute top-1/2 h-2.5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full",
+                m.tone === "offer" ? "bg-[#E8440C]" : "bg-[#0072F5]",
               )}
+              style={{ left: `${(Math.min(m.at, d) / d) * 100}%` }}
             />
-            {hover !== null ? (
-              <span
-                className="pointer-events-none absolute -top-7 -translate-x-1/2 rounded-md bg-foreground px-1.5 py-0.5 font-mono text-[11px] text-background"
-                style={{ left: `${(hover / d) * 100}%` }}
+          ))}
+          <SliderPrimitive.Thumb
+            className={cn(
+              "block size-3.5 rounded-full shadow-[0_1px_3px_rgba(0,0,0,.3)] transition-transform focus-visible:outline-none group-hover:scale-110",
+              dark ? "bg-white" : "bg-foreground",
+            )}
+          />
+          {hover !== null ? (
+            <span
+              className="pointer-events-none absolute -top-7 -translate-x-1/2 rounded-md bg-foreground px-1.5 py-0.5 font-mono text-[11px] text-background"
+              style={{ left: `${(hover / d) * 100}%` }}
+            >
+              {clock(hover)}
+            </span>
+          ) : null}
+        </SliderPrimitive.Root>
+        <span className="@max-[440px]:mr-auto">{time}</span>
+        <Popover>
+          <PopoverTrigger asChild>
+            <button type="button" aria-label="Quanto recuar e avançar" title="Quanto recuar e avançar" className={cn(icon, "px-1.5")}>
+              <ChevronsUpDown className="size-3.5" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent side="top" align="end" className="w-[170px] p-1">
+            <p className="px-2 pb-1 pt-1.5 text-[11.5px] font-medium text-muted-foreground">Recuar e avançar</p>
+            {JUMPS.map((j) => (
+              <button
+                key={j}
+                type="button"
+                onClick={() => setJump(j)}
+                className={cn("flex h-8 w-full items-center justify-between rounded-md px-2 text-[13px] hover:bg-chip", j === jump && "font-semibold")}
               >
-                {clock(hover)}
-              </span>
-            ) : null}
-          </SliderPrimitive.Root>
-        </>
-      ) : null}
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        disabled={open}
-        className="shrink-0 pl-1.5 font-mono text-[12.5px] tabular-nums disabled:cursor-default"
-        aria-label={open ? undefined : "Abrir o leitor"}
-      >
-        <b className="font-semibold">{clock(t)}</b>
-        <span className={dark ? "text-[#8F8F8F]" : "text-muted-foreground"}> / {clock(duration)}</span>
-      </button>
-      {open ? (
-        <>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button type="button" aria-label="Quanto recuar e avançar" title="Quanto recuar e avançar" className={cn(icon, "ml-1 px-1.5")}>
-                <ChevronsUpDown className="size-3.5" />
+                {jumpLabel(j)}
+                {j === jump ? <Check className="size-3.5" /> : null}
               </button>
-            </PopoverTrigger>
-            <PopoverContent side="top" align="end" className="w-[170px] p-1">
-              <p className="px-2 pb-1 pt-1.5 text-[11.5px] font-medium text-muted-foreground">Recuar e avançar</p>
-              {JUMPS.map((j) => (
-                <button
-                  key={j}
-                  type="button"
-                  onClick={() => setJump(j)}
-                  className={cn("flex h-8 w-full items-center justify-between rounded-md px-2 text-[13px] hover:bg-chip", j === jump && "font-semibold")}
-                >
-                  {jumpLabel(j)}
-                  {j === jump ? <Check className="size-3.5" /> : null}
-                </button>
-              ))}
-            </PopoverContent>
-          </Popover>
-          <button type="button" onClick={() => setOpen(false)} aria-label="Fechar o leitor" title="Fechar" className={cn(icon, "px-1.5")}>
-            <ChevronsLeft className="size-4" />
-          </button>
-        </>
-      ) : null}
-    </span>
+            ))}
+          </PopoverContent>
+        </Popover>
+        <button type="button" onClick={() => setOpen(false)} aria-label="Fechar o leitor" title="Fechar" className={cn(icon, "px-1.5")}>
+          <ChevronsLeft className="size-4" />
+        </button>
+      </div>
+    </div>
   );
 }
 

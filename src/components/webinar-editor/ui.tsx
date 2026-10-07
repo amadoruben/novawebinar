@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, Info, Minus, Plus, type LucideIcon } from "lucide-react";
+import { ArrowRight, ChevronDown, CircleCheck, Info, Lightbulb, Minus, Plus, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -14,12 +14,15 @@ import {
 import { cn } from "@/lib/utils";
 import { clock } from "@/lib/room-logic";
 import { HELP, type HelpTopic } from "./help";
+import { helpScene } from "./help-scene";
 
 /** As peças do painel de cada etapa, com a medida do protótipo aprovado (versão 13). */
 
 export function HelpButton({ topic, className }: { topic: HelpTopic; className?: string }) {
   const [open, setOpen] = useState(false);
   const help = HELP[topic];
+  const scene = helpScene(topic);
+  const heading = "text-[11.5px] font-semibold uppercase tracking-[0.08em]";
   return (
     <>
       <button
@@ -28,46 +31,66 @@ export function HelpButton({ topic, className }: { topic: HelpTopic; className?:
         aria-label="Como funciona"
         title="Como funciona"
         className={cn(
-          "grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground transition hover:bg-[var(--ds-gray-alpha-200)] hover:text-foreground",
+          "grid size-6 shrink-0 place-items-center rounded-full text-[#0072F5] transition hover:bg-[#E0F0FF] hover:text-[#0068D6]",
           className,
         )}
       >
         <Info className="size-[15px]" />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-[520px] gap-0 overflow-y-auto p-0 sm:p-0">
-          <DialogHeader className="flex-row items-start gap-3 space-y-0 border-b px-5 pb-4 pt-5 text-left sm:px-6">
-            <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-chip">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-[600px] gap-0 overflow-y-auto p-0 sm:p-0">
+          <DialogHeader className="flex-row items-start gap-3 space-y-0 border-b border-[#E0F0FF] bg-[#F0F7FF] px-5 pb-4 pt-5 text-left sm:px-6">
+            <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[#0072F5] text-white">
               <Info className="size-4" />
             </span>
             <div className="min-w-0 space-y-1 pr-6">
-              <DialogTitle className="text-base font-semibold tracking-tight">{help.title}</DialogTitle>
-              <DialogDescription className="leading-relaxed">{help.what}</DialogDescription>
+              <p className={cn(heading, "text-[#0068D6]")}>Para que serve</p>
+              <DialogTitle className="text-[17px] font-semibold tracking-tight">{help.title}</DialogTitle>
+              <DialogDescription className="leading-relaxed text-[#3D3D3D]">{help.what}</DialogDescription>
             </div>
           </DialogHeader>
-          <div className="grid gap-5 px-5 py-5 sm:px-6">
-            <section className="grid gap-2.5">
-              <h4 className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Como usar</h4>
-              <ol className="grid gap-2.5">
+          <div className="grid gap-6 px-5 py-5 sm:px-6">
+            {/* Onde aparece: o ecrã em miniatura, com o sítio realçado a azul. */}
+            <section className="flex items-center gap-4 rounded-xl border bg-[#FAFAFA] p-3.5">
+              {scene.phone}
+              <div className="grid min-w-0 gap-1.5">
+                <h4 className={cn(heading, "text-muted-foreground")}>Como fica no ecrã</h4>
+                <p className="text-sm leading-relaxed">{scene.where}</p>
+                <p className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+                  <i className="block size-2 shrink-0 rounded-full bg-[#0072F5]" />
+                  Em destaque, o que esta secção muda.
+                </p>
+              </div>
+            </section>
+            <section className="grid gap-3">
+              <h4 className={cn(heading, "text-muted-foreground")}>Como usar, por ordem</h4>
+              <ol className="grid">
                 {help.steps.map((step, i) => (
-                  <li key={step} className="flex gap-3">
-                    <span className="grid size-6 shrink-0 place-items-center rounded-full bg-chip font-mono text-[12px] font-semibold">{i + 1}</span>
+                  <li key={step} className="relative flex gap-3 pb-3.5 last:pb-0">
+                    {/* A linha que liga os passos, como um caminho. */}
+                    {i < help.steps.length - 1 ? <span aria-hidden className="absolute bottom-0 left-3 top-6 w-px bg-[#E0F0FF]" /> : null}
+                    <span className="relative grid size-6 shrink-0 place-items-center rounded-full bg-[#0072F5] font-mono text-[12px] font-semibold text-white">
+                      {i + 1}
+                    </span>
                     <span className="pt-0.5 text-sm leading-relaxed">{step}</span>
                   </li>
                 ))}
               </ol>
             </section>
-            <section className="grid gap-2.5">
-              <h4 className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Exemplo</h4>
-              <p className="rounded-xl border bg-[var(--ds-background-200,#fafafa)] px-4 py-3 text-sm leading-relaxed">{help.example}</p>
+            <section className="grid gap-2 rounded-xl border border-[#C7EBCB] bg-[#F1FBF2] px-4 py-3.5">
+              <h4 className={cn(heading, "flex items-center gap-1.5 text-[#297A3A]")}>
+                <Lightbulb className="size-3.5" />
+                Exemplo
+              </h4>
+              <p className="text-sm leading-relaxed text-[#1E3D24]">{help.example}</p>
             </section>
             {"tips" in help && help.tips?.length ? (
-              <section className="grid gap-2.5">
-                <h4 className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Dicas</h4>
+              <section className="grid gap-2 rounded-xl border border-[#F5DEA0] bg-[#FFF8E6] px-4 py-3.5">
+                <h4 className={cn(heading, "text-[#A35200]")}>Dicas</h4>
                 <ul className="grid gap-2">
                   {help.tips.map((tip) => (
-                    <li key={tip} className="flex gap-2.5 text-sm leading-relaxed">
-                      <span className="mt-2 size-1.5 shrink-0 rounded-full bg-[#E8440C]" />
+                    <li key={tip} className="flex gap-2.5 text-sm leading-relaxed text-[#4D3300]">
+                      <CircleCheck className="mt-0.5 size-4 shrink-0 text-[#A35200]" />
                       <span>{tip}</span>
                     </li>
                   ))}
@@ -222,7 +245,8 @@ export function Seg<T extends string>({
             onClick={() => onChange(option.value)}
             className={cn(
               "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition",
-              small ? "h-7 px-2.5 text-[12.5px]" : "h-8 px-3.5 text-[13px]",
+              // Cheia, cada opção cabe na sua parte mesmo no telemóvel (até 5 opções numa linha).
+              small ? (full ? "h-7 min-w-0 px-1 text-[12.5px]" : "h-7 px-2.5 text-[12.5px]") : full ? "h-8 min-w-0 px-1.5 text-[13px]" : "h-8 px-3.5 text-[13px]",
               on ? "bg-white text-foreground shadow-[0_1px_2px_rgba(0,0,0,.1)]" : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -501,6 +525,49 @@ export function PickerButton({
         </Button>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * Quando começa e quando acaba, lado a lado: cada um abre a roda dos minutos. Serve a oferta (abre e
+ * fecha) e o + Seguir (aparece e sai), com o mesmo desenho.
+ */
+export function TimeWindow({
+  labels,
+  start,
+  end,
+  max,
+  onStart,
+  onEnd,
+  endText,
+  endExtra,
+}: {
+  labels: readonly [string, string];
+  start: number;
+  end: number;
+  max: number;
+  onStart: (seconds: number) => void;
+  onEnd: (seconds: number) => void;
+  /** O que mostrar no fim em vez do minuto (ex.: «Fim do vídeo»). */
+  endText?: ReactNode;
+  /** Por baixo da roda do fim (ex.: o botão «No fim do vídeo»). */
+  endExtra?: ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_14px_minmax(0,1fr)] items-end gap-1.5">
+      <Field label={<span className="text-[12px] text-muted-foreground">{labels[0]}</span>}>
+        <PickerButton className="h-10" value={<span className="font-mono">{clock(start)}</span>} title={labels[0]} hint="Rode os minutos e os segundos.">
+          <MinuteWheel value={start} maxSeconds={max} onChange={onStart} />
+        </PickerButton>
+      </Field>
+      <ArrowRight className="mb-3 size-3.5 text-muted-foreground" />
+      <Field label={<span className="text-[12px] text-muted-foreground">{labels[1]}</span>}>
+        <PickerButton className="h-10" value={endText ?? <span className="font-mono">{clock(end)}</span>} title={labels[1]} hint="Rode os minutos e os segundos.">
+          <MinuteWheel value={Math.min(end, max)} maxSeconds={max} onChange={onEnd} />
+          {endExtra}
+        </PickerButton>
+      </Field>
+    </div>
   );
 }
 

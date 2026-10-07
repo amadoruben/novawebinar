@@ -252,15 +252,15 @@ export const HELP = {
   },
   seguirMomentos: {
     title: "Quando aparece o + Seguir",
-    what: "Os minutos em que o botão + Seguir aparece na sala. Sem momentos, não aparece sozinho; durante a oferta, nunca aparece, para não tirar a atenção da compra.",
+    what: "Os minutos em que o botão + Seguir aparece na sala: aparece num minuto e sai noutro. Sem momentos, não aparece sozinho; durante a oferta, nunca aparece, para não tirar a atenção da compra.",
     steps: [
-      "Leve o vídeo ao minuto em que o apresentador pede para seguir e carregue em «Adicionar momento».",
-      "Carregue, em alternativa, num dos minutos de «Na transcrição, pede para seguir em:»: são os momentos em que ele diz «sigam» ou «inscrevam-se».",
-      "Acerte o minuto exacto na roda, em «Aos».",
-      "Escolha quanto tempo fica à vista: 15 s, 30 s ou 60 s.",
+      "Leve o vídeo ao minuto em que o apresentador pede para seguir e carregue em «Adicionar momento», ou num dos minutos sugeridos pela transcrição.",
+      "Em cada momento, acerte «Aparece aos» e «Sai aos» nas rodas.",
+      "Escolha se «Quem já segue deixa de ver»: ligado, quem tocou numa rede não volta a ver o botão; desligado, vê-o em todos os momentos.",
+      "Carregue no X para tirar um momento.",
     ],
     example:
-      "Aos 04:10 a Edna diz «sigam-me no Instagram para mais dicas». A transcrição sugere 04:10 e ela junta-o com 30 s: o + Seguir aparece das 04:10 às 04:40 e não volta durante a oferta, que abre aos 18:00.",
+      "Aos 04:10 a Edna diz «sigam-me no Instagram». Ela junta o momento 04:10 → 04:40 e outro 12:00 → 12:30. A Marta segue logo aos 04:15: com «Quem já segue deixa de ver» ligado, aos 12:00 já não lhe aparece o botão.",
     tips: [
       "Ponha pelo menos um link em «Botão Seguir», senão o botão não aparece.",
       "Dois momentos não se podem sobrepor.",
@@ -430,32 +430,31 @@ export const HELP = {
 
   oferta: {
     title: "Oferta",
-    what: "O que vende na sala, para onde leva o botão e em que minutos aparece. Pode ter a oferta principal e até 3 ofertas a seguir.",
+    what: "O que vende na sala, para onde leva o botão e em que minutos aparece. Tem a oferta principal e até 3 ofertas relâmpago: outro produto, ou a entrada num grupo exclusivo.",
     steps: [
       "Ligue «Mostrar a oferta na sala».",
-      "Abra a «Oferta principal» e escreva o «Nome do produto», o «Preço inicial» e o «Preço com desconto».",
-      "Escolha em «O botão leva a» o «Checkout», a «Página» ou o «Grupo», e cole o link.",
-      "Marque em «Quando aparece» o minuto em que abre e o minuto em que fecha; «Validar» usa o minuto que a análise encontrou.",
-      "Carregue em «Adicionar outra oferta» para uma oferta seguinte; quando ela abre, a anterior fecha.",
+      "Abra a «Oferta principal» e escreva o nome do produto e, se quiser, o preço inicial e o preço com desconto.",
+      "Em «O botão leva a», escolha «Página de compra» (checkout ou página de vendas) ou «Grupo» (WhatsApp ou Telegram) e cole o link.",
+      "Em «Quando aparece», escolha «Abre aos» e «Fecha aos»; «Validar» usa o minuto do pitch que a análise do vídeo encontrou.",
+      "Carregue em «Adicionar oferta relâmpago» para outra oferta; quando ela abre, a anterior fecha.",
     ],
     example:
-      "«Mentoria Vendas no Instagram», de 100 000 Kz por 25 000 Kz (desconto de 75%). O botão «Quero minha vaga» leva ao checkout da Kambafy e abre aos 18:00, quando a Edna começa o pitch. A Oferta 2, um bónus relâmpago, abre aos 21:00 e fecha a primeira.",
+      "Oferta principal: «Mentoria Vendas no Instagram», de 100 000 Kz por 25 000 Kz, botão «Quero minha vaga» para o checkout da Kambafy, abre aos 18:00. Oferta relâmpago: «Grupo VIP», sem preço, botão «Entrar no grupo» para https://chat.whatsapp.com/…, abre aos 21:00 e fecha aos 24:00.",
     tips: [
-      "O preço é texto livre: escreva a moeda, por exemplo «25 000 Kz» ou «97 €».",
-      "Sem o nome do produto e sem o link, a oferta principal fica por acabar.",
+      "O preço é texto livre e opcional: escreva a moeda, por exemplo «25 000 Kz» ou «97 €». Sem preço, o cartão mostra só o nome e o botão.",
+      "Sem o nome e sem o link, a oferta principal fica por acabar.",
     ],
   },
   link: {
-    title: "Checkout, página ou grupo?",
-    what: "Para onde leva o botão da oferta. Na sala, quem clica já ouviu o pitch: ir directo ao checkout tira um passo e vende mais.",
+    title: "Para onde leva o botão",
+    what: "Há dois destinos. «Página de compra» é qualquer página onde se paga: o checkout (Kambafy, Hotmart…) ou a página de vendas. «Grupo» leva a um grupo de WhatsApp ou Telegram, e a sala regista quem entrou.",
     steps: [
-      "Escolha «Checkout» para a maioria das ofertas e cole o link de pagamento.",
-      "Escolha «Página» para produtos caros ou que pedem mais argumentos.",
-      "Escolha «Grupo» para levar a um grupo do WhatsApp ou do Telegram.",
-      "Escreva o «Texto do botão» de acordo com o destino.",
+      "Escolha «Página de compra» para vender: cole o link do checkout (recomendado, tira um passo) ou da página de vendas.",
+      "Escolha «Grupo» para levar a um grupo exclusivo: cole o link do convite do grupo.",
+      "Confirme o «Texto do botão»: ao escolher o destino, o texto muda sozinho («Quero minha vaga» ou «Entrar no grupo»), e pode trocá-lo.",
     ],
     example:
-      "Curso de 15 000 Kz: checkout da Kambafy, botão «Quero minha vaga». Mentoria de 450 000 Kz: página de vendas com depoimentos. Lançamento por grupo: link https://chat.whatsapp.com/…, botão «Entrar no grupo»; a pessoa confirma o nome, o e-mail e o WhatsApp e entra no grupo, onde está o link com o desconto.",
+      "Curso de 15 000 Kz: «Página de compra», link do checkout da Kambafy, botão «Quero minha vaga». Grupo VIP: «Grupo», link https://chat.whatsapp.com/…, botão «Entrar no grupo»; na sala, a pessoa confirma o nome, o e-mail e o WhatsApp e entra no grupo, onde está o link com o desconto.",
     tips: [
       "O link do grupo começa por https://chat.whatsapp.com/ ou https://t.me/.",
       "No grupo, fica registado quem entrou, para depois separar quem comprou de quem não comprou.",
@@ -467,35 +466,35 @@ export const HELP = {
     steps: [
       "Carregue em «Validar» se a análise do vídeo encontrou o pitch: usa esse minuto.",
       "Carregue em «Abre aos» e rode os minutos e os segundos para escolher outro.",
-      "Escolha em «Fecha» um minuto, ou «No fim do vídeo».",
-      "Arraste as pegas na barra para mudar a abertura e o fecho.",
-      "Carregue em «Ver na sala» para ver a oferta a abrir.",
+      "Carregue em «Fecha aos» e escolha um minuto, ou «No fim do vídeo».",
+      "Arraste as pegas na barra para acertar, e carregue em «Ver na sala» para ver a oferta a abrir.",
     ],
     example:
-      "A análise encontrou o pitch aos 17:52. A Edna carrega em «Validar», deixa a oferta aberta até ao fim do vídeo e vê na sala o separador Oferta a abrir aos 17:52, com 5 minutos de aula ainda por dar.",
+      "A análise encontrou o pitch aos 17:52. A Edna carrega em «Validar», deixa «Fecha aos» no fim do vídeo e vê na sala o separador Oferta a abrir aos 17:52, com 5 minutos de aula ainda por dar.",
     tips: ["Abrir a oferta antes do pitch confunde: a pessoa vê o preço antes de perceber o valor."],
   },
   urgencia: {
     title: "Cronómetro e prazo",
-    what: "Dá pressa a quem está a decidir: um cronómetro na oferta, que conta a partir de quando ela abre, e, se quiser, um último dia para comprar.",
+    what: "Duas formas de dar pressa a quem está a decidir. O cronómetro conta minutos na sala, a partir do momento em que a oferta abre. O prazo é um dia do calendário: depois dele, a oferta fecha também no replay.",
     steps: [
-      "Escolha o «Cronómetro na oferta»: «Sem», 5, 10, 15 ou 30 min.",
-      "Escolha «Quando o cronómetro chega a zero»: «O botão continua» a vender ou «O botão fecha».",
-      "Escolha, se quiser, o «Último dia da oferta».",
+      "Em «Cronómetro», escolha quantos minutos conta: «Sem», 5, 10, 15 ou 30 min. Aparece no cartão da oferta como «A oferta acaba em 09:59».",
+      "Em «Quando chega a zero», escolha o que acontece: «O botão continua» (o cronómetro some e o botão continua a vender) ou «O botão fecha» (o botão passa a «Oferta encerrada»).",
+      "Em «Último dia da oferta», escolha, se quiser, o dia em que a oferta acaba de vez, na sala e no replay.",
       "Tire o prazo com o X ao lado da data.",
     ],
     example:
-      "A oferta abre aos 18:00 com um cronómetro de 10 minutos e «O botão fecha»: aos 18:10 o botão passa a «Oferta encerrada». Com o último dia a 15 de outubro, o botão do replay fica aberto até esse dia e depois fecha.",
+      "A oferta abre aos 18:00 com 10 minutos. Com «O botão continua», aos 18:10 o cronómetro some e quem decide depois ainda compra. Com «O botão fecha», aos 18:10 aparece «Oferta encerrada». Aula a 12 de outubro e último dia a 14: quem vê o replay compra até dia 14; a 15, o botão fecha.",
     tips: [
-      "Com «O botão fecha», quem decide depois do cronómetro já não compra na sala.",
-      "Cada oferta seguinte tem o seu «Prazo desta oferta», dentro do cartão dela.",
+      "Para começar, use 10 minutos com «O botão continua»: dá pressa sem perder quem decide tarde.",
+      "Use «O botão fecha» só se a oferta for mesmo só para quem está na aula, e diga-o no pitch.",
+      "Cada oferta relâmpago tem o seu «Prazo desta oferta», dentro do cartão dela.",
     ],
   },
   depoisVideo: {
     title: "Quando a aula acaba",
     what: "Quanto tempo a sala fica aberta para comprar depois de o vídeo acabar. Nesse tempo continuam a oferta, o cronómetro e o Suporte.",
     steps: [
-      "Escolha o tempo: «Fecha logo», 15 min, 30 min, 1 h ou 2 h.",
+      "Escolha o tempo: «Fecha já», 15 min, 30 min, 1 h ou 2 h.",
       "Leia por baixo o que acontece nesse tempo.",
       "Carregue em «Ver a sala depois do vídeo» para ver como fica.",
     ],

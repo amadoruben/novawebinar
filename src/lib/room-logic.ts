@@ -265,6 +265,8 @@ export type LiveSettings = {
   /** Os perfis que o + Seguir mostra; uma rede sem link não aparece. */
   links: Partial<Record<FollowNetwork, string>>;
   moments: FollowMoment[];
+  /** Quem já seguiu (tocou numa rede) deixa de ver o + Seguir; desligado, volta a vê-lo em cada momento. */
+  hideFollowed: boolean;
   /** Avisa no chat, só para a pessoa, quando o Suporte respondeu e ela ainda não viu. */
   notify: boolean;
   /** A cor do botão e do cartão da oferta, em código hex. */
@@ -287,6 +289,7 @@ export const LIVE_DEFAULTS: LiveSettings = {
   desk: "horizontal",
   links: {},
   moments: [],
+  hideFollowed: true,
   notify: true,
   offerColor: OFFER_COLOR_DEFAULT,
 };
@@ -320,6 +323,7 @@ export function liveSettings(chatSettings: unknown): LiveSettings {
     desk: r["desk"] === "vertical" ? "vertical" : "horizontal",
     links,
     moments,
+    hideFollowed: r["hideFollowed"] !== false,
     notify: r["notify"] !== false,
     offerColor: offerColor(r["offerColor"]),
   };

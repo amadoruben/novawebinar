@@ -38,11 +38,13 @@ import {
   ChatLine,
   LIVE_CONTAIN,
   LIVE_COVER,
+  LIVE_TOP,
   LIVE_WIDE,
   OfferCard,
   PulseDot,
   RoomPartsStyle,
   RoomTitle,
+  RotateHint,
   SaleLine,
   SupportNotice,
   VideoSettings,
@@ -351,6 +353,8 @@ export function WebinarRoom({
   }, []);
   // No Live o Suporte, a oferta inteira e as redes abrem numa folha por cima da sala.
   const [sheet, setSheet] = useState<null | "support" | "offer" | "follow">(null);
+  // A dica «melhor na horizontal» (só no telemóvel ao alto, com o vídeo deitado); fecha-se no X.
+  const [rotateHint, setRotateHint] = useState(true);
   const [offerMin, setOfferMin] = useState(false);
   const [tapped, setTapped] = useState<Partial<Record<FollowNetwork, boolean>>>({});
   // Quem já seguiu (tocou numa rede e fechou) deixa de ver o + Seguir neste webinar.
@@ -1077,7 +1081,8 @@ export function WebinarRoom({
     !soundOn && !prelive && !waiting && !finished && Boolean(webinar.video_url);
 
   // No Live o ecrã de cada estado enche o palco ao alto; no webinar tem a proporção do vídeo.
-  const frame = liveLayout ? "size-full" : "aspect-video";
+  // No Webinar, o telemóvel deitado mostra o vídeo em ecrã inteiro, como no YouTube.
+  const frame = liveLayout ? "size-full" : "aspect-video max-lg:landscape:h-full max-lg:landscape:w-auto max-lg:landscape:max-w-full";
   const liveArea = (
     <div
       className={cn(
@@ -1108,8 +1113,16 @@ export function WebinarRoom({
               // Vídeo deitado no computador: 16:9 inteiro, com uma margem preta à volta, como no cinema.
               <div className={LIVE_WIDE}>{videoNode}</div>
             ) : (
-              // Vídeo deitado no telemóvel: inteiro, no terço de cima, longe do chat, em fundo preto.
-              <div className="absolute inset-x-0 top-[30%] aspect-video w-full -translate-y-1/2">{videoNode}</div>
+              // Vídeo deitado no telemóvel: inteiro, no terço de cima, longe do chat, em fundo preto, com as
+              // bordas a desvanecer. Com o telemóvel deitado, fica inteiro e ao centro.
+              <div
+                className={cn(
+                  LIVE_TOP,
+                  "max-lg:landscape:left-1/2 max-lg:landscape:top-1/2 max-lg:landscape:w-[min(100cqw,177.78cqh)] max-lg:landscape:-translate-x-1/2",
+                )}
+              >
+                {videoNode}
+              </div>
             )
           ) : (
             videoNode
@@ -1537,8 +1550,8 @@ export function WebinarRoom({
   // No Live do telemóvel o chat já está por cima do vídeo: a folha só tem o Suporte e a Oferta.
   const sheetMode = liveLayout && !wide;
   const panel = (
-    <div className="flex min-h-0 flex-1 flex-col bg-room-surface text-room-text lg:rounded-2xl lg:ring-1 lg:ring-room-line">
-      <div className="mx-3 -mt-2 mb-0 flex items-center gap-1 border-b border-room-line lg:mt-0">
+    <div className="flex min-h-0 flex-1 flex-col bg-room-surface text-room-text md:rounded-2xl md:ring-1 md:ring-room-line">
+      <div className="mx-3 -mt-2 mb-0 flex items-center gap-1 border-b border-room-line md:mt-0">
         {(
           [
             ...(sheetMode ? [] : [["chat", "Chat", MessagesSquare]]),
@@ -1618,7 +1631,7 @@ export function WebinarRoom({
   const followLabel = networks.length === 1 && networks[0]?.id === "youtube" ? "Subscrever" : "Seguir";
   // O + Seguir só aparece nos momentos escolhidos (quando o apresentador pede para seguir), nunca durante a oferta.
   const followShown =
-    networks.length > 0 && !followed && !currentOffer && !prelive && !waiting && !finished && followMomentAt(live.moments, contentPeak);
+    networks.length > 0 && !(followed && live.hideFollowed) && !currentOffer && !prelive && !waiting && !finished && followMomentAt(live.moments, contentPeak);
   const openFollow = networks.length ? () => setSheet("follow") : undefined;
   const follow = followShown ? { label: followLabel, onClick: () => setSheet("follow") } : null;
   const closeSheet = () => {
@@ -1824,6 +1837,13 @@ export function WebinarRoom({
           </div>
           {soundPrompt}
           {purchaseToast}
+          {rotateHint && desk === "horizontal" && videoNode && !finished ? (
+            <RotateHint
+              onClose={() => setRotateHint(false)}
+              className="absolute left-1/2 z-20 -translate-x-1/2 md:hidden landscape:hidden"
+              style={{ top: "calc(30% + 28.125cqw + 14px)" }}
+            />
+          ) : null}
           <div className="absolute inset-x-3.5 bottom-[max(16px,env(safe-area-inset-bottom))] z-20 flex flex-col">{lower}</div>
           {sheets}
         </div>
@@ -1839,15 +1859,26 @@ export function WebinarRoom({
     >
       <RoomPartsStyle />
       <LiveStyle />
-      <div className="mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-6 lg:p-6">
+      <div className="mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col md:gap-4 md:p-6 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-6">
         <section className="flex min-w-0 shrink-0 flex-col">
-          <div className={`relative ring-1 ring-room-line lg:overflow-hidden lg:rounded-2xl ${theme === "light" ? "bg-room-surface" : "bg-black shadow-[0_30px_80px_-20px_rgb(0_0_0/0.8)]"}`}>
+          <div
+            className={cn(
+              "relative ring-1 ring-room-line md:overflow-hidden md:rounded-2xl",
+              "max-lg:landscape:fixed max-lg:landscape:inset-0 max-lg:landscape:z-40 max-lg:landscape:grid max-lg:landscape:place-items-center max-lg:landscape:rounded-none max-lg:landscape:bg-black max-lg:landscape:ring-0",
+              theme === "light" ? "bg-room-surface" : "bg-black shadow-[0_30px_80px_-20px_rgb(0_0_0/0.8)]",
+            )}
+          >
             {overlay}
             {player}
             {soundPrompt}
             {purchaseToast}
           </div>
-          <div className="lg:hidden">
+          {rotateHint && videoNode && !finished ? (
+            <div className="flex justify-center px-3 pt-2.5 md:hidden landscape:hidden">
+              <RotateHint onClose={() => setRotateHint(false)} />
+            </div>
+          ) : null}
+          <div className="md:hidden">
             <RoomTitle
               compact
               kicker=""
@@ -1857,7 +1888,7 @@ export function WebinarRoom({
               onHost={openFollow}
             />
           </div>
-          <div className="hidden px-1 lg:block">
+          <div className="hidden px-1 md:block">
             <RoomTitle
               kicker={
                 waiting ? "Sessão agendada" : finished ? "Sessão terminada" : mode === "live" ? "Sessão ao vivo" : "Sessão em replay"
@@ -1872,7 +1903,7 @@ export function WebinarRoom({
             ) : null}
           </div>
         </section>
-        <aside className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:sticky lg:top-6 lg:h-[calc(100dvh-3rem)] lg:rounded-2xl">
+        <aside className="relative flex min-h-0 flex-1 flex-col overflow-hidden md:rounded-2xl lg:sticky lg:top-6 lg:h-[calc(100dvh-3rem)]">
           {panel}
           {/* As redes abrem por cima do painel, como no Live. */}
           {followSheet}

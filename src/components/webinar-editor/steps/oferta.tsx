@@ -16,20 +16,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { clock, discountPercent, isGroupLink, type OfferSlot } from "@/lib/room-logic";
-import { Field, MinuteWheel, Note, PickerButton, Section, Seg, SwitchRow, Tag } from "../ui";
+import { Field, Note, Section, Seg, SwitchRow, Tag, TimeWindow } from "../ui";
 import type { EditorClock } from "./video";
 import type { EditorForm, FocusProps, SetForm } from "../form";
 
-type Target = "checkout" | "page" | "group";
+/** Para onde leva o botão: uma página onde se paga (checkout ou página de vendas) ou um grupo. */
+type Target = "link" | "group";
 const MAX_EXTRAS = 3;
 const COUNTDOWNS = ["0", "300", "600", "900", "1800"] as const;
 const AFTER = [0, 15, 30, 60, 120] as const;
 
-/** Para onde leva o botão, a partir do link: grupo, checkout ou página de vendas. */
+/** Para onde leva o botão, a partir do link. */
 function targetOf(url: string): Target {
-  if (isGroupLink(url)) return "group";
-  return !url || /checkout|pay\.|kambafy|hotmart|eduzz|kiwify|stripe/i.test(url) ? "checkout" : "page";
+  return isGroupLink(url) ? "group" : "link";
 }
+/** Os textos de botão que se trocam sozinhos ao mudar o destino (os escritos à mão ficam). */
+const BUTTON_DEFAULT: Record<Target, string> = { link: "Quero minha vaga", group: "Entrar no grupo" };
+const AUTO_BUTTONS = new Set(["", "Quero minha vaga", "Quero entrar", "Entrar no grupo"]);
 
 /** Uma oferta no ecrã: a principal (campos do webinar) ou uma das seguintes. */
 type OfferView = {
@@ -130,7 +133,7 @@ export function StepOferta({
         priceFrom: "",
         priceNow: "",
         url: "",
-        button: "Quero entrar",
+        button: "Quero minha vaga",
         countdown,
         deadline: null,
       },
@@ -174,7 +177,7 @@ export function StepOferta({
               <OfferCardEditor
                 key={x.id}
                 index={i + 2}
-                label={`Oferta ${i + 2}`}
+                label={`Oferta relâmpago ${i + 1}`}
                 offer={x}
                 open={open === x.id}
                 onToggle={() => setOpen((o) => (o === x.id ? null : x.id))}
@@ -201,9 +204,9 @@ export function StepOferta({
                   <Plus className="size-3.5" />
                 </span>
                 <span className="min-w-0">
-                  Adicionar outra oferta
+                  Adicionar oferta relâmpago
                   <span className="block text-[12px] font-normal text-muted-foreground">
-                    Ex.: uma oferta especial para quem está na aula e, depois, a geral.
+                    Outro produto, ou a entrada num grupo exclusivo, com o seu minuto.
                   </span>
                 </span>
               </button>
@@ -215,12 +218,14 @@ export function StepOferta({
 
           <Section icon={Clock} title="Cronómetro e prazo" help="urgencia">
             <p className="text-[12.5px] leading-snug text-muted-foreground">
-              Dá pressa a quem está a decidir: um cronómetro na oferta e, se quiser, um último dia para comprar.
+              Duas formas de dar pressa: o <b className="font-medium text-foreground">cronómetro</b> conta minutos na sala, desde que a oferta
+              abre; o <b className="font-medium text-foreground">prazo</b> é um dia do calendário, e fecha a oferta também no replay.
             </p>
-            <Field label="Cronómetro na oferta" hint="Conta a partir de quando a oferta abre na sala.">
+            <Field label="1. Cronómetro na oferta">
               <Seg
                 full
                 small
+                label="Cronómetro na oferta"
                 value={String(countdown)}
                 onChange={(v) => {
                   set({ cta_countdown_seconds: v });
@@ -230,28 +235,63 @@ export function StepOferta({
               />
             </Field>
             {countdown > 0 ? (
-              <Field
-                label="Quando o cronómetro chega a zero"
-                hint={
-                  form.offer_countdown_end === "close"
-                    ? "O botão passa a «Oferta encerrada» e já não se compra na sala."
-                    : "O cronómetro desaparece e o botão continua a vender."
-                }
-              >
-                <Seg
-                  full
-                  small
-                  label="Quando o cronómetro chega a zero"
-                  value={form.offer_countdown_end}
-                  onChange={(offer_countdown_end) => set({ offer_countdown_end })}
-                  options={[
-                    { value: "keep", label: "O botão continua" },
-                    { value: "close", label: "O botão fecha" },
-                  ]}
-                />
-              </Field>
+              <>
+                <p className="-mt-1 flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted-foreground">
+                  Na sala:
+                  <span className="inline-flex items-center gap-1 rounded-md bg-[#FDE4D9] px-1.5 py-0.5 font-mono text-[12px] font-semibold text-[#A82F05]">
+                    <Clock className="size-3" />A oferta acaba em {clock(Math.max(0, countdown - 1))}
+                  </span>
+                  {start !== null ? <span>(de {clock(start)} a {clock(start + countdown)} do vídeo)</span> : null}
+                </p>
+                <Field label="2. Quando o cronómetro chega a zero">
+                  <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Quando o cronómetro chega a zero">
+                    {(
+                      [
+                        ["keep", "O botão continua", "O cronómetro some e quem decide tarde ainda compra.", false],
+                        ["close", "O botão fecha", "O botão passa a «Oferta encerrada».", true],
+                      ] as const
+                    ).map(([value, title, text, closed]) => {
+                      const on = form.offer_countdown_end === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          role="radio"
+                          aria-checked={on}
+                          onClick={() => set({ offer_countdown_end: value })}
+                          className={cn(
+                            "grid content-start gap-2 rounded-xl border bg-white p-2.5 text-left transition hover:bg-gray-50",
+                            on && "border-foreground shadow-[inset_0_0_0_1px_var(--foreground)]",
+                          )}
+                        >
+                          {/* Como o botão fica na sala, em pequeno. */}
+                          <span
+                            className={cn(
+                              "block truncate rounded-md py-1.5 text-center text-[11.5px] font-bold",
+                              closed ? "bg-chip text-muted-foreground" : "bg-[#E8440C] text-white",
+                            )}
+                          >
+                            {closed ? "Oferta encerrada" : form.cta_text || "Quero minha vaga"}
+                          </span>
+                          <span className="grid gap-0.5">
+                            <b className="text-[13px] font-semibold">{title}</b>
+                            <span className="text-[12px] leading-snug text-muted-foreground">{text}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+              </>
             ) : null}
-            <Field label="Último dia da oferta" hint="Opcional. Depois deste dia, o botão fecha na sala e no replay.">
+            <Field
+              label={countdown > 0 ? "3. Último dia da oferta" : "2. Último dia da oferta"}
+              hint={
+                form.offer_deadline
+                  ? `Até ao fim de ${dayLabel(form.offer_deadline)}, quem vê a sala ou o replay ainda compra. Depois, o botão fecha.`
+                  : "Opcional. Ex.: aula a 12 de outubro e último dia a 14: o replay vende até dia 14; a 15, o botão fecha."
+              }
+            >
               <DateInput value={form.offer_deadline} onChange={(offer_deadline) => set({ offer_deadline })} focus={focus("deadline")} />
             </Field>
           </Section>
@@ -265,7 +305,7 @@ export function StepOferta({
               small
               value={String(AFTER.includes(afterMinutes as (typeof AFTER)[number]) ? afterMinutes : 0)}
               onChange={(v) => setAfter(Number(v))}
-              options={AFTER.map((m) => ({ value: String(m), label: m === 0 ? "Fecha logo" : m < 60 ? `${m} min` : `${m / 60} h` }))}
+              options={AFTER.map((m) => ({ value: String(m), label: m === 0 ? "Fecha já" : m < 60 ? `${m} min` : `${m / 60} h` }))}
             />
             <p className="text-[12.5px] leading-snug text-muted-foreground">
               {afterMinutes > 0
@@ -326,20 +366,20 @@ function OfferCardEditor({
   deadline?: { value: string; onChange: (value: string) => void } | undefined;
   onRemove?: (() => void) | undefined;
 }) {
-  const [target, setTarget] = useState<Target>(targetOf(offer.url));
+  const [target, setTargetState] = useState<Target>(targetOf(offer.url));
+  // Ao mudar o destino, o texto do botão acompanha (se ainda for um dos textos de origem).
+  const setTarget = (next: Target) => {
+    setTargetState(next);
+    if (AUTO_BUTTONS.has(offer.button.trim())) onChange({ button: BUTTON_DEFAULT[next] });
+  };
   const discount = discountPercent(offer.priceFrom, offer.priceNow);
   const start = offer.start ?? 0;
   const f = (key: string) => (focus ? focus(key) : {});
-  const linkLabel = { checkout: "Link do checkout", page: "Link da página de vendas", group: "Link do grupo" }[target];
-  const linkPlaceholder = {
-    checkout: "https://pay.kambafy.com/checkout/…",
-    page: "https://o-seu-site.com/oferta",
-    group: "https://chat.whatsapp.com/…",
-  }[target];
+  const group = target === "group";
   const groupProblem = target === "group" && offer.url.trim() && !isGroupLink(offer.url);
   const endLabel =
     offer.end === null ? "Fim do vídeo" : offer.end > d ? `Depois do vídeo +${Math.round((offer.end - d) / 60)} min` : clock(offer.end);
-  const tagLabel = { checkout: "Checkout", page: "Página de vendas", group: "Grupo" }[targetOf(offer.url)];
+  const tagLabel = targetOf(offer.url) === "group" ? "Grupo" : "Página de compra";
 
   return (
     <div className={cn("overflow-hidden rounded-xl border bg-white", open && "shadow-[0_2px_8px_rgba(0,0,0,.06)]")}>
@@ -361,11 +401,24 @@ function OfferCardEditor({
       </button>
       {open ? (
         <div className="grid gap-3.5 border-t bg-[#FAFAFA] px-3.5 pb-3.5 pt-3.5">
-          <Field label="Nome do produto" required={required}>
+          <Field label="O botão leva a">
+            <Seg
+              full
+              small
+              label="O botão leva a"
+              value={target}
+              onChange={setTarget}
+              options={[
+                { value: "link", label: "Página de compra" },
+                { value: "group", label: "Grupo" },
+              ]}
+            />
+          </Field>
+          <Field label={group ? "Nome do grupo" : "Nome do produto"} required={required}>
             <Input
               value={offer.product}
               onChange={(e) => onChange({ product: e.target.value })}
-              placeholder="Ex.: Mentoria Grupo Primo"
+              placeholder={group ? "Ex.: Grupo VIP da Mentoria" : "Ex.: Mentoria Grupo Primo"}
               className={cn(required && !offer.product.trim() && "bg-[#FFFBF3] shadow-[inset_0_0_0_1px_#E3B566]")}
               {...f("product")}
             />
@@ -374,30 +427,29 @@ function OfferCardEditor({
             <Field label="Preço inicial">
               <Input value={offer.priceFrom} onChange={(e) => onChange({ priceFrom: e.target.value })} placeholder="100 000 Kz" {...f("price")} />
             </Field>
-            <Field label="Preço com desconto">
+            <Field label="Com desconto">
               <Input value={offer.priceNow} onChange={(e) => onChange({ priceNow: e.target.value })} placeholder="15 000 Kz" {...f("price")} />
             </Field>
           </div>
-          {discount !== null ? <p className="-mt-1.5 text-[12.5px] text-muted-foreground">Desconto de {discount}%.</p> : null}
-
-          <Field label="O botão leva a">
-            <Seg
-              full
-              small
-              value={target}
-              onChange={setTarget}
-              options={[
-                { value: "checkout", label: "Checkout" },
-                { value: "page", label: "Página" },
-                { value: "group", label: "Grupo" },
-              ]}
+          {discount !== null ? (
+            <p className="-mt-1.5 text-[12.5px] text-muted-foreground">Desconto de {discount}%.</p>
+          ) : (
+            <p className="-mt-1.5 text-[12.5px] text-muted-foreground">Os preços são opcionais: sem preço, o cartão mostra só o nome e o botão.</p>
+          )}
+          <Field
+            label={group ? "Link do grupo" : "Link da página de compra"}
+            required={required}
+            hint={group ? "WhatsApp (chat.whatsapp.com) ou Telegram (t.me)." : "O checkout (Kambafy, Hotmart…) ou a página de vendas. O checkout tira um passo e vende mais."}
+          >
+            <Input
+              value={offer.url}
+              onChange={(e) => onChange({ url: e.target.value })}
+              placeholder={group ? "https://chat.whatsapp.com/…" : "https://pay.kambafy.com/checkout/…"}
+              {...f("cta")}
             />
           </Field>
-          <Field label={linkLabel} required={required} hint={target === "checkout" ? "Recomendado: tira um passo e vende mais." : undefined}>
-            <Input value={offer.url} onChange={(e) => onChange({ url: e.target.value })} placeholder={linkPlaceholder} {...f("cta")} />
-          </Field>
           {groupProblem ? <p className="-mt-1.5 text-[12.5px] text-warning">O link do grupo começa por https://chat.whatsapp.com/ ou https://t.me/</p> : null}
-          {target === "group" ? (
+          {group ? (
             <Note icon={Users}>
               Na sala, o botão abre um pop-up: a pessoa confirma o nome, o e-mail e o WhatsApp e entra no grupo, onde está o link com o
               desconto. Fica registado quem entrou, para depois separar quem comprou de quem não comprou.
@@ -407,61 +459,59 @@ function OfferCardEditor({
             <Input
               value={offer.button}
               onChange={(e) => onChange({ button: e.target.value })}
-              placeholder={target === "group" ? "Entrar no grupo" : "Quero minha vaga"}
+              placeholder={BUTTON_DEFAULT[target]}
               {...f("cta")}
             />
           </Field>
 
-          <div className="grid gap-2.5 rounded-xl border bg-white p-3">
-            <b className="flex items-center gap-2 text-[13px] font-semibold">
-              <Clock className="size-3.5 text-muted-foreground" />
-              Quando aparece
-            </b>
-            {suggested != null ? (
-              <div className="flex items-center gap-2.5 rounded-lg bg-[#FDE4D9]/60 px-3 py-2">
-                <Target className="size-4 shrink-0 text-[#A82F05]" />
-                <span className="min-w-0 flex-1 text-[12.5px]">
-                  A análise do vídeo encontrou o pitch aos <b className="font-mono">{clock(suggested)}</b>.
-                </span>
-                {offer.start === suggested ? (
-                  <Tag tone="gray">Validado</Tag>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="dark"
-                    className="h-7"
-                    onClick={() => {
-                      onChange({ start: suggested });
-                      c.seek(Math.max(0, suggested - 2));
-                    }}
-                  >
-                    Validar
-                  </Button>
-                )}
-              </div>
-            ) : null}
-            <div className="grid grid-cols-2 gap-2.5">
-              <Field label="Abre aos">
-                <PickerButton value={<span className="font-mono">{clock(start)}</span>} title="Abre aos" hint="Rode os minutos e os segundos.">
-                  <MinuteWheel value={start} maxSeconds={d} onChange={(s) => {
-                    onChange({ start: s });
-                    c.seek(Math.max(0, s - 2));
-                  }} />
-                </PickerButton>
-              </Field>
-              <Field label="Fecha">
-                <PickerButton value={<span className={offer.end !== null && offer.end <= d ? "font-mono" : undefined}>{endLabel}</span>} title="Fecha aos" hint="Ou deixe ficar até ao fim do vídeo.">
-                  <MinuteWheel
-                    value={offer.end !== null && offer.end <= d ? offer.end : d}
-                    maxSeconds={d}
-                    onChange={(s) => onChange({ end: s >= d - 1 ? null : Math.max(start + 5, s) })}
-                  />
-                  <Button variant="outline" size="sm" className="mt-2 w-full" onClick={() => onChange({ end: null })}>
-                    No fim do vídeo
-                  </Button>
-                </PickerButton>
-              </Field>
+          <div className="grid gap-2">
+            <div className="flex items-center gap-2">
+              <b className="flex items-center gap-1.5 text-[13px] font-medium">
+                <Clock className="size-3.5 text-muted-foreground" />
+                Quando aparece
+              </b>
+              <button
+                type="button"
+                onClick={() => onWatch(start)}
+                className="ml-auto inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12.5px] font-medium text-muted-foreground transition hover:bg-chip hover:text-foreground"
+              >
+                <Play className="size-3 fill-current" />
+                Ver na sala
+              </button>
             </div>
+            {suggested != null && offer.start !== suggested ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onChange({ start: suggested });
+                  c.seek(Math.max(0, suggested - 2));
+                }}
+                className="flex items-center gap-2 rounded-lg bg-[#FDE4D9]/60 px-2.5 py-1.5 text-left text-[12.5px] transition hover:bg-[#FDE4D9]"
+              >
+                <Target className="size-3.5 shrink-0 text-[#A82F05]" />
+                <span className="min-w-0 flex-1">
+                  Pitch encontrado aos <b className="font-mono">{clock(suggested)}</b>
+                </span>
+                <b className="shrink-0 font-semibold text-[#A82F05]">Usar</b>
+              </button>
+            ) : null}
+            <TimeWindow
+              labels={["Abre aos", "Fecha aos"]}
+              start={start}
+              end={offer.end !== null && offer.end <= d ? offer.end : d}
+              max={d}
+              onStart={(s) => {
+                onChange({ start: s });
+                c.seek(Math.max(0, s - 2));
+              }}
+              onEnd={(s) => onChange({ end: s >= d - 1 ? null : Math.max(start + 5, s) })}
+              endText={<span className={offer.end !== null && offer.end <= d ? "font-mono" : "text-[13.5px]"}>{endLabel}</span>}
+              endExtra={
+                <Button variant="outline" size="sm" className="mt-2 w-full" onClick={() => onChange({ end: null })}>
+                  No fim do vídeo
+                </Button>
+              }
+            />
             <OfferWindow
               duration={d}
               t={c.t}
@@ -471,10 +521,6 @@ function OfferCardEditor({
               onEnd={(s) => onChange({ end: s >= d - 1 ? null : s })}
               onSeek={c.seek}
             />
-            <Button variant="outline" size="sm" className="justify-self-start" onClick={() => onWatch(start)}>
-              <Play className="fill-current" />
-              Ver na sala
-            </Button>
           </div>
 
           {deadline ? (
@@ -496,6 +542,12 @@ function OfferCardEditor({
       ) : null}
     </div>
   );
+}
+
+/** «14 de outubro», a partir de «2026-10-14». */
+function dayLabel(iso: string) {
+  const date = new Date(`${iso}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleDateString("pt-PT", { day: "numeric", month: "long" });
 }
 
 function DateInput({
@@ -559,7 +611,7 @@ function OfferWindow({
     <div className="grid gap-1.5">
       <div
         ref={track}
-        className="relative h-10 cursor-pointer touch-none select-none rounded-lg bg-gray-100"
+        className="relative h-7 cursor-pointer touch-none select-none rounded-md bg-gray-100"
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
           const s = at(e.clientX);
@@ -578,11 +630,11 @@ function OfferWindow({
         }}
       >
         <div
-          className="absolute inset-y-1 overflow-hidden rounded-md border-l-[3px] border-[#E8440C] bg-[#FDE4D9]"
+          className="absolute inset-y-1 overflow-hidden rounded-[4px] border-l-[3px] border-[#E8440C] bg-[#FDE4D9]"
           style={{ left: pct(start), width: `calc(${pct(closeAt)} - ${pct(start)})` }}
         >
           {(closeAt - start) / duration > 0.25 ? (
-            <span className="absolute left-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] font-semibold text-[#A82F05]">
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[10.5px] font-semibold text-[#A82F05]">
               Oferta aberta
             </span>
           ) : null}
