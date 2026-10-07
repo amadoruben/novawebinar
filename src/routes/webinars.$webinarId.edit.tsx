@@ -732,6 +732,16 @@ function EditWebinar() {
       ? [{ step: "automacoes" as const, title: "As automações não foram criadas", detail: "Ninguém recebe lembretes nem seguimento." }]
       : []),
     ...(sessionEnded ? [{ step: "agenda" as const, title: `A sessão de ${sessionEnded} já terminou`, detail: "Escolha uma nova data." }] : []),
+    // «Sempre disponível» não abre sessão: as automações que dependem dela (lembretes, depois da aula) não arrancam.
+    ...(scheduleKind === "ondemand" && automations?.workflows.length
+      ? [
+          {
+            step: "agenda" as const,
+            title: "Sem horário, os lembretes e o seguimento não arrancam",
+            detail: "«Sempre disponível» não abre sessão. A mensagem de inscrição sai na mesma.",
+          },
+        ]
+      : []),
   ];
   const stepsWithIssues = new Set<EditorStep>(launchIssues.map((issue) => issue.step));
 

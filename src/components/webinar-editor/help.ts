@@ -640,16 +640,20 @@ export const HELP = {
   },
   agenteFontes: {
     title: "Responde com",
-    what: "De onde o agente tira as respostas: a transcrição do vídeo, as perguntas frequentes e a informação da oferta e do produto.",
+    what: "De onde o agente tira as respostas: a oferta da sala (sempre da etapa Oferta), a transcrição do vídeo, as perguntas frequentes e o que escrever sobre o produto e o negócio.",
     steps: [
+      "Confirme a etapa Oferta: o nome, o preço, o link e o último dia de cada oferta passam sozinhos para o agente, a partir do minuto em que a oferta abre na sala.",
       "Ligue «Transcrição do vídeo» para responder com o que o apresentador disse.",
       "Carregue em «Perguntas frequentes» para escrever as perguntas e as respostas mais comuns.",
-      "Carregue em «Oferta e produto» e preencha o preço, as formas de pagamento, a garantia e o que está incluído.",
+      "Carregue em «Produto e negócio» e preencha as formas de pagamento, a garantia e o que está incluído.",
       "Teste as respostas no simulador, em «Conhecimento, perguntas e simulador».",
     ],
     example:
-      "Pergunta no Suporte: «A mentoria tem garantia?». Com a garantia preenchida em «Oferta e produto» («7 dias, devolução total»), o agente responde logo, com as palavras da Edna.",
-    tips: ["Se a resposta não estiver em nenhuma fonte, ligue em «Regras» a opção «Não sabe responder», para a pergunta passar à equipa."],
+      "A oferta abre aos 18:00 por 25 000 Kz. Às 17:50 alguém pergunta o preço: o agente ainda não o diz e passa à equipa. Às 18:05 responde «25 000 Kz, em vez de 100 000 Kz» com o link do checkout. Se a Edna mudar o preço na etapa Oferta, o agente usa logo o novo.",
+    tips: [
+      "Não escreva o preço nem o link noutro sítio: se houver diferença, vale o da etapa Oferta.",
+      "Se a resposta não estiver em nenhuma fonte, ligue «Não sabe responder» em «Passa à equipa quando».",
+    ],
   },
   agenteEquipa: {
     title: "Passa à equipa quando",

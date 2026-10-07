@@ -181,9 +181,13 @@ export function StepAgente({
                     Perguntas frequentes{data?.faqs?.length ? ` (${data.faqs.length})` : ""}
                   </Chip>
                   <Chip on={(data?.knowledge ?? []).some((k) => String(k["value"] ?? "").trim())} onClick={() => setMore(true)}>
-                    Oferta e produto
+                    Produto e negócio
                   </Chip>
                 </div>
+                <p className="text-[12.5px] leading-snug text-muted-foreground">
+                  A oferta (nome, preço, link e último dia) vem sempre da etapa Oferta: muda lá e o Agente acompanha. Cada oferta só
+                  entra depois de abrir na sala, para o Agente não dizer o preço antes do pitch.
+                </p>
               </Section>
             </>
           ) : (
