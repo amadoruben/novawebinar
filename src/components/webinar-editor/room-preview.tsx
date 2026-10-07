@@ -45,8 +45,7 @@ import {
   ChatLine,
   LIVE_CONTAIN,
   LIVE_COVER,
-  LIVE_TOP,
-  LIVE_WIDE,
+  liveFrame,
   OfferCard,
   PulseDot,
   RoomPartsStyle,
@@ -404,7 +403,9 @@ function LivePreview(props: RoomPreviewProps) {
   const portrait = phone && !landscape;
   const tablet = props.device === "tablet";
   const tall = tallScreen(props.device);
+  // A forma real do vídeo (deitado ou ao alto) e a posição escolhida no editor.
   const horizontal = (props.videoShape ?? live.desk) !== "vertical";
+  const choice = live.desk;
   // No tablet ao alto, o topo e o chat ficam numa coluna centrada, como no telemóvel.
   const column = tablet ? "left-1/2 w-[600px] -translate-x-1/2" : "inset-x-3";
   const [hint, setHint] = useState(true);
@@ -517,22 +518,19 @@ function LivePreview(props: RoomPreviewProps) {
     </>
   );
 
-  // No telemóvel ao alto, o vídeo ao alto cobre o ecrã e o deitado fica inteiro no terço de cima,
-  // longe do chat. No computador (e no telemóvel deitado) fica inteiro. À volta, sempre preto.
-  const videoBox = !horizontal
-    ? portrait
-      ? LIVE_COVER
-      : LIVE_CONTAIN
-    : portrait
-      ? LIVE_TOP
-      : landscape
-        ? "absolute left-1/2 top-1/2 aspect-video w-[min(100cqw,177.78cqh)] -translate-x-1/2 -translate-y-1/2"
-        : LIVE_WIDE;
+  // A posição escolhida (horizontal ou vertical), sem cortar nem esticar o vídeo; igual à sala (`liveFrame`).
+  // Com o telemóvel deitado, o vídeo fica inteiro e ao centro.
+  const frame = liveFrame(choice, props.videoShape ?? null, phone ? "phone" : "desk");
+  const videoBox = landscape
+    ? frame.box === LIVE_COVER
+      ? LIVE_CONTAIN
+      : "absolute left-1/2 top-1/2 aspect-video w-[min(100cqw,177.78cqh)] -translate-x-1/2 -translate-y-1/2"
+    : frame.box;
   const video = (
     <>
       {props.video.url ? (
         <div className={videoBox}>
-          <PreviewPlayer url={props.video.url} provider={props.video.provider} t={props.t} playing={props.playing} volume={props.volume} />
+          <PreviewPlayer url={props.video.url} provider={props.video.provider} t={props.t} playing={props.playing} volume={props.volume} fit={frame.fit} />
         </div>
       ) : (
         <div className="absolute inset-0 grid content-center gap-2 bg-[radial-gradient(120%_90%_at_85%_10%,rgba(232,68,12,.25),transparent_55%),linear-gradient(160deg,#22262e,#111316)] px-[10%] text-white">
@@ -545,7 +543,7 @@ function LivePreview(props: RoomPreviewProps) {
           <span
             className={cn(
               "absolute left-1/2 grid size-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/55 backdrop-blur",
-              portrait && horizontal ? "top-[30%]" : "top-1/2",
+              portrait && horizontal && choice === "horizontal" ? "top-[30%]" : "top-1/2",
             )}
           >
             <Play className="size-6 fill-white text-white" />
@@ -627,7 +625,7 @@ function LivePreview(props: RoomPreviewProps) {
           {saleToast}
           {ended}
           {/* Por baixo do vídeo deitado, no preto: como ver melhor (só no telemóvel ao alto). */}
-          {hint && horizontal && portrait && props.device === "phone" && props.video.url ? (
+          {hint && horizontal && choice === "horizontal" && portrait && props.device === "phone" && props.video.url ? (
             <RotateHint onClose={() => setHint(false)} className="absolute left-1/2 z-20 -translate-x-1/2" style={{ top: "calc(30% + 28.125cqw + 14px)" }} />
           ) : null}
           {/* Em baixo, acima da barra do iPhone: a caixa de escrever fica com folga, como numa app. */}
@@ -840,12 +838,14 @@ function PreviewPlayer({
   t,
   playing,
   volume,
+  fit = "cover",
 }: {
   url: string;
   provider: string | null;
   t: number;
   playing: boolean;
   volume: number;
+  fit?: "cover" | "contain" | undefined;
 }) {
   const media = useRef<HTMLVideoElement>(null);
   const embed = /youtube|youtu\.be|vimeo|mediadelivery|pandavideo|\/embed\/|player\./i.test(url);
@@ -897,6 +897,7 @@ function PreviewPlayer({
         key={embed ? session : url}
         url={url}
         provider={provider}
+        fit={fit}
         controls={false}
         mediaRef={media}
         autoPlay={playing}

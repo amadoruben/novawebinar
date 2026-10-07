@@ -197,6 +197,22 @@ export const HELP = {
       "A aparência, a cor do botão e o + Seguir são iguais nos dois formatos.",
     ],
   },
+  posicao: {
+    title: "Posição do vídeo",
+    what: "No formato Live, escolhe se a sala mostra o vídeo na horizontal (16:9, como no YouTube) ou na vertical (9:16, como no Instagram). O sistema marca a forma do seu vídeo, mas quem decide é você.",
+    steps: [
+      "Veja qual dos cartões tem «O seu vídeo»: é a forma do ficheiro.",
+      "Escolha «Horizontal» ou «Vertical».",
+      "Se escolher a forma contrária à do vídeo, leia o aviso: o vídeo aparece inteiro e mais pequeno, com preto à volta.",
+      "Confira na pré-visualização, no Telemóvel e no Computador.",
+    ],
+    example:
+      "A Edna gravou a aula com a câmara deitada (16:9) e escolhe «Horizontal»: no telemóvel o vídeo fica no terço de cima e o chat por baixo. Para um vídeo gravado no telemóvel ao alto, escolhe «Vertical»: o vídeo enche o ecrã, como num direto do Instagram.",
+    tips: [
+      "O vídeo nunca é cortado nem esticado, qualquer que seja a posição.",
+      "No formato Webinar o vídeo fica sempre na horizontal, com o chat ao lado.",
+    ],
+  },
   transcricao: {
     title: "Transcrição",
     what: "O texto do que o apresentador diz, minuto a minuto. Serve para criar os comentários, encontrar as perguntas e o minuto do pitch e sugerir os momentos do + Seguir.",

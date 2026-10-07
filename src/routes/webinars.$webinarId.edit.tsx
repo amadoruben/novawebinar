@@ -908,6 +908,8 @@ function EditWebinar() {
 
   /** O vídeo escolhido grava logo: o resto das etapas (e a transcrição) dependem dele. */
   const persistVideo = async (id: string) => {
+    // Vídeo novo: a posição do Live passa a ser a forma dele (a pessoa pode trocá-la a seguir).
+    autoShape.current = true;
     set({ video_source_id: id });
     const { error } = await supabase.from("webinars").update({ video_source_id: id }).eq("id", webinarId);
     if (error) {
@@ -1239,10 +1241,11 @@ function EditWebinar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offerOpenNow]);
 
-  // A orientação do vídeo (deitado ou ao alto) lê-se do próprio ficheiro e escolhe-se sozinha no
-  // formato Live, para nunca cortar. A pessoa pode trocar depois; volta a escolher-se ao mudar de vídeo.
+  // A forma do vídeo (deitado ou ao alto) lê-se do próprio ficheiro. Ao escolher um vídeo novo, a
+  // posição do Live passa a ser essa; depois, vale sempre a escolha da pessoa (também ao abrir o editor).
   const shapeUrl = selectedVideo?.source_url && /^https?:\/\//i.test(selectedVideo.source_url) ? selectedVideo.source_url : null;
   const [videoShape, setVideoShape] = useState<LiveSettings["desk"] | null>(null);
+  const autoShape = useRef(false);
   useEffect(() => {
     setVideoShape(null);
     if (!shapeUrl || !isDirectVideo(shapeUrl, selectedVideo?.provider)) return;
@@ -1260,7 +1263,9 @@ function EditWebinar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shapeUrl]);
   useEffect(() => {
-    if (videoShape) setForm((prev) => (prev.live.desk === videoShape ? prev : { ...prev, live: { ...prev.live, desk: videoShape } }));
+    if (!videoShape || !autoShape.current) return;
+    autoShape.current = false;
+    setForm((prev) => (prev.live.desk === videoShape ? prev : { ...prev, live: { ...prev.live, desk: videoShape } }));
   }, [videoShape]);
 
   /* ---------- Desenho ---------- */

@@ -4,6 +4,8 @@ import { cn, isHttpUrl } from "@/lib/utils";
 
 type Props = {
   url: string | null;
+  /** «cover» enche a moldura (corta o que sobra); «contain» mostra o vídeo inteiro, com preto à volta. */
+  fit?: "cover" | "contain";
   provider?: string | null;
   controls: boolean;
   onTime: (seconds: number) => void;
@@ -92,6 +94,7 @@ export function VideoPlayer({
   liveTargetSeconds = null,
   syncToleranceSeconds = 4,
   theme = "dark",
+  fit = "cover",
 }: Props) {
   const ownVideoRef = useRef<HTMLVideoElement>(null);
   const videoRef = mediaRef ?? ownVideoRef;
@@ -225,9 +228,11 @@ export function VideoPlayer({
           if (theme === "light") {
             context.fillStyle = "#ffffff";
             context.fillRect(0, 0, pixelWidth, pixelHeight);
+          } else if (fit === "contain") {
+            context.clearRect(0, 0, pixelWidth, pixelHeight);
           }
           if (video.videoWidth > 0 && video.videoHeight > 0) {
-            const scale = Math.max(pixelWidth / video.videoWidth, pixelHeight / video.videoHeight);
+            const scale = (fit === "contain" ? Math.min : Math.max)(pixelWidth / video.videoWidth, pixelHeight / video.videoHeight);
             const drawWidth = video.videoWidth * scale;
             const drawHeight = video.videoHeight * scale;
             context.drawImage(
@@ -245,7 +250,7 @@ export function VideoPlayer({
     };
     frame = window.requestAnimationFrame(paint);
     return () => window.cancelAnimationFrame(frame);
-  }, [controls, theme]);
+  }, [controls, theme, fit]);
 
 
   useEffect(() => {

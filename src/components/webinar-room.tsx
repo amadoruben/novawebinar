@@ -36,10 +36,8 @@ import {
   CaptionLine,
   ChatComposer,
   ChatLine,
-  LIVE_CONTAIN,
   LIVE_COVER,
-  LIVE_TOP,
-  LIVE_WIDE,
+  liveFrame,
   OfferCard,
   PulseDot,
   RoomPartsStyle,
@@ -343,7 +341,8 @@ export function WebinarRoom({
   // O vídeo diz se é deitado ou ao alto: assim nunca se corta, mesmo que a opção gravada seja a outra.
   // Sem o ficheiro à mão (Vimeo, Panda, Bunny embebidos), vale a opção do editor.
   const [videoShape, setVideoShape] = useState<LiveSettings["desk"] | null>(null);
-  const desk = videoShape ?? live.desk;
+  // A forma real do vídeo (deitado ou ao alto); sem o ficheiro à mão, a da posição escolhida.
+  const shape = videoShape ?? live.desk;
   const [wide, setWide] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches);
   useEffect(() => {
     const media = window.matchMedia("(min-width: 1024px)");
@@ -994,9 +993,12 @@ export function WebinarRoom({
     video.addEventListener("loadedmetadata", read);
     return () => video.removeEventListener("loadedmetadata", read);
   }, [liveLayout, videoArmed]);
+  // A moldura do Live: a posição escolhida no editor e a forma do vídeo.
+  const liveBox = liveFrame(live.desk, videoShape, wide ? "desk" : "phone");
   const videoNode = webinar.video_url ? (
     <VideoPlayer
       url={webinar.video_url}
+      fit={liveLayout ? liveBox.fit : "cover"}
       provider={webinar.video_provider}
       // Nem ao vivo nem em replay se pode avançar ou recuar a sessão.
       controls={false}
@@ -1101,29 +1103,19 @@ export function WebinarRoom({
             navegador de desenhar um botão nativo por cima da contagem no refresh. */}
         {videoArmed &&
           (liveLayout ? (
-            desk === "vertical" ? (
-              wide ? (
-                // Vídeo ao alto no computador: inteiro, ao centro, em fundo preto.
-                <div className={LIVE_CONTAIN}>{videoNode}</div>
-              ) : (
-                // Vídeo ao alto no telemóvel: cobre o ecrã, sem faixas pretas.
-                <div className={cn(LIVE_COVER, "max-lg:landscape:h-full max-lg:landscape:w-[56.25cqh]")}>{videoNode}</div>
-              )
-            ) : wide ? (
-              // Vídeo deitado no computador: 16:9 inteiro, com uma margem preta à volta, como no cinema.
-              <div className={LIVE_WIDE}>{videoNode}</div>
-            ) : (
-              // Vídeo deitado no telemóvel: inteiro, no terço de cima, longe do chat, em fundo preto, com as
-              // bordas a desvanecer. Com o telemóvel deitado, fica inteiro e ao centro.
-              <div
-                className={cn(
-                  LIVE_TOP,
-                  "max-lg:landscape:left-1/2 max-lg:landscape:top-1/2 max-lg:landscape:w-[min(100cqw,177.78cqh)] max-lg:landscape:-translate-x-1/2",
-                )}
-              >
-                {videoNode}
-              </div>
-            )
+            // A posição que o apresentador escolheu, sem cortar nem esticar o vídeo (ver `liveFrame`).
+            // Com o telemóvel deitado, o vídeo fica inteiro e ao centro.
+            <div
+              className={cn(
+                liveBox.box,
+                !wide &&
+                  (liveBox.box === LIVE_COVER
+                    ? "max-lg:landscape:h-full max-lg:landscape:w-[56.25cqh]"
+                    : "max-lg:landscape:left-1/2 max-lg:landscape:top-1/2 max-lg:landscape:w-[min(100cqw,177.78cqh)] max-lg:landscape:-translate-x-1/2"),
+              )}
+            >
+              {videoNode}
+            </div>
           ) : (
             videoNode
           ))}
@@ -1844,7 +1836,7 @@ export function WebinarRoom({
           </div>
           {soundPrompt}
           {purchaseToast}
-          {rotateHint && desk === "horizontal" && videoNode && !finished ? (
+          {rotateHint && shape === "horizontal" && live.desk === "horizontal" && videoNode && !finished ? (
             <RotateHint
               onClose={() => setRotateHint(false)}
               className="absolute left-1/2 z-20 -translate-x-1/2 md:hidden landscape:hidden"

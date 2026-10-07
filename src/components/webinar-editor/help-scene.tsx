@@ -23,6 +23,7 @@ const SCENES: Record<HelpTopic, Scene> = {
   coresPagina: { screen: "page", spot: "button" },
   video: { screen: "room", spot: "video" },
   formato: { screen: "room", spot: "video" },
+  posicao: { screen: "room", spot: "video" },
   transcricao: { screen: "room", spot: "video" },
   aparencia: { screen: "room", spot: "theme" },
   corBotao: { screen: "room", spot: "color" },

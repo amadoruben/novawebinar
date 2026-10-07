@@ -737,6 +737,21 @@ export const LIVE_WIDE =
  */
 export const LIVE_TOP =
   "absolute inset-x-0 top-[30%] aspect-video w-full -translate-y-1/2 [mask-image:linear-gradient(180deg,transparent,#000_9%,#000_88%,transparent)]";
+/** O vídeo deitado a meio do telemóvel (posição vertical com um vídeo deitado): inteiro, com as bordas a desvanecer. */
+export const LIVE_MID =
+  "absolute inset-x-0 top-1/2 aspect-video w-full -translate-y-1/2 [mask-image:linear-gradient(180deg,transparent,#000_9%,#000_88%,transparent)]";
+
+/**
+ * A moldura do vídeo no Live: a posição que o apresentador escolhe (horizontal 16:9 ou vertical
+ * 9:16) e a forma do vídeo. Nunca corta nem estica: só enche o ecrã quando um vídeo ao alto está na
+ * posição vertical do telemóvel; nos outros casos, o vídeo fica inteiro, com preto à volta.
+ */
+export function liveFrame(choice: "horizontal" | "vertical", shape: "horizontal" | "vertical" | null, where: "desk" | "phone") {
+  if (where === "desk") return { box: choice === "vertical" ? LIVE_CONTAIN : LIVE_WIDE, fit: "contain" as const };
+  if (choice === "horizontal") return { box: LIVE_TOP, fit: "contain" as const };
+  return shape === "horizontal" ? { box: LIVE_MID, fit: "contain" as const } : { box: LIVE_COVER, fit: "cover" as const };
+}
+
 /** Num ecrã deitado o vídeo ao alto fica inteiro, ao centro, em fundo preto. */
 export const LIVE_CONTAIN = "absolute left-1/2 top-1/2 h-full w-[56.25cqh] -translate-x-1/2 -translate-y-1/2";
 

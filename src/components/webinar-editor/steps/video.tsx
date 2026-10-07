@@ -26,7 +26,7 @@ import { formatBytes, type VideoUploadProgress } from "@/lib/video-upload";
 import type { Appearance } from "@/components/room/room-parts";
 import { ROOM_FORMATS, type LiveSettings, type RoomFormat } from "@/lib/room-logic";
 import { RoomOptions } from "../room-options";
-import { CountPill, Field, Note, Section, Seg, TimeChip } from "../ui";
+import { CountPill, Field, HelpButton, Note, Section, Seg, Tag, TimeChip } from "../ui";
 
 export type VideoSourceLite = {
   id: string;
@@ -190,30 +190,7 @@ export function StepVideo({
             );
           })}
         </div>
-        {format === "live" ? (
-          detected ? (
-            // A forma vem do ficheiro: não se escolhe, para nunca cortar nem esticar o vídeo.
-            <Note icon={detected === "horizontal" ? Monitor : RectangleVertical}>
-              <b className="font-semibold text-foreground">{detected === "horizontal" ? "Vídeo deitado (16:9)." : "Vídeo ao alto (9:16)."}</b>{" "}
-              {detected === "horizontal"
-                ? "No telemóvel fica inteiro no terço de cima, com as bordas a desvanecer para o preto e o chat por baixo; no computador, inteiro com fundo preto. Nunca se corta."
-                : "No telemóvel enche o ecrã; no computador fica ao alto, ao centro, com fundo preto."}
-            </Note>
-          ) : (
-            <Field label="O vídeo é" hint="Não deu para ler a forma do vídeo (vídeo de outra plataforma). Escolha a forma dele: um vídeo do YouTube é deitado.">
-              <Seg
-                full
-                label="Forma do vídeo"
-                value={live.desk}
-                onChange={(desk) => onLive({ desk })}
-                options={[
-                  { value: "horizontal", label: <><Monitor className="size-3.5" />Deitado (16:9)</> },
-                  { value: "vertical", label: <><RectangleVertical className="size-3.5" />Ao alto (9:16)</> },
-                ]}
-              />
-            </Field>
-          )
-        ) : null}
+        {format === "live" ? <PositionPicker value={live.desk} detected={detected ?? null} onChange={(desk) => onLive({ desk })} /> : null}
       </Section>
       <RoomOptions live={live} onLive={onLive} appearance={appearance} onAppearance={onAppearance} clock={c} transcript={transcript} />
 
@@ -273,6 +250,85 @@ export function StepVideo({
         </SheetContent>
       </Sheet>
     </>
+  );
+}
+
+/**
+ * A posição do vídeo no Live: horizontal (16:9) ou vertical (9:16). Escolhe quem apresenta; a forma
+ * do vídeo vem marcada e, se a escolha for a outra, diz como fica (inteiro, com preto à volta).
+ */
+function PositionPicker({
+  value,
+  detected,
+  onChange,
+}: {
+  value: LiveSettings["desk"];
+  detected: LiveSettings["desk"] | null;
+  onChange: (desk: LiveSettings["desk"]) => void;
+}) {
+  const options = [
+    {
+      id: "horizontal" as const,
+      label: "Horizontal",
+      ratio: "16:9",
+      text: "Como no YouTube. No computador, o vídeo deitado ao centro; no telemóvel, no terço de cima, com o chat por baixo.",
+    },
+    {
+      id: "vertical" as const,
+      label: "Vertical",
+      ratio: "9:16",
+      text: "Como no Instagram. No telemóvel, o vídeo enche o ecrã; no computador, fica ao alto, ao centro.",
+    },
+  ];
+  const mismatch = detected !== null && detected !== value;
+  return (
+    <div className="grid gap-2.5">
+      <p className="flex items-center gap-1.5 text-[13px] font-medium">
+        Posição do vídeo
+        <HelpButton topic="posicao" />
+      </p>
+      <div className="grid grid-cols-2 gap-2.5" role="radiogroup" aria-label="Posição do vídeo">
+        {options.map((o) => {
+          const on = value === o.id;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => onChange(o.id)}
+              className={cn(
+                "grid content-start gap-2 rounded-xl border bg-white p-2.5 text-left transition hover:bg-gray-50",
+                on && "border-foreground shadow-[inset_0_0_0_1px_var(--foreground)]",
+              )}
+            >
+              {/* A moldura em pequeno: o ecrã e o vídeo dentro dele. */}
+              <span className="grid h-[78px] place-items-center rounded-lg bg-[#141414]">
+                <span
+                  className={cn(
+                    "block rounded-[3px] bg-[linear-gradient(160deg,#5b6170,#2a2d33)] ring-1 ring-white/10",
+                    o.id === "horizontal" ? "h-[34px] w-[60px]" : "h-[64px] w-[36px]",
+                  )}
+                />
+              </span>
+              <span className="flex flex-wrap items-center gap-1.5">
+                <b className="text-[13px] font-semibold">{o.label}</b>
+                <span className="font-mono text-[11.5px] text-muted-foreground">{o.ratio}</span>
+                {detected === o.id ? <Tag tone="blue">O seu vídeo</Tag> : null}
+              </span>
+              <span className="text-[12px] leading-snug text-muted-foreground">{o.text}</span>
+            </button>
+          );
+        })}
+      </div>
+      {mismatch ? (
+        <p className="rounded-lg bg-[#FBEBCF] px-3 py-2 text-[12.5px] leading-snug text-[#6B4300]">
+          {detected === "horizontal"
+            ? "O seu vídeo é deitado. Em Vertical aparece inteiro, mais pequeno, a meio do ecrã e com preto em cima e em baixo. Nunca se corta nem se estica."
+            : "O seu vídeo é ao alto. Em Horizontal aparece inteiro, mais pequeno, com preto dos lados. Nunca se corta nem se estica."}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
