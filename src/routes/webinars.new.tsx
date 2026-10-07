@@ -45,9 +45,12 @@ function NewWebinar() {
             organization_id: workspace.organizationId,
             created_by: workspace.userId,
             internal_name: "Novo webinar",
-            public_title: "Novo webinar",
+            // Começa do zero: a pré-visualização mostra só o que se vai preenchendo.
+            public_title: "",
             slug: `${base}-${Math.random().toString(36).slice(2, 7)}`,
             status: "draft",
+            // A sala segue o tema de quem vê, até o apresentador escolher outro.
+            room_theme_system: true,
           })
           .select("id")
           .single();

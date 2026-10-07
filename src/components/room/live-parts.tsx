@@ -1,38 +1,81 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Check, ChevronDown, ChevronUp, Clock, Eye, Headset, Plus, SendHorizontal, ShoppingBag, ShoppingCart, Smile, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import type { FollowNetwork, LiveOfferColor } from "@/lib/room-logic";
+import { entryPalette, offerColor, type FollowNetwork } from "@/lib/room-logic";
 import { EMOJIS, HeartButton, saleColor, type Reaction } from "./room-parts";
 
 /**
  * Peças da sala em formato Live (vídeo com o chat por cima, como no Instagram). A sala pública e a
- * pré-visualização do editor desenham-nas iguais. A sala Live é sempre escura: está por cima do vídeo.
+ * pré-visualização do editor desenham-nas iguais. O que fica por cima do vídeo é sempre branco; o
+ * painel do computador, as folhas e o cartão da oferta seguem o tema da sala (`.room-light`).
  *
  * Cores fixas da identidade: «Ao vivo» vermelho, + Seguir e Suporte no laranja da marca. A oferta
- * usa a cor que o apresentador escolher (variáveis --of*).
+ * usa a cor que o apresentador escolher (variáveis --of*), nos dois formatos.
  */
 
 const BRAND = "#E8440C";
 
-export const LIVE_OFFER_PALETTES: Record<LiveOfferColor, { name: string; of: string; mid: string; dark: string; ink: string }> = {
-  laranja: { name: "Laranja", of: "#E8440C", mid: "#7C2607", dark: "#2B0D03", ink: "#F0642E" },
-  vermelho: { name: "Vermelho", of: "#E3141F", mid: "#7A0B16", dark: "#26050A", ink: "#FF4D5E" },
-  verde: { name: "Verde", of: "#16A34A", mid: "#0B5B2A", dark: "#03200F", ink: "#4ADE80" },
-  azul: { name: "Azul", of: "#2563EB", mid: "#14337F", dark: "#06122E", ink: "#60A5FA" },
-  roxo: { name: "Roxo", of: "#7C3AED", mid: "#40198A", dark: "#160830", ink: "#A78BFA" },
-};
+/**
+ * As variáveis da cor da oferta, a partir de um código hex: o tom médio e o escuro do degradê, o
+ * texto em cima do botão (preto num botão claro) e a cor do tempo, que acompanha o tema.
+ * Vão no mesmo elemento que leva `.room-light`, para o tempo ler a cor do texto certa.
+ */
+export function liveOfferVars(color: string): CSSProperties {
+  const of = offerColor(color);
+  return {
+    "--of": of,
+    "--of-mid": `color-mix(in srgb, ${of} 52%, #000)`,
+    "--of-dark": `color-mix(in srgb, ${of} 20%, #000)`,
+    "--of-on": entryPalette(null, of).buttonText,
+    "--of-ink": `color-mix(in srgb, ${of} 78%, var(--room-ink))`,
+  } as CSSProperties;
+}
 
-/** As variáveis de cor da oferta para o contentor da sala. */
-export function liveOfferVars(color: LiveOfferColor): CSSProperties {
-  const p = LIVE_OFFER_PALETTES[color] ?? LIVE_OFFER_PALETTES.laranja;
-  return { "--of": p.of, "--of-mid": p.mid, "--of-dark": p.dark, "--of-ink": p.ink } as CSSProperties;
+/**
+ * Arrastar pela pega: segue o dedo (ou o rato); largar mais de 70 px abaixo chama `onDown`, mais
+ * de 50 px acima chama `onUp`. Um toque sem arrastar fica para o `onClick` do próprio botão.
+ */
+function useDrag(onDown: () => void, onUp?: () => void) {
+  const [dy, setDy] = useState(0);
+  const start = useRef<number | null>(null);
+  const moved = useRef(false);
+  const end = () => {
+    start.current = null;
+    setDy(0);
+  };
+  return {
+    dy,
+    /** Depois de arrastar, o clique que o navegador manda a seguir não conta como toque. */
+    moved,
+    handlers: {
+      onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
+        start.current = event.clientY;
+        moved.current = false;
+        event.currentTarget.setPointerCapture(event.pointerId);
+      },
+      onPointerMove: (event: ReactPointerEvent<HTMLElement>) => {
+        if (start.current === null) return;
+        const d = event.clientY - start.current;
+        if (Math.abs(d) > 6) moved.current = true;
+        setDy(d);
+      },
+      onPointerUp: () => {
+        if (start.current === null) return;
+        const d = dy;
+        end();
+        if (d > 70) onDown();
+        else if (d < -50) onUp?.();
+      },
+      onPointerCancel: end,
+    },
+  };
 }
 
 const LIVE_CSS = `
 .lv-badge-font{font-family:"Barlow Condensed",ui-sans-serif,system-ui,sans-serif}
-@keyframes lvIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-@keyframes lvUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+@keyframes lvIn{from{opacity:0;translate:0 10px}to{opacity:1;translate:0 0}}
+@keyframes lvUp{from{opacity:0;translate:0 24px}to{opacity:1;translate:0 0}}
 @keyframes lvFollow{0%{opacity:0;transform:scale(.7)}60%{opacity:1;transform:scale(1.08)}100%{transform:scale(1)}}
 @keyframes lvGlow{0%{box-shadow:0 0 0 0 rgba(232,68,12,.7)}100%{box-shadow:0 0 0 10px rgba(232,68,12,0)}}
 @keyframes lvPing{0%{transform:scale(1);opacity:.85}100%{transform:scale(1.75);opacity:0}}
@@ -88,25 +131,19 @@ export function LiveViewers({ count }: { count: number }) {
 const ROSETTE =
   "M20.6 12 23.2 9l-3.75-1.3.75-3.9-3.9.75L15 .8 12 3.4 9 .8 7.7 4.55l-3.9-.75.75 3.9L.8 9 3.4 12 .8 15l3.75 1.3-.75 3.9 3.9-.75L9 23.2l3-2.6 3 2.6 1.3-3.75 3.9.75-.75-3.9L23.2 15Z";
 
-/** O selo de verificado: branco com o visto vazado (vê-se o fundo) ou azul com o visto branco. */
-export function HostBadge({ color, size = 14 }: { color: "white" | "blue"; size?: number | undefined }) {
+/**
+ * O selo de verificado do Live: a roseta na cor do texto com o visto vazado (vê-se o fundo). Branco
+ * por cima do vídeo, escuro no painel claro. Liga-se e desliga-se no Início; não tem cor à escolha.
+ */
+export function HostBadge({ size = 14 }: { size?: number | undefined }) {
   const id = `lvb${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" role="img" aria-label="Verificado" className="block shrink-0">
-      {color === "white" ? (
-        <>
-          <mask id={id}>
-            <rect width="24" height="24" fill="#fff" />
-            <path d="M7.4 12.2l3.3 3.3 6-6.2" fill="none" stroke="#000" strokeWidth="2.8" strokeLinecap="square" />
-          </mask>
-          <path d={ROSETTE} fill="#fff" mask={`url(#${id})`} />
-        </>
-      ) : (
-        <>
-          <path d={ROSETTE} fill="#0095F6" />
-          <path d="M7.4 12.2l3.3 3.3 6-6.2" fill="none" stroke="#fff" strokeWidth="2.8" strokeLinecap="square" />
-        </>
-      )}
+      <mask id={id}>
+        <rect width="24" height="24" fill="#fff" />
+        <path d="M7.4 12.2l3.3 3.3 6-6.2" fill="none" stroke="#000" strokeWidth="2.8" strokeLinecap="square" />
+      </mask>
+      <path d={ROSETTE} fill="currentColor" mask={`url(#${id})`} />
     </svg>
   );
 }
@@ -124,7 +161,7 @@ function Avatar({ host, size }: { host: LiveHost; size: number }) {
     <img src={host.avatarUrl} alt="" className="block shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />
   ) : (
     <span
-      className="grid shrink-0 place-items-center rounded-full bg-white/20 text-[12px] font-bold text-white"
+      className="grid shrink-0 place-items-center rounded-full bg-room-raised text-[12px] font-bold text-room-text"
       style={{ width: size, height: size }}
     >
       {initials || "?"}
@@ -158,7 +195,6 @@ export function FollowButton({ label, onClick, big }: { label: string; onClick: 
  */
 export function LiveTopBar({
   host,
-  badge,
   follow,
   onHost,
   status,
@@ -166,7 +202,6 @@ export function LiveTopBar({
   extra,
 }: {
   host: LiveHost;
-  badge: "white" | "blue";
   follow: { label: string; onClick: () => void } | null;
   onHost?: (() => void) | undefined;
   status: { label: string; tone: "live" | "replay" | "muted" } | null;
@@ -187,7 +222,7 @@ export function LiveTopBar({
           className="flex min-w-0 items-center gap-[5px] text-[14px] font-[600] leading-tight [text-shadow:0_1px_3px_rgba(0,0,0,.45)]"
         >
           <span className="truncate">{host.name}</span>
-          {host.verified && host.name ? <HostBadge color={badge} /> : null}
+          {host.verified && host.name ? <HostBadge /> : null}
         </button>
         {follow ? <FollowButton label={follow.label} onClick={follow.onClick} /> : null}
       </div>
@@ -204,19 +239,22 @@ export function LiveTopBar({
 export function LivePanelHead({
   title,
   host,
-  badge,
   follow,
   onHost,
 }: {
   title: string;
   host: LiveHost;
-  badge: "white" | "blue";
   follow: { label: string; onClick: () => void } | null;
   onHost?: (() => void) | undefined;
 }) {
   return (
-    <div className="shrink-0 border-b border-white/[0.08] px-5 pb-4 pt-[18px] text-white">
-      <h2 className="text-balance text-[20px] font-extrabold leading-tight tracking-[-0.01em]">{title}</h2>
+    <div className="shrink-0 border-b border-room-line px-5 pb-4 pt-[18px] text-room-text">
+      {title ? (
+        <h2 className="text-balance text-[20px] font-extrabold leading-tight tracking-[-0.01em]">{title}</h2>
+      ) : (
+        // Ainda sem título: um traço no lugar dele, para a sala se ir construindo com o que se preenche.
+        <span aria-hidden className="block h-5 w-3/5 rounded-md bg-room-raised" />
+      )}
       {host.name ? (
         <div className="mt-3.5 flex items-center gap-3">
           <button type="button" onClick={onHost} disabled={!onHost} aria-label={`Ver as redes de ${host.name}`} className="shrink-0 rounded-full">
@@ -224,7 +262,7 @@ export function LivePanelHead({
           </button>
           <button type="button" onClick={onHost} disabled={!onHost} className="flex min-w-0 flex-1 items-center gap-[5px] text-[15px] font-[600]">
             <span className="truncate">{host.name}</span>
-            {host.verified ? <HostBadge color={badge} size={15} /> : null}
+            {host.verified ? <HostBadge size={15} /> : null}
           </button>
           {follow ? <FollowButton big label={follow.label} onClick={follow.onClick} /> : null}
         </div>
@@ -250,15 +288,23 @@ export function LiveFeed({
   onNotice,
   feedRef,
   className,
+  panel,
 }: {
   items: readonly LiveFeedItem[];
   onNotice?: (() => void) | undefined;
   feedRef?: React.Ref<HTMLDivElement> | undefined;
   className?: string | undefined;
+  /** No painel do computador: o texto segue o tema, sem a sombra que o destaca do vídeo. */
+  panel?: boolean | undefined;
 }) {
   return (
     <div ref={feedRef} className={cn("lv-feed flex flex-col overflow-y-auto overscroll-contain pr-11 [scrollbar-width:none]", className)}>
-      <div className="mt-auto grid gap-2.5 pt-10 text-[15px] leading-[1.35] text-white [text-shadow:0_1px_3px_rgba(0,0,0,.6)]">
+      <div
+        className={cn(
+          "mt-auto grid gap-2.5 pt-10 text-[15px] leading-[1.35]",
+          panel ? "text-room-text" : "text-white [text-shadow:0_1px_3px_rgba(0,0,0,.6)]",
+        )}
+      >
         {items.map((item) =>
           item.kind === "sale" ? (
             <p key={item.key} className="lv-in flex items-start gap-1.5 font-bold" style={{ color: saleColor(item.color).solid }}>
@@ -274,7 +320,7 @@ export function LiveFeed({
                 <b className="mr-1.5 font-bold">Suporte</b>
                 <span className="font-medium">@Você, já respondemos à sua dúvida. </span>
                 <u className="font-extrabold underline-offset-[3px]">Ver resposta</u>
-                <OnlyYou />
+                <OnlyYou panel={panel} />
               </span>
             </button>
           ) : item.kind === "mine" ? (
@@ -282,7 +328,7 @@ export function LiveFeed({
               <p className="min-w-0 break-words">
                 <b className="mr-1.5 font-bold">Você</b>
                 <span className="font-medium">{item.text}</span>
-                <OnlyYou />
+                <OnlyYou panel={panel} />
               </p>
               {item.note}
             </div>
@@ -298,9 +344,16 @@ export function LiveFeed({
   );
 }
 
-function OnlyYou() {
+function OnlyYou({ panel }: { panel?: boolean | undefined }) {
   return (
-    <em className="ml-1.5 rounded bg-white/20 px-1.5 py-px align-[1px] text-[11px] font-semibold not-italic [text-shadow:none]">só você vê</em>
+    <em
+      className={cn(
+        "ml-1.5 rounded px-1.5 py-px align-[1px] text-[11px] font-semibold not-italic [text-shadow:none]",
+        panel ? "bg-room-raised text-room-subtle" : "bg-white/20",
+      )}
+    >
+      só você vê
+    </em>
   );
 }
 
@@ -329,28 +382,49 @@ export type LiveOffer = {
   closed: boolean;
 };
 
-/** O cartão da oferta quando abre: nome, preços, o tempo e o botão; a seta minimiza. */
-export function LiveOfferCard({ offer, onBuy, onMinimize }: { offer: LiveOffer; onBuy: () => void; onMinimize: () => void }) {
+/**
+ * O cartão da oferta quando abre: nome, preços, o tempo e o botão. Tem uma pega como as folhas:
+ * tocar ou puxar para baixo reduz à barra; puxar para cima abre a oferta inteira.
+ */
+export function LiveOfferCard({
+  offer,
+  onBuy,
+  onMinimize,
+  onExpand,
+  panel,
+}: {
+  offer: LiveOffer;
+  onBuy: () => void;
+  onMinimize: () => void;
+  onExpand?: (() => void) | undefined;
+  panel?: boolean | undefined;
+}) {
+  const drag = useDrag(onMinimize, onExpand);
   return (
-    <div className="lv-up mt-2">
-      <div className="mb-2 flex justify-center">
-        <button
-          type="button"
-          onClick={onMinimize}
-          aria-label="Minimizar a oferta"
-          className="grid size-8 place-items-center rounded-full bg-black/40 text-white ring-1 ring-white/45"
-        >
-          <ChevronDown className="size-4" strokeWidth={2.4} />
-        </button>
-      </div>
-      <div className="overflow-hidden rounded-2xl bg-[rgba(20,20,20,.93)] text-white shadow-[0_18px_40px_rgba(0,0,0,.45)] ring-1 ring-white/[0.14]">
-        <div className="bg-[linear-gradient(110deg,var(--of-dark)_0%,var(--of-mid)_52%,var(--of)_100%)] px-4 pb-3.5 pt-3">
+    <div
+      className="lv-up mt-2"
+      style={drag.dy ? { transform: `translateY(${drag.dy > 0 ? drag.dy : drag.dy / 3}px)` } : { transition: "transform .2s" }}
+    >
+      <button
+        type="button"
+        {...drag.handlers}
+        onClick={() => {
+          if (!drag.moved.current) onMinimize();
+        }}
+        aria-label="Reduzir a oferta (puxe para cima para a ver inteira)"
+        title="Puxe para baixo para reduzir, para cima para ver tudo"
+        className="mx-auto flex h-6 w-24 cursor-grab touch-none items-center justify-center active:cursor-grabbing"
+      >
+        <span className={cn("block h-[5px] w-10 rounded-full", panel ? "bg-room-subtle/50" : "bg-white/80 shadow-[0_1px_4px_rgba(0,0,0,.4)]")} />
+      </button>
+      <div className="mt-1 overflow-hidden rounded-2xl bg-[color-mix(in_srgb,var(--room-surface)_94%,transparent)] text-room-text shadow-[0_18px_40px_rgba(0,0,0,.45)] ring-1 ring-room-line">
+        <div className="bg-[linear-gradient(110deg,var(--of-dark)_0%,var(--of-mid)_52%,var(--of)_100%)] px-4 pb-3.5 pt-3 text-white">
           <p className="text-[10.5px] font-extrabold uppercase tracking-[0.2em] text-white/85">Inscrições abertas</p>
           <p className="mt-1 text-[22px] font-extrabold leading-tight tracking-[-0.01em]">{offer.product || "A oferta"}</p>
         </div>
         <div className="px-3.5 pb-3.5 pt-3">
           <div className="flex items-center gap-2 text-[14.5px]">
-            {offer.priceFrom ? <s className="text-white/55">De {offer.priceFrom}</s> : null}
+            {offer.priceFrom ? <s className="text-room-subtle">De {offer.priceFrom}</s> : null}
             {offer.priceNow ? <b className="font-extrabold">Por {offer.priceNow}</b> : null}
             {offer.countdown !== null ? (
               <span className="ml-auto inline-flex items-center gap-1 font-extrabold tabular-nums text-[var(--of-ink)]">
@@ -363,7 +437,7 @@ export function LiveOfferCard({ offer, onBuy, onMinimize }: { offer: LiveOffer; 
             type="button"
             onClick={onBuy}
             disabled={offer.closed}
-            className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--of)] text-[15px] font-extrabold text-white transition hover:brightness-110 disabled:bg-white/15 disabled:text-white/60"
+            className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--of)] text-[15px] font-extrabold text-[var(--of-on)] transition hover:brightness-110 disabled:bg-room-raised disabled:text-room-subtle"
           >
             <ShoppingCart className="size-[17px]" />
             {offer.closed ? "Oferta encerrada" : offer.button}
@@ -409,20 +483,25 @@ export function LiveOfferSlim({ offer, onOpen }: { offer: LiveOffer; onOpen: () 
 /* ---------- Caixa de escrever e botões ---------- */
 
 /** O coração do Live: o mesmo da sala, sem fundo, com o contorno branco como os outros botões. */
-export function LiveHeartButton({ onHeart, reactions }: { onHeart: () => void; reactions: readonly Reaction[] }) {
+export function LiveHeartButton({ onHeart, reactions, panel }: { onHeart: () => void; reactions: readonly Reaction[]; panel?: boolean | undefined }) {
   return (
     <HeartButton
       onHeart={onHeart}
       reactions={reactions}
-      className="grid size-[38px] place-items-center rounded-full text-white transition active:scale-90"
+      className={cn("grid size-[38px] place-items-center rounded-full transition active:scale-90", panel ? "text-room-text" : "text-white")}
       iconClassName="size-6 [stroke-width:1.8]"
     />
   );
 }
 
-function CountBadge({ children }: { children: ReactNode }) {
+function CountBadge({ children, panel }: { children: ReactNode; panel?: boolean | undefined }) {
   return (
-    <span className="absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-white px-1 text-[11px] font-extrabold leading-none" style={{ color: "#C2410C" }}>
+    <span
+      className={cn(
+        "absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full px-1 text-[11px] font-extrabold leading-none",
+        panel ? "bg-[#E8440C] text-white" : "bg-white text-[#C2410C]",
+      )}
+    >
       {children}
     </span>
   );
@@ -441,6 +520,7 @@ export function LiveComposer({
   support,
   onHeart,
   reactions,
+  panel,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -450,8 +530,11 @@ export function LiveComposer({
   support: { unread: number; open: boolean; onClick: () => void };
   onHeart: () => void;
   reactions: readonly Reaction[];
+  /** No painel do computador: as cores seguem o tema em vez do branco por cima do vídeo. */
+  panel?: boolean | undefined;
 }) {
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const ink = panel ? "text-room-text" : "text-white";
   return (
     <form
       className="mt-2.5 flex items-center gap-1"
@@ -460,7 +543,12 @@ export function LiveComposer({
         if (value.trim()) onSubmit();
       }}
     >
-      <div className="flex h-11 min-w-0 flex-1 items-center gap-0.5 rounded-full border-[1.5px] border-white/60 bg-black/[0.18] pl-[15px] pr-[5px]">
+      <div
+        className={cn(
+          "flex h-11 min-w-0 flex-1 items-center gap-0.5 rounded-full pl-[15px] pr-[5px]",
+          panel ? "bg-room-raised" : "border-[1.5px] border-white/60 bg-black/[0.18]",
+        )}
+      >
         <input
           {...inputProps}
           value={value}
@@ -469,11 +557,14 @@ export function LiveComposer({
           enterKeyHint="send"
           maxLength={200}
           aria-label="Mensagem"
-          className="min-w-0 flex-1 bg-transparent text-[15px] text-white outline-none placeholder:text-white/85"
+          className={cn(
+            "min-w-0 flex-1 bg-transparent text-[15px] outline-none",
+            panel ? "text-room-text placeholder:text-room-subtle" : "text-white placeholder:text-white/85",
+          )}
         />
         <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
           <PopoverTrigger asChild>
-            <button type="button" aria-label="Emojis" className={cn("grid size-8 shrink-0 place-items-center rounded-full text-white", emojiOpen && "bg-white/20")}>
+            <button type="button" aria-label="Emojis" className={cn("grid size-8 shrink-0 place-items-center rounded-full", ink, emojiOpen && (panel ? "bg-room-line" : "bg-white/20"))}>
               <Smile className="size-5" />
             </button>
           </PopoverTrigger>
@@ -488,7 +579,7 @@ export function LiveComposer({
           </PopoverContent>
         </Popover>
       </div>
-      <button type="submit" aria-label="Enviar" className="grid size-[38px] shrink-0 place-items-center rounded-full text-white">
+      <button type="submit" aria-label="Enviar" className={cn("grid size-[38px] shrink-0 place-items-center rounded-full", ink)}>
         <SendHorizontal className="size-[22px]" strokeWidth={1.8} />
       </button>
       {bag ? (
@@ -496,43 +587,58 @@ export function LiveComposer({
           type="button"
           onClick={bag.onClick}
           aria-label="Ver a oferta"
-          className={cn("relative grid size-[38px] shrink-0 place-items-center rounded-full bg-[var(--of)] text-white", !bag.blink && "ring-2 ring-white")}
+          className={cn(
+            "relative grid size-[38px] shrink-0 place-items-center rounded-full bg-[var(--of)] text-[var(--of-on)]",
+            !bag.blink && (panel ? "ring-2 ring-room-line" : "ring-2 ring-white"),
+          )}
         >
           {bag.blink ? <span className="lv-ping pointer-events-none absolute inset-0 rounded-full border-2 border-[var(--of)]" /> : null}
           <ShoppingBag className="size-[19px]" />
-          {bag.blink ? <CountBadge>1</CountBadge> : null}
+          {bag.blink ? <CountBadge panel={panel}>1</CountBadge> : null}
         </button>
       ) : null}
       <button
         type="button"
         onClick={support.onClick}
         aria-label="Suporte"
-        className={cn("relative grid size-[38px] shrink-0 place-items-center rounded-full text-white", support.open && "ring-2 ring-inset ring-white")}
+        className={cn(
+          "relative grid size-[38px] shrink-0 place-items-center rounded-full",
+          ink,
+          support.open && (panel ? "ring-2 ring-inset ring-room-text" : "ring-2 ring-inset ring-white"),
+        )}
       >
         <Headset className="size-[22px]" strokeWidth={1.8} />
-        {support.unread > 0 ? <CountBadge>{support.unread}</CountBadge> : null}
+        {support.unread > 0 ? <CountBadge panel={panel}>{support.unread}</CountBadge> : null}
       </button>
-      <LiveHeartButton onHeart={onHeart} reactions={reactions} />
+      <LiveHeartButton onHeart={onHeart} reactions={reactions} panel={panel} />
     </form>
   );
 }
 
 /* ---------- Folhas (Suporte, redes, oferta inteira) ---------- */
 
-/** Uma folha que sobe por cima da sala; tocar fora fecha. Ocupa o contentor (relative) onde está. */
+/**
+ * Uma folha que sobe por cima da sala, no tema da sala. Puxa-se pela pega: para baixo fecha; tocar
+ * fora também fecha. Ocupa o contentor (relative) onde está.
+ */
 export function LiveSheet({ onClose, children, label, className }: { onClose: () => void; children: ReactNode; label: string; className?: string | undefined }) {
+  const drag = useDrag(onClose);
   return (
     <div className="absolute inset-0 z-40">
       <button type="button" aria-label="Fechar" onClick={onClose} className="absolute inset-0 bg-black/45" />
-      <div role="dialog" aria-label={label} className={cn("lv-up absolute inset-x-0 bottom-0 flex flex-col rounded-t-2xl text-white shadow-[0_-10px_40px_rgba(0,0,0,.5)]", className)}>
+      <div
+        role="dialog"
+        aria-label={label}
+        className={cn("lv-up absolute inset-x-0 bottom-0 flex flex-col rounded-t-2xl bg-room-surface text-room-text shadow-[0_-10px_40px_rgba(0,0,0,.5)]", className)}
+        style={drag.dy > 0 ? { transform: `translateY(${drag.dy}px)` } : { transition: "transform .2s" }}
+      >
+        <div {...drag.handlers} aria-hidden className="flex h-5 shrink-0 cursor-grab touch-none items-end justify-center active:cursor-grabbing">
+          <span className="block h-1 w-9 rounded-full bg-room-subtle/40" />
+        </div>
         {children}
       </div>
     </div>
   );
-}
-
-function Grab() {
-  return <span aria-hidden className="mx-auto mt-2 block h-1 w-9 rounded-full bg-white/[0.28]" />;
 }
 
 export type LiveSupportMessage = { key: string; text: string; fromTeam: boolean; note?: ReactNode };
@@ -554,61 +660,83 @@ export function LiveSupportSheet({
     const node = body.current;
     if (node) node.scrollTop = node.scrollHeight;
   }, [thread.length, waiting]);
-  const avatar = (
-    <span className="grid size-[26px] shrink-0 place-items-center rounded-full" style={{ background: BRAND }}>
-      <Headset className="size-3.5" />
-    </span>
-  );
   return (
-    <LiveSheet onClose={onClose} label="Suporte" className="max-h-[66%] bg-[#121212]">
-      <Grab />
-      <div className="grid grid-cols-[36px_minmax(0,1fr)_36px] items-center border-b border-white/[0.08] px-2 pb-2.5 pt-1.5">
-        <span className="grid size-8 place-items-center justify-self-center rounded-full" style={{ background: BRAND }}>
+    <LiveSheet onClose={onClose} label="Suporte" className="max-h-[66%]">
+      <div className="grid grid-cols-[36px_minmax(0,1fr)_36px] items-center border-b border-room-line px-2 pb-2.5 pt-1">
+        <span className="grid size-8 place-items-center justify-self-center rounded-full text-white" style={{ background: BRAND }}>
           <Headset className="size-[17px]" />
         </span>
         <b className="text-center text-[16px] font-extrabold">Suporte</b>
-        <button type="button" onClick={onClose} aria-label="Fechar" className="grid size-9 place-items-center rounded-full text-[#A8A8A8]">
+        <button type="button" onClick={onClose} aria-label="Fechar" className="grid size-9 place-items-center rounded-full text-room-subtle">
           <X className="size-5" />
         </button>
       </div>
       <div ref={body} className="flex min-h-[140px] flex-1 flex-col overflow-y-auto px-3.5 pb-[18px] pt-1.5">
-        <div className="mt-auto flex flex-col">
-          {thread.length === 0 ? (
-            <p className="mx-3 my-[18px] text-center text-[13.5px] leading-snug text-[#A8A8A8]">
-              Quando fizer uma pergunta no chat, a {teamName} responde aqui, só para si.
-            </p>
-          ) : (
-            <span className="my-2.5 self-center text-[11px] font-semibold text-[#8E8E8E]">Hoje</span>
-          )}
-          {thread.map((m) =>
-            m.fromTeam ? (
-              <div key={m.key} className="lv-in mt-2.5">
-                <span className="mb-[3px] ml-[33px] block text-[11.5px] font-bold text-[#A8A8A8]">{teamName}</span>
-                <div className="flex max-w-[86%] items-end gap-[7px]">
-                  {avatar}
-                  <div className="rounded-[20px] bg-[#262626] px-[13px] py-[9px] text-[14.5px] leading-[1.38]">{m.text}</div>
-                </div>
-              </div>
-            ) : (
-              <div key={m.key} className="lv-in mt-1.5 flex max-w-[78%] flex-col items-end self-end">
-                <div className="rounded-[20px] bg-[linear-gradient(135deg,#F0642E,#E8440C)] px-[13px] py-[9px] text-[14.5px] leading-[1.38]">{m.text}</div>
-                {m.note}
-              </div>
-            ),
-          )}
-          {waiting ? (
-            <div className="lv-in mt-1.5 flex items-end gap-[7px]">
-              {avatar}
-              <span className="inline-flex h-[38px] items-center gap-1 rounded-[20px] bg-[#262626] px-[13px]" aria-label="A escrever">
-                {[0, 0.15, 0.3].map((d) => (
-                  <i key={d} className="lv-dot size-1.5 rounded-full bg-[#A8A8A8]" style={{ animationDelay: `${d}s` }} />
-                ))}
-              </span>
-            </div>
-          ) : null}
-        </div>
+        <SupportMessages
+          thread={thread}
+          teamName={teamName}
+          waiting={waiting}
+          empty={`Quando fizer uma pergunta no chat, a ${teamName} responde aqui, só para si.`}
+        />
       </div>
     </LiveSheet>
+  );
+}
+
+/**
+ * A conversa do Suporte, como no Instagram: quem responde por cima de cada resposta, o avatar da
+ * equipa e as perguntas da pessoa à direita, no laranja da marca. Serve o Live e o Webinar.
+ */
+export function SupportMessages({
+  thread,
+  teamName,
+  waiting,
+  empty,
+}: {
+  thread: readonly LiveSupportMessage[];
+  teamName: string;
+  waiting?: boolean | undefined;
+  empty: string;
+}) {
+  const avatar = (
+    <span className="grid size-[26px] shrink-0 place-items-center rounded-full text-white" style={{ background: BRAND }}>
+      <Headset className="size-3.5" />
+    </span>
+  );
+  return (
+    <div className="mt-auto flex flex-col text-room-text">
+      {thread.length === 0 ? (
+        <p className="mx-3 my-[18px] text-center text-[13.5px] leading-snug text-room-subtle">{empty}</p>
+      ) : (
+        <span className="my-2.5 self-center text-[11px] font-semibold text-room-subtle">Hoje</span>
+      )}
+      {thread.map((m) =>
+        m.fromTeam ? (
+          <div key={m.key} className="lv-in mt-2.5">
+            <span className="mb-[3px] ml-[33px] block text-[11.5px] font-bold text-room-subtle">{teamName}</span>
+            <div className="flex max-w-[86%] items-end gap-[7px]">
+              {avatar}
+              <div className="rounded-[20px] bg-room-raised px-[13px] py-[9px] text-[14.5px] leading-[1.38]">{m.text}</div>
+            </div>
+          </div>
+        ) : (
+          <div key={m.key} className="lv-in mt-1.5 flex max-w-[78%] flex-col items-end self-end">
+            <div className="rounded-[20px] bg-[linear-gradient(135deg,#F0642E,#E8440C)] px-[13px] py-[9px] text-[14.5px] leading-[1.38] text-white">{m.text}</div>
+            {m.note}
+          </div>
+        ),
+      )}
+      {waiting ? (
+        <div className="lv-in mt-1.5 flex items-end gap-[7px]">
+          {avatar}
+          <span className="inline-flex h-[38px] items-center gap-1 rounded-[20px] bg-room-raised px-[13px]" aria-label="A escrever">
+            {[0, 0.15, 0.3].map((d) => (
+              <i key={d} className="lv-dot size-1.5 rounded-full bg-room-subtle" style={{ animationDelay: `${d}s` }} />
+            ))}
+          </span>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -638,14 +766,12 @@ export type LiveNetworkRow = { id: FollowNetwork; name: string; handle: string; 
 /** As redes de quem apresenta: cada linha abre a rede (na app, no telemóvel) e passa a «A seguir». */
 export function LiveFollowSheet({
   host,
-  badge,
   networks,
   onTap,
   onClose,
   note,
 }: {
   host: LiveHost;
-  badge: "white" | "blue";
   networks: readonly LiveNetworkRow[];
   onTap: (id: FollowNetwork, event: React.MouseEvent<HTMLAnchorElement>) => void;
   onClose: () => void;
@@ -653,27 +779,26 @@ export function LiveFollowSheet({
 }) {
   const any = networks.some((n) => n.done);
   return (
-    <LiveSheet onClose={onClose} label={`Seguir ${host.name}`} className="bg-[#1A1A1A] px-4 pb-3">
-      <Grab />
-      <div className="flex items-center gap-3 px-0.5 pb-3 pt-3.5">
-        <span className="shrink-0 rounded-full shadow-[0_0_0_2px_#1A1A1A,0_0_0_4px_#E8440C]">
+    <LiveSheet onClose={onClose} label={`Seguir ${host.name}`} className="px-4 pb-3">
+      <div className="flex items-center gap-3 px-0.5 pb-3 pt-2.5">
+        <span className="shrink-0 rounded-full shadow-[0_0_0_2px_var(--room-surface),0_0_0_4px_#E8440C]">
           <Avatar host={host} size={52} />
         </span>
         <span className="min-w-0">
           <b className="flex items-center gap-[5px] text-[16px] font-extrabold">
             <span className="truncate">{host.name}</span>
-            {host.verified ? <HostBadge color={badge} size={16} /> : null}
+            {host.verified ? <HostBadge size={16} /> : null}
           </b>
-          <span className="mt-0.5 block text-[13px] leading-snug text-[#A3A3A3]">Siga nas redes para não perder a próxima aula.</span>
+          <span className="mt-0.5 block text-[13px] leading-snug text-room-subtle">Siga nas redes para não perder a próxima aula.</span>
         </span>
       </div>
-      <div className="grid border-t border-[#2A2A2A]">
+      <div className="grid border-t border-room-line">
         {networks.map((n) => (
-          <div key={n.id} className="flex min-h-[60px] items-center gap-3 border-b border-[#2A2A2A]">
-            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#262626]">{NETWORK_ICONS[n.id]}</span>
+          <div key={n.id} className="flex min-h-[60px] items-center gap-3 border-b border-room-line">
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-room-raised">{NETWORK_ICONS[n.id]}</span>
             <span className="flex min-w-0 flex-1 flex-col leading-tight">
               <b className="text-[14.5px] font-extrabold">{n.name}</b>
-              <span className="truncate text-[12.5px] font-semibold text-[#A3A3A3]">{n.handle}</span>
+              <span className="truncate text-[12.5px] font-semibold text-room-subtle">{n.handle}</span>
             </span>
             <a
               href={n.href}
@@ -682,7 +807,7 @@ export function LiveFollowSheet({
               onClick={(event) => onTap(n.id, event)}
               className={cn(
                 "inline-flex h-[34px] min-w-[104px] shrink-0 items-center justify-center gap-1 rounded-[10px] px-3.5 text-[13.5px] font-extrabold",
-                n.done ? "bg-[#2E2E2E] text-[#E5E5E5]" : "text-white",
+                n.done ? "bg-room-raised text-room-text" : "text-white",
               )}
               style={n.done ? undefined : { background: BRAND }}
             >
@@ -692,8 +817,8 @@ export function LiveFollowSheet({
           </div>
         ))}
       </div>
-      <p className="mt-2.5 text-center text-[12px] leading-snug text-[#8E8E8E]">{note}</p>
-      <button type="button" onClick={onClose} className="mt-2.5 h-[46px] rounded-xl bg-white text-[15px] font-extrabold text-[#0F0F0F]">
+      <p className="mt-2.5 text-center text-[12px] leading-snug text-room-subtle">{note}</p>
+      <button type="button" onClick={onClose} className="mt-2.5 h-[46px] rounded-xl bg-room-text text-[15px] font-extrabold text-room-bg">
         {any ? "Feito" : "Continuar a ver a aula"}
       </button>
     </LiveSheet>
@@ -713,9 +838,9 @@ export function LiveOfferSheet({
   children: ReactNode;
 }) {
   return (
-    <LiveSheet onClose={onClose} label="Oferta" className="top-10 overflow-hidden rounded-t-[18px] bg-[#141414]">
-      <div className="flex shrink-0 items-center gap-2 py-2.5 pl-3 pr-2">
-        <button type="button" onClick={onClose} className="inline-flex h-8 items-center gap-1 rounded-full pl-2 pr-3 text-[13px] font-bold ring-1 ring-white/[0.18]">
+    <LiveSheet onClose={onClose} label="Oferta" className="top-10 overflow-hidden rounded-t-[18px]">
+      <div className="flex shrink-0 items-center gap-2 pb-2.5 pl-3 pr-2">
+        <button type="button" onClick={onClose} className="inline-flex h-8 items-center gap-1 rounded-full pl-2 pr-3 text-[13px] font-bold ring-1 ring-room-line">
           <ChevronDown className="size-4" strokeWidth={2.4} />
           Reduzir
         </button>
@@ -727,12 +852,12 @@ export function LiveOfferSheet({
         ) : (
           <span className="ml-auto" />
         )}
-        <button type="button" onClick={onClose} aria-label="Fechar" className="grid size-9 place-items-center rounded-full text-[#A8A8A8]">
+        <button type="button" onClick={onClose} aria-label="Fechar" className="grid size-9 place-items-center rounded-full text-room-subtle">
           <X className="size-5" />
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto text-room-text">{children}</div>
-      <button type="button" onClick={onSupport} className="flex h-11 shrink-0 items-center justify-center gap-2 border-t border-[#262626] text-[13.5px] font-semibold">
+      <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+      <button type="button" onClick={onSupport} className="flex h-11 shrink-0 items-center justify-center gap-2 border-t border-room-line text-[13.5px] font-semibold">
         <Headset className="size-4" />
         Dúvidas? Falar com o Suporte
       </button>

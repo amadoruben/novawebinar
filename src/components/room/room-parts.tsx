@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Captions,
   Check,
   ChevronLeft,
   ChevronRight,
   Eye,
+  Headset,
   Heart,
   Monitor,
   Moon,
@@ -70,12 +71,18 @@ export function RoomTitle({
   host,
   compact,
   highlight,
+  follow,
+  onHost,
 }: {
   kicker: string;
   title: string;
   host: { name: string; role: string; avatarUrl: string; verified: boolean };
   compact?: boolean | undefined;
   highlight?: string | null | undefined;
+  /** O + Seguir, à direita de quem apresenta (só nos momentos escolhidos). */
+  follow?: ReactNode;
+  /** Tocar na foto ou no nome abre as redes de quem apresenta. */
+  onHost?: (() => void) | undefined;
 }) {
   const hl = (key: string) =>
     highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
@@ -90,17 +97,23 @@ export function RoomTitle({
       {!compact ? (
         <p className="text-[13px] font-bold uppercase tracking-[0.2em] text-primary">{kicker}</p>
       ) : null}
-      <h1
-        className={cn(
-          "font-extrabold tracking-tight text-room-text",
-          compact ? "mb-2.5 line-clamp-2 text-[18px] leading-snug" : "mt-1.5 text-[32px] leading-tight",
-          hl("title"),
-        )}
-      >
-        {title}
-      </h1>
+      {title ? (
+        <h1
+          className={cn(
+            "font-extrabold tracking-tight text-room-text",
+            compact ? "mb-2.5 line-clamp-2 text-[18px] leading-snug" : "mt-1.5 text-[32px] leading-tight",
+            hl("title"),
+          )}
+        >
+          {title}
+        </h1>
+      ) : (
+        // Ainda sem título: um traço no lugar dele, para a sala se ir construindo com o que se preenche.
+        <span aria-hidden className={cn("block w-3/5 rounded-md bg-room-raised", compact ? "mb-2.5 h-5" : "mt-2.5 h-8", hl("title"))} />
+      )}
       {host.name ? (
         <div className={cn("flex items-center", compact ? "gap-2.5" : "mt-4 gap-3.5", hl("host"))}>
+          <button type="button" onClick={onHost} disabled={!onHost} className="flex min-w-0 flex-1 items-center gap-[inherit] text-left">
           {host.avatarUrl ? (
             <img
               src={host.avatarUrl}
@@ -126,6 +139,8 @@ export function RoomTitle({
               <span className={cn("block truncate text-room-subtle", compact ? "text-[13px]" : "text-sm")}>{host.role}</span>
             ) : null}
           </span>
+          </button>
+          {follow}
         </div>
       ) : null}
     </div>
@@ -270,8 +285,8 @@ export function CaptionLine({ text, compact }: { text: string | null; compact?: 
 export const EMOJIS = ["😀", "😂", "😍", "🥰", "😮", "🤔", "👏", "🙌", "👍", "💪", "🔥", "💯", "❤️", "🎉", "🙏", "✅", "😅", "🤩", "😢", "👀", "💡", "🚀", "⭐", "🇦🇴", "🇧🇷", "🇵🇹"];
 
 /**
- * A caixa de escrever, como o chat ao vivo do YouTube: o campo com os emojis, o botão de comentar
- * (sempre à vista, aceso quando há texto) e o coração. As reações sobem por cima do coração.
+ * A caixa de escrever do formato Webinar, com o mesmo desenho do Live (como no Instagram e no
+ * YouTube): o campo com os emojis e, ao lado, o enviar e o coração só em ícone, sem círculos.
  */
 export function ChatComposer({
   value,
@@ -283,8 +298,6 @@ export function ChatComposer({
   reactions,
   compact,
   inputProps,
-  onVideo,
-  extra,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -295,30 +308,18 @@ export function ChatComposer({
   reactions?: readonly Reaction[] | undefined;
   compact?: boolean | undefined;
   inputProps?: React.InputHTMLAttributes<HTMLInputElement> | undefined;
-  /** Por cima do vídeo (formato Live): transparente, letra branca. */
-  onVideo?: boolean | undefined;
-  /** Um botão a mais antes do coração (no Live, o Suporte). */
-  extra?: ReactNode;
 }) {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const ready = Boolean(value.trim());
-  const round = cn("grid shrink-0 place-items-center rounded-full transition", compact ? "size-10" : "size-11");
-  const glass = "bg-black/30 text-white ring-1 ring-white/35 backdrop-blur-md";
   return (
     <form
-      className={cn("flex items-center gap-2", !onVideo && "border-t border-room-line px-3 py-3")}
+      className="flex items-center gap-1 border-t border-room-line px-3 py-3"
       onSubmit={(event) => {
         event.preventDefault();
         if (ready) onSubmit();
       }}
     >
-      <div
-        className={cn(
-          "flex min-w-0 flex-1 items-center rounded-full pl-4 pr-1 ring-1 focus-within:ring-primary/60",
-          onVideo ? "bg-black/30 ring-white/35 backdrop-blur-md" : "bg-room-raised ring-room-line",
-          compact ? "h-10" : "h-11",
-        )}
-      >
+      <div className={cn("flex min-w-0 flex-1 items-center gap-0.5 rounded-full bg-room-raised pl-4 pr-[5px]", compact ? "h-10" : "h-11")}>
         <input
           {...inputProps}
           value={value}
@@ -326,11 +327,7 @@ export function ChatComposer({
           placeholder={placeholder}
           enterKeyHint="send"
           maxLength={200}
-          className={cn(
-            "min-w-0 flex-1 bg-transparent outline-none",
-            onVideo ? "text-white placeholder:text-white/75" : "text-room-text placeholder:text-room-subtle",
-            compact ? "text-[14px]" : "text-[15px]",
-          )}
+          className={cn("min-w-0 flex-1 bg-transparent text-room-text outline-none placeholder:text-room-subtle", compact ? "text-[14px]" : "text-[15px]")}
         />
         <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
           <PopoverTrigger asChild>
@@ -338,10 +335,7 @@ export function ChatComposer({
               type="button"
               aria-label="Emojis"
               title="Emojis"
-              className={cn(
-                "grid size-9 shrink-0 place-items-center rounded-full transition",
-                onVideo ? "text-white/80 hover:text-white" : "text-room-subtle hover:text-room-text",
-              )}
+              className={cn("grid size-8 shrink-0 place-items-center rounded-full text-room-text transition", emojiOpen && "bg-room-line")}
             >
               <Smile className="size-5" />
             </button>
@@ -367,23 +361,16 @@ export function ChatComposer({
         aria-label="Comentar"
         title="Comentar"
         disabled={!ready}
-        className={cn(
-          round,
-          ready
-            ? "bg-primary text-primary-foreground hover:brightness-110"
-            : onVideo
-              ? cn(glass, "text-white/70")
-              : "bg-room-raised text-room-subtle ring-1 ring-room-line",
-        )}
+        className={cn("grid size-[38px] shrink-0 place-items-center rounded-full transition", ready ? "text-primary" : "text-room-text")}
       >
-        <SendHorizontal className="size-[18px]" />
+        <SendHorizontal className="size-[22px]" strokeWidth={1.8} />
       </button>
-      {extra}
       {withReactions && onHeart ? (
         <HeartButton
           onHeart={onHeart}
           reactions={reactions ?? []}
-          className={cn(round, onVideo ? glass : "bg-room-raised text-room-text ring-1 ring-room-line", "transition active:scale-90")}
+          className="grid size-[38px] shrink-0 place-items-center rounded-full text-room-text transition active:scale-90"
+          iconClassName="size-6 [stroke-width:1.8]"
         />
       ) : null}
     </form>
@@ -534,6 +521,25 @@ export function ChatLine({
   );
 }
 
+/**
+ * No chat do formato Webinar: o Suporte já respondeu e a pessoa ainda não viu. Só ela vê; tocar
+ * abre o Suporte. É o mesmo aviso do Live, com o desenho das linhas do chat.
+ */
+export function SupportNotice({ onOpen, big }: { onOpen: () => void; big?: boolean | undefined }) {
+  return (
+    <button type="button" onClick={onOpen} className="flex items-start gap-2.5 text-left">
+      <span className={cn("grid shrink-0 place-items-center rounded-full bg-[#E8440C] text-white", big ? "size-8" : "size-7")}>
+        <Headset className="size-4" />
+      </span>
+      <p className={cn("min-w-0 pt-0.5 leading-[1.45] text-room-text", big ? "text-[16px]" : "text-[14.5px]")}>
+        <span className="mr-2 font-semibold text-room-subtle">Suporte</span>
+        <span className="mr-2 rounded bg-room-raised px-1.5 py-px align-[1px] text-[11px] font-medium text-room-subtle">Só você vê</span>
+        @Você, já respondemos à sua dúvida. <u className="font-semibold underline-offset-[3px]">Ver resposta</u>
+      </p>
+    </button>
+  );
+}
+
 /** As cores das compras na sala (aviso no vídeo e linha no chat). */
 export const SALE_COLORS: Record<string, { label: string; solid: string; soft: string; ink: string }> = {
   emerald: { label: "Verde", solid: "#16A34A", soft: "rgba(22,163,74,.14)", ink: "#16A34A" },
@@ -637,7 +643,7 @@ export function OfferCard({
             "relative grid content-end overflow-hidden rounded-xl p-4 text-white ring-1 ring-room-line",
             compact ? "h-[110px]" : "h-[150px]",
             !imageUrl &&
-              "bg-[radial-gradient(100%_120%_at_100%_0%,rgba(232,68,12,.45),transparent_60%),linear-gradient(160deg,#2a2f38,#15171b)]",
+              "bg-[radial-gradient(100%_120%_at_100%_0%,color-mix(in_srgb,var(--of,#E8440C)_45%,transparent),transparent_60%),linear-gradient(160deg,#2a2f38,#15171b)]",
             hl("product"),
           )}
         >
@@ -668,7 +674,7 @@ export function OfferCard({
         onClick={onBuy}
         disabled={closed}
         className={cn(
-          "flex w-full items-center justify-center gap-2.5 rounded-xl bg-[#E8440C] font-black uppercase tracking-[0.03em] text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-room-raised disabled:text-room-subtle",
+          "flex w-full items-center justify-center gap-2.5 rounded-xl bg-[var(--of,#E8440C)] font-black uppercase tracking-[0.03em] text-[var(--of-on,#FFFFFF)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-room-raised disabled:text-room-subtle",
           compact ? "h-[54px] text-[15px]" : "h-[60px] text-[17px]",
           hl("cta"),
         )}
@@ -711,35 +717,8 @@ export function PulseDot() {
 
 /* ---------- Formato Live (vídeo ao alto, chat por cima) ---------- */
 
-/**
- * O fundo da sala Live à volta do vídeo, como no Instagram no computador: o próprio vídeo,
- * desfocado, enche os lados (sem faixas pretas). Desenha quatro imagens por segundo num canvas
- * pequeno; com Vimeo ou YouTube embebidos não há imagem a que chegar e fica o fundo da sala.
- */
-export function AmbientVideo({ media, className }: { media: RefObject<HTMLVideoElement | null>; className?: string | undefined }) {
-  const canvas = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      const video = media.current;
-      const context = canvas.current?.getContext("2d");
-      if (!video || !context || video.readyState < 2 || !video.videoWidth) return;
-      context.drawImage(video, 0, 0, context.canvas.width, context.canvas.height);
-    }, 250);
-    return () => window.clearInterval(timer);
-  }, [media]);
-  return (
-    <canvas
-      ref={canvas}
-      width={24}
-      height={24}
-      aria-hidden
-      className={cn("pointer-events-none absolute inset-0 size-full scale-125 opacity-60 blur-3xl", className)}
-    />
-  );
-}
-
 /** O vídeo ao alto a cobrir o palco do Live (as unidades cq medem o palco), sem faixas pretas. */
 export const LIVE_COVER =
   "absolute left-1/2 top-1/2 h-[max(100cqh,177.78cqw)] w-[max(100cqw,56.25cqh)] -translate-x-1/2 -translate-y-1/2";
-/** Num ecrã deitado o vídeo ao alto fica inteiro, ao centro, com o fundo desfocado à volta. */
+/** Num ecrã deitado o vídeo ao alto fica inteiro, ao centro, em fundo preto. */
 export const LIVE_CONTAIN = "absolute left-1/2 top-1/2 h-full w-[56.25cqh] -translate-x-1/2 -translate-y-1/2";

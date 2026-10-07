@@ -195,6 +195,13 @@ export function EntryScreen(props: EntryScreenProps) {
           </span>
           {props.title}
         </h1>
+        {props.preview && !props.title ? (
+          // No editor, sem título ainda: traços no lugar dele, para a página se ir construindo com o que se preenche.
+          <span aria-hidden className="-mt-2 grid gap-2">
+            <i className="block h-5 w-full rounded-md" style={{ background: p.line }} />
+            <i className="block h-5 w-2/3 rounded-md" style={{ background: p.line }} />
+          </span>
+        ) : null}
 
         {props.fields.map((field) => {
           const meta = FIELD_KINDS[field.kind];
@@ -250,6 +257,7 @@ export function EntryScreen(props: EntryScreenProps) {
             {props.error}
           </p>
         ) : null}
+        {props.preview && !props.buttonText ? null : (
         <button
           type="submit"
           disabled={props.entering}
@@ -263,6 +271,7 @@ export function EntryScreen(props: EntryScreenProps) {
           {props.entering ? <Loader2 className="size-5 animate-spin" /> : null}
           {props.buttonText}
         </button>
+        )}
       </form>
     </div>
   );

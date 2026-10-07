@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import * as SliderPrimitive from "@radix-ui/react-slider";
 import {
   CalendarDays,
   Camera,
   ChevronLeft,
+  ChevronsLeft,
   Expand,
   Gift,
   Lock,
@@ -12,6 +14,7 @@ import {
   Phone,
   Play,
   Plus,
+  RotateCcw,
   RotateCw,
   SlidersHorizontal,
   Smartphone,
@@ -186,13 +189,21 @@ export function PhoneFrame({
   );
 }
 
-/** O aparelho certo, inteiro e centrado no espaço disponível, com margem à volta. */
+/** O que fica por baixo do aparelho: o leitor, os ecrãs e o formato. */
+export type Dock = { play?: ReactNode; tabs?: ReactNode; format?: ReactNode };
+
+/**
+ * O aparelho certo, inteiro e centrado no espaço disponível, com margem à volta. Por baixo, a barra
+ * do leitor e dos ecrãs alinhada com o aparelho: no computador vai de uma ponta à outra do portátil;
+ * no telemóvel fica em duas linhas centradas (os ecrãs em cima, o leitor e o formato em baixo).
+ */
 export function DeviceStage({
   device,
   landscape,
   url,
   highlightUrl,
   light,
+  dock,
   children,
 }: {
   device: Device;
@@ -200,12 +211,17 @@ export function DeviceStage({
   url: string;
   highlightUrl?: boolean | undefined;
   light?: boolean | undefined;
+  dock?: Dock | undefined;
   children: ReactNode;
 }) {
   const [ref, size] = useSize<HTMLDivElement>();
-  const k = deviceScale(device, size.w, size.h, landscape);
+  const has = Boolean(dock && (dock.play || dock.tabs || dock.format));
+  const stacked = device === "phone" && !landscape;
+  // O espaço da barra sai da altura do aparelho, para nada ficar por cima dele.
+  const k = deviceScale(device, size.w, size.h - (has ? (stacked && dock?.tabs && (dock.play || dock.format) ? 100 : 52) : 0), landscape);
+  const frameW = (device === "desktop" ? LAPTOP.w : landscape ? PHONE.h : PHONE.w) * k;
   return (
-    <div ref={ref} className="flex size-full min-h-0 min-w-0 items-center justify-center overflow-hidden">
+    <div ref={ref} className="flex size-full min-h-0 min-w-0 flex-col items-center justify-center overflow-hidden">
       {size.w > 0 && size.h > 0 ? (
         device === "desktop" ? (
           <LaptopFrame k={k} url={url} highlightUrl={highlightUrl}>
@@ -215,6 +231,28 @@ export function DeviceStage({
           <PhoneFrame k={k} light={light} landscape={landscape}>
             {children}
           </PhoneFrame>
+        )
+      ) : null}
+      {has && size.w > 0 ? (
+        stacked ? (
+          <div className="mt-3 grid shrink-0 justify-items-center gap-2">
+            {dock?.tabs}
+            {dock?.play || dock?.format ? (
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {dock?.play}
+                {dock?.format}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div
+            className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-2"
+            style={{ width: Math.min(Math.max(frameW, 560), size.w - 16) }}
+          >
+            <span className="flex min-w-0 items-center">{dock?.play}</span>
+            {dock?.tabs}
+            <span className="flex min-w-0 items-center justify-end">{dock?.format}</span>
+          </div>
         )
       ) : null}
     </div>
@@ -301,8 +339,8 @@ export function ScreenTabs({ tabs, dark }: { tabs: readonly ScreenTab[]; dark?: 
 }
 
 /**
- * O formato da sala, por baixo do aparelho, ao lado dos ecrãs: Clássico ou Live. O botão de
- * afinar abre a etapa Vídeo, onde cada formato se personaliza.
+ * O formato da sala, por baixo do aparelho, ao lado dos ecrãs: Webinar ou Live. O botão de
+ * afinar abre a etapa Vídeo, onde a sala se personaliza (igual nos dois).
  */
 export function FormatSwitch<T extends string>({
   value,
@@ -370,41 +408,96 @@ export function FormatSwitch<T extends string>({
   );
 }
 
-/** Tocar e pausar a sala, com o minuto: fica ao lado dos ecrãs. */
+/**
+ * O leitor da sala, por baixo do aparelho (ideia dos leitores de áudio da ElevenLabs, sem os
+ * instalar). Fechado é só o play e o minuto; tocar no play abre as funções: recuar e avançar 10 s,
+ * a barra para arrastar o cursor e o tempo. A seta à direita volta a fechá-lo.
+ */
 export function PlayChip({
   t,
   duration,
   playing,
   onToggle,
+  onSeek,
   dark,
 }: {
   t: number;
   duration: number;
   playing: boolean;
   onToggle: () => void;
+  onSeek: (seconds: number) => void;
   dark?: boolean | undefined;
 }) {
+  const [open, setOpen] = useState(false);
+  const icon = cn(
+    "grid size-8 shrink-0 place-items-center rounded-lg transition",
+    dark ? "text-[#A1A1A1] hover:bg-white/10 hover:text-[#EDEDED]" : "text-muted-foreground hover:bg-[var(--ds-gray-alpha-200)] hover:text-foreground",
+  );
+  const jump = (delta: number) => onSeek(Math.max(0, Math.min(duration, t + delta)));
   return (
     <span
       className={cn(
-        "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl pl-1 pr-3",
+        "inline-flex h-10 min-w-0 shrink-0 items-center gap-1 rounded-xl p-1 transition-[width]",
+        open ? "pr-1" : "pr-3",
         dark ? "bg-[#1F1F1F] text-[#EDEDED]" : "bg-white shadow-[0_1px_2px_rgba(0,0,0,.06),0_0_0_1px_rgba(0,0,0,.06)]",
       )}
     >
+      {open ? (
+        <button type="button" onClick={() => jump(-10)} aria-label="Recuar 10 segundos" title="Recuar 10 s" className={icon}>
+          <RotateCcw className="size-4" />
+        </button>
+      ) : null}
       <button
         type="button"
-        onClick={onToggle}
+        onClick={() => {
+          onToggle();
+          setOpen(true);
+        }}
         aria-label={playing ? "Pausar" : "Tocar"}
-        className={cn(
-          "grid size-8 place-items-center rounded-lg",
-          dark ? "bg-[#EDEDED] text-[#0A0A0A]" : "bg-foreground text-background",
-        )}
+        className={cn("grid size-8 shrink-0 place-items-center rounded-lg", dark ? "bg-[#EDEDED] text-[#0A0A0A]" : "bg-foreground text-background")}
       >
         {playing ? <Pause className="size-3.5 fill-current" /> : <Play className="size-3.5 fill-current" />}
       </button>
-      <span className="font-mono text-[12.5px] tabular-nums">
-        {clock(t)} <span className={dark ? "text-[#8F8F8F]" : "text-muted-foreground"}>/ {clock(duration)}</span>
-      </span>
+      {open ? (
+        <>
+          <button type="button" onClick={() => jump(10)} aria-label="Avançar 10 segundos" title="Avançar 10 s" className={icon}>
+            <RotateCw className="size-4" />
+          </button>
+          <SliderPrimitive.Root
+            value={[Math.min(t, duration)]}
+            max={Math.max(1, duration)}
+            step={1}
+            onValueChange={([v]) => onSeek(v ?? 0)}
+            aria-label="Minuto do vídeo"
+            className="group relative mx-2 flex h-8 w-[180px] touch-none select-none items-center"
+          >
+            <SliderPrimitive.Track className={cn("relative h-1 grow overflow-hidden rounded-full", dark ? "bg-white/15" : "bg-[var(--ds-gray-alpha-300)]")}>
+              <SliderPrimitive.Range className={cn("absolute h-full", dark ? "bg-[#EDEDED]" : "bg-foreground")} />
+            </SliderPrimitive.Track>
+            <SliderPrimitive.Thumb
+              className={cn(
+                "block size-3 rounded-full opacity-0 shadow transition-opacity focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100",
+                dark ? "bg-[#EDEDED]" : "bg-foreground",
+              )}
+            />
+          </SliderPrimitive.Root>
+        </>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        disabled={open}
+        className="shrink-0 pl-1 font-mono text-[12.5px] tabular-nums disabled:cursor-default"
+        aria-label={open ? undefined : "Abrir o leitor"}
+      >
+        <b className="font-semibold">{clock(t)}</b>
+        <span className={dark ? "text-[#8F8F8F]" : "text-muted-foreground"}> / {clock(duration)}</span>
+      </button>
+      {open ? (
+        <button type="button" onClick={() => setOpen(false)} aria-label="Fechar o leitor" title="Fechar" className={icon}>
+          <ChevronsLeft className="size-4" />
+        </button>
+      ) : null}
     </span>
   );
 }
@@ -423,21 +516,18 @@ export function ExpandButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-/** O ecrã completo: o aparelho sobre fundo escuro, com o leitor e os ecrãs em baixo. */
+/** O ecrã completo: o aparelho sobre fundo escuro; o leitor e os ecrãs vêm na barra do aparelho. */
 export function FullScreen({
   name,
   device,
   onDevice,
   onClose,
-  bottom,
   children,
 }: {
   name: string;
   device: Device;
   onDevice: (device: Device) => void;
   onClose: () => void;
-  /** O leitor e os ecrãs, por baixo do aparelho. */
-  bottom?: ReactNode;
   children: ReactNode;
 }) {
   useEffect(() => {
@@ -460,8 +550,7 @@ export function FullScreen({
           <span className="hidden sm:inline">Fechar</span>
         </button>
       </div>
-      <div className="min-h-0 flex-1 px-2 sm:px-4">{children}</div>
-      {bottom ? <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 px-3 pb-4 pt-2">{bottom}</div> : null}
+      <div className="min-h-0 flex-1 px-2 pb-3 sm:px-4">{children}</div>
     </div>
   );
 }

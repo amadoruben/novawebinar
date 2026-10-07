@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, Info, Minus, Plus, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -512,5 +513,68 @@ export function Stepper({
         <Plus className="size-4" />
       </button>
     </div>
+  );
+}
+
+/** Cores à escolha: sugestões, o seletor do sistema (a roda) e o código hex escrito à mão. */
+export function Swatches({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: readonly string[];
+}) {
+  const [hex, setHex] = useState(value);
+  // Se a cor mudar por fora (sugestão, gravação), o código acompanha.
+  useEffect(() => setHex(value), [value]);
+  return (
+    <Field label={label}>
+      <div className="flex flex-wrap items-center gap-2">
+        {options.map((color) => (
+          <button
+            key={color}
+            type="button"
+            onClick={() => {
+              onChange(color);
+              setHex(color);
+            }}
+            aria-label={`Cor ${color}`}
+            aria-pressed={value.toUpperCase() === color.toUpperCase()}
+            className={cn(
+              "size-7 rounded-full ring-1 ring-black/10",
+              value.toUpperCase() === color.toUpperCase() && "ring-2 ring-foreground ring-offset-2",
+            )}
+            style={{ background: color }}
+          />
+        ))}
+        <label className="relative size-7 cursor-pointer overflow-hidden rounded-full bg-[conic-gradient(#f43f5e,#f59e0b,#22c55e,#3b82f6,#a855f7,#f43f5e)] ring-1 ring-black/10" title="Outra cor">
+          <input
+            type="color"
+            value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#000000"}
+            onChange={(e) => {
+              onChange(e.target.value.toUpperCase());
+              setHex(e.target.value.toUpperCase());
+            }}
+            className="absolute inset-0 cursor-pointer opacity-0"
+            aria-label={`Outra cor para ${label}`}
+          />
+        </label>
+        <Input
+          value={hex}
+          maxLength={7}
+          onChange={(e) => {
+            const next = e.target.value.toUpperCase();
+            setHex(next);
+            if (/^#[0-9A-F]{6}$/.test(next)) onChange(next);
+          }}
+          aria-label={`Código da cor de ${label}`}
+          className="h-8 w-[92px] font-mono text-xs"
+        />
+      </div>
+    </Field>
   );
 }

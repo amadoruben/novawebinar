@@ -1,7 +1,7 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, ChevronDown, EyeOff, Radio, Users } from "lucide-react";
 import { AUDIENCE_FORMATS, clock, curveValueAt, type AudienceFormat } from "@/lib/room-logic";
-import { Field, Note, PickerButton, Section, WheelBox, WheelColumn } from "../ui";
+import { Field, Note, Section, Seg, WheelBox, WheelColumn } from "../ui";
 import type { EditorClock } from "./video";
 
 /** Os números das rodas: passos que se lêem bem, do pequeno ao grande. */
@@ -43,6 +43,8 @@ export function StepAudiencia({
   const pickMin = (v: number) => onRange(v, max > v ? max : (maxs.find((m) => m > v) ?? v + 1));
   const pickMax = (v: number) => onRange(min < v ? min : (mins.filter((m) => m < v).at(-1) ?? 0), v);
   const fmt = (n: number) => n.toLocaleString("pt-PT");
+  // Duas maneiras de escolher, à vista: escrever os números ou rodar as rodas.
+  const [way, setWay] = useState<"write" | "wheel">("write");
 
   return (
     <>
@@ -52,26 +54,39 @@ export function StepAudiencia({
         ) : format === "real" ? (
           <Note icon={Radio}>A sala mostra só quem está mesmo a ver, sem número simulado.</Note>
         ) : (
-          <PickerButton
-            icon={Users}
-            value={
-              <>
-                {fmt(min)} <span className="font-normal text-muted-foreground">→</span> {fmt(max)}{" "}
-                <span className="text-[13px] font-normal text-muted-foreground">pessoas</span>
-              </>
-            }
-            title="Pessoas na sala"
-            hint="Rode as duas rodas: com quantas a sala começa e até quantas chega."
-          >
-            <WheelBox>
-              <WheelColumn label="Mínimo" items={mins.map(fmt)} index={mins.indexOf(min)} onSettle={(i) => pickMin(mins[i]!)} wide />
-              <WheelColumn label="Máximo" items={maxs.map(fmt)} index={maxs.indexOf(max)} onSettle={(i) => pickMax(maxs[i]!)} wide />
-            </WheelBox>
-            <div className="mt-1.5 grid grid-cols-2 text-center text-[11.5px] font-medium text-muted-foreground">
-              <span>Começa com</span>
-              <span>Chega até</span>
-            </div>
-          </PickerButton>
+          <>
+            <Seg
+              full
+              small
+              label="Como escolher"
+              value={way}
+              onChange={setWay}
+              options={[
+                { value: "write", label: "Escrever" },
+                { value: "wheel", label: "Definir nas rodas" },
+              ]}
+            />
+            {way === "write" ? (
+              <div className="grid grid-cols-2 gap-2.5">
+                <CountInput label="Começa com" value={min} onCommit={(v) => onRange(v, Math.max(max, v + 1))} />
+                <CountInput label="Chega até" value={max} onCommit={(v) => onRange(Math.min(min, Math.max(0, v - 1)), Math.max(1, v))} />
+              </div>
+            ) : (
+              <div>
+                <WheelBox>
+                  <WheelColumn label="Mínimo" items={mins.map(fmt)} index={mins.indexOf(min)} onSettle={(i) => pickMin(mins[i]!)} wide />
+                  <WheelColumn label="Máximo" items={maxs.map(fmt)} index={maxs.indexOf(max)} onSettle={(i) => pickMax(maxs[i]!)} wide />
+                </WheelBox>
+                <div className="mt-1.5 grid grid-cols-2 text-center text-[11.5px] font-medium text-muted-foreground">
+                  <span>Começa com</span>
+                  <span>Chega até</span>
+                </div>
+              </div>
+            )}
+            <p className="text-[12.5px] text-muted-foreground">
+              A sala começa com {fmt(min)} e chega até {fmt(max)} pessoas, seguindo o formato abaixo.
+            </p>
+          </>
         )}
       </Section>
 
@@ -102,6 +117,38 @@ export function StepAudiencia({
         </Section>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Um número de pessoas escrito à mão: aceita «1 200» ou «1200» e grava ao sair do campo ou com Enter,
+ * para não saltar a cada tecla. Fica entre 0 e 50 000.
+ */
+function CountInput({ label, value, onCommit }: { label: string; value: number; onCommit: (value: number) => void }) {
+  const [text, setText] = useState(value.toLocaleString("pt-PT"));
+  useEffect(() => setText(value.toLocaleString("pt-PT")), [value]);
+  const commit = () => {
+    const n = Math.min(50000, Math.max(0, Number(text.replace(/\D/g, "")) || 0));
+    if (n !== value) onCommit(n);
+    else setText(value.toLocaleString("pt-PT"));
+  };
+  return (
+    <Field label={label}>
+      <label className="flex h-11 items-baseline gap-1.5 rounded-lg bg-white px-3.5 shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-400)] focus-within:shadow-[inset_0_0_0_1.5px_var(--foreground)]">
+        <input
+          inputMode="numeric"
+          value={text}
+          onChange={(e) => setText(e.target.value.replace(/[^\d\s.]/g, ""))}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+          aria-label={label}
+          className="h-full min-w-0 flex-1 bg-transparent text-[16px] font-semibold tabular-nums outline-none"
+        />
+        <span className="text-[12.5px] text-muted-foreground">pessoas</span>
+      </label>
+    </Field>
   );
 }
 

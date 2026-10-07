@@ -7,7 +7,7 @@ import {
   Link2,
   Loader2,
   Mic,
-  Moon,
+  Monitor,
   Pause,
   Play,
   RectangleVertical,
@@ -27,8 +27,8 @@ import { clock } from "@/lib/room-logic";
 import { formatBytes, type VideoUploadProgress } from "@/lib/video-upload";
 import type { Appearance } from "@/components/room/room-parts";
 import { ROOM_FORMATS, type LiveSettings, type RoomFormat } from "@/lib/room-logic";
-import { LiveOptions } from "../live-options";
-import { CountPill, Note, Section, TimeChip } from "../ui";
+import { RoomOptions } from "../room-options";
+import { CountPill, Field, Note, Section, Seg, TimeChip } from "../ui";
 
 export type VideoSourceLite = {
   id: string;
@@ -59,7 +59,10 @@ export type VideoUploadApi = {
   cancel: () => void;
 };
 
-/** Vídeo: carregar o vídeo, ver a transcrição e escolher o formato e a aparência da sala. */
+/**
+ * Vídeo: carregar o vídeo, escolher o formato da sala (Webinar ou Live) e, depois, personalizar a
+ * sala da mesma maneira nos dois formatos. A transcrição fica no fim.
+ */
 export function StepVideo({
   video,
   library,
@@ -75,7 +78,6 @@ export function StepVideo({
   onFormat,
   live,
   onLive,
-  hostVerified,
 }: {
   video: VideoSourceLite | null;
   library: readonly VideoSourceLite[];
@@ -87,12 +89,11 @@ export function StepVideo({
   onAddLink: (input: { name: string; provider: "hls" | Platform; url: string }) => Promise<boolean>;
   appearance: Appearance;
   onAppearance: (appearance: Appearance) => void;
-  /** Clássico (vídeo deitado, chat ao lado) ou Live (vídeo com o chat por cima). */
+  /** Webinar (vídeo deitado, chat ao lado) ou Live (vídeo com o chat por cima). */
   format: RoomFormat;
   onFormat: (format: RoomFormat) => void;
   live: LiveSettings;
   onLive: (patch: Partial<LiveSettings>) => void;
-  hostVerified: boolean;
 }) {
   const [dialog, setDialog] = useState(false);
   const [full, setFull] = useState(false);
@@ -181,8 +182,26 @@ export function StepVideo({
             );
           })}
         </div>
+        {format === "live" ? (
+          <Field label="No computador" hint={
+            live.desk === "horizontal"
+              ? "Para um vídeo gravado deitado: no computador fica em 16:9; no telemóvel, inteiro no terço de cima, com o chat por baixo."
+              : "Para um vídeo gravado ao alto: no telemóvel enche o ecrã; no computador fica ao alto, com o vídeo desfocado à volta."
+          }>
+            <Seg
+              full
+              label="Vídeo no computador"
+              value={live.desk}
+              onChange={(desk) => onLive({ desk })}
+              options={[
+                { value: "horizontal", label: <><Monitor className="size-3.5" />Horizontal (16:9)</> },
+                { value: "vertical", label: <><RectangleVertical className="size-3.5" />Vertical (9:16)</> },
+              ]}
+            />
+          </Field>
+        ) : null}
       </Section>
-      {format === "live" ? <LiveOptions live={live} onLive={onLive} clock={c} transcript={transcript} hostVerified={hostVerified} /> : null}
+      <RoomOptions live={live} onLive={onLive} appearance={appearance} onAppearance={onAppearance} clock={c} transcript={transcript} />
 
       {video ? (
         <Section icon={Mic} title="Transcrição" aside={transcript.length ? <CountPill>{transcript.length} frases</CountPill> : null}>
@@ -205,48 +224,6 @@ export function StepVideo({
           )}
         </Section>
       ) : null}
-
-      <Section icon={Moon} title="Aparência da sala">
-        <div className="grid grid-cols-3 gap-2.5" role="radiogroup" aria-label="Aparência da sala">
-          {(
-            [
-              ["dark", "Escuro"],
-              ["light", "Claro"],
-              ["system", "Do sistema"],
-            ] as const
-          ).map(([value, label]) => {
-            const on = appearance === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                onClick={() => onAppearance(value)}
-                className="group grid gap-2 text-left"
-              >
-                <span
-                  className={cn(
-                    "relative block overflow-hidden rounded-xl ring-1 ring-black/10 transition",
-                    on ? "ring-2 ring-foreground ring-offset-2" : "group-hover:ring-black/25",
-                  )}
-                >
-                  <RoomThumb theme={value} />
-                  {on ? (
-                    <span className="absolute right-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-foreground text-background">
-                      <Check className="size-3" />
-                    </span>
-                  ) : null}
-                </span>
-                <span className={cn("text-[13px]", on ? "font-semibold" : "font-medium text-muted-foreground")}>{label}</span>
-              </button>
-            );
-          })}
-        </div>
-        <p className="text-[12.5px] text-muted-foreground">
-          «Do sistema» segue o telemóvel ou o computador de quem vê, como no YouTube. Cada pessoa pode trocar no ⚙ do vídeo.
-        </p>
-      </Section>
 
       {dialog ? (
         <SourceDialog

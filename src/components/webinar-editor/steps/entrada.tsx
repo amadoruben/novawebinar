@@ -20,7 +20,7 @@ import {
 } from "@/lib/entry-fields";
 import { ENTRY_BUTTON_DEFAULT, ENTRY_CARD_DEFAULT } from "@/lib/room-logic";
 import { FieldIcon } from "@/components/room/entry-screen";
-import { Field, RadioCard, Section } from "../ui";
+import { Field, RadioCard, Section, Swatches } from "../ui";
 import type { EditorForm, FocusProps, SetForm } from "../form";
 
 /** Página: onde as pessoas se inscrevem, os campos que preenchem, o botão e as cores. */
@@ -305,66 +305,6 @@ function IconPicker({ field, onIcon }: { field: EntryField; onIcon: (icon: Field
         </div>
       </PopoverContent>
     </Popover>
-  );
-}
-
-function Swatches({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: readonly string[];
-}) {
-  const [hex, setHex] = useState(value);
-  return (
-    <Field label={label}>
-      <div className="flex flex-wrap items-center gap-2">
-        {options.map((color) => (
-          <button
-            key={color}
-            type="button"
-            onClick={() => {
-              onChange(color);
-              setHex(color);
-            }}
-            aria-label={`Cor ${color}`}
-            aria-pressed={value.toUpperCase() === color.toUpperCase()}
-            className={cn(
-              "size-7 rounded-full ring-1 ring-black/10",
-              value.toUpperCase() === color.toUpperCase() && "ring-2 ring-foreground ring-offset-2",
-            )}
-            style={{ background: color }}
-          />
-        ))}
-        <label className="relative size-7 cursor-pointer overflow-hidden rounded-full bg-[conic-gradient(#f43f5e,#f59e0b,#22c55e,#3b82f6,#a855f7,#f43f5e)] ring-1 ring-black/10" title="Outra cor">
-          <input
-            type="color"
-            value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#000000"}
-            onChange={(e) => {
-              onChange(e.target.value.toUpperCase());
-              setHex(e.target.value.toUpperCase());
-            }}
-            className="absolute inset-0 cursor-pointer opacity-0"
-            aria-label={`Outra cor para ${label}`}
-          />
-        </label>
-        <Input
-          value={hex}
-          maxLength={7}
-          onChange={(e) => {
-            const next = e.target.value.toUpperCase();
-            setHex(next);
-            if (/^#[0-9A-F]{6}$/.test(next)) onChange(next);
-          }}
-          aria-label={`Código da cor de ${label}`}
-          className="h-8 w-[92px] font-mono text-xs"
-        />
-      </div>
-    </Field>
   );
 }
 

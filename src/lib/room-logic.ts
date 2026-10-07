@@ -233,13 +233,13 @@ export type OfferSlot = {
 };
 
 /**
- * Como a sala se mostra. No ecrã chamam-se «Clássico» (vídeo deitado, chat ao lado) e «Live»
- * (vídeo com o chat por cima, como no Instagram).
+ * Como a sala se mostra: «Webinar» (vídeo deitado, chat ao lado) ou «Live» (vídeo com o chat por
+ * cima, como no Instagram). Depois do formato, a sala personaliza-se igual nos dois.
  */
 export type RoomFormat = "webinar" | "live";
 
 export const ROOM_FORMATS: readonly { id: RoomFormat; name: string; hint: string }[] = [
-  { id: "webinar", name: "Clássico", hint: "Vídeo deitado e o chat ao lado" },
+  { id: "webinar", name: "Webinar", hint: "Vídeo deitado e o chat ao lado" },
   { id: "live", name: "Live", hint: "Vídeo com o chat por cima, como no Instagram" },
 ];
 
@@ -251,33 +251,44 @@ export function roomFormat(chatSettings: unknown): RoomFormat {
   return (chatSettings as { room_format?: unknown } | null)?.room_format === "live" ? "live" : "webinar";
 }
 
-/* ---------- Definições do formato Live (em `chat_settings.live`) ---------- */
+/*
+ * ---------- Opções da sala, iguais nos dois formatos (em `chat_settings.live`) ----------
+ * O nome `live` ficou de quando só o formato Live as tinha; mudá-lo obrigava a mexer nos dados gravados.
+ */
 
 export type FollowNetwork = "instagram" | "youtube" | "tiktok";
 /** Um momento do vídeo em que o + Seguir aparece (quando o apresentador pede para seguir). */
 export type FollowMoment = { start: number; end: number };
-export type LiveOfferColor = "laranja" | "vermelho" | "verde" | "azul" | "roxo";
-
 export type LiveSettings = {
-  /** No computador: o vídeo deitado (16:9) ou ao alto (9:16). O resto da sala é igual. */
+  /** Só no Live, no computador: o vídeo deitado (16:9) ou ao alto (9:16). O resto da sala é igual. */
   desk: "horizontal" | "vertical";
-  /** O selo de verificado: branco com o visto transparente, ou azul. */
-  badge: "white" | "blue";
   /** Os perfis que o + Seguir mostra; uma rede sem link não aparece. */
   links: Partial<Record<FollowNetwork, string>>;
   moments: FollowMoment[];
   /** Avisa no chat, só para a pessoa, quando o Suporte respondeu e ela ainda não viu. */
   notify: boolean;
-  offerColor: LiveOfferColor;
+  /** A cor do botão e do cartão da oferta, em código hex. */
+  offerColor: string;
+};
+
+export const OFFER_COLOR_DEFAULT = "#E8440C";
+/** As sugestões ao lado do seletor: laranja da marca, vermelho, verde, azul e roxo. */
+export const OFFER_COLOR_SUGGESTIONS = [OFFER_COLOR_DEFAULT, "#E3141F", "#16A34A", "#2563EB", "#7C3AED"] as const;
+/** As cores gravadas por nome antes de haver o código hex. */
+const OFFER_COLOR_NAMES: Record<string, string> = {
+  laranja: OFFER_COLOR_DEFAULT,
+  vermelho: "#E3141F",
+  verde: "#16A34A",
+  azul: "#2563EB",
+  roxo: "#7C3AED",
 };
 
 export const LIVE_DEFAULTS: LiveSettings = {
   desk: "horizontal",
-  badge: "white",
   links: {},
   moments: [],
   notify: true,
-  offerColor: "laranja",
+  offerColor: OFFER_COLOR_DEFAULT,
 };
 
 export const FOLLOW_NETWORKS: readonly { id: FollowNetwork; name: string; example: string; android: string }[] = [
@@ -286,9 +297,7 @@ export const FOLLOW_NETWORKS: readonly { id: FollowNetwork; name: string; exampl
   { id: "tiktok", name: "TikTok", example: "https://www.tiktok.com/@perfil", android: "com.zhiliaoapp.musically" },
 ];
 
-const LIVE_OFFER_COLORS: readonly LiveOfferColor[] = ["laranja", "vermelho", "verde", "azul", "roxo"];
-
-/** Lê as definições do Live; o que faltar ou vier estragado fica com o valor por omissão. */
+/** Lê as opções da sala; o que faltar ou vier estragado fica com o valor por omissão. */
 export function liveSettings(chatSettings: unknown): LiveSettings {
   const raw = (chatSettings as { live?: unknown } | null)?.live;
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return { ...LIVE_DEFAULTS, links: {}, moments: [] };
@@ -308,12 +317,18 @@ export function liveSettings(chatSettings: unknown): LiveSettings {
     : [];
   return {
     desk: r["desk"] === "vertical" ? "vertical" : "horizontal",
-    badge: r["badge"] === "blue" ? "blue" : "white",
     links,
     moments,
     notify: r["notify"] !== false,
-    offerColor: LIVE_OFFER_COLORS.find((c) => c === r["offerColor"]) ?? "laranja",
+    offerColor: offerColor(r["offerColor"]),
   };
+}
+
+/** A cor da oferta: um código hex válido, uma cor gravada por nome, ou o laranja da marca. */
+export function offerColor(value: unknown) {
+  if (typeof value !== "string") return OFFER_COLOR_DEFAULT;
+  if (HEX.test(value)) return value.toUpperCase();
+  return OFFER_COLOR_NAMES[value] ?? OFFER_COLOR_DEFAULT;
 }
 
 /** O + Seguir aparece só dentro de um dos momentos escolhidos. */

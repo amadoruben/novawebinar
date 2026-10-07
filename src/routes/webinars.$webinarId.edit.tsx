@@ -178,7 +178,7 @@ const GROUP_NAME = { antes: "Antes da sala", sala: "Na sala", depois: "Depois da
 const NEEDS_VIDEO: readonly EditorStep[] = ["chat", "audiencia", "oferta", "vendas"];
 /** Os ecrãs da sala, e a etapa que cada um abre. */
 const SCREENS: [EditorStep, string][] = [
-  ["video", "Webinar"],
+  ["video", "Vídeo"],
   ["audiencia", "Audiência"],
   ["vendas", "Vendas"],
   ["chat", "Chat"],
@@ -1298,7 +1298,7 @@ function EditWebinar() {
       captionsOn={captionsOn}
       onCaptions={setCaptionsOn}
       speech={speech}
-      title={form.public_title || "O título do webinar"}
+      title={form.public_title}
       host={{ name: form.host_name, role: form.host_role, avatarUrl: form.host_avatar_url, verified: form.host_verified }}
       viewers={viewers}
       pin={form.chat_pin_title}
@@ -1326,13 +1326,14 @@ function EditWebinar() {
       preview
       className={screenDevice === "phone" ? "h-[852px] w-[393px] pt-[60px]" : "h-[720px] w-[1280px]"}
       theme={previewTheme}
-      title={form.public_title || "O título do webinar"}
+      title={form.public_title}
       live={live.live}
       liveLabel={live.label}
       video={videoUrl && selectedVideo?.provider === "upload" ? { url: videoUrl, startSeconds: 0 } : null}
-      buttonText={form.registration_button_text || "Entrar na sala"}
-      progress={form.registration_progress_enabled ? Number(form.registration_progress_value) || 0 : null}
-      fields={entryFields}
+      // No Início a página mostra só o que se preencheu ali (o título); os campos e o botão entram na etapa Página.
+      buttonText={step === "inicio" ? "" : form.registration_button_text || "Entrar na sala"}
+      progress={step !== "inicio" && form.registration_progress_enabled ? Number(form.registration_progress_value) || 0 : null}
+      fields={step === "inicio" ? [] : entryFields}
       values={{}}
       country={{ code: "AO", name: "Angola", dial: "+244", flag: "🇦🇴" }}
       cardColor={form.entry_card_color}
@@ -1406,7 +1407,7 @@ function EditWebinar() {
     ) : null;
   const play =
     screen === "room" && duration > 0 && !needsVideo ? (
-      <PlayChip t={t} duration={duration} playing={playing} onToggle={() => setPlaying((p) => !p)} />
+      <PlayChip t={t} duration={duration} playing={playing} onToggle={() => setPlaying((p) => !p)} onSeek={seek} />
     ) : null;
 
   const tools = (
@@ -1581,7 +1582,6 @@ function EditWebinar() {
                     onFormat={(room_format) => set({ room_format })}
                     live={form.live}
                     onLive={(patch) => setForm((prev) => ({ ...prev, live: { ...prev.live, ...patch } }))}
-                    hostVerified={form.host_verified}
                   />
                 ) : step === "chat" ? (
                   <StepChat
@@ -1746,25 +1746,19 @@ function EditWebinar() {
                 </span>
                 {tools}
               </div>
-              <div className="min-h-0 flex-1">
+              <div className="min-h-0 flex-1 pb-3">
+                {/* Os ecrãs ficam por baixo do aparelho, alinhados com ele, como no ManyChat. */}
                 <DeviceStage
                   device={screenDevice}
                   landscape={rotated}
                   url={`${roomOrigin}/w/${roomSlug}`}
                   highlightUrl={focusKey === "url"}
                   light={screen === "whatsapp" || (screen !== "room" && previewTheme === "light")}
+                  dock={{ play, tabs: tabs.length ? <ScreenTabs tabs={tabs} /> : null, format: formatSwitch() }}
                 >
                   {screenBody}
                 </DeviceStage>
               </div>
-              {/* Os ecrãs ficam em baixo, como no ManyChat. */}
-              {tabs.length || play || screen === "room" ? (
-                <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 px-3 pb-3.5 pt-1">
-                  {play}
-                  {tabs.length ? <ScreenTabs tabs={tabs} /> : null}
-                  {formatSwitch()}
-                </div>
-              ) : null}
             </section>
           </div>
         )}
@@ -1776,17 +1770,21 @@ function EditWebinar() {
           device={screenDevice}
           onDevice={setDevice}
           onClose={() => setFull(false)}
-          bottom={
-            <>
-              {screen === "room" && duration > 0 ? (
-                <PlayChip t={t} duration={duration} playing={playing} onToggle={() => setPlaying((p) => !p)} dark />
-              ) : null}
-              {tabs.length ? <ScreenTabs tabs={tabs} dark /> : null}
-              {formatSwitch(true)}
-            </>
-          }
         >
-          <DeviceStage device={screenDevice} landscape={rotated} url={`${roomOrigin}/w/${roomSlug}`} light={screen === "whatsapp"}>
+          <DeviceStage
+            device={screenDevice}
+            landscape={rotated}
+            url={`${roomOrigin}/w/${roomSlug}`}
+            light={screen === "whatsapp"}
+            dock={{
+              play:
+                screen === "room" && duration > 0 && !needsVideo ? (
+                  <PlayChip t={t} duration={duration} playing={playing} onToggle={() => setPlaying((p) => !p)} onSeek={seek} dark />
+                ) : null,
+              tabs: tabs.length ? <ScreenTabs tabs={tabs} dark /> : null,
+              format: formatSwitch(true),
+            }}
+          >
             {screenBody}
           </DeviceStage>
         </FullScreen>
