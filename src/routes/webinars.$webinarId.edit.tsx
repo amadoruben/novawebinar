@@ -75,9 +75,9 @@ import {
   parseExtraOffers,
   liveSettings,
   roomFormat,
-  ROOM_FORMATS,
   type AudienceContext,
   type AudienceFormat,
+  type LiveSettings,
   type OfferSlot,
 } from "@/lib/room-logic";
 import { formatSessionStart, lifecycleLabel, sessionWindow, webinarLifecycle } from "@/lib/schedule";
@@ -103,7 +103,7 @@ import {
   type EditorStep,
 } from "@/lib/webinar-draft";
 import { useSimulatedPurchases, useSocialProof } from "@/components/social-proof-editor";
-import { EntryScreen, entryLiveLabel, resolveTheme } from "@/components/room/entry-screen";
+import { EntryScreen, entryLiveLabel, isDirectVideo, resolveTheme } from "@/components/room/entry-screen";
 import type { Appearance, Reaction } from "@/components/room/room-parts";
 import { emptyEditorForm, type EditorForm, type FocusProps } from "@/components/webinar-editor/form";
 import { HelpButton } from "@/components/webinar-editor/ui";
@@ -116,7 +116,6 @@ import {
   PlayChip,
   RotateButton,
   ScreenTabs,
-  FormatSwitch,
   WaitingPreview,
   WhatsAppPreview,
   type Device,
@@ -444,6 +443,18 @@ function EditWebinar() {
   /* ---------- Pré-visualização ---------- */
 
   const [device, setDevice] = useState<Device>("desktop");
+  // No computador a pré-visualização fica à direita; num ecrã estreito fica por cima do painel e
+  // esconde-se pela pega. Só uma das duas é desenhada (o vídeo não toca a dobrar).
+  const [wide, setWide] = useState(true);
+  const [phoneScreen, setPhoneScreen] = useState(true);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1024px)");
+    const update = () => setWide(media.matches);
+    update();
+    if (!media.matches) setDevice("phone");
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
   const [landscape, setLandscape] = useState(false);
   const [full, setFull] = useState(false);
   const [roomTab, setRoomTab] = useState<RoomTab | null>(null);
@@ -1187,6 +1198,30 @@ function EditWebinar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offerOpenNow]);
 
+  // A orientação do vídeo (deitado ou ao alto) lê-se do próprio ficheiro e escolhe-se sozinha no
+  // formato Live, para nunca cortar. A pessoa pode trocar depois; volta a escolher-se ao mudar de vídeo.
+  const shapeUrl = selectedVideo?.source_url && /^https?:\/\//i.test(selectedVideo.source_url) ? selectedVideo.source_url : null;
+  const [videoShape, setVideoShape] = useState<LiveSettings["desk"] | null>(null);
+  useEffect(() => {
+    setVideoShape(null);
+    if (!shapeUrl || !isDirectVideo(shapeUrl, selectedVideo?.provider)) return;
+    const probe = document.createElement("video");
+    probe.preload = "metadata";
+    probe.muted = true;
+    probe.onloadedmetadata = () => {
+      if (probe.videoWidth && probe.videoHeight) setVideoShape(probe.videoWidth >= probe.videoHeight ? "horizontal" : "vertical");
+    };
+    probe.src = shapeUrl;
+    return () => {
+      probe.onloadedmetadata = null;
+      probe.removeAttribute("src");
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shapeUrl]);
+  useEffect(() => {
+    if (videoShape) setForm((prev) => (prev.live.desk === videoShape ? prev : { ...prev, live: { ...prev.live, desk: videoShape } }));
+  }, [videoShape]);
+
   /* ---------- Desenho ---------- */
 
   if (isLoading)
@@ -1282,7 +1317,7 @@ function EditWebinar() {
 
   const room = (
     <RoomPreview
-      device={screenDevice === "phone" ? (rotated ? "phone-landscape" : "phone") : "desktop"}
+      device={screenDevice === "phone" ? (rotated ? "phone-landscape" : "phone") : screenDevice}
       live={form.room_format === "live"}
       liveSettings={form.live}
       theme={previewTheme}
@@ -1324,7 +1359,9 @@ function EditWebinar() {
   const entry = (
     <EntryScreen
       preview
-      className={screenDevice === "phone" ? "h-[852px] w-[393px] pt-[60px]" : "h-[720px] w-[1280px]"}
+      className={
+        screenDevice === "phone" ? "h-[852px] w-[393px] pt-[60px]" : screenDevice === "tablet" ? "h-[1180px] w-[820px] pt-[40px]" : "h-[720px] w-[1280px]"
+      }
       theme={previewTheme}
       title={form.public_title}
       live={live.live}
@@ -1394,20 +1431,14 @@ function EditWebinar() {
             onClick: () => setStep(target),
           }))
         : [];
-  // O formato da sala escolhe-se por baixo do aparelho, ao lado dos ecrãs.
-  const formatSwitch = (dark?: boolean) =>
-    screen === "room" ? (
-      <FormatSwitch
-        dark={dark}
-        value={form.room_format}
-        options={ROOM_FORMATS}
-        onChange={(room_format) => set({ room_format })}
-        onCustomize={step !== "video" ? () => setStep("video") : undefined}
-      />
-    ) : null;
+  // Na barra do leitor: onde abrem as ofertas e onde aparece o + Seguir.
+  const playMarks = [
+    ...offers.map((o) => ({ at: o.start, label: o.id === "main" ? "Oferta" : "Oferta extra", tone: "offer" as const })),
+    ...form.live.moments.map((m) => ({ at: m.start, label: "+ Seguir", tone: "follow" as const })),
+  ];
   const play =
     screen === "room" && duration > 0 && !needsVideo ? (
-      <PlayChip t={t} duration={duration} playing={playing} onToggle={() => setPlaying((p) => !p)} onSeek={seek} />
+      <PlayChip t={t} duration={duration} playing={playing} onToggle={() => setPlaying((p) => !p)} onSeek={seek} marks={playMarks} />
     ) : null;
 
   const tools = (
@@ -1485,6 +1516,35 @@ function EditWebinar() {
         ) : (
           <div className="grid min-h-0 flex-1 lg:grid-cols-[340px_minmax(0,1fr)]">
             <section className="flex min-h-0 min-w-0 flex-col bg-background lg:border-r">
+              {!wide ? (
+                <div className="shrink-0 border-b">
+                  {phoneScreen && !full ? (
+                    <>
+                      <div className="flex items-center justify-end gap-2 px-4 pt-2.5">{tools}</div>
+                      <div className="h-[min(64dvh,600px)] px-2">
+                        <DeviceStage
+                          device={screenDevice}
+                          landscape={rotated}
+                          url={`${roomOrigin}/w/${roomSlug}`}
+                          light={screen === "whatsapp" || (screen !== "room" && previewTheme === "light")}
+                          dock={{ play, tabs: tabs.length ? <ScreenTabs tabs={tabs} /> : null }}
+                        >
+                          {screenBody}
+                        </DeviceStage>
+                      </div>
+                    </>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setPhoneScreen((v) => !v)}
+                    aria-expanded={phoneScreen}
+                    className="flex h-9 w-full items-center justify-center gap-2 text-[12.5px] font-medium text-muted-foreground"
+                  >
+                    <span className="block h-1 w-9 rounded-full bg-black/15" />
+                    {phoneScreen ? "Esconder o ecrã" : "Ver o ecrã"}
+                  </button>
+                </div>
+              ) : null}
               <div className="flex shrink-0 items-center gap-1 px-5 pb-1 pt-3.5">
                 <h1 className="text-[17px] font-semibold tracking-tight">{active.title}</h1>
                 <HelpButton topic={active.help} />
@@ -1582,6 +1642,7 @@ function EditWebinar() {
                     onFormat={(room_format) => set({ room_format })}
                     live={form.live}
                     onLive={(patch) => setForm((prev) => ({ ...prev, live: { ...prev.live, ...patch } }))}
+                    detected={videoShape}
                   />
                 ) : step === "chat" ? (
                   <StepChat
@@ -1627,6 +1688,8 @@ function EditWebinar() {
                       setFocusKey(`comment:${comment.id}`);
                     }}
                     onWatch={(seconds) => watchAt(seconds, "chat")}
+                    notify={form.live.notify}
+                    onNotify={(notify) => setForm((prev) => ({ ...prev, live: { ...prev.live, notify } }))}
                   />
                 ) : step === "audiencia" ? (
                   <StepAudiencia
@@ -1638,6 +1701,11 @@ function EditWebinar() {
                     curve={curve}
                     pitch={pitchSeconds ?? suggestedPitch}
                     clock={editorClock}
+                    marks={{
+                      offers: offers.map((o) => ({ start: o.start, end: o.end ?? duration, main: o.id === "main" })),
+                      follows: form.live.moments,
+                      sales: shownSales.map((x) => x.at),
+                    }}
                   />
                 ) : step === "oferta" ? (
                   <StepOferta
@@ -1740,24 +1808,23 @@ function EditWebinar() {
                 <span className="flex min-w-0 flex-1 items-center gap-2 text-[12.5px] font-medium">
                   <ScreenIcon className="size-3.5 shrink-0 text-muted-foreground" />
                   <span className="truncate">{screenName}</span>
-                  {screen === "room" && duration > 0 ? (
-                    <span className="hidden shrink-0 font-mono text-muted-foreground sm:inline">· {clock(t)}</span>
-                  ) : null}
                 </span>
                 {tools}
               </div>
               <div className="min-h-0 flex-1 pb-3">
                 {/* Os ecrãs ficam por baixo do aparelho, alinhados com ele, como no ManyChat. */}
+                {wide ? (
                 <DeviceStage
                   device={screenDevice}
                   landscape={rotated}
                   url={`${roomOrigin}/w/${roomSlug}`}
                   highlightUrl={focusKey === "url"}
                   light={screen === "whatsapp" || (screen !== "room" && previewTheme === "light")}
-                  dock={{ play, tabs: tabs.length ? <ScreenTabs tabs={tabs} /> : null, format: formatSwitch() }}
+                  dock={{ play, tabs: tabs.length ? <ScreenTabs tabs={tabs} /> : null }}
                 >
                   {screenBody}
                 </DeviceStage>
+                ) : null}
               </div>
             </section>
           </div>
@@ -1776,13 +1843,13 @@ function EditWebinar() {
             landscape={rotated}
             url={`${roomOrigin}/w/${roomSlug}`}
             light={screen === "whatsapp"}
+            dark
             dock={{
               play:
                 screen === "room" && duration > 0 && !needsVideo ? (
-                  <PlayChip t={t} duration={duration} playing={playing} onToggle={() => setPlaying((p) => !p)} onSeek={seek} dark />
+                  <PlayChip t={t} duration={duration} playing={playing} onToggle={() => setPlaying((p) => !p)} onSeek={seek} marks={playMarks} dark />
                 ) : null,
               tabs: tabs.length ? <ScreenTabs tabs={tabs} dark /> : null,
-              format: formatSwitch(true),
             }}
           >
             {screenBody}

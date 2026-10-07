@@ -256,7 +256,7 @@ export function roomFormat(chatSettings: unknown): RoomFormat {
  * O nome `live` ficou de quando só o formato Live as tinha; mudá-lo obrigava a mexer nos dados gravados.
  */
 
-export type FollowNetwork = "instagram" | "youtube" | "tiktok";
+export type FollowNetwork = "instagram" | "youtube" | "tiktok" | "facebook";
 /** Um momento do vídeo em que o + Seguir aparece (quando o apresentador pede para seguir). */
 export type FollowMoment = { start: number; end: number };
 export type LiveSettings = {
@@ -295,6 +295,7 @@ export const FOLLOW_NETWORKS: readonly { id: FollowNetwork; name: string; exampl
   { id: "instagram", name: "Instagram", example: "https://www.instagram.com/perfil", android: "com.instagram.android" },
   { id: "youtube", name: "YouTube", example: "https://www.youtube.com/@canal", android: "com.google.android.youtube" },
   { id: "tiktok", name: "TikTok", example: "https://www.tiktok.com/@perfil", android: "com.zhiliaoapp.musically" },
+  { id: "facebook", name: "Facebook", example: "https://www.facebook.com/pagina", android: "com.facebook.katana" },
 ];
 
 /** Lê as opções da sala; o que faltar ou vier estragado fica com o valor por omissão. */

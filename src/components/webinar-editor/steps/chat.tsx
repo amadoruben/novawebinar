@@ -16,7 +16,8 @@ import {
   Pin,
   Play,
   ShieldCheck,
-  Sparkles,
+  Headset,
+  MessageSquarePlus,
   Trash2,
   Users,
   Zap,
@@ -29,14 +30,14 @@ import { cn } from "@/lib/utils";
 import { clock } from "@/lib/room-logic";
 import { CHAT_COUNTRIES, type ChatCountryCode } from "@/lib/chat-variants";
 import { alunoExample, chatPace, chatTagLabel, lateExample, namePool, type ChatRules } from "@/lib/chat-realism";
-import { Field, HelpButton, MinuteWheel, Seg, Stepper, Tag, TimeChip } from "../ui";
+import { Field, HelpButton, MinuteWheel, Seg, Stepper, SwitchRow, Tag, TimeChip } from "../ui";
 import type { HelpTopic } from "../help";
 import type { EditorClock } from "./video";
 import type { EditorForm, FocusProps, SetForm } from "../form";
 
 export type ChatWay = "ai" | "file" | "one";
 export type ChatComment = { id: string; at: number; author: string; message: string; type: string | null };
-type Part = "quem" | "escrita" | "real" | "perguntas" | "gerar" | "ficou";
+type Part = "quem" | "escrita" | "real" | "perguntas" | "gerar" | "ficou" | "suporte";
 
 const TONES: { value: ChatRules["tone"]; label: string; lines: string[] }[] = [
   { value: "natural", label: "Natural", lines: ["Faz sentido, nunca tinha pensado nisso assim", "Isso acontece comigo também", "Boa noite a todos!"] },
@@ -73,6 +74,8 @@ export function StepChat({
   onRemove,
   onShow,
   onWatch,
+  notify,
+  onNotify,
 }: {
   form: EditorForm;
   set: SetForm;
@@ -98,6 +101,9 @@ export function StepChat({
   onShow: (comment: ChatComment) => void;
   /** Toca a sala a partir deste segundo. */
   onWatch: (seconds: number) => void;
+  /** O aviso «já respondemos» no chat, nos dois formatos (fica em `chat_settings.live.notify`). */
+  notify: boolean;
+  onNotify: (notify: boolean) => void;
 }) {
   const [open, setOpen] = useState<Part | null>(comments.length ? "ficou" : "quem");
   const toggle = (part: Part) => setOpen((current) => (current === part ? null : part));
@@ -124,6 +130,7 @@ export function StepChat({
     <div className="grid gap-2.5">
       <Part
         icon={Users}
+        help="chatQuem"
         title="Quem está no chat"
         summary={`${chosen.map((x) => `${x.flag} ${x.name}`).join(" + ")} · ~${pace.perMinute} por minuto`}
         open={open === "quem"}
@@ -317,6 +324,7 @@ export function StepChat({
 
       <Part
         icon={Mic}
+        help="perguntas"
         title="Perguntas do apresentador"
         summary={
           questions.length
@@ -372,7 +380,8 @@ export function StepChat({
       </Part>
 
       <Part
-        icon={Sparkles}
+        icon={MessageSquarePlus}
+        help="gerar"
         title="Gerar comentários"
         summary={way === "ai" ? "Com IA, a partir da fala do vídeo" : way === "file" ? "De uma folha" : "Escritos à mão"}
         open={open === "gerar"}
@@ -473,6 +482,7 @@ export function StepChat({
 
       <Part
         icon={MessagesSquare}
+        help="comoFicou"
         title="Como ficou"
         summary={comments.length ? `${comments.length} comentários de ${people} pessoas` : "Ainda sem comentários"}
         open={open === "ficou"}
@@ -499,6 +509,22 @@ export function StepChat({
             {...focus("pin")}
           />
         </Field>
+      </Part>
+
+      <Part
+        icon={Headset}
+        help="avisoSuporte"
+        title="Aviso do Suporte"
+        summary={notify ? "Avisa no chat quando há resposta por ler" : "Sem aviso no chat"}
+        open={open === "suporte"}
+        onToggle={() => toggle("suporte")}
+      >
+        <SwitchRow
+          title="Avisar no chat quando o Suporte responde"
+          description="Se a pessoa não abrir a resposta em 20 segundos, o chat mostra-lhe «@Você, já respondemos à sua dúvida». Só ela vê."
+          checked={notify}
+          onChange={onNotify}
+        />
       </Part>
     </div>
   );

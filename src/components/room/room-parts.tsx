@@ -720,5 +720,11 @@ export function PulseDot() {
 /** O vídeo ao alto a cobrir o palco do Live (as unidades cq medem o palco), sem faixas pretas. */
 export const LIVE_COVER =
   "absolute left-1/2 top-1/2 h-[max(100cqh,177.78cqw)] w-[max(100cqw,56.25cqh)] -translate-x-1/2 -translate-y-1/2";
+/**
+ * O vídeo deitado no computador (Live): 16:9 inteiro, ao centro, com uma margem preta à volta e os
+ * cantos arredondados, como no cinema. As unidades cq medem o palco.
+ */
+export const LIVE_WIDE =
+  "absolute left-1/2 top-1/2 aspect-video w-[min(calc(100cqw-64px),calc((100cqh-112px)*16/9))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl";
 /** Num ecrã deitado o vídeo ao alto fica inteiro, ao centro, em fundo preto. */
 export const LIVE_CONTAIN = "absolute left-1/2 top-1/2 h-full w-[56.25cqh] -translate-x-1/2 -translate-y-1/2";

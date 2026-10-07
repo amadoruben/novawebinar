@@ -16,7 +16,7 @@ export function posterFromUrl(url: string | null | undefined) {
 
 /**
  * A miniatura de um vídeo: a imagem guardada, a da plataforma, ou um fotograma do próprio
- * ficheiro (aos 2 segundos). Sem nada disso, um ícone.
+ * ficheiro (aos 2 segundos, ou no segundo pedido). Sem nada disso, um ícone.
  */
 export function VideoThumb({
   name,
@@ -24,12 +24,15 @@ export function VideoThumb({
   sourceUrl,
   className,
   overlay = true,
+  at = 2,
 }: {
   name: string;
   thumbnailUrl: string | null | undefined;
   sourceUrl: string | null | undefined;
   className?: string | undefined;
   overlay?: boolean | undefined;
+  /** O segundo do fotograma usado como capa, quando não há imagem (por omissão, aos 2 s). */
+  at?: number | undefined;
 }) {
   const [failed, setFailed] = useState(false);
   const poster = thumbnailUrl || posterFromUrl(sourceUrl);
@@ -41,7 +44,7 @@ export function VideoThumb({
         <img src={poster} alt={name} loading="lazy" className="size-full object-cover" onError={() => setFailed(true)} />
       ) : isFile && !failed ? (
         <video
-          src={`${sourceUrl}#t=2`}
+          src={`${sourceUrl}#t=${Math.max(1, Math.round(at))}`}
           muted
           playsInline
           preload="metadata"

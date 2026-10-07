@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { VerifiedBadge } from "@/components/room/room-parts";
 import { cn } from "@/lib/utils";
 import { slugify } from "@/lib/data";
 import whatsappIcon from "@/assets/local/whatsapp-icon.webp";
@@ -47,7 +46,7 @@ export function StepInicio({
 
   return (
     <>
-      <Section icon={Flag} title="Webinar">
+      <Section icon={Flag} title="Webinar" help="webinar">
         <Field label="Título" required hint="É o que o público vê na página e na sala.">
           <Input value={form.public_title} onChange={(e) => set({ public_title: e.target.value })} {...focus("title")} />
         </Field>
@@ -77,7 +76,7 @@ export function StepInicio({
         </Field>
       </Section>
 
-      <Section icon={Users} title="Quem apresenta">
+      <Section icon={Users} title="Quem apresenta" help="apresentador">
         <div className="flex items-center gap-3 rounded-xl border bg-white p-3">
           {form.host_avatar_url ? (
             <img src={form.host_avatar_url} alt="" className="size-12 shrink-0 rounded-full object-cover" />
@@ -87,10 +86,8 @@ export function StepInicio({
             </span>
           )}
           <span className="min-w-0 flex-1">
-            <b className="flex items-center gap-1.5 text-[15px] font-semibold">
-              <span className="truncate">{form.host_name || "Quem apresenta"}</span>
-              {form.host_verified ? <VerifiedBadge className="size-4 text-[#606060]" check="#fff" /> : null}
-            </b>
+            {/* Sem selo aqui: o selo é da sala e muda com o formato (Webinar ou Live). */}
+            <b className="block truncate text-[15px] font-semibold">{form.host_name || "Quem apresenta"}</b>
             <span className="block truncate text-[12.5px] text-muted-foreground">{form.host_role || "Cargo"}</span>
           </span>
           <input
@@ -128,13 +125,13 @@ export function StepInicio({
         <SwitchRow
           icon={BadgeCheck}
           title="Selo de verificado"
-          description="Como no YouTube: aparece ao lado do nome, na sala, e muda de cor com o tema."
+          description="Aparece ao lado do nome só na sala, no desenho de cada formato."
           checked={form.host_verified}
           onChange={(host_verified) => set({ host_verified })}
         />
       </Section>
 
-      <Section icon={Link2} title="Partilha e ligações">
+      <Section icon={Link2} title="Partilha e ligações" help="partilha">
         <div className="divide-y overflow-hidden rounded-xl border bg-white">
           <LinkRow
             icon={<img src={whatsappIcon} alt="" className="size-4" />}
@@ -168,17 +165,17 @@ export function StepInicio({
       </Section>
 
       <Dialog open={open === "whatsapp"} onOpenChange={(v) => !v && setOpen(null)}>
-        <DialogContent className="max-w-[520px]">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-[520px] grid-cols-[minmax(0,1fr)] overflow-y-auto p-5 sm:p-7">
           <DialogHeader>
-            <DialogTitle className="text-base font-semibold">Cartão do link</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="pr-6 text-left text-base font-semibold">Cartão do link</DialogTitle>
+            <DialogDescription className="text-left">
               Quando alguém partilha o link da sala no WhatsApp, aparece este cartão. Sem mudar nada, usa o título do
               webinar.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4">
-            <div className="rounded-xl bg-[#ece5dd] p-4">
-              <div className="max-w-sm overflow-hidden rounded-xl rounded-tl-none bg-white p-1.5 shadow-sm">
+          <div className="grid min-w-0 gap-4">
+            <div className="min-w-0 rounded-xl bg-[#ece5dd] p-3 sm:p-4">
+              <div className="w-full max-w-sm overflow-hidden rounded-xl rounded-tl-none bg-white p-1.5 shadow-sm">
                 {form.share_image_url ? (
                   <img src={form.share_image_url} alt="" className="aspect-[1.91/1] w-full rounded-t-lg object-cover" />
                 ) : null}
@@ -213,10 +210,10 @@ export function StepInicio({
       </Dialog>
 
       <Dialog open={open === "webhook"} onOpenChange={(v) => !v && setOpen(null)}>
-        <DialogContent className="max-w-[520px]">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-[520px] grid-cols-[minmax(0,1fr)] overflow-y-auto p-5 sm:p-7">
           <DialogHeader>
-            <DialogTitle className="text-base font-semibold">WebHook</DialogTitle>
-            <DialogDescription>Recebe um aviso sempre que alguém entra ou clica na oferta.</DialogDescription>
+            <DialogTitle className="pr-6 text-left text-base font-semibold">WebHook</DialogTitle>
+            <DialogDescription className="text-left">Recebe um aviso sempre que alguém entra ou clica na oferta.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             <label className="flex items-center justify-between gap-4 rounded-xl border p-3.5">

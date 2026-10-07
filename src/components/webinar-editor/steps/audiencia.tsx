@@ -25,6 +25,7 @@ export function StepAudiencia({
   curve,
   pitch,
   clock: c,
+  marks,
 }: {
   format: AudienceFormat;
   onFormat: (format: AudienceFormat) => void;
@@ -34,6 +35,7 @@ export function StepAudiencia({
   curve: readonly number[];
   pitch: number | null;
   clock: EditorClock;
+  marks: ChartMarks;
 }) {
   const simulated = format !== "real" && format !== "off";
   const chosen = AUDIENCE_FORMATS.find((f) => f.value === format)!;
@@ -90,7 +92,7 @@ export function StepAudiencia({
         )}
       </Section>
 
-      <Section icon={Activity} title="Formato">
+      <Section icon={Activity} title="Formato" help="audienciaFormato">
         <Field hint={chosen.description}>
           <div className="relative">
             <select
@@ -112,8 +114,8 @@ export function StepAudiencia({
       </Section>
 
       {simulated && curve.length > 1 ? (
-        <Section icon={Radio} title="Como fica ao vivo">
-          <Chart curve={curve} pitch={pitch} clock={c} />
+        <Section icon={Radio} title="Como fica ao vivo" help="audienciaCurva">
+          <Chart curve={curve} pitch={pitch} clock={c} marks={marks} />
         </Section>
       ) : null}
     </>
@@ -152,8 +154,24 @@ function CountInput({ label, value, onCommit }: { label: string; value: number; 
   );
 }
 
-/** A curva com o cursor: arrastar (rato ou dedo) leva o vídeo a esse minuto e o número muda na sala. */
-function Chart({ curve, pitch, clock: c }: { curve: readonly number[]; pitch: number | null; clock: EditorClock }) {
+/** O que se marca no gráfico: as ofertas (a principal e as extra), os momentos do + Seguir e as compras. */
+export type ChartMarks = {
+  offers: readonly { start: number; end: number; main: boolean }[];
+  follows: readonly { start: number; end: number }[];
+  sales: readonly number[];
+};
+
+const TEAL = "#12A594";
+const OFFER = "#E8440C";
+const EXTRA = "#F5A524";
+const FOLLOW = "#0072F5";
+const SALE = "#1D8A5E";
+
+/**
+ * A audiência ao longo do vídeo, com o que acontece em cada minuto: as ofertas por baixo, numa faixa,
+ * o + Seguir noutra e as compras em pontos na curva. Arrastar (rato ou dedo) leva o vídeo a esse minuto.
+ */
+function Chart({ curve, pitch, clock: c, marks }: { curve: readonly number[]; pitch: number | null; clock: EditorClock; marks: ChartMarks }) {
   const box = useRef<HTMLDivElement>(null);
   const d = Math.max(1, c.duration);
   const top = Math.max(12, ...curve) * 1.12;
@@ -168,13 +186,23 @@ function Chart({ curve, pitch, clock: c }: { curve: readonly number[]; pitch: nu
   const now = curveValueAt(curve, c.t, d);
   const fx = Math.min(1, Math.max(0, c.t / d));
   const fy = 1 - now / top;
+  const pct = (t: number) => `${(Math.min(Math.max(t, 0), d) / d) * 100}%`;
+  const span = (a: number, b: number) => ({ left: pct(a), width: `${((Math.min(b, d) - Math.min(a, d)) / d) * 100}%` });
   const seekAt = (clientX: number) => {
     const rect = box.current?.getBoundingClientRect();
     if (!rect) return;
     c.seek(Math.round(Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)) * d));
   };
+  const extras = marks.offers.filter((o) => !o.main).length;
+  const legend: [string, string, string][] = [
+    [TEAL, "A ver", ""],
+    ...(marks.offers.some((o) => o.main) ? ([[OFFER, "Oferta principal", ""]] as [string, string, string][]) : []),
+    ...(extras ? ([[EXTRA, extras > 1 ? "Ofertas relâmpago" : "Oferta relâmpago", String(extras)]] as [string, string, string][]) : []),
+    ...(marks.follows.length ? ([[FOLLOW, "+ Seguir", String(marks.follows.length)]] as [string, string, string][]) : []),
+    ...(marks.sales.length ? ([[SALE, "Compras", String(marks.sales.length)]] as [string, string, string][]) : []),
+  ];
   return (
-    <div className="grid gap-2 rounded-xl border bg-white p-3">
+    <div className="grid gap-2.5 rounded-xl border bg-white p-3.5">
       <div className="flex items-baseline justify-between">
         <span className="text-sm">
           <b className="font-mono text-xl font-semibold tabular-nums">{now.toLocaleString("pt-PT")}</b> a ver
@@ -198,35 +226,84 @@ function Chart({ curve, pitch, clock: c }: { curve: readonly number[]; pitch: nu
           seekAt(e.clientX);
         }}
         onPointerMove={(e) => e.buttons && seekAt(e.clientX)}
-        className="relative h-[120px] cursor-grab touch-none select-none active:cursor-grabbing"
+        className="relative grid cursor-grab touch-none select-none gap-1.5 active:cursor-grabbing"
       >
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 size-full">
-          <path d={path.area} fill="#12A594" opacity={0.12} />
-          <path d={path.line} fill="none" stroke="#12A594" strokeWidth={1.75} vectorEffect="non-scaling-stroke" />
-        </svg>
-        {pitch !== null && pitch <= d ? (
-          <div className="absolute inset-y-0 border-l border-dashed border-foreground/70" style={{ left: `${(pitch / d) * 100}%` }}>
-            <span className="absolute -left-px top-0 -translate-x-full whitespace-nowrap rounded bg-foreground px-1.5 py-px text-[10.5px] font-semibold text-background">
-              Oferta {clock(pitch)}
-            </span>
+        <div className="relative h-[120px]">
+          {[0.25, 0.5, 0.75].map((y) => (
+            <span key={y} className="absolute inset-x-0 border-t border-dashed border-black/[0.07]" style={{ top: `${y * 100}%` }} />
+          ))}
+          {/* As janelas das ofertas, em fundo, para se ver a audiência durante a venda. */}
+          {marks.offers.map((o, i) => (
+            <span key={i} className="absolute inset-y-0" style={{ ...span(o.start, o.end), background: o.main ? "rgba(232,68,12,.06)" : "rgba(245,165,36,.08)" }} />
+          ))}
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 size-full">
+            <path d={path.area} fill={TEAL} opacity={0.12} />
+            <path d={path.line} fill="none" stroke={TEAL} strokeWidth={1.75} vectorEffect="non-scaling-stroke" />
+          </svg>
+          {marks.sales.map((at, i) => (
+            <span
+              key={i}
+              title={`Compra aos ${clock(at)}`}
+              className="absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white"
+              style={{ left: pct(at), top: `${(1 - curveValueAt(curve, at, d) / top) * 100}%`, background: SALE }}
+            />
+          ))}
+          {pitch !== null && pitch <= d ? (
+            <div className="absolute inset-y-0 border-l border-dashed" style={{ left: pct(pitch), borderColor: OFFER }}>
+              <span className="absolute -left-px top-0 -translate-x-full whitespace-nowrap rounded px-1.5 py-px text-[10.5px] font-semibold text-white" style={{ background: OFFER }}>
+                Oferta {clock(pitch)}
+              </span>
+            </div>
+          ) : null}
+          <div className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-foreground" style={{ left: `${fx * 100}%` }}>
+            <span className="absolute -top-1 left-1/2 size-0 -translate-x-1/2 border-x-[5px] border-t-[6px] border-x-transparent border-t-foreground" />
+            <span
+              className="absolute left-1/2 size-[18px] -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-foreground bg-white"
+              style={{ top: `${fy * 100}%` }}
+            />
+          </div>
+        </div>
+        {/* As faixas: em cima as ofertas, em baixo o + Seguir. */}
+        {marks.offers.length || marks.follows.length ? (
+          <div className="relative grid h-[18px] gap-[3px] rounded-md bg-chip px-0 py-[3px]">
+            <div className="relative">
+              {marks.offers.map((o, i) => (
+                <span
+                  key={i}
+                  title={`${o.main ? "Oferta principal" : "Oferta relâmpago"}: ${clock(o.start)}–${clock(o.end)}`}
+                  className="absolute inset-y-0 rounded-full"
+                  style={{ ...span(o.start, o.end), background: o.main ? OFFER : EXTRA }}
+                />
+              ))}
+            </div>
+            <div className="relative">
+              {marks.follows.map((m, i) => (
+                <span
+                  key={i}
+                  title={`+ Seguir: ${clock(m.start)}–${clock(m.end)}`}
+                  className="absolute inset-y-0 min-w-1 rounded-full"
+                  style={{ ...span(m.start, m.end), background: FOLLOW }}
+                />
+              ))}
+            </div>
           </div>
         ) : null}
-        <div className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-foreground" style={{ left: `${fx * 100}%` }}>
-          <span className="absolute -top-1 left-1/2 size-0 -translate-x-1/2 border-x-[5px] border-t-[6px] border-x-transparent border-t-foreground" />
-          <span
-            className="absolute left-1/2 size-[18px] -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-foreground bg-white"
-            style={{ top: `${fy * 100}%` }}
-          />
-        </div>
       </div>
       <div className="flex justify-between font-mono text-[11px] text-muted-foreground">
         <span>00:00</span>
         <span>{clock(d / 2)}</span>
         <span>{clock(d)}</span>
       </div>
-      <p className="text-[12.5px] text-muted-foreground">
-        Arraste o cursor para a esquerda ou para a direita: o número muda e a sala mostra-o.
-      </p>
+      <div className="flex flex-wrap gap-x-3.5 gap-y-1.5 border-t pt-2.5 text-[12px]">
+        {legend.map(([color, label, count]) => (
+          <span key={label} className="inline-flex items-center gap-1.5">
+            <i className="block size-2 rounded-full" style={{ background: color }} />
+            {label}
+            {count ? <b className="font-mono font-semibold tabular-nums">{count}</b> : null}
+          </span>
+        ))}
+      </div>
+      <p className="text-[12.5px] text-muted-foreground">Arraste no gráfico: o vídeo vai para esse minuto e a sala mostra o número.</p>
     </div>
   );
 }

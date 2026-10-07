@@ -8,8 +8,6 @@ import {
   Loader2,
   Mic,
   Monitor,
-  Pause,
-  Play,
   RectangleVertical,
   Upload,
   Video as VideoIcon,
@@ -78,6 +76,7 @@ export function StepVideo({
   onFormat,
   live,
   onLive,
+  detected,
 }: {
   video: VideoSourceLite | null;
   library: readonly VideoSourceLite[];
@@ -94,6 +93,8 @@ export function StepVideo({
   onFormat: (format: RoomFormat) => void;
   live: LiveSettings;
   onLive: (patch: Partial<LiveSettings>) => void;
+  /** A orientação lida do ficheiro do vídeo (null quando não dá para ler, ex.: Vimeo). */
+  detected?: LiveSettings["desk"] | null | undefined;
 }) {
   const [dialog, setDialog] = useState(false);
   const [full, setFull] = useState(false);
@@ -105,6 +106,11 @@ export function StepVideo({
 
   return (
     <>
+      {upload.state && upload.state.progress.status !== "done" ? (
+        <section className="pb-[18px]">
+          <UploadCard upload={upload} />
+        </section>
+      ) : null}
       {!video ? (
         <section className="pb-[18px]">
           <button
@@ -126,14 +132,16 @@ export function StepVideo({
         </section>
       ) : (
         <section className="grid grid-cols-[minmax(0,1fr)] gap-3 pb-[18px]">
-          <Player clock={c} />
+          {/* O ficheiro escolhido, com a capa (uma imagem do meio do vídeo, não o primeiro fotograma).
+              O play e o tempo ficam por baixo da sala, à direita. */}
           <div className="flex items-center gap-3 rounded-xl border bg-white p-2.5">
             <VideoThumb
               name={video.name}
               thumbnailUrl={video.thumbnail_url}
               sourceUrl={video.source_url}
+              at={video.duration_seconds * 0.15}
               overlay={false}
-              className="w-[72px] shrink-0 rounded-md"
+              className="w-[88px] shrink-0 rounded-md"
             />
             <div className="min-w-0 flex-1">
               <b className="block truncate text-sm font-semibold">{video.name}</b>
@@ -148,7 +156,7 @@ export function StepVideo({
         </section>
       )}
 
-      <Section icon={RectangleVertical} title="Formato da sala">
+      <Section icon={RectangleVertical} title="Formato da sala" help="formato">
         <div className="grid grid-cols-2 gap-2.5" role="radiogroup" aria-label="Formato da sala">
           {ROOM_FORMATS.map(({ id: value, name: label, hint: sub }) => {
             const on = format === value;
@@ -185,8 +193,8 @@ export function StepVideo({
         {format === "live" ? (
           <Field label="No computador" hint={
             live.desk === "horizontal"
-              ? "Para um vídeo gravado deitado: no computador fica em 16:9; no telemóvel, inteiro no terço de cima, com o chat por baixo."
-              : "Para um vídeo gravado ao alto: no telemóvel enche o ecrã; no computador fica ao alto, com o vídeo desfocado à volta."
+              ? `${detected === "horizontal" ? "O vídeo é deitado, por isso ficou esta opção. " : ""}No computador fica em 16:9, com fundo preto; no telemóvel, inteiro no terço de cima, com o chat por baixo.`
+              : `${detected === "vertical" ? "O vídeo é ao alto, por isso ficou esta opção. " : ""}No telemóvel enche o ecrã; no computador fica ao alto, ao centro, com fundo preto.`
           }>
             <Seg
               full
@@ -204,7 +212,7 @@ export function StepVideo({
       <RoomOptions live={live} onLive={onLive} appearance={appearance} onAppearance={onAppearance} clock={c} transcript={transcript} />
 
       {video ? (
-        <Section icon={Mic} title="Transcrição" aside={transcript.length ? <CountPill>{transcript.length} frases</CountPill> : null}>
+        <Section icon={Mic} title="Transcrição" help="transcricao" aside={transcript.length ? <CountPill>{transcript.length} frases</CountPill> : null}>
           {transcript.length === 0 ? (
             <Note icon={FileText}>
               Ainda sem transcrição. Ao criar os comentários no Chat, o sistema transcreve a fala e encontra os momentos do vídeo.
@@ -334,53 +342,6 @@ function SentenceRow({
   );
 }
 
-/** A barra do vídeo no painel: tocar, pausar e ir a um minuto. O vídeo vê-se na sala ao lado. */
-function Player({ clock: c }: { clock: EditorClock }) {
-  const bar = useRef<HTMLDivElement>(null);
-  const seekAt = (clientX: number) => {
-    const box = bar.current?.getBoundingClientRect();
-    if (!box) return;
-    c.seek(Math.round(Math.min(1, Math.max(0, (clientX - box.left) / box.width)) * c.duration));
-  };
-  return (
-    <div className="flex items-center gap-3 rounded-xl bg-[#141414] px-3 py-2.5 text-white">
-      <button
-        type="button"
-        onClick={c.toggle}
-        aria-label={c.playing ? "Pausar" : "Tocar"}
-        className="grid size-9 shrink-0 place-items-center rounded-full bg-white text-black"
-      >
-        {c.playing ? <Pause className="size-4 fill-current" /> : <Play className="size-4 fill-current" />}
-      </button>
-      <div className="grid min-w-0 flex-1 gap-1.5">
-        <span className="font-mono text-[11.5px] tabular-nums text-white/80">
-          {clock(c.t)} / {clock(c.duration)}
-        </span>
-        <div
-          ref={bar}
-          role="slider"
-          aria-label="Posição no vídeo"
-          aria-valuemin={0}
-          aria-valuemax={c.duration}
-          aria-valuenow={Math.round(c.t)}
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowLeft") c.seek(Math.max(0, c.t - 5));
-            if (e.key === "ArrowRight") c.seek(Math.min(c.duration, c.t + 5));
-          }}
-          onPointerDown={(e) => {
-            e.currentTarget.setPointerCapture(e.pointerId);
-            seekAt(e.clientX);
-          }}
-          onPointerMove={(e) => e.buttons && seekAt(e.clientX)}
-          className="h-1.5 cursor-pointer rounded-full bg-white/20"
-        >
-          <div className="h-full rounded-full bg-[#E8440C]" style={{ width: `${(c.t / Math.max(1, c.duration)) * 100}%` }} />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /* ---------- Carregar vídeo ---------- */
 
@@ -416,6 +377,48 @@ const PLATFORMS: Record<
     test: /b-cdn\.net|mediadelivery\.net/i,
   },
 };
+
+/** O envio do ficheiro: o nome, a percentagem, a barra e quanto já foi, com pausar, retomar e cancelar. */
+function UploadCard({ upload }: { upload: VideoUploadApi }) {
+  if (!upload.state) return null;
+  const p = upload.state.progress;
+  const state =
+    p.status === "paused" ? "Em pausa" : p.status === "error" ? (p.error ?? "O envio falhou") : p.status === "cancelled" ? "Cancelado" : "A carregar";
+  return (
+    <div className="grid gap-2.5 rounded-xl border bg-white p-3.5" role="status" aria-live="polite">
+      <div className="flex items-center gap-3">
+        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-chip">
+          {p.status === "uploading" ? <Loader2 className="size-[18px] animate-spin" /> : <Upload className="size-[18px]" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{upload.state.file.name}</p>
+          <p className={cn("text-[12px]", p.status === "error" ? "text-destructive" : "text-muted-foreground")}>
+            {state} · {formatBytes(p.bytesSent)} de {formatBytes(p.bytesTotal)}
+          </p>
+        </div>
+        <span className="font-mono text-[15px] font-semibold tabular-nums">{p.percent}%</span>
+      </div>
+      <Progress value={p.percent} />
+      <div className="flex flex-wrap gap-2">
+        {p.status === "uploading" ? (
+          <Button variant="outline" size="sm" onClick={upload.pause}>
+            Pausar
+          </Button>
+        ) : null}
+        {p.status === "paused" || (p.status === "error" && p.recoverable) ? (
+          <Button size="sm" variant="dark" onClick={upload.resume}>
+            Retomar
+          </Button>
+        ) : null}
+        {p.status !== "cancelled" ? (
+          <Button variant="ghost" size="sm" onClick={upload.cancel}>
+            Cancelar
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 /** O logótipo da plataforma num mosaico branco, como nas Integrações. */
 function PlatformLogo({ platform, size = 40 }: { platform: Platform; size?: number }) {
@@ -479,7 +482,6 @@ function SourceDialog({
     setUrl("");
     setName("");
   }, [source, platform]);
-  const p = upload.state?.progress;
   const linkProblem = (() => {
     const value = url.trim();
     if (!value) return null;
@@ -567,37 +569,9 @@ function SourceDialog({
             e.target.value = "";
           }}
         />
-        {upload.state && p && p.status !== "done" ? (
-          <div className="mt-4 grid gap-2.5 rounded-xl border border-hairline bg-white p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{upload.state.file.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {formatBytes(p.bytesSent)} de {formatBytes(p.bytesTotal)}
-                  {p.status === "paused" ? " · em pausa" : ""}
-                  {p.status === "error" ? ` · ${p.error ?? "o envio falhou"}` : ""}
-                </p>
-              </div>
-              <span className="font-mono text-sm font-semibold tabular-nums">{p.percent}%</span>
-            </div>
-            <Progress value={p.percent} />
-            <div className="flex flex-wrap gap-2">
-              {p.status === "uploading" ? (
-                <Button variant="outline" size="sm" onClick={upload.pause}>
-                  Pausar
-                </Button>
-              ) : null}
-              {p.status === "paused" || (p.status === "error" && p.recoverable) ? (
-                <Button size="sm" variant="dark" onClick={upload.resume}>
-                  Retomar
-                </Button>
-              ) : null}
-              {p.status !== "cancelled" ? (
-                <Button variant="ghost" size="sm" onClick={upload.cancel}>
-                  Cancelar
-                </Button>
-              ) : null}
-            </div>
+        {upload.state && upload.state.progress.status !== "done" ? (
+          <div className="mt-4">
+            <UploadCard upload={upload} />
           </div>
         ) : null}
         <p className="mt-3 text-[12.5px] text-muted-foreground">Quando acabar, o vídeo fica escolhido e guardado na Biblioteca.</p>

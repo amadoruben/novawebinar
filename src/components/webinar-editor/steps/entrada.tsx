@@ -107,7 +107,7 @@ export function StepEntrada({
       </section>
 
       {mode === "own" ? (
-        <Section icon={Link2} title="Ligar a sua página">
+        <Section icon={Link2} title="Ligar a sua página" help="ligarPagina">
           <div className="divide-y overflow-hidden rounded-xl border bg-white">
             <CopyRow icon={Link2} title="Link da sala" value={roomLink} onCopy={() => copy(roomLink, "Link")} />
             {embed.code ? (
@@ -209,7 +209,7 @@ export function StepEntrada({
         </p>
       </Section>
 
-      <Section icon={ShoppingCart} title="Botão e vagas">
+      <Section icon={ShoppingCart} title="Botão e vagas" help="botaoVagas">
         <Field label="Texto do botão">
           <Input
             value={form.registration_button_text}
@@ -244,7 +244,7 @@ export function StepEntrada({
         </div>
       </Section>
 
-      <Section icon={Palette} title="Cores">
+      <Section icon={Palette} title="Cores" help="coresPagina">
         <Swatches
           label="Cartão"
           value={colors.card}

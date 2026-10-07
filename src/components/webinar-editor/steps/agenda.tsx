@@ -181,7 +181,7 @@ export function StepAgenda({
       </Section>
 
       {kind === "single" ? (
-        <Section icon={Clock} title="Quando">
+        <Section icon={Clock} title="Quando" help="agendaQuando">
           <div className="grid grid-cols-2 gap-3.5">
             <Field label="Data" required>
               <Input
@@ -204,7 +204,7 @@ export function StepAgenda({
           {ended ? <p className="text-[12.5px] text-warning">A sessão de {ended} já terminou. Escolha uma nova data.</p> : null}
         </Section>
       ) : kind === "repeat" ? (
-        <Section icon={Clock} title="Quando">
+        <Section icon={Clock} title="Quando" help="agendaQuando">
           <Field label="Dias">
             <div className="grid grid-cols-7 gap-1">
               {DAYS.map(([n, short, full]) => {
@@ -277,7 +277,7 @@ export function StepAgenda({
           {zoneSelect}
         </Section>
       ) : kind === "jit" ? (
-        <Section icon={Clock} title="Intervalo">
+        <Section icon={Clock} title="Intervalo" help="agendaIntervalo">
           <Seg
             small
             value={["15", "30", "60"].includes(form.jit_interval_minutes) ? form.jit_interval_minutes : "15"}
@@ -314,7 +314,7 @@ export function StepAgenda({
         </section>
       ) : null}
 
-      <Section title="Sessão">
+      <Section title="Sessão" help="agendaSessao">
         {kind !== "ondemand" ? (
           <>
             <SwitchRow

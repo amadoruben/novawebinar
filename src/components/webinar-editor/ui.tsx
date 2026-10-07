@@ -25,8 +25,8 @@ export function HelpButton({ topic, className }: { topic: HelpTopic; className?:
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="O que é isto?"
-        title="O que é isto?"
+        aria-label="Como funciona"
+        title="Como funciona"
         className={cn(
           "grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground transition hover:bg-[var(--ds-gray-alpha-200)] hover:text-foreground",
           className,
@@ -35,24 +35,51 @@ export function HelpButton({ topic, className }: { topic: HelpTopic; className?:
         <Info className="size-[15px]" />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-[460px] gap-3">
-          <DialogHeader className="flex-row items-start gap-3 space-y-0 text-left">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-[520px] gap-0 overflow-y-auto p-0 sm:p-0">
+          <DialogHeader className="flex-row items-start gap-3 space-y-0 border-b px-5 pb-4 pt-5 text-left sm:px-6">
             <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-chip">
               <Info className="size-4" />
             </span>
-            <div className="min-w-0 space-y-1">
+            <div className="min-w-0 space-y-1 pr-6">
               <DialogTitle className="text-base font-semibold tracking-tight">{help.title}</DialogTitle>
-              <DialogDescription>{help.description}</DialogDescription>
+              <DialogDescription className="leading-relaxed">{help.what}</DialogDescription>
             </div>
           </DialogHeader>
-          <ul className="grid gap-2 pl-1 text-sm leading-relaxed">
-            {help.items.map((item) => (
-              <li key={item} className="flex gap-2.5">
-                <span className="mt-2 size-1 shrink-0 rounded-full bg-foreground/50" />
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="grid gap-5 px-5 py-5 sm:px-6">
+            <section className="grid gap-2.5">
+              <h4 className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Como usar</h4>
+              <ol className="grid gap-2.5">
+                {help.steps.map((step, i) => (
+                  <li key={step} className="flex gap-3">
+                    <span className="grid size-6 shrink-0 place-items-center rounded-full bg-chip font-mono text-[12px] font-semibold">{i + 1}</span>
+                    <span className="pt-0.5 text-sm leading-relaxed">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+            <section className="grid gap-2.5">
+              <h4 className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Exemplo</h4>
+              <p className="rounded-xl border bg-[var(--ds-background-200,#fafafa)] px-4 py-3 text-sm leading-relaxed">{help.example}</p>
+            </section>
+            {"tips" in help && help.tips?.length ? (
+              <section className="grid gap-2.5">
+                <h4 className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Dicas</h4>
+                <ul className="grid gap-2">
+                  {help.tips.map((tip) => (
+                    <li key={tip} className="flex gap-2.5 text-sm leading-relaxed">
+                      <span className="mt-2 size-1.5 shrink-0 rounded-full bg-[#E8440C]" />
+                      <span>{tip}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+          </div>
+          <div className="flex justify-end border-t px-5 py-3 sm:px-6">
+            <Button variant="dark" size="sm" onClick={() => setOpen(false)}>
+              Percebi
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </>

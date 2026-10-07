@@ -87,6 +87,9 @@ const LIVE_CSS = `
 .lv-ping{animation:lvPing 1.4s ease-out infinite}
 .lv-pop{animation:lvPop .3s ease}
 .lv-dot{animation:lvDot 1.6s ease-in-out infinite}
+/* As folhas e o cartão da oferta: no escuro, um cinza que se destaca do vídeo preto; no claro, branco. */
+.lv-sheet{--room-surface:#262626;--room-raised:#353535;--room-line:#3D3D3D}
+.room-light .lv-sheet{--room-surface:#FFFFFF;--room-raised:#F2F2F2;--room-line:#E5E5E5}
 .lv-feed{-webkit-mask-image:linear-gradient(180deg,transparent 0,rgba(0,0,0,.35) 40px,#000 110px);mask-image:linear-gradient(180deg,transparent 0,rgba(0,0,0,.35) 40px,#000 110px)}
 @media (prefers-reduced-motion:reduce){.lv-in,.lv-up,.lv-follow,.lv-ping,.lv-pop,.lv-dot{animation:none}}
 `;
@@ -307,7 +310,12 @@ export function LiveFeed({
       >
         {items.map((item) =>
           item.kind === "sale" ? (
-            <p key={item.key} className="lv-in flex items-start gap-1.5 font-bold" style={{ color: saleColor(item.color).solid }}>
+            // A compra com fundo na cor escolhida nas Vendas, para se ver bem por cima do vídeo.
+            <p
+              key={item.key}
+              className="lv-in flex items-start gap-1.5 justify-self-start rounded-[14px] px-2.5 py-1 font-bold text-white [text-shadow:none]"
+              style={{ background: saleColor(item.color).solid }}
+            >
               <ShoppingCart className="mt-0.5 size-4 shrink-0" />
               <span className="min-w-0">{item.text}</span>
             </p>
@@ -417,7 +425,7 @@ export function LiveOfferCard({
       >
         <span className={cn("block h-[5px] w-10 rounded-full", panel ? "bg-room-subtle/50" : "bg-white/80 shadow-[0_1px_4px_rgba(0,0,0,.4)]")} />
       </button>
-      <div className="mt-1 overflow-hidden rounded-2xl bg-[color-mix(in_srgb,var(--room-surface)_94%,transparent)] text-room-text shadow-[0_18px_40px_rgba(0,0,0,.45)] ring-1 ring-room-line">
+      <div className="lv-sheet mt-1 overflow-hidden rounded-2xl bg-room-surface text-room-text shadow-[0_18px_40px_rgba(0,0,0,.45)] ring-1 ring-room-line">
         <div className="bg-[linear-gradient(110deg,var(--of-dark)_0%,var(--of-mid)_52%,var(--of)_100%)] px-4 pb-3.5 pt-3 text-white">
           <p className="text-[10.5px] font-extrabold uppercase tracking-[0.2em] text-white/85">Inscrições abertas</p>
           <p className="mt-1 text-[22px] font-extrabold leading-tight tracking-[-0.01em]">{offer.product || "A oferta"}</p>
@@ -629,7 +637,7 @@ export function LiveSheet({ onClose, children, label, className }: { onClose: ()
       <div
         role="dialog"
         aria-label={label}
-        className={cn("lv-up absolute inset-x-0 bottom-0 flex flex-col rounded-t-2xl bg-room-surface text-room-text shadow-[0_-10px_40px_rgba(0,0,0,.5)]", className)}
+        className={cn("lv-sheet lv-up absolute inset-x-0 bottom-0 flex flex-col rounded-t-2xl bg-room-surface text-room-text shadow-[0_-10px_40px_rgba(0,0,0,.5)]", className)}
         style={drag.dy > 0 ? { transform: `translateY(${drag.dy}px)` } : { transition: "transform .2s" }}
       >
         <div {...drag.handlers} aria-hidden className="flex h-5 shrink-0 cursor-grab touch-none items-end justify-center active:cursor-grabbing">
@@ -740,7 +748,7 @@ export function SupportMessages({
   );
 }
 
-const NETWORK_ICONS: Record<FollowNetwork, ReactNode> = {
+export const NETWORK_ICONS: Record<FollowNetwork, ReactNode> = {
   instagram: (
     <svg viewBox="0 0 24 24" className="size-[21px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect width="20" height="20" x="2" y="2" rx="5" />
@@ -752,6 +760,11 @@ const NETWORK_ICONS: Record<FollowNetwork, ReactNode> = {
     <svg viewBox="0 0 24 24" className="size-[21px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17" />
       <path d="m10 15 5-3-5-3z" />
+    </svg>
+  ),
+  facebook: (
+    <svg viewBox="0 0 24 24" className="size-[21px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
     </svg>
   ),
   tiktok: (

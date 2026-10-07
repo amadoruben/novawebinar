@@ -172,7 +172,7 @@ export function StepAgente({
                   })}
                 </div>
               </Section>
-              <Section icon={FileText} title="Responde com">
+              <Section icon={FileText} title="Responde com" help="agenteFontes">
                 <div className="flex flex-wrap gap-2">
                   <Chip on={agent.use_webinar_transcript !== false} onClick={() => void patch({ use_webinar_transcript: agent.use_webinar_transcript === false })}>
                     Transcrição do vídeo
@@ -188,7 +188,7 @@ export function StepAgente({
             </>
           ) : (
             <>
-              <Section icon={Inbox} title="Passa à equipa quando">
+              <Section icon={Inbox} title="Passa à equipa quando" help="agenteEquipa">
                 <div className="flex flex-wrap gap-2">
                   <Chip on={reasons.includes(UNKNOWN)} onClick={() => toggleReason(UNKNOWN)}>
                     Não sabe responder
@@ -201,7 +201,7 @@ export function StepAgente({
                   </Chip>
                 </div>
               </Section>
-              <Section icon={Bot} title="Nome no chat">
+              <Section icon={Bot} title="Nome no chat" help="agenteNome">
                 <Field>
                   <Input value={name} onChange={(e) => onName(e.target.value)} placeholder="Equipa" />
                 </Field>

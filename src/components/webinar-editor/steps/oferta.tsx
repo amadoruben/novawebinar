@@ -213,8 +213,11 @@ export function StepOferta({
             ) : null}
           </Section>
 
-          <Section icon={Clock} title="Urgência" help="urgencia">
-            <Field label="Cronómetro na sala" hint="Começa quando cada oferta abre.">
+          <Section icon={Clock} title="Cronómetro e prazo" help="urgencia">
+            <p className="text-[12.5px] leading-snug text-muted-foreground">
+              Dá pressa a quem está a decidir: um cronómetro na oferta e, se quiser, um último dia para comprar.
+            </p>
+            <Field label="Cronómetro na oferta" hint="Conta a partir de quando a oferta abre na sala.">
               <Seg
                 full
                 small
@@ -227,25 +230,42 @@ export function StepOferta({
               />
             </Field>
             {countdown > 0 ? (
-              <SwitchRow
-                title="Fechar o botão no zero"
-                description="Quando o cronómetro acaba, o botão fica «Oferta encerrada»."
-                checked={form.offer_countdown_end === "close"}
-                onChange={(on) => set({ offer_countdown_end: on ? "close" : "keep" })}
-              />
+              <Field
+                label="Quando o cronómetro chega a zero"
+                hint={
+                  form.offer_countdown_end === "close"
+                    ? "O botão passa a «Oferta encerrada» e já não se compra na sala."
+                    : "O cronómetro desaparece e o botão continua a vender."
+                }
+              >
+                <Seg
+                  full
+                  small
+                  label="Quando o cronómetro chega a zero"
+                  value={form.offer_countdown_end}
+                  onChange={(offer_countdown_end) => set({ offer_countdown_end })}
+                  options={[
+                    { value: "keep", label: "O botão continua" },
+                    { value: "close", label: "O botão fecha" },
+                  ]}
+                />
+              </Field>
             ) : null}
-            <Field label="Prazo da oferta principal" hint="Depois deste dia, o botão e o replay fecham.">
+            <Field label="Último dia da oferta" hint="Opcional. Depois deste dia, o botão fecha na sala e no replay.">
               <DateInput value={form.offer_deadline} onChange={(offer_deadline) => set({ offer_deadline })} focus={focus("deadline")} />
             </Field>
           </Section>
 
-          <Section icon={DoorOpen} title="Depois do vídeo">
+          <Section icon={DoorOpen} title="Quando a aula acaba" help="depoisVideo">
+            <p className="text-[12.5px] leading-snug text-muted-foreground">
+              Quanto tempo a sala fica aberta para comprar depois de o vídeo acabar?
+            </p>
             <Seg
               full
               small
               value={String(AFTER.includes(afterMinutes as (typeof AFTER)[number]) ? afterMinutes : 0)}
               onChange={(v) => setAfter(Number(v))}
-              options={AFTER.map((m) => ({ value: String(m), label: m === 0 ? "Fecha" : m < 60 ? `${m} min` : `${m / 60} h` }))}
+              options={AFTER.map((m) => ({ value: String(m), label: m === 0 ? "Fecha logo" : m < 60 ? `${m} min` : `${m / 60} h` }))}
             />
             <p className="text-[12.5px] leading-snug text-muted-foreground">
               {afterMinutes > 0

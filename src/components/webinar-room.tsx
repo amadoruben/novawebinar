@@ -38,6 +38,7 @@ import {
   ChatLine,
   LIVE_CONTAIN,
   LIVE_COVER,
+  LIVE_WIDE,
   OfferCard,
   PulseDot,
   RoomPartsStyle,
@@ -337,6 +338,10 @@ export function WebinarRoom({
   // Formato Live: no telemóvel o vídeo enche o ecrã e o chat fica por cima; o Suporte e a oferta
   // inteira abrem numa folha por baixo. No computador o vídeo fica ao centro e o chat ao lado.
   const liveLayout = format === "live";
+  // O vídeo diz se é deitado ou ao alto: assim nunca se corta, mesmo que a opção gravada seja a outra.
+  // Sem o ficheiro à mão (Vimeo, Panda, Bunny embebidos), vale a opção do editor.
+  const [videoShape, setVideoShape] = useState<LiveSettings["desk"] | null>(null);
+  const desk = videoShape ?? live.desk;
   const [wide, setWide] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches);
   useEffect(() => {
     const media = window.matchMedia("(min-width: 1024px)");
@@ -975,6 +980,16 @@ export function WebinarRoom({
   // O vídeo arranca sem som atrás do preto; ao ser revelado, recebe o som que a
   // pessoa já autorizou na contagem. Assim nunca aparece parado nem pede play.
   const videoArmed = !prelive && (!preliveEnding || preliveReady);
+  useEffect(() => {
+    const video = liveVideoRef.current;
+    if (!liveLayout || !video) return;
+    const read = () => {
+      if (video.videoWidth && video.videoHeight) setVideoShape(video.videoWidth >= video.videoHeight ? "horizontal" : "vertical");
+    };
+    read();
+    video.addEventListener("loadedmetadata", read);
+    return () => video.removeEventListener("loadedmetadata", read);
+  }, [liveLayout, videoArmed]);
   const videoNode = webinar.video_url ? (
     <VideoPlayer
       url={webinar.video_url}
@@ -1081,7 +1096,7 @@ export function WebinarRoom({
             navegador de desenhar um botão nativo por cima da contagem no refresh. */}
         {videoArmed &&
           (liveLayout ? (
-            live.desk === "vertical" ? (
+            desk === "vertical" ? (
               wide ? (
                 // Vídeo ao alto no computador: inteiro, ao centro, em fundo preto.
                 <div className={LIVE_CONTAIN}>{videoNode}</div>
@@ -1090,8 +1105,8 @@ export function WebinarRoom({
                 <div className={cn(LIVE_COVER, "max-lg:landscape:h-full max-lg:landscape:w-[56.25cqh]")}>{videoNode}</div>
               )
             ) : wide ? (
-              // Vídeo deitado no computador: o maior 16:9 que cabe no ecrã, em fundo preto.
-              <div className="absolute left-1/2 top-1/2 aspect-video w-[min(100cqw,177.78cqh)] -translate-x-1/2 -translate-y-1/2">{videoNode}</div>
+              // Vídeo deitado no computador: 16:9 inteiro, com uma margem preta à volta, como no cinema.
+              <div className={LIVE_WIDE}>{videoNode}</div>
             ) : (
               // Vídeo deitado no telemóvel: inteiro, no terço de cima, longe do chat, em fundo preto.
               <div className="absolute inset-x-0 top-[30%] aspect-video w-full -translate-y-1/2">{videoNode}</div>

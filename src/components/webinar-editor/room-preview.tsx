@@ -38,12 +38,14 @@ import {
   type LiveSupportMessage,
 } from "@/components/room/live-parts";
 import { ROOM_FONT } from "@/components/room/entry-screen";
+import { SCREENS } from "./preview";
 import {
   CaptionLine,
   ChatComposer,
   ChatLine,
   LIVE_CONTAIN,
   LIVE_COVER,
+  LIVE_WIDE,
   OfferCard,
   PulseDot,
   RoomPartsStyle,
@@ -58,7 +60,7 @@ import {
 
 /**
  * A sala ao vivo no segundo `t` do relógio do editor, ao tamanho real (computador 1280×720,
- * telemóvel 393×852 ao alto ou 852×393 deitado). Usa o leitor e as peças da sala pública:
+ * tablet 820×1180, telemóvel 393×852 ao alto ou 852×393 deitado). Usa o leitor e as peças da sala pública:
  * o que se vê aqui é o que as pessoas vêem.
  */
 
@@ -66,7 +68,12 @@ export type RoomTab = "chat" | "support" | "offer";
 export type PreviewComment = { id: string; at: number; author: string; message: string; agent?: boolean };
 export type PreviewSale = { id: string; at: number; buyer: string; product: string };
 export type PreviewMine = { at: number; text: string; tab: "chat" | "support" };
-export type PreviewDevice = "desktop" | "phone" | "phone-landscape";
+export type PreviewDevice = "desktop" | "tablet" | "phone" | "phone-landscape";
+
+/** O ecrã ao alto: telemóvel ou tablet (a sala é a mesma, com outro tamanho e outra barra de estado). */
+function tallScreen(device: PreviewDevice) {
+  return device === "tablet" ? SCREENS.tablet : SCREENS.phone;
+}
 
 export type RoomPreviewProps = {
   device: PreviewDevice;
@@ -303,11 +310,16 @@ function WebinarPreview(props: RoomPreviewProps) {
     landscape
       ? "flex h-[393px] w-[852px] items-center justify-center bg-black"
       : phone
-        ? "flex h-[852px] w-[393px] flex-col"
+        ? "flex flex-col"
         : "grid h-[720px] w-[1280px] grid-cols-[minmax(0,1fr)_380px] gap-6 p-6",
   );
+  const tall = tallScreen(props.device);
 
-  const style = { fontFamily: ROOM_FONT, ...liveOfferVars(live.offerColor) };
+  const style = {
+    fontFamily: ROOM_FONT,
+    ...liveOfferVars(live.offerColor),
+    ...(phone && !landscape ? { width: tall.w, height: tall.h } : null),
+  };
   if (landscape) {
     // Deitado, o telemóvel mostra o vídeo em ecrã inteiro, como no YouTube.
     return (
@@ -325,7 +337,7 @@ function WebinarPreview(props: RoomPreviewProps) {
       <LiveStyle />
       {phone ? (
         <>
-          <div className="h-[54px] shrink-0 bg-black" />
+          <div className="shrink-0 bg-black" style={{ height: tall.top }} />
           {videoCard}
           <RoomTitle compact kicker="" title={props.title} host={props.host} highlight={props.highlight} follow={followButton(false)} onHost={social.onHost} />
         </>
@@ -357,6 +369,7 @@ function LivePreview(props: RoomPreviewProps) {
   const phone = props.device !== "desktop";
   const landscape = props.device === "phone-landscape";
   const portrait = phone && !landscape;
+  const tall = tallScreen(props.device);
   const horizontal = live.desk !== "vertical";
   const hl = (key: string) =>
     props.highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
@@ -463,7 +476,9 @@ function LivePreview(props: RoomPreviewProps) {
       : LIVE_CONTAIN
     : portrait
       ? "absolute inset-x-0 top-[30%] aspect-video w-full -translate-y-1/2"
-      : "absolute left-1/2 top-1/2 aspect-video w-[min(100cqw,177.78cqh)] -translate-x-1/2 -translate-y-1/2";
+      : landscape
+        ? "absolute left-1/2 top-1/2 aspect-video w-[min(100cqw,177.78cqh)] -translate-x-1/2 -translate-y-1/2"
+        : LIVE_WIDE;
   const video = (
     <>
       {props.video.url ? (
@@ -514,9 +529,9 @@ function LivePreview(props: RoomPreviewProps) {
     <div
       className={cn(
         "absolute left-3 z-20 flex items-center gap-2 rounded-[14px] py-1.5 pl-1.5 pr-2.5 text-white shadow-[0_12px_30px_rgba(0,0,0,.4)]",
-        portrait ? "top-[104px]" : "top-[56px]",
+        portrait ? "" : "top-[56px]",
       )}
-      style={{ background: saleColor(props.saleColor).solid }}
+      style={{ background: saleColor(props.saleColor).solid, ...(portrait ? { top: tall.top + 50 } : null) }}
     >
       <span className="grid size-[26px] place-items-center rounded-full bg-white/25">
         <ShoppingCart className="size-3" />
@@ -543,12 +558,12 @@ function LivePreview(props: RoomPreviewProps) {
 
   if (phone) {
     return (
-      <div className={cn("room-ambient text-white", light, landscape ? "h-[393px] w-[852px]" : "h-[852px] w-[393px]")} style={style}>
+      <div className={cn("room-ambient text-white", light, landscape && "h-[393px] w-[852px]")} style={portrait ? { ...style, width: tall.w, height: tall.h } : style}>
         <RoomPartsStyle />
         <LiveStyle />
         <div className="relative size-full overflow-hidden bg-black [container-type:size]">
           {video}
-          <div className={cn("absolute inset-x-3 z-20", portrait ? "top-[54px]" : "top-3")}>
+          <div className={cn("absolute inset-x-3 z-20", !portrait && "top-3")} style={portrait ? { top: tall.top } : undefined}>
             <LiveTopBar
               host={host}
               follow={follow}
@@ -561,7 +576,12 @@ function LivePreview(props: RoomPreviewProps) {
           {saleToast}
           {ended}
           {/* Em baixo, acima da barra do iPhone: a caixa de escrever fica com folga, como numa app. */}
-          <div className={cn("absolute z-20 flex flex-col", portrait ? "inset-x-3 bottom-[38px]" : "bottom-3 left-3.5 w-[400px]")}>{lower}</div>
+          <div
+            className={cn("absolute z-20 flex flex-col", portrait ? "inset-x-3" : "bottom-3 left-3.5 w-[400px]")}
+            style={portrait ? { bottom: props.device === "tablet" ? 24 : 38 } : undefined}
+          >
+            {lower}
+          </div>
           {sheets}
         </div>
       </div>

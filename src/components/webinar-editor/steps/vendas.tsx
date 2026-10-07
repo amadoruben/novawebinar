@@ -73,29 +73,23 @@ export function StepVendas({
         />
         {enabled ? (
           <Field label="Quantas compras" hint="Espalham-se do pitch até ao fim do vídeo.">
-            <Stepper value={count} min={1} max={50} onChange={onCount} unit="compras" />
-            <div className="flex items-center gap-1.5">
-              <span className="mr-1 text-[12px] text-muted-foreground">Rápido:</span>
-              {[3, 6, 10, 20].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => onCount(n)}
-                  className={cn(
-                    "h-8 min-w-10 rounded-full border px-3 text-[13px] font-medium transition",
-                    count === n ? "border-foreground bg-foreground text-background" : "bg-white hover:bg-gray-50",
-                  )}
-                >
-                  {n}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center gap-2">
+              <Stepper value={count} min={1} max={50} onChange={onCount} unit="compras" />
+              <Seg
+                small
+                label="Quantidades rápidas"
+                value={String(count)}
+                onChange={(v) => {
+                  if (!busy) onCount(Number(v));
+                }}
+                options={[3, 6, 10, 20].map((n) => ({ value: String(n), label: String(n) }))}
+              />
             </div>
           </Field>
         ) : null}
       </Section>
 
-      <Section icon={CheckCircle2} title="Compras reais">
+      <Section icon={CheckCircle2} title="Compras reais" help="comprasReais">
         <SwitchRow
           title="Mostrar as compras da Kambafy"
           description="Aparecem na sala no momento em que acontecem, só com o primeiro nome."
@@ -104,7 +98,7 @@ export function StepVendas({
         />
       </Section>
 
-      <Section icon={Radio} title="Onde aparecem">
+      <Section icon={Radio} title="Onde aparecem" help="vendasOnde">
         <Seg
           full
           small
@@ -118,7 +112,7 @@ export function StepVendas({
         />
       </Section>
 
-      <Section icon={Palette} title="Cor do aviso">
+      <Section icon={Palette} title="Cor do aviso" help="vendasCor">
         <div className="flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Cor do aviso de compra">
           {Object.entries(SALE_COLORS).map(([key, value]) => (
             <button
@@ -159,7 +153,7 @@ export function StepVendas({
       </Section>
 
       {sales.length > 0 ? (
-        <Section icon={ShoppingBag} title="Na linha do vídeo">
+        <Section icon={ShoppingBag} title="Na linha do vídeo" help="vendasLinha">
           <SalesChart sales={sales} pitch={pitch} clock={c} color={tone.solid} onWatch={onWatch} />
         </Section>
       ) : null}
