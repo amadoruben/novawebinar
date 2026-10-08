@@ -76,6 +76,46 @@ function browserVideoUrl(url: string, provider?: string | null): string {
 
 const frameClass = "aspect-video w-full rounded-md bg-foreground/90";
 
+/**
+ * A forma do vídeo (deitado ou ao alto), antes de o leitor abrir: um ficheiro lê-se pelos metadados;
+ * o Vimeo pelo oEmbed (largura e altura). null enquanto não se sabe, ou quando a plataforma não diz
+ * (YouTube, Bunny e Panda embebidos).
+ * ponytail: Bunny e Panda só pela API com a chave da conta; ler na biblioteca e gravar, se for preciso.
+ */
+export function useVideoShape(url: string | null | undefined, provider?: string | null) {
+  const [shape, setShape] = useState<"horizontal" | "vertical" | null>(null);
+  useEffect(() => {
+    setShape(null);
+    if (!url || !isHttpUrl(url)) return;
+    let stop = false;
+    const done = (w?: unknown, h?: unknown) => {
+      if (!stop && typeof w === "number" && typeof h === "number" && w > 0 && h > 0) setShape(w >= h ? "horizontal" : "vertical");
+    };
+    if (embedUrl(url, provider)) {
+      if (/vimeo\.com/i.test(url)) {
+        fetch(`https://vimeo.com/api/oembed.json?url=${encodeURIComponent(url)}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j: { width?: unknown; height?: unknown } | null) => done(j?.width, j?.height))
+          .catch(() => undefined);
+      }
+      return () => {
+        stop = true;
+      };
+    }
+    const probe = document.createElement("video");
+    probe.preload = "metadata";
+    probe.muted = true;
+    probe.onloadedmetadata = () => done(probe.videoWidth, probe.videoHeight);
+    probe.src = browserVideoUrl(url, provider);
+    return () => {
+      stop = true;
+      probe.onloadedmetadata = null;
+      probe.removeAttribute("src");
+    };
+  }, [url, provider]);
+  return shape;
+}
+
 export function VideoPlayer({
   url,
   provider,

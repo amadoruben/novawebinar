@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { InternalWebinarRoom } from "@/components/webinar-room-internal";
+import { ROOM_VIEWPORT } from "@/components/webinar-room";
 
 export const Route = createFileRoute("/live/$webinarId")({
   head: () => ({
     meta: [
       { title: "Sala ao vivo | Convertewebinar" },
+      ROOM_VIEWPORT,
       { name: "description", content: "Sala de webinar ao vivo Convertewebinar." },
       { property: "og:title", content: "Sala ao vivo | Convertewebinar" },
       { property: "og:description", content: "Participe no webinar ao vivo." },

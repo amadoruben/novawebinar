@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Eye, Headset, MessagesSquare, Pin, Play, ShoppingCart, X, Zap } from "lucide-react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { Headset, MessagesSquare, Pin, Play, ShoppingCart, X } from "lucide-react";
 import { VideoPlayer } from "@/components/video-player";
 import { cn } from "@/lib/utils";
 import {
@@ -43,14 +43,14 @@ import {
   CaptionLine,
   ChatComposer,
   ChatLine,
+  EntryPlay,
+  LIVE_COLUMN_BG,
   LIVE_CONTAIN,
-  LIVE_COVER,
   liveFrame,
   OfferCard,
   PulseDot,
   RoomPartsStyle,
   RoomTitle,
-  RotateHint,
   SaleLine,
   saleColor,
   SupportNotice,
@@ -118,9 +118,25 @@ export type RoomPreviewProps = {
   live?: boolean | undefined;
   /** As opções da sala, iguais nos dois formatos: redes, momentos do + Seguir, cor do botão e aviso. */
   liveSettings?: LiveSettings | undefined;
-  /** A forma do vídeo, lida do ficheiro: manda sobre a opção gravada, como na sala (nunca se corta um vídeo deitado). */
+  /** A forma do vídeo, lida do ficheiro: com o aparelho, decide onde o vídeo fica (regras fixas, como na sala). */
   videoShape?: LiveSettings["desk"] | null | undefined;
+  /** Em pausa, mostra o botão de entrar da sala (no passo Vídeo, onde se escolhe); nos outros, só um play discreto. */
+  entryShown?: boolean | undefined;
 };
+
+/**
+ * Em pausa: o botão de entrar só no passo onde se escolhe, ou no início do vídeo (é aí que as pessoas o
+ * vêem); a meio da sessão, um play discreto, porque na sala esse botão nunca aparece a meio.
+ */
+function PausedPlay({ props, compact, big }: { props: RoomPreviewProps; compact: boolean; big?: boolean }) {
+  const live = props.liveSettings ?? LIVE_DEFAULTS;
+  if (props.entryShown || props.t < 1) return <EntryPlay look={live.entry} kicker="Aula ao vivo" compact={compact} />;
+  return (
+    <span className={cn("grid place-items-center rounded-full bg-black/55 backdrop-blur", big ? "size-[76px]" : compact ? "size-12" : "size-14")}>
+      <Play className={cn("fill-white text-white", big ? "size-8" : compact ? "size-5" : "size-6")} />
+    </span>
+  );
+}
 
 /** As redes de quem apresenta e o + Seguir (só nos momentos escolhidos e fora da oferta), nos dois formatos. */
 function useFollow(props: RoomPreviewProps, offerOpen: boolean) {
@@ -219,12 +235,16 @@ function WebinarPreview(props: RoomPreviewProps) {
   // outra; deitado, o vídeo e o chat lado a lado.
   const tablet = props.device === "tablet";
   const tabletWide = props.device === "tablet-landscape";
-  const [hint, setHint] = useState(true);
   const hl = (key: string) =>
     props.highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
   const { open, afterVideo, shown, tab, lastSale, said } = roomMoment(props);
   const live = props.liveSettings ?? LIVE_DEFAULTS;
   const social = useFollow(props, Boolean(open));
+  // Deitado, o chat recolhido: abre com a oferta ou quando o editor mostra outro separador.
+  const [side, setSide] = useState(false);
+  useEffect(() => {
+    if (props.tab !== "chat" || shown) setSide(true);
+  }, [props.tab, shown?.id]);
   const followButton = (big: boolean) => (social.follow ? <FollowButton big={big} label={social.follow.label} onClick={social.follow.onClick} /> : null);
 
   const videoCard = (
@@ -293,13 +313,8 @@ function WebinarPreview(props: RoomPreviewProps) {
         className="absolute inset-0"
       >
         {!props.playing && props.video.url ? (
-          <span
-            className={cn(
-              "absolute left-1/2 top-1/2 grid -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/55 backdrop-blur",
-              phone ? "size-12" : "size-[76px]",
-            )}
-          >
-            <Play className={cn("fill-white text-white", phone ? "size-5" : "size-8")} />
+          <span className="absolute inset-0 grid place-items-center">
+            <PausedPlay props={props} compact={phone} big={!phone} />
           </span>
         ) : null}
       </button>
@@ -341,16 +356,35 @@ function WebinarPreview(props: RoomPreviewProps) {
     ...(tabletWide ? { width: TABLET_WIDE.w, height: TABLET_WIDE.h, paddingTop: TABLET_WIDE.top + 16 } : null),
   };
   if (landscape) {
-    // Deitado, como no YouTube: o vídeo inteiro à esquerda e o chat à direita, de cima a baixo.
+    // Deitado, como na sala: o vídeo inteiro com a altura toda; o chat não o aperta, fica num botão
+    // e abre por cima, à direita (abre sozinho com a oferta ou noutro separador).
     return (
-      <div className={roomClass} style={style}>
+      <div className={cn(roomClass, "relative")} style={style}>
         <RoomPartsStyle />
         <LiveStyle />
-        <div className="grid min-w-0 flex-1 place-items-center bg-black pl-11">{videoCard}</div>
-        <div className="relative flex w-[330px] shrink-0 flex-col border-l border-room-line">
-          <Panel {...props} tab={tab} shown={shown} open={open} hl={hl} phone={phone} afterVideo={afterVideo} notice={live.notify && props.agent.on} />
-          {social.sheet}
+        <div className="grid min-w-0 flex-1 place-items-center bg-black px-11 [container-type:size]">
+          <div className="w-[min(100cqw,177.78cqh)]">{videoCard}</div>
         </div>
+        {side ? (
+          <div className="absolute inset-y-0 right-0 z-10 flex w-[340px] flex-col border-l border-room-line bg-room-surface shadow-[-24px_0_48px_-12px_rgb(0_0_0/0.5)]">
+            <Panel {...props} tab={tab} shown={shown} open={open} hl={hl} phone={phone} afterVideo={afterVideo} notice={live.notify && props.agent.on} onClose={() => setSide(false)} />
+            {social.sheet}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setSide(true)}
+            aria-label={shown ? "Abrir o chat e a oferta" : "Abrir o chat"}
+            className="absolute right-3 top-3 z-10 grid size-11 place-items-center rounded-full bg-black/60 text-white ring-1 ring-white/15"
+          >
+            {shown ? <ShoppingCart className="size-5" /> : <MessagesSquare className="size-5" />}
+            {shown ? (
+              <span className="absolute right-1 top-1 flex">
+                <PulseDot />
+              </span>
+            ) : null}
+          </button>
+        )}
       </div>
     );
   }
@@ -363,12 +397,6 @@ function WebinarPreview(props: RoomPreviewProps) {
         <>
           <div className="shrink-0 bg-black" style={{ height: tall.top }} />
           {videoCard}
-          {/* Como ver melhor: o vídeo deitado vê-se maior com o telemóvel deitado. */}
-          {hint && props.video.url ? (
-            <div className="flex justify-center px-3 pt-2.5">
-              <RotateHint onClose={() => setHint(false)} />
-            </div>
-          ) : null}
           <RoomTitle compact kicker="" title={props.title} host={props.host} highlight={props.highlight} follow={followButton(false)} onHost={social.onHost} />
         </>
       ) : (
@@ -403,12 +431,9 @@ function LivePreview(props: RoomPreviewProps) {
   const portrait = phone && !landscape;
   const tablet = props.device === "tablet";
   const tall = tallScreen(props.device);
-  // A forma real do vídeo (deitado ou ao alto) e a posição escolhida no editor.
-  const horizontal = (props.videoShape ?? live.desk) !== "vertical";
-  const choice = live.desk;
-  // No tablet ao alto, o topo e o chat ficam numa coluna centrada, como no telemóvel.
-  const column = tablet ? "left-1/2 w-[600px] -translate-x-1/2" : "inset-x-3";
-  const [hint, setHint] = useState(true);
+  // No tablet ao alto, o topo encosta às margens e o chat fica numa coluna à esquerda, à escala de um
+  // telemóvel; a linha de escrever vai de margem a margem (o coração no canto de baixo à direita).
+  const column = tablet ? "inset-x-5" : "inset-x-3";
   const hl = (key: string) =>
     props.highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
   const { open, afterVideo, shown, lastSale, said } = roomMoment(props);
@@ -447,30 +472,32 @@ function LivePreview(props: RoomPreviewProps) {
 
   const lower = (
     <>
-      <LiveFeed
-        items={feed}
-        onNotice={() => props.onTab("support")}
-        panel={!phone}
-        className={
-          !phone
-            ? "min-h-0 flex-1 pr-0"
-            : landscape
-              ? "min-h-0 flex-1"
-              : tablet
-                ? cardOpen
-                  ? "max-h-[36cqh]"
-                  : "max-h-[46cqh]"
-                : cardOpen
-                  ? "max-h-[150px]"
-                  : "max-h-[250px]"
-        }
-      />
-      {offer && cardOpen ? (
-        <div className={hl("pitch")}>
-          <LiveOfferCard offer={offer} onBuy={() => props.onBuy?.()} onMinimize={() => setOfferMin(true)} onExpand={() => setOfferOpen(true)} panel={!phone} />
-        </div>
-      ) : null}
-      {offer && !cardOpen && !offerOpen ? <LiveOfferSlim offer={offer} onOpen={() => setOfferOpen(true)} /> : null}
+      <div className={cn("contents", tablet && "flex w-[460px] flex-col")}>
+        <LiveFeed
+          items={feed}
+          onNotice={() => props.onTab("support")}
+          panel={!phone}
+          className={
+            !phone
+              ? "min-h-0 flex-1 pr-0"
+              : landscape
+                ? "min-h-0 flex-1"
+                : tablet
+                  ? cardOpen
+                    ? "max-h-[22cqh]"
+                    : "max-h-[28cqh]"
+                  : cardOpen
+                    ? "max-h-[150px]"
+                    : "max-h-[250px]"
+          }
+        />
+        {offer && cardOpen ? (
+          <div className={hl("pitch")}>
+            <LiveOfferCard offer={offer} onBuy={() => props.onBuy?.()} onMinimize={() => setOfferMin(true)} onExpand={() => setOfferOpen(true)} panel={!phone} />
+          </div>
+        ) : null}
+        {offer && !cardOpen && !offerOpen ? <LiveOfferSlim offer={offer} onOpen={() => setOfferOpen(true)} /> : null}
+      </div>
       <LiveComposer
         value={text}
         onChange={setText}
@@ -507,10 +534,11 @@ function LivePreview(props: RoomPreviewProps) {
             buttonText={shown.button || "Quero minha vaga"}
             onBuy={props.onBuy}
             countdownSeconds={countdownLeft}
-            showCountdown={shown.countdown > 0}
+            showCountdown={false}
             closed={shown.id === "main" && props.offerClosed}
             group={isGroupLink(shown.url)}
             compact
+            stickyBuy
           />
         </LiveOfferSheet>
       ) : null}
@@ -518,19 +546,28 @@ function LivePreview(props: RoomPreviewProps) {
     </>
   );
 
-  // A posição escolhida (horizontal ou vertical), sem cortar nem esticar o vídeo; igual à sala (`liveFrame`).
+  // A forma do vídeo e o aparelho, com regras fixas, sem cortar nem esticar; igual à sala (`liveFrame`).
   // Com o telemóvel deitado, o vídeo fica inteiro e ao centro.
-  const frame = liveFrame(choice, props.videoShape ?? null, phone ? "phone" : "desk");
+  const frame = liveFrame(props.videoShape, phone ? "phone" : "desk");
   const videoBox = landscape
-    ? frame.box === LIVE_COVER
+    ? frame.place === "fill"
       ? LIVE_CONTAIN
       : "absolute left-1/2 top-1/2 aspect-video w-[min(100cqw,177.78cqh)] -translate-x-1/2 -translate-y-1/2"
     : frame.box;
+  // A legenda fica no próprio vídeo; com o vídeo ao alto a encher o ecrã, sobe acima do chat.
+  const inVideoCaption = !(frame.place === "fill" && !landscape);
   const video = (
     <>
+      {frame.place === "column" && props.video.url ? <div className={LIVE_COLUMN_BG} /> : null}
       {props.video.url ? (
         <div className={videoBox}>
           <PreviewPlayer url={props.video.url} provider={props.video.provider} t={props.t} playing={props.playing} volume={props.volume} fit={frame.fit} />
+          {props.captionsOn && inVideoCaption ? <CaptionLine text={said} compact={phone} /> : null}
+          {!props.playing ? (
+            <span className="absolute inset-0 grid place-items-center">
+              <PausedPlay props={props} compact={phone} />
+            </span>
+          ) : null}
         </div>
       ) : (
         <div className="absolute inset-0 grid content-center gap-2 bg-[radial-gradient(120%_90%_at_85%_10%,rgba(232,68,12,.25),transparent_55%),linear-gradient(160deg,#22262e,#111316)] px-[10%] text-white">
@@ -538,20 +575,9 @@ function LivePreview(props: RoomPreviewProps) {
           <p className="text-[22px] font-extrabold leading-[1.1] tracking-tight">Escolha o vídeo na etapa Vídeo</p>
         </div>
       )}
-      <button type="button" onClick={props.onTogglePlay} aria-label={props.playing ? "Pausar" : "Tocar"} className="absolute inset-0">
-        {!props.playing && props.video.url ? (
-          <span
-            className={cn(
-              "absolute left-1/2 grid size-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/55 backdrop-blur",
-              portrait && horizontal && choice === "horizontal" ? "top-[30%]" : "top-1/2",
-            )}
-          >
-            <Play className="size-6 fill-white text-white" />
-          </span>
-        ) : null}
-      </button>
-      {props.captionsOn ? (
-        <div className={cn("pointer-events-none absolute inset-x-0 top-0", phone ? "h-[55%]" : "h-full")}>
+      <button type="button" onClick={props.onTogglePlay} aria-label={props.playing ? "Pausar" : "Tocar"} className="absolute inset-0" />
+      {props.captionsOn && !inVideoCaption ? (
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[55%]">
           <CaptionLine text={said} compact />
         </div>
       ) : null}
@@ -564,7 +590,8 @@ function LivePreview(props: RoomPreviewProps) {
   );
   const settings = (
     <VideoSettings
-      compact
+      inline
+      compact={phone}
       volume={props.volume}
       onVolume={props.onVolume}
       captions={props.captionsOn}
@@ -574,13 +601,23 @@ function LivePreview(props: RoomPreviewProps) {
       onAppearance={props.onAppearance}
     />
   );
+  const corners = (
+    <>
+      <div className={cn("absolute z-20 flex items-center gap-[5px]", props.video.url ? "left-3 top-3" : "left-5 top-5", hl("viewers"))}>
+        <LiveBadge />
+        {props.viewers !== null ? <LiveViewers count={props.viewers} /> : null}
+      </div>
+      <div className={cn("pointer-events-auto absolute z-30", props.video.url ? "right-3 top-3" : "right-5 top-5")}>{settings}</div>
+    </>
+  );
   const saleToast = lastSale ? (
     <div
       className={cn(
-        "absolute left-3 z-20 flex items-center gap-2 rounded-[14px] py-1.5 pl-1.5 pr-2.5 text-white shadow-[0_12px_30px_rgba(0,0,0,.4)]",
+        "absolute z-20 flex items-center gap-2 rounded-[14px] py-1.5 pl-1.5 pr-2.5 text-white shadow-[0_12px_30px_rgba(0,0,0,.4)]",
+        tablet ? "left-5" : "left-3",
         portrait ? "" : "top-[56px]",
       )}
-      style={{ background: saleColor(props.saleColor).solid, ...(portrait ? { top: tall.top + 50 } : null) }}
+      style={{ background: saleColor(props.saleColor).solid, ...(portrait ? { top: tall.top + (tablet ? 64 : 58) } : null) }}
     >
       <span className="grid size-[26px] place-items-center rounded-full bg-white/25">
         <ShoppingCart className="size-3" />
@@ -602,7 +639,8 @@ function LivePreview(props: RoomPreviewProps) {
       </div>
     </div>
   ) : null;
-  const style = { fontFamily: ROOM_FONT, ...liveOfferVars(live.offerColor) };
+  // `--live-top`: o vídeo deitado encosta logo abaixo da barra de estado do aparelho.
+  const style = { fontFamily: ROOM_FONT, ...liveOfferVars(live.offerColor), "--live-top": `${portrait ? tall.top : 0}px` } as CSSProperties;
   const light = props.theme === "light" && "room-light";
 
   if (phone) {
@@ -612,7 +650,7 @@ function LivePreview(props: RoomPreviewProps) {
         <LiveStyle />
         <div className="relative size-full overflow-hidden bg-black [container-type:size]">
           {video}
-          <div className={cn("absolute z-20", portrait ? column : "inset-x-3 top-3")} style={portrait ? { top: tall.top } : undefined}>
+          <div className={cn("absolute z-30", portrait ? (tablet ? "inset-x-5" : "inset-x-3") : "inset-x-3 top-3")} style={portrait ? { top: tall.top + (tablet ? 16 : 10) } : undefined}>
             <LiveTopBar
               host={host}
               follow={follow}
@@ -624,14 +662,10 @@ function LivePreview(props: RoomPreviewProps) {
           </div>
           {saleToast}
           {ended}
-          {/* Por baixo do vídeo deitado, no preto: como ver melhor (só no telemóvel ao alto). */}
-          {hint && horizontal && choice === "horizontal" && portrait && props.device === "phone" && props.video.url ? (
-            <RotateHint onClose={() => setHint(false)} className="absolute left-1/2 z-20 -translate-x-1/2" style={{ top: "calc(30% + 28.125cqw + 14px)" }} />
-          ) : null}
-          {/* Em baixo, acima da barra do iPhone: a caixa de escrever fica com folga, como numa app. */}
+          {/* Em baixo, logo acima da barra do iPhone: a caixa de escrever desce o mais possível sem lhe tocar. */}
           <div
             className={cn("absolute z-20 flex flex-col", portrait ? column : "bottom-3 right-3.5 top-16 w-[340px] justify-end")}
-            style={portrait ? { bottom: props.device === "tablet" ? 24 : 38 } : undefined}
+            style={portrait ? { bottom: tablet ? 20 : 32 } : undefined}
           >
             {lower}
           </div>
@@ -652,11 +686,8 @@ function LivePreview(props: RoomPreviewProps) {
       <LiveStyle />
       <section className="relative min-w-0 flex-1 overflow-hidden bg-black text-white [container-type:size]">
         {video}
-        <div className={cn("absolute left-5 top-5 z-20 flex items-center gap-[5px]", hl("viewers"))}>
-          <LiveBadge />
-          {props.viewers !== null ? <LiveViewers count={props.viewers} /> : null}
-        </div>
-        <div className="absolute bottom-4 right-4 z-20">{settings}</div>
+        {/* Como na sala: o selo e o ⚙ dentro do vídeo, no canto de cima (numa moldura igual à do vídeo). */}
+        {props.video.url ? <div className={cn(frame.box, "pointer-events-none z-30 shadow-none")}>{corners}</div> : corners}
         {saleToast}
         {ended}
       </section>
@@ -680,6 +711,7 @@ function Panel({
   afterVideo,
   sheet,
   notice,
+  onClose,
   ...props
 }: RoomPreviewProps & {
   phone: boolean;
@@ -692,6 +724,8 @@ function Panel({
   sheet?: boolean | undefined;
   /** O aviso «já respondemos» no chat (exemplo do editor, com o Agente ligado). */
   notice?: boolean | undefined;
+  /** Deitado, o chat por cima do vídeo fecha-se no X. */
+  onClose?: (() => void) | undefined;
 }) {
   const [text, setText] = useState("");
   const tabs: [RoomTab, string, typeof MessagesSquare][] = [
@@ -708,6 +742,8 @@ function Panel({
       className={cn(
         "flex min-h-0 flex-col overflow-hidden bg-room-surface",
         phone ? "flex-1 pb-[22px]" : "room-panel flex-1 rounded-2xl ring-1 ring-inset ring-room-line",
+        // No telemóvel ao alto o chat fica no fundo da página, da cor das barras do navegador (como na sala).
+        props.device === "phone" && "bg-room-bg",
       )}
     >
       <div className="mx-3 flex shrink-0 border-b border-room-line">
@@ -728,6 +764,11 @@ function Panel({
             {tab === value ? <span className="absolute inset-x-5 -bottom-px h-[3px] rounded-full bg-primary" /> : null}
           </button>
         ))}
+        {onClose ? (
+          <button type="button" onClick={onClose} aria-label="Fechar o chat" className="grid w-9 shrink-0 place-items-center text-room-subtle hover:text-room-text">
+            <X className="size-5" />
+          </button>
+        ) : null}
       </div>
 
       {tab === "offer" && shown ? (

@@ -260,8 +260,13 @@ export type FollowNetwork = "instagram" | "youtube" | "tiktok" | "facebook";
 /** Um momento do vídeo em que o + Seguir aparece (quando o apresentador pede para seguir). */
 export type FollowMoment = { start: number; end: number };
 export type LiveSettings = {
-  /** Só no Live, no computador: o vídeo deitado (16:9) ou ao alto (9:16). O resto da sala é igual. */
+  /**
+   * A forma gravada antes de a sala a ler do ficheiro. Já não muda nada (a forma vem do vídeo e cada
+   * aparelho tem regras fixas); fica para os dados antigos continuarem a ler-se.
+   */
   desk: "horizontal" | "vertical";
+  /** O botão para começar a ver: só o botão a pulsar, ou o botão com uma linha de informação. */
+  entry: EntryLook;
   /** Os perfis que o + Seguir mostra; uma rede sem link não aparece. */
   links: Partial<Record<FollowNetwork, string>>;
   moments: FollowMoment[];
@@ -272,6 +277,8 @@ export type LiveSettings = {
   /** A cor do botão e do cartão da oferta, em código hex. */
   offerColor: string;
 };
+
+export type EntryLook = "pulse" | "info";
 
 export const OFFER_COLOR_DEFAULT = "#E8440C";
 /** As sugestões ao lado do seletor: laranja da marca, vermelho, verde, azul e roxo. */
@@ -287,6 +294,7 @@ const OFFER_COLOR_NAMES: Record<string, string> = {
 
 export const LIVE_DEFAULTS: LiveSettings = {
   desk: "horizontal",
+  entry: "info",
   links: {},
   moments: [],
   hideFollowed: true,
@@ -300,6 +308,17 @@ export const FOLLOW_NETWORKS: readonly { id: FollowNetwork; name: string; exampl
   { id: "tiktok", name: "TikTok", example: "https://www.tiktok.com/@perfil", android: "com.zhiliaoapp.musically" },
   { id: "facebook", name: "Facebook", example: "https://www.facebook.com/pagina", android: "com.facebook.katana" },
 ];
+
+/**
+ * Onde fica o vídeo no Live, com regras fixas por aparelho (como no Instagram e no YouTube): o vídeo
+ * ao alto enche o telemóvel e, no computador, fica numa coluna ao centro; o deitado fica em cima, à
+ * largura do telemóvel, e inteiro no computador. A forma vem do ficheiro; sem ela, conta como deitado.
+ */
+export type LiveVideoPlace = "fill" | "top" | "wide" | "column";
+export function liveVideoPlace(shape: "horizontal" | "vertical" | null | undefined, where: "desk" | "phone"): LiveVideoPlace {
+  if (shape === "vertical") return where === "phone" ? "fill" : "column";
+  return where === "phone" ? "top" : "wide";
+}
 
 /** Lê as opções da sala; o que faltar ou vier estragado fica com o valor por omissão. */
 export function liveSettings(chatSettings: unknown): LiveSettings {
@@ -321,6 +340,7 @@ export function liveSettings(chatSettings: unknown): LiveSettings {
     : [];
   return {
     desk: r["desk"] === "vertical" ? "vertical" : "horizontal",
+    entry: r["entry"] === "pulse" ? "pulse" : "info",
     links,
     moments,
     hideFollowed: r["hideFollowed"] !== false,

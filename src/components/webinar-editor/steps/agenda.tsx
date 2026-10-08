@@ -1,8 +1,11 @@
 import { useMemo } from "react";
-import { CalendarDays, ChevronDown, Clock, Film, Play, Repeat, Video } from "lucide-react";
+import { CalendarDays, ChevronDown, Clock, Eye, Film, Play, Repeat, Video } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { EntryBadge, entryCardColor, entryLiveLabel } from "@/components/room/entry-screen";
+import type { EntryField } from "@/lib/entry-fields";
+import { entryPalette } from "@/lib/room-logic";
 import { cn } from "@/lib/utils";
-import { Field, Note, Section, Seg, SwitchRow } from "../ui";
+import { Field, Section, Seg, SwitchRow } from "../ui";
 import type { EditorForm, FocusProps, SetForm } from "../form";
 
 export type ScheduleKind = "single" | "repeat" | "jit" | "ondemand";
@@ -101,7 +104,10 @@ export function StepAgenda({
   kind,
   onKind,
   nextSession,
+  nextStartMs,
   ended,
+  theme,
+  fields,
 }: {
   form: EditorForm;
   set: SetForm;
@@ -110,8 +116,14 @@ export function StepAgenda({
   onKind: (kind: ScheduleKind) => void;
   /** «Sexta-feira, 2 de outubro, às 17:20» ou null. */
   nextSession: string | null;
+  /** O início da próxima sessão (ms), para mostrar a etiqueta da página de entrada. */
+  nextStartMs: number | null;
   /** «02/10» quando a data única já passou. */
   ended: string | null;
+  /** O tema da pré-visualização: o cartão em miniatura fica claro ou escuro como a página. */
+  theme: "dark" | "light";
+  /** Os campos da página de entrada, para mostrar o que a pessoa preenche. */
+  fields: readonly EntryField[];
 }) {
   const [date = "", time = ""] = form.scheduled_at.split("T");
   const zones = useMemo(
@@ -143,23 +155,39 @@ export function StepAgenda({
       </div>
     </Field>
   );
-  const kinds: { value: ScheduleKind; icon: typeof CalendarDays; title: string; text: string }[] = [
-    { value: "single", icon: CalendarDays, title: "Uma data", text: "Uma sessão, num dia e hora." },
-    { value: "repeat", icon: Repeat, title: "Repetir", text: "Nos dias e horas que escolher." },
-    { value: "jit", icon: Clock, title: "Just in time", text: "Começa a cada 15, 30 ou 60 min." },
-    { value: "ondemand", icon: Play, title: "Sempre disponível", text: "Começa quando a pessoa entra." },
+  // Cada modo: como funciona (no cartão) e para que serve (por baixo, só o escolhido).
+  const kinds: { value: ScheduleKind; icon: typeof CalendarDays; title: string; text: string; use: string }[] = [
+    { value: "single", icon: CalendarDays, title: "Uma data", text: "Uma sessão, num dia e hora.", use: "Para um lançamento ou uma aula marcada." },
+    { value: "repeat", icon: Repeat, title: "Repetir", text: "Nos dias e horas que escolher.", use: "Para vender todas as semanas com o mesmo vídeo." },
+    { value: "jit", icon: Clock, title: "Just in time", text: "A cada 15, 30 ou 60 min.", use: "Para anúncios a correr o dia todo: ninguém espera muito." },
+    { value: "ondemand", icon: Play, title: "Sempre disponível", text: "Começa quando a pessoa entra.", use: "Para uma aula sem hora, vista quando a pessoa quiser." },
   ];
-  const when =
-    kind === "jit"
-      ? `Sessões a cada ${form.jit_interval_minutes} minutos`
-      : kind === "ondemand"
-        ? "Começa quando a pessoa entra"
-        : nextSession;
+  // O que a página de entrada mostra ao lado do título (a mesma etiqueta da página verdadeira).
+  const badge = entryLiveLabel(kind === "ondemand" ? null : nextStartMs, form.timezone, Date.now());
+  const page = entryPalette(entryCardColor(theme, form.entry_card_color), form.entry_button_color);
+  // A sessão ainda por vir: só então há espera (e contagem).
+  const ahead = kind !== "ondemand" && !ended && !badge.live;
+  const sees =
+    kind === "ondemand" ? (
+      "Entra e o vídeo começa do início."
+    ) : ended ? (
+      <span className="text-warning">A sessão de {ended} terminou: escolha uma nova data.</span>
+    ) : nextStartMs === null ? (
+      "Ainda sem data marcada."
+    ) : badge.live ? (
+      "Entra na sessão que está a decorrer."
+    ) : kind === "jit" ? (
+      "Não escolhe hora: fica na sessão seguinte."
+    ) : nextSession ? (
+      <>
+        Não escolhe data: fica na próxima sessão, <b className="font-semibold text-foreground">{nextSession}</b>.
+      </>
+    ) : null;
 
   return (
     <>
-      <Section icon={CalendarDays} title="O que está a programar" help="agenda">
-        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="O que está a programar">
+      <Section icon={CalendarDays} title="Modo" help="agenda">
+        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Modo">
           {kinds.map((k) => (
             <button
               key={k.value}
@@ -168,16 +196,19 @@ export function StepAgenda({
               aria-checked={kind === k.value}
               onClick={() => onKind(k.value)}
               className={cn(
-                "grid content-start gap-1 rounded-xl border bg-white p-3 text-left hover:bg-gray-50",
+                "grid content-start gap-0.5 rounded-lg border bg-white px-3 py-2.5 text-left hover:bg-gray-50",
                 kind === k.value && "border-foreground shadow-[inset_0_0_0_1px_var(--foreground)]",
               )}
             >
-              <k.icon className="size-4" />
-              <b className="mt-1.5 text-sm font-semibold">{k.title}</b>
-              <span className="text-[12.5px] leading-snug text-muted-foreground">{k.text}</span>
+              <b className="flex items-start gap-1.5 text-[13.5px] font-semibold leading-snug">
+                <k.icon className="mt-[3px] size-3.5 shrink-0" />
+                {k.title}
+              </b>
+              <span className="text-[12px] leading-snug text-muted-foreground">{k.text}</span>
             </button>
           ))}
         </div>
+        <p className="text-[12.5px] text-muted-foreground">{kinds.find((k) => k.value === kind)?.use}</p>
       </Section>
 
       {kind === "single" ? (
@@ -201,7 +232,6 @@ export function StepAgenda({
             </Field>
           </div>
           {zoneSelect}
-          {ended ? <p className="text-[12.5px] text-warning">A sessão de {ended} já terminou. Escolha uma nova data.</p> : null}
         </Section>
       ) : kind === "repeat" ? (
         <Section icon={Clock} title="Quando" help="agendaQuando">
@@ -296,23 +326,38 @@ export function StepAgenda({
           />
           {zoneSelect}
         </Section>
-      ) : (
-        <Section>
-          <Note icon={Play}>Não há hora marcada: o vídeo começa do início quando a pessoa entra.</Note>
-        </Section>
-      )}
-
-      {when ? (
-        <section className="pb-[18px]">
-          <div className="flex items-center gap-3 rounded-xl bg-foreground p-3.5 text-background">
-            <CalendarDays className="size-[18px] shrink-0" />
-            <span className="min-w-0">
-              <small className="block text-[12px] opacity-70">{kind === "ondemand" ? "Sessões" : "Próxima sessão"}</small>
-              <b className="block text-sm font-semibold first-letter:uppercase">{when}</b>
-            </span>
-          </div>
-        </section>
       ) : null}
+
+      {/* O que o inscrito vê na página de entrada: não escolhe data, entra na sessão que o modo dá. */}
+      <Section icon={Eye} title="O que o inscrito vê">
+        <div className="grid gap-2 rounded-xl p-3.5 shadow-[0_0_0_1px_var(--ds-gray-alpha-200)]" style={{ background: page.card, color: page.text }}>
+          <p className="text-[14px] font-bold leading-snug">
+            <EntryBadge
+              live={badge.live || Boolean(ended)}
+              label={badge.label}
+              light={theme === "light"}
+              className="mr-1.5 rounded-[5px] px-1.5 py-[2px] text-[10px] @3xl:text-[10px]"
+            />
+            {form.public_title || "O título do webinar"}
+          </p>
+          {fields.map((f) => (
+            <span
+              key={f.id}
+              className="flex h-7 items-center rounded-md px-2.5 text-[11.5px]"
+              style={{ background: page.field, color: page.placeholder, boxShadow: `0 0 0 1px ${page.line}` }}
+            >
+              {f.label}
+            </span>
+          ))}
+          <span className="rounded-md py-1.5 text-center text-[12px] font-bold" style={{ background: page.button, color: page.buttonText }}>
+            {form.registration_button_text || "Entrar na sala"}
+          </span>
+        </div>
+        <p className="text-[12.5px] leading-snug text-muted-foreground">
+          {sees}
+          {ahead && form.waiting_room_enabled ? " Até lá, vê a contagem na sala de espera." : null}
+        </p>
+      </Section>
 
       <Section title="Sessão" help="agendaSessao">
         {kind !== "ondemand" ? (

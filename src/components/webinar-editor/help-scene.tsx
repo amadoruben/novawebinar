@@ -1,276 +1,559 @@
 import type { ReactNode } from "react";
+import { ArrowRight, BadgeCheck, Eye, LayoutTemplate, MessageCircle, MonitorPlay, ShoppingCart, Timer, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ROOM_FORMATS } from "@/lib/room-logic";
 import type { HelpTopic } from "./help";
+import { EntryThumb } from "./room-options";
+import { FORMAT_THUMB } from "./steps/video";
 
 /**
- * O ecrã em miniatura na ajuda do (i): onde aparece o que se está a configurar, realçado a azul.
- * É um desenho simples (blocos), não a sala verdadeira: serve para a pessoa se orientar.
+ * A ilustração da ajuda do (i): a parte do ecrã que a secção muda, em ponto grande e com texto
+ * a sério, e o elemento realçado a azul. É um desenho (não a sala verdadeira): serve para orientar.
  */
 
-type Spot = "title" | "form" | "button" | "video" | "host" | "follow" | "chat" | "viewers" | "offer" | "countdown" | "color" | "sale" | "support" | "theme";
-type Scene = { screen: "page" | "room" | "waiting" | "whatsapp" | "share"; spot?: Spot };
+type Spot =
+  | "title"
+  | "form"
+  | "button"
+  | "card"
+  | "video"
+  | "format"
+  | "start"
+  | "caption"
+  | "end"
+  | "host"
+  | "follow"
+  | "chat"
+  | "viewers"
+  | "offer"
+  | "countdown"
+  | "color"
+  | "sale"
+  | "support"
+  | "theme"
+  | "agenda"
+  | "when"
+  | "jit"
+  | "waiting"
+  | "whatsapp"
+  | "share";
 
-const SCENES: Record<HelpTopic, Scene> = {
-  inicio: { screen: "page", spot: "title" },
-  webinar: { screen: "page", spot: "title" },
-  apresentador: { screen: "room", spot: "host" },
-  partilha: { screen: "share" },
-  entrada: { screen: "page", spot: "form" },
-  pagina: { screen: "page", spot: "form" },
-  ligarPagina: { screen: "page", spot: "form" },
-  contactos: { screen: "page", spot: "form" },
-  botaoVagas: { screen: "page", spot: "button" },
-  coresPagina: { screen: "page", spot: "button" },
-  video: { screen: "room", spot: "video" },
-  formato: { screen: "room", spot: "video" },
-  posicao: { screen: "room", spot: "video" },
-  transcricao: { screen: "room", spot: "video" },
-  aparencia: { screen: "room", spot: "theme" },
-  corBotao: { screen: "room", spot: "color" },
-  seguir: { screen: "room", spot: "follow" },
-  seguirMomentos: { screen: "room", spot: "follow" },
-  chat: { screen: "room", spot: "chat" },
-  chatQuem: { screen: "room", spot: "chat" },
-  paises: { screen: "room", spot: "chat" },
-  tom: { screen: "room", spot: "chat" },
-  realismo: { screen: "room", spot: "chat" },
-  perguntas: { screen: "room", spot: "chat" },
-  gerar: { screen: "room", spot: "chat" },
-  comoFicou: { screen: "room", spot: "chat" },
-  avisoSuporte: { screen: "room", spot: "support" },
-  audiencia: { screen: "room", spot: "viewers" },
-  audienciaFormato: { screen: "room", spot: "viewers" },
-  audienciaCurva: { screen: "room", spot: "viewers" },
-  oferta: { screen: "room", spot: "offer" },
-  link: { screen: "room", spot: "color" },
-  pitch: { screen: "room", spot: "offer" },
-  urgencia: { screen: "room", spot: "countdown" },
-  depoisVideo: { screen: "room", spot: "offer" },
-  utm: { screen: "room", spot: "color" },
-  vendas: { screen: "room", spot: "sale" },
-  comprasReais: { screen: "room", spot: "sale" },
-  vendasOnde: { screen: "room", spot: "sale" },
-  vendasCor: { screen: "room", spot: "sale" },
-  vendasLinha: { screen: "room", spot: "sale" },
-  automacoes: { screen: "whatsapp" },
-  agente: { screen: "room", spot: "support" },
-  autonomia: { screen: "room", spot: "support" },
-  agenteFontes: { screen: "room", spot: "support" },
-  agenteEquipa: { screen: "room", spot: "support" },
-  agenteNome: { screen: "room", spot: "support" },
-  agenda: { screen: "waiting" },
-  agendaQuando: { screen: "waiting" },
-  agendaIntervalo: { screen: "waiting" },
-  agendaSessao: { screen: "waiting" },
+const SCENES: Record<HelpTopic, Spot> = {
+  inicio: "title",
+  webinar: "title",
+  apresentador: "host",
+  partilha: "share",
+  entrada: "form",
+  ligarPagina: "form",
+  contactos: "form",
+  botaoVagas: "button",
+  coresPagina: "card",
+  video: "video",
+  formato: "format",
+  botaoEntrar: "start",
+  transcricao: "caption",
+  aparencia: "theme",
+  corBotao: "color",
+  seguir: "follow",
+  seguirMomentos: "follow",
+  chat: "chat",
+  chatQuem: "chat",
+  paises: "chat",
+  tom: "chat",
+  realismo: "chat",
+  perguntas: "chat",
+  gerar: "chat",
+  comoFicou: "chat",
+  avisoSuporte: "support",
+  audiencia: "viewers",
+  audienciaFormato: "viewers",
+  audienciaCurva: "viewers",
+  oferta: "offer",
+  urgencia: "countdown",
+  depoisVideo: "end",
+  utm: "color",
+  vendas: "sale",
+  comprasReais: "sale",
+  vendasOnde: "sale",
+  vendasCor: "sale",
+  vendasLinha: "sale",
+  automacoes: "whatsapp",
+  agente: "support",
+  autonomia: "support",
+  agenteFontes: "support",
+  agenteEquipa: "support",
+  agenteNome: "support",
+  agenda: "agenda",
+  agendaQuando: "when",
+  agendaIntervalo: "jit",
+  agendaSessao: "waiting",
 };
 
-/** Onde fica, numa frase, ao lado da miniatura. */
-const WHERE: Record<Spot | Scene["screen"], string> = {
-  page: "Na página de entrada, onde a pessoa se inscreve.",
-  title: "No topo da página de entrada e da sala: o título.",
-  form: "Na página de entrada: os campos que a pessoa preenche.",
-  button: "Na página de entrada: o botão que confirma a inscrição.",
-  room: "Na sala ao vivo.",
-  video: "Na sala: o vídeo, igual para todos.",
-  host: "Por baixo do vídeo: a foto, o nome e a descrição de quem apresenta.",
-  follow: "Ao lado do nome de quem apresenta, só nos minutos escolhidos.",
-  chat: "No chat da sala: os comentários ao longo do vídeo.",
-  viewers: "No canto do vídeo: quantas pessoas estão a ver.",
-  offer: "No separador Oferta da sala, no minuto em que abre.",
-  countdown: "No cartão da oferta: o cronómetro a contar.",
-  color: "No cartão da oferta: o botão que a pessoa toca.",
-  sale: "No vídeo e no chat: «Fulano comprou», na cor escolhida.",
-  support: "No Suporte: as respostas da equipa e do Agente, só para a pessoa.",
-  theme: "A sala inteira, no tema escolhido (claro, escuro ou automático).",
-  waiting: "Na página de espera, com a contagem até à sessão.",
-  whatsapp: "No WhatsApp de cada pessoa: as mensagens do fluxo.",
-  share: "No WhatsApp, quando alguém partilha o link da sala.",
+/** Onde fica: o ecrã (etiqueta em cima da ilustração) e uma frase curta por baixo. */
+const WHERE: Record<Spot, [LucideIcon, string, string]> = {
+  title: [LayoutTemplate, "Página de entrada", "No topo da página de entrada e da sala."],
+  form: [LayoutTemplate, "Página de entrada", "Os campos que a pessoa preenche para entrar."],
+  button: [LayoutTemplate, "Página de entrada", "O botão e a barra de vagas."],
+  card: [LayoutTemplate, "Página de entrada", "O cartão e o botão da página."],
+  video: [MonitorPlay, "Sala", "O vídeo, igual para todos."],
+  format: [MonitorPlay, "Sala", "Webinar: chat ao lado · Live: chat por cima."],
+  start: [MonitorPlay, "Sala", "Ao centro do vídeo, até a pessoa tocar."],
+  caption: [MonitorPlay, "Sala", "A fala, nas legendas do vídeo."],
+  end: [MonitorPlay, "Sala", "Quando o vídeo acaba: a contagem e a oferta."],
+  host: [MonitorPlay, "Sala", "Por baixo do vídeo: quem apresenta."],
+  follow: [MonitorPlay, "Sala", "Ao lado do nome, só nos minutos escolhidos."],
+  chat: [MonitorPlay, "Sala", "O chat, ao ritmo do vídeo."],
+  viewers: [MonitorPlay, "Sala", "No canto do vídeo: quantos estão a ver."],
+  offer: [MonitorPlay, "Sala", "O cartão da oferta, no minuto em que abre."],
+  countdown: [MonitorPlay, "Sala", "O cronómetro, no cartão da oferta."],
+  color: [MonitorPlay, "Sala", "O botão da oferta."],
+  sale: [MonitorPlay, "Sala", "O aviso de compra, no vídeo e no chat."],
+  support: [MonitorPlay, "Sala", "O Suporte: só quem pergunta vê a resposta."],
+  theme: [MonitorPlay, "Sala", "A sala e a página, claras ou escuras."],
+  agenda: [LayoutTemplate, "Quem se inscreve", "A página mostra a hora; a pessoa espera e entra sozinha."],
+  when: [LayoutTemplate, "Página de entrada", "A data e a hora, ao lado do título."],
+  jit: [LayoutTemplate, "Página de entrada", "A próxima sessão, daqui a poucos minutos."],
+  waiting: [Timer, "Sala de espera", "A contagem até à hora da sessão."],
+  whatsapp: [MessageCircle, "WhatsApp", "As mensagens do fluxo, no WhatsApp de cada pessoa."],
+  share: [MessageCircle, "WhatsApp", "Quando alguém partilha o link da sala."],
 };
 
-const BLUE = "#0072F5";
+const ORANGE = "#E8440C";
+const LIVE = "#E5484D";
 
-/** O realce: aro azul e um ponto a pulsar, para se ver logo onde está. */
-function Spotlight({ on, className, children }: { on: boolean; className?: string; children?: ReactNode }) {
+/** O realce: aro azul e um ponto a pulsar. */
+function Hi({ on, className, children }: { on: boolean; className?: string; children?: ReactNode }) {
   return (
-    <div className={cn("relative", on && "z-[1] rounded-[5px] shadow-[0_0_0_2px_#0072F5,0_0_0_5px_rgba(0,114,245,.25)]", className)}>
+    <div className={cn("relative", on && "z-[1] rounded-[8px] shadow-[0_0_0_2px_#0072F5,0_0_0_6px_rgba(0,114,245,.22)]", className)}>
       {children}
-      {on ? <i className="absolute -right-1 -top-1 size-2 animate-pulse rounded-full ring-2 ring-white" style={{ background: BLUE }} /> : null}
+      {on ? <i className="absolute -right-1.5 -top-1.5 size-2.5 animate-pulse rounded-full bg-[#0072F5] ring-2 ring-white" /> : null}
     </div>
   );
 }
 
-const bar = (w: string, c = "bg-white/20", h = "h-1.5") => <i className={cn("block rounded-full", h, c)} style={{ width: w }} />;
-
-function MiniRoom({ spot }: { spot?: Spot | undefined }) {
-  const offerTab = spot === "offer" || spot === "countdown" || spot === "color";
-  const supportTab = spot === "support";
+/** «Ao vivo» ou «Começa às…», como na página de entrada. */
+function Badge({ label, live, className }: { label: string; live?: boolean; className?: string }) {
   return (
-    <div className={cn("flex h-full flex-col", spot === "theme" ? "bg-white" : "bg-[#141414]")}>
-      <Spotlight on={spot === "video"} className="m-0">
-        <div className="relative aspect-video bg-[linear-gradient(160deg,#3a3f48,#1b1d21)]">
-          <span className="absolute left-1.5 top-1.5 flex items-center gap-1">
-            <i className="block h-2 w-5 rounded-[2px] bg-[#E5243B]" />
-            <Spotlight on={spot === "viewers"}>
-              <i className="block h-2 w-5 rounded-[2px] bg-black/50" />
-            </Spotlight>
-          </span>
-          <i className="absolute left-1/2 top-1/2 size-0 -translate-x-1/2 -translate-y-1/2 border-y-[5px] border-l-[8px] border-y-transparent border-l-white/80" />
-          {spot === "sale" ? (
-            <Spotlight on className="absolute bottom-1.5 left-1.5">
-              <span className="flex items-center gap-1 rounded-md bg-[#1D8A5E] px-1 py-0.5">
-                <i className="block size-2 rounded-full bg-white/40" />
-                {bar("26px", "bg-white/80", "h-1")}
-              </span>
-            </Spotlight>
-          ) : null}
-        </div>
-      </Spotlight>
-      <div className="grid gap-1 px-2 py-1.5">
-        {bar("70%", spot === "theme" ? "bg-[#D4D4D4]" : "bg-white/50", "h-2")}
-        <Spotlight on={spot === "host"} className="flex items-center gap-1">
-          <i className={cn("block size-3.5 rounded-full", spot === "theme" ? "bg-[#E5E5E5]" : "bg-white/25")} />
-          {bar("34px", spot === "theme" ? "bg-[#D4D4D4]" : "bg-white/35")}
-          {spot === "follow" ? (
-            <Spotlight on className="ml-0.5">
-              <span className="block rounded-full bg-[#E8440C] px-1.5 py-[3px] text-[6px] font-bold leading-none text-white">+ Seguir</span>
-            </Spotlight>
-          ) : null}
-        </Spotlight>
-      </div>
-      <div className={cn("mx-2 flex gap-1.5 border-b pb-1", spot === "theme" ? "border-[#E5E5E5]" : "border-white/10")}>
-        {["Chat", "Suporte", "Oferta"].map((t, i) => {
-          const on = (i === 0 && !offerTab && !supportTab) || (i === 1 && supportTab) || (i === 2 && offerTab);
-          return (
-            <span key={t} className={cn("text-[6.5px] font-semibold", on ? "text-[#E8440C]" : spot === "theme" ? "text-[#999]" : "text-white/40")}>
-              {t}
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 whitespace-nowrap rounded-[5px] px-1.5 py-[2px] text-[9.5px] font-bold uppercase tracking-[0.05em]",
+        live ? "text-white" : "bg-white/12 text-white/85",
+        className,
+      )}
+      style={live ? { background: LIVE } : undefined}
+    >
+      {live ? <i className="size-[5px] rounded-full bg-white" /> : null}
+      {label}
+    </span>
+  );
+}
+
+function Entry({ spot }: { spot: Spot }) {
+  // Como na página: o selo só antes da hora; à hora, só o título.
+  const badge = spot === "jit" ? "Começa às 14:15" : spot === "when" ? "Começa a 12/10, 20:00" : null;
+  return (
+    <Hi on={spot === "card"} className="w-[248px] rounded-[14px]">
+      <div className="grid gap-2.5 rounded-[14px] bg-[#141414] p-4 text-white shadow-[0_18px_40px_-18px_rgba(0,0,0,.6)]">
+        {spot === "button" ? (
+          <Hi on className="rounded-full">
+            <span className="relative block h-5 overflow-hidden rounded-full bg-white/10">
+              <span className="absolute inset-y-0 left-0 w-[87%] rounded-full" style={{ background: ORANGE }} />
+              <span className="absolute inset-0 grid place-items-center text-[9.5px] font-bold">87% das vagas preenchidas</span>
             </span>
-          );
-        })}
-      </div>
-      <div className="grid flex-1 content-end gap-1 p-2">
-        {offerTab ? (
-          <Spotlight on={spot === "offer"} className="grid gap-1 rounded-md bg-white/10 p-1.5">
-            {bar("60%", "bg-white/60", "h-1.5")}
-            {bar("40%", "bg-white/30", "h-1")}
-            <Spotlight on={spot === "countdown"} className="justify-self-start">
-              <span className="block rounded bg-[#E8440C]/20 px-1 py-0.5 font-mono text-[6.5px] font-bold text-[#F28E63]">09:59</span>
-            </Spotlight>
-            <Spotlight on={spot === "color"}>
-              <span className="block rounded-md bg-[#E8440C] py-1 text-center text-[6.5px] font-bold text-white">Quero minha vaga</span>
-            </Spotlight>
-          </Spotlight>
-        ) : supportTab ? (
-          <Spotlight on className="grid gap-1 p-0.5">
-            <span className="justify-self-end rounded-md bg-white/15 px-1.5 py-1">{bar("30px", "bg-white/60", "h-1")}</span>
-            <span className="justify-self-start rounded-md bg-[#0072F5]/70 px-1.5 py-1">{bar("44px", "bg-white/80", "h-1")}</span>
-          </Spotlight>
-        ) : (
-          <Spotlight on={spot === "chat"} className="grid gap-1 p-0.5">
-            {["55%", "75%", "45%", "65%"].map((w, i) => (
-              <span key={w} className="flex items-center gap-1">
-                <i className={cn("block size-2 shrink-0 rounded-full", spot === "theme" ? "bg-[#E5E5E5]" : "bg-white/20")} />
-                {i === 3 && spot === "sale" ? (
-                  <Spotlight on>{bar("50px", "bg-[#1D8A5E]", "h-1.5")}</Spotlight>
-                ) : (
-                  bar(w, spot === "theme" ? "bg-[#E5E5E5]" : "bg-white/20", "h-1")
-                )}
-              </span>
-            ))}
-          </Spotlight>
-        )}
-        <span className={cn("mt-0.5 block h-3 rounded-full", spot === "theme" ? "bg-[#F2F2F2] ring-1 ring-[#E5E5E5]" : "bg-white/10")} />
-      </div>
-    </div>
-  );
-}
-
-function MiniPage({ spot }: { spot?: Spot | undefined }) {
-  return (
-    <div className="grid h-full content-center gap-2 bg-[#F5F5F5] p-2.5">
-      <Spotlight on={spot === "title"} className="grid gap-1 p-0.5">
-        {bar("85%", "bg-[#171717]", "h-2")}
-        {bar("60%", "bg-[#171717]", "h-2")}
-      </Spotlight>
-      <div className="grid gap-1.5 rounded-lg bg-white p-2 shadow-[0_1px_3px_rgba(0,0,0,.1)]">
-        <Spotlight on={spot === "form"} className="grid gap-1.5 p-0.5">
-          {[0, 1, 2].map((i) => (
-            <span key={i} className="block h-3 rounded-[4px] ring-1 ring-[#E5E5E5]" />
+          </Hi>
+        ) : null}
+        <Hi on={spot === "title"} className="p-0.5">
+          <p className="text-[14.5px] font-bold leading-snug">
+            {badge ? (
+              <Hi on className="mr-1.5 inline-block rounded-[6px] align-[2px]">
+                <Badge label={badge} />
+              </Hi>
+            ) : null}
+            Como vender no Instagram
+          </p>
+        </Hi>
+        <Hi on={spot === "form"} className="grid gap-1.5">
+          {["Nome", "WhatsApp"].map((f) => (
+            <span key={f} className="flex h-8 items-center rounded-lg bg-white/[.06] px-2.5 text-[11.5px] text-white/45 shadow-[0_0_0_1px_rgba(255,255,255,.1)]">
+              {f}
+            </span>
           ))}
-        </Spotlight>
-        <Spotlight on={spot === "button"}>
-          <span className="block rounded-[5px] bg-[#E8440C] py-1 text-center text-[6.5px] font-bold text-white">Garantir a minha vaga</span>
-        </Spotlight>
+        </Hi>
+        <Hi on={spot === "button"}>
+          <span className="block rounded-lg py-2 text-center text-[12px] font-bold" style={{ background: ORANGE }}>
+            Entrar na sala
+          </span>
+        </Hi>
       </div>
+    </Hi>
+  );
+}
+
+function Video({ spot, className }: { spot: Spot; className?: string }) {
+  return (
+    <Hi on={spot === "video"} className={cn("rounded-[10px]", className)}>
+      <div className="relative aspect-video overflow-hidden rounded-[10px] bg-[linear-gradient(160deg,#3d434d,#16181c)]">
+        <span className="absolute left-2 top-2 flex items-center gap-1.5">
+          <Badge label="Ao vivo" live />
+          <Hi on={spot === "viewers"} className="rounded-[6px]">
+            <span className="flex items-center gap-1 rounded-[5px] bg-black/55 px-1.5 py-[2px] text-[10px] font-semibold tabular-nums text-white">
+              <Eye className="size-3" />
+              482
+            </span>
+          </Hi>
+        </span>
+        {spot === "start" ? (
+          <Hi on className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full">
+            <span className="block whitespace-nowrap [zoom:1.35]">
+              <EntryThumb look="info" />
+            </span>
+          </Hi>
+        ) : (
+          <i className="absolute left-1/2 top-1/2 size-0 -translate-x-1/2 -translate-y-1/2 border-y-[9px] border-l-[15px] border-y-transparent border-l-white/85" />
+        )}
+        {spot === "caption" ? (
+          <Hi on className="absolute inset-x-8 bottom-4 rounded-[4px]">
+            <span className="block rounded-[4px] bg-black/75 px-1.5 py-0.5 text-center text-[10.5px] font-medium leading-snug">Vou mostrar-vos a mentoria</span>
+          </Hi>
+        ) : null}
+        {spot === "sale" ? (
+          <Hi on className="absolute bottom-3 left-2">
+            <span className="flex items-center gap-1.5 rounded-lg bg-[#16A34A] px-2 py-1 text-[10.5px] font-semibold text-white">
+              <ShoppingCart className="size-3" />
+              Helena comprou a Mentoria
+            </span>
+          </Hi>
+        ) : null}
+        <span className="absolute inset-x-2 bottom-1.5 h-[3px] rounded-full bg-white/25">
+          <span className="block h-full w-[42%] rounded-full" style={{ background: ORANGE }} />
+        </span>
+      </div>
+    </Hi>
+  );
+}
+
+/** Os formatos lado a lado, com as mesmas miniaturas dos cartões do passo Vídeo. */
+function Formats() {
+  return (
+    <Hi on className="flex gap-3 rounded-[12px] p-1.5">
+      {ROOM_FORMATS.map((f) => (
+        <span key={f.id} className="grid justify-items-center gap-1">
+          <span className="block aspect-[2/1] w-[124px] overflow-hidden rounded-[8px] ring-1 ring-black/10">{FORMAT_THUMB[f.id]()}</span>
+          <small className="text-[11.5px] font-medium text-[#4D4D4D]">{f.name}</small>
+        </span>
+      ))}
+    </Hi>
+  );
+}
+
+/** O fim do vídeo, como na sala: «A aula terminou», o tempo que falta e o botão da oferta. */
+function End() {
+  return (
+    <Room>
+      <div className="grid aspect-video place-content-center justify-items-center gap-1 rounded-[10px] bg-[linear-gradient(160deg,#2a2f38,#121417)] text-center">
+        <small className="text-[8.5px] font-bold uppercase tracking-[0.2em]" style={{ color: ORANGE }}>
+          A aula terminou
+        </small>
+        <b className="text-[12px] font-bold">As inscrições continuam abertas</b>
+        <span className="text-[13px] font-bold tabular-nums">00:29:59</span>
+        <Hi on className="mt-0.5 rounded-md">
+          <span className="block rounded-md px-3 py-1 text-[10.5px] font-bold" style={{ background: ORANGE }}>
+            Ver a oferta
+          </span>
+        </Hi>
+      </div>
+    </Room>
+  );
+}
+
+/** A sala escura (fundo #0f0f0f, como o YouTube), recortada na parte que interessa. */
+function Room({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("w-[264px] rounded-[14px] bg-[#0f0f0f] p-3 text-white shadow-[0_18px_40px_-18px_rgba(0,0,0,.6)]", className)}>{children}</div>;
+}
+
+function Tabs({ on }: { on: "Chat" | "Suporte" | "Oferta" }) {
+  return (
+    <div className="mb-2 flex gap-3 border-b border-white/10 text-[11px] font-semibold">
+      {(["Chat", "Suporte", "Oferta"] as const).map((t) => (
+        <span key={t} className={cn("-mb-px pb-1.5", t === on ? "border-b-2 text-white" : "text-white/45")} style={t === on ? { borderColor: ORANGE } : undefined}>
+          {t}
+        </span>
+      ))}
     </div>
   );
 }
 
-function MiniWaiting() {
+function Host({ spot }: { spot: Spot }) {
   return (
-    <Spotlight on className="grid h-full content-center justify-items-center gap-2 rounded-none bg-[#141414] p-2">
-      <span className="text-[6.5px] font-bold uppercase tracking-[0.14em] text-[#F28E63]">Começa em</span>
-      <span className="flex gap-1">
-        {["01", "02", "34", "56"].map((n) => (
-          <span key={n} className="grid h-5 w-4 place-items-center rounded bg-white/10 font-mono text-[7px] font-bold text-white">
-            {n}
+    <Room className="pt-0">
+      {/* O fundo do vídeo, cortado, para se perceber que está por baixo dele. */}
+      <div className="-mx-3 mb-2.5 h-9 rounded-t-[14px] bg-[linear-gradient(180deg,#16181c,#3d434d)] opacity-70" />
+      <Hi on={spot === "host"} className="flex items-center gap-2 p-1">
+        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[linear-gradient(135deg,#8a5a44,#3b2a22)] text-[11px] font-bold">EK</span>
+        <span className="min-w-0 flex-1">
+          <b className="flex items-center gap-1 text-[12.5px] font-semibold">
+            Edna Kiala <BadgeCheck className="size-3.5 text-[#3B9EFF]" />
+          </b>
+          <small className="block truncate text-[10.5px] text-white/55">Estrategista de vendas</small>
+        </span>
+        {spot === "follow" || spot === "host" ? (
+          <Hi on={spot === "follow"} className="rounded-full">
+            <span className="block rounded-full px-2.5 py-1 text-[10.5px] font-bold" style={{ background: ORANGE }}>
+              + Seguir
+            </span>
+          </Hi>
+        ) : null}
+      </Hi>
+    </Room>
+  );
+}
+
+function Chat() {
+  const rows: [string, string][] = [
+    ["Kátia Domingos", "Boa noite, a ver de Luanda"],
+    ["Tiago", "Faz todo o sentido 🔥"],
+    ["Inês", "Até quando dá para comprar?"],
+  ];
+  return (
+    <Room>
+      <Tabs on="Chat" />
+      <Hi on className="grid gap-1.5 p-1">
+        {rows.map(([who, text]) => (
+          <span key={who} className="flex items-start gap-1.5 text-[11px] leading-snug">
+            <i className="mt-px size-4 shrink-0 rounded-full bg-white/20" />
+            <span>
+              <b className="mr-1 font-semibold text-white/60">{who}</b>
+              {text}
+            </span>
           </span>
         ))}
-      </span>
-      {bar("70%", "bg-white/30", "h-1")}
-    </Spotlight>
+      </Hi>
+      <span className="mt-2 block rounded-full bg-white/[.08] px-3 py-1.5 text-[10.5px] text-white/40">Comentar…</span>
+    </Room>
   );
 }
 
-function MiniWhatsApp({ share }: { share?: boolean | undefined }) {
+function Offer({ spot }: { spot: Spot }) {
   return (
-    <div className="flex h-full flex-col bg-[#EFEAE2]">
-      <div className="flex items-center gap-1 bg-[#008069] px-2 py-1.5">
-        <i className="block size-3 rounded-full bg-white/40" />
-        {bar("40px", "bg-white/80", "h-1.5")}
+    <Room>
+      <Tabs on="Oferta" />
+      <Hi on={spot === "offer"} className="grid gap-1.5 rounded-[10px] bg-white/[.07] p-2.5">
+        <b className="text-[12.5px] font-semibold">Mentoria Vendas no Instagram</b>
+        <span className="flex items-baseline gap-1.5 tabular-nums">
+          <s className="text-[10.5px] text-white/45">100 000 Kz</s>
+          <b className="text-[14px] font-bold">25 000 Kz</b>
+        </span>
+        <Hi on={spot === "countdown"} className="justify-self-start rounded-[6px]">
+          <span className="block rounded-[5px] bg-[#E8440C]/20 px-1.5 py-0.5 text-[10.5px] font-semibold tabular-nums text-[#FF9A6B]">A oferta acaba em 09:59</span>
+        </Hi>
+        <Hi on={spot === "color"}>
+          <span className="block rounded-lg py-2 text-center text-[12px] font-bold" style={{ background: ORANGE }}>
+            Quero minha vaga
+          </span>
+        </Hi>
+      </Hi>
+    </Room>
+  );
+}
+
+function Support() {
+  return (
+    <Room>
+      <Tabs on="Suporte" />
+      <Hi on className="grid gap-1.5 p-1">
+        <span className="justify-self-end rounded-[12px] rounded-br-[4px] bg-white/12 px-2.5 py-1.5 text-[11px]">Dá para pagar por Multicaixa?</span>
+        <span className="text-[10px] font-semibold text-white/50">Equipa Edna</span>
+        <span className="justify-self-start rounded-[12px] rounded-bl-[4px] bg-[#0072F5] px-2.5 py-1.5 text-[11px]">Sim! No checkout, escolha Multicaixa Express.</span>
+      </Hi>
+    </Room>
+  );
+}
+
+function Theme() {
+  const mini = (light: boolean) => (
+    <span className={cn("grid w-[112px] gap-1.5 rounded-[10px] p-2", light ? "bg-white text-[#171717] shadow-[0_0_0_1px_rgba(0,0,0,.08)]" : "bg-[#0f0f0f] text-white")}>
+      <span className="block aspect-video rounded-[6px] bg-[linear-gradient(160deg,#3d434d,#16181c)]" />
+      {["70%", "50%"].map((w) => (
+        <i key={w} className={cn("block h-1.5 rounded-full", light ? "bg-[#E5E5E5]" : "bg-white/20")} style={{ width: w }} />
+      ))}
+      <b className="text-[10.5px] font-semibold">{light ? "Claro" : "Escuro"}</b>
+    </span>
+  );
+  return (
+    <Hi on className="flex gap-2 rounded-[12px] p-1">
+      {mini(true)}
+      {mini(false)}
+    </Hi>
+  );
+}
+
+function Countdown({ small }: { small?: boolean }) {
+  return (
+    <span className="flex gap-1">
+      {(small ? ["12", "34"] : ["00", "02", "34", "56"]).map((n, i) => (
+        <span key={i} className={cn("grid place-items-center rounded-md bg-white/10 font-bold tabular-nums", small ? "h-6 w-5 text-[10px]" : "h-9 w-8 text-[14px]")}>
+          {n}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function Waiting() {
+  return (
+    <Room className="grid justify-items-center gap-2 py-4 text-center">
+      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.18em] text-white/60">Sala de espera</span>
+      <b className="text-[13px] font-bold">Como vender no Instagram</b>
+      <Hi on className="rounded-[8px] p-1">
+        <Countdown />
+      </Hi>
+    </Room>
+  );
+}
+
+/** O caminho de quem se inscreve: a página com a hora, a espera e a sala. */
+function Journey() {
+  const step = (label: string, body: ReactNode, wide?: boolean) => (
+    <span className="grid justify-items-center gap-1.5">
+      <span
+        className={cn(
+          "grid h-[70px] place-items-center rounded-[10px] bg-[#0f0f0f] p-1.5 text-white shadow-[0_12px_28px_-14px_rgba(0,0,0,.6)]",
+          wide ? "w-[104px]" : "w-[64px] sm:w-[76px]",
+        )}
+      >
+        {body}
+      </span>
+      <small className="text-[11px] font-medium text-[#4D4D4D]">{label}</small>
+    </span>
+  );
+  const arrow = <ArrowRight className="mb-5 size-3.5 shrink-0 text-[#8F8F8F]" />;
+  return (
+    <div className="flex items-center gap-1.5">
+      {step(
+        "Inscreve-se",
+        <span className="grid justify-items-center gap-1.5">
+          <Hi on className="rounded-[6px]">
+            <Badge label="Começa às 20:00" className="px-1 text-[8px] tracking-[0.02em]" />
+          </Hi>
+          <span className="block w-14 rounded-[4px] py-[3px] text-center text-[7.5px] font-bold" style={{ background: ORANGE }}>
+            Entrar
+          </span>
+        </span>,
+        true,
+      )}
+      {arrow}
+      {step("Espera", <Countdown small />)}
+      {arrow}
+      {step(
+        "Entra",
+        <span className="grid justify-items-center gap-1">
+          <Badge label="Ao vivo" live />
+          <i className="size-0 border-y-[6px] border-l-[10px] border-y-transparent border-l-white/85" />
+        </span>,
+      )}
+    </div>
+  );
+}
+
+function WhatsApp({ share }: { share?: boolean }) {
+  return (
+    <div className="w-[264px] overflow-hidden rounded-[14px] bg-[#EFEAE2] shadow-[0_18px_40px_-18px_rgba(0,0,0,.45)]">
+      <div className="flex items-center gap-2 bg-[#008069] px-3 py-2 text-[12px] font-semibold text-white">
+        <i className="size-6 rounded-full bg-white/35" />
+        {share ? "Grupo da turma" : "Edna Kiala"}
       </div>
-      <div className="grid flex-1 content-start gap-1.5 p-2">
+      <div className="grid gap-1.5 p-3">
         {share ? (
-          <Spotlight on className="justify-self-end overflow-hidden rounded-md bg-[#D9FDD3] p-1">
-            <span className="block aspect-[1.9] w-[86px] rounded-[3px] bg-[linear-gradient(160deg,#3a3f48,#1b1d21)]" />
-            <span className="mt-1 grid gap-0.5">
-              {bar("80%", "bg-[#171717]/70", "h-1")}
-              {bar("50%", "bg-[#171717]/30", "h-1")}
+          <Hi on className="justify-self-end rounded-[10px]">
+            <span className="block w-[200px] rounded-[10px] bg-[#D9FDD3] p-1.5 text-[#111B21]">
+              <span className="grid aspect-[1.9] place-items-center rounded-[6px] bg-[linear-gradient(160deg,#3d434d,#16181c)]">
+                <i className="size-0 border-y-[7px] border-l-[12px] border-y-transparent border-l-white/85" />
+              </span>
+              <b className="mt-1 block text-[11px] font-semibold leading-tight">Aula grátis: vender no Instagram</b>
+              <small className="block text-[10px] text-[#667781]">Ao vivo hoje às 20:00 · convertewebinar.com</small>
             </span>
-          </Spotlight>
+          </Hi>
         ) : (
-          <Spotlight on className="grid gap-1.5 p-0.5">
-            {["70px", "84px"].map((w) => (
-              <span key={w} className="grid gap-0.5 justify-self-start rounded-md bg-white px-1.5 py-1 shadow-[0_1px_1px_rgba(0,0,0,.08)]">
-                {bar(w, "bg-[#171717]/60", "h-1")}
-                {bar("40px", "bg-[#171717]/30", "h-1")}
+          <Hi on className="grid gap-1.5 justify-self-start rounded-[10px] p-0.5">
+            {["Olá Kátia! A aula começa hoje às 20:00.", "Começámos! Entre já: …/w/aula"].map((m, i) => (
+              <span key={m} className="max-w-[210px] rounded-[10px] rounded-tl-[3px] bg-white px-2.5 py-1.5 text-[11px] leading-snug text-[#111B21] shadow-[0_1px_1px_rgba(0,0,0,.08)]">
+                {m}
+                <small className="ml-2 text-[9px] tabular-nums text-[#667781]">{i ? "20:00" : "19:00"}</small>
               </span>
             ))}
-          </Spotlight>
+          </Hi>
         )}
       </div>
     </div>
   );
 }
 
-/** A miniatura de um tema da ajuda, num telemóvel pequeno, e a frase de onde aparece. */
-export function helpScene(topic: HelpTopic) {
-  const scene = SCENES[topic];
-  const screen =
-    scene.screen === "room" ? (
-      <MiniRoom spot={scene.spot} />
-    ) : scene.screen === "page" ? (
-      <MiniPage spot={scene.spot} />
-    ) : scene.screen === "waiting" ? (
-      <MiniWaiting />
-    ) : (
-      <MiniWhatsApp share={scene.screen === "share"} />
-    );
-  return {
-    phone: (
-      <div className="w-[118px] shrink-0 rounded-[18px] bg-[#0A0A0B] p-[5px] shadow-[0_10px_24px_-12px_rgba(0,0,0,.45)]">
-        <div className="h-[212px] overflow-hidden rounded-[14px]">{screen}</div>
+function Picture({ spot }: { spot: Spot }) {
+  switch (spot) {
+    case "title":
+    case "form":
+    case "button":
+    case "card":
+    case "when":
+    case "jit":
+      return <Entry spot={spot} />;
+    case "video":
+    case "start":
+    case "caption":
+    case "viewers":
+    case "sale":
+      return (
+        <Room>
+          <Video spot={spot} />
+        </Room>
+      );
+    case "format":
+      return <Formats />;
+    case "end":
+      return <End />;
+    case "host":
+    case "follow":
+      return <Host spot={spot} />;
+    case "chat":
+      return <Chat />;
+    case "offer":
+    case "countdown":
+    case "color":
+      return <Offer spot={spot} />;
+    case "support":
+      return <Support />;
+    case "theme":
+      return <Theme />;
+    case "agenda":
+      return <Journey />;
+    case "waiting":
+      return <Waiting />;
+    case "whatsapp":
+    case "share":
+      return <WhatsApp share={spot === "share"} />;
+  }
+}
+
+/** O tronco da ajuda: onde está, em ponto grande, com o elemento realçado. */
+export function HelpScene({ topic }: { topic: HelpTopic }) {
+  const spot = SCENES[topic];
+  const [Icon, screen, where] = WHERE[spot];
+  return (
+    <figure className="grid gap-2">
+      <div className="relative grid min-h-[176px] place-items-center overflow-hidden rounded-xl bg-[#F2F2F2] bg-[radial-gradient(#DADADA_1px,transparent_1px)] px-3 pb-5 pt-10 [background-size:14px_14px]">
+        <span className="absolute left-2.5 top-2.5 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11.5px] font-medium text-[#4D4D4D] shadow-[0_0_0_1px_rgba(0,0,0,.08)]">
+          <Icon className="size-3.5" />
+          {screen}
+        </span>
+        {/* No computador há espaço: a mesma ilustração, maior. */}
+        <div className="sm:[zoom:1.15]">
+          <Picture spot={spot} />
+        </div>
       </div>
-    ),
-    where: WHERE[scene.spot ?? scene.screen],
-  };
+      <figcaption className="flex items-center gap-1.5 text-[12.5px] leading-snug text-muted-foreground">
+        <i className="block size-2 shrink-0 rounded-full bg-[#0072F5]" />
+        {where}
+      </figcaption>
+    </figure>
+  );
 }

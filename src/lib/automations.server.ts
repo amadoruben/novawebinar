@@ -11,6 +11,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { AUTOMATION_EVENT, type Condition, type RunFacts } from "@/lib/automations";
 import { deliverOutgoing } from "@/lib/integrations.server";
+import { publicAppUrl } from "@/lib/app-url.server";
 import { safeZone } from "@/lib/schedule";
 import { sendWhatsapp } from "@/lib/whatsapp.server";
 import {
@@ -37,7 +38,7 @@ import {
 } from "@/lib/workflow";
 
 /** O endereço público da aplicação, para o link da sala nas mensagens. */
-const APP_URL = (process.env["PUBLIC_APP_URL"] ?? process.env["VITE_PUBLIC_APP_URL"] ?? "").replace(/\/+$/, "");
+const APP_URL = publicAppUrl();
 
 type Run = Database["public"]["Tables"]["automation_runs"]["Row"];
 type Outcome = { ok: boolean; transient: boolean; result: Json; error: string | null };

@@ -36,7 +36,7 @@ import { cn } from "@/lib/utils";
 import whatsappIcon from "@/assets/local/whatsapp-icon.webp";
 
 /**
- * A página antes da sala: o título com «Ao vivo», os campos que o organizador escolheu e o
+ * A página antes da sala: o título (com «Começa às…» antes da hora), os campos que o organizador escolheu e o
  * botão. Quem preenche entra logo na sala. Sem número de pessoas antes dos dados. A página
  * pública e a pré-visualização do editor desenham este mesmo componente.
  */
@@ -119,11 +119,33 @@ export type EntryScreenProps = {
 const ring = (on: boolean) =>
   on ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
 
+/** A cor do cartão: no tema claro, o de origem (escuro) passa a branco, como numa página clara. */
+export function entryCardColor(theme: "dark" | "light", cardColor: string | null | undefined) {
+  return theme === "light" && (!cardColor || cardColor.toUpperCase() === ENTRY_CARD_DEFAULT) ? "#FFFFFF" : cardColor;
+}
+
+/**
+ * O selo ao lado do título, antes da hora: «Começa às 20:00». Sem «Ao vivo» no formulário (8/10:
+ * parecia pouco sério). O editor usa-o em ponto pequeno.
+ */
+export function EntryBadge({ live, label, light, className }: { live: boolean; label: string; light: boolean; className?: string }) {
+  if (live) return null;
+  return (
+    <span
+      className={cn(
+        "mr-2 inline-flex translate-y-[-0.1em] items-center gap-1.5 rounded-md px-2 py-[3px] align-middle text-[11px] font-bold uppercase tracking-[0.06em] @3xl:text-[12px]",
+        light ? "bg-[#EDEDED] text-[#444]" : "bg-white/12 text-white/85",
+        className,
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
 export function EntryScreen(props: EntryScreenProps) {
   const light = props.theme === "light";
-  // No tema claro, o cartão de origem (escuro) passa a branco, como numa página clara.
-  const card = light && (!props.cardColor || props.cardColor.toUpperCase() === ENTRY_CARD_DEFAULT) ? "#FFFFFF" : props.cardColor;
-  const p = entryPalette(card, props.buttonColor);
+  const p = entryPalette(entryCardColor(props.theme, props.cardColor), props.buttonColor);
   const hl = (key: string) => ring(props.highlight === key);
   const inert = props.preview;
   const set = (id: string, value: string) => props.onChange?.({ ...props.values, [id]: value });
@@ -141,7 +163,8 @@ export function EntryScreen(props: EntryScreenProps) {
   return (
     <div
       className={cn(
-        "@container relative isolate flex w-full flex-col items-center justify-center overflow-hidden px-4 py-10",
+        // Com o telemóvel deitado, nada fica debaixo da câmara nem da barra de casa (zonas seguras).
+        "@container relative isolate flex w-full flex-col items-center justify-center overflow-hidden pb-[max(2.5rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(2.5rem,env(safe-area-inset-top))]",
         light ? "bg-[#F4F4F5] text-[#171717]" : "bg-[#0A0A0A] text-white",
         props.className,
       )}
@@ -184,15 +207,8 @@ export function EntryScreen(props: EntryScreenProps) {
         ) : null}
 
         <h1 className={cn("text-[24px] font-bold leading-[1.2] tracking-tight @3xl:text-[30px]", hl("title"))}>
-          <span
-            className={cn(
-              "mr-2 inline-flex translate-y-[-3px] items-center gap-1.5 rounded-md px-2 py-[3px] align-middle text-[11px] font-bold uppercase tracking-[0.06em] @3xl:text-[12px]",
-              props.live ? "bg-[#E5484D] text-white" : light ? "bg-[#EDEDED] text-[#444]" : "bg-white/12 text-white/85",
-            )}
-          >
-            {props.live ? <i className="cw-blink size-[7px] rounded-full bg-white" /> : null}
-            {props.liveLabel}
-          </span>
+          {/* Sem «Ao vivo» no formulário (8/10: parecia pouco sério); antes da hora fica «Começa às 20:00». */}
+          <EntryBadge live={props.live} label={props.liveLabel} light={light} />
           {props.title}
         </h1>
         {props.preview && !props.title ? (

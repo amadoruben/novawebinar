@@ -601,7 +601,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
         readOnly
         value={value}
         aria-label={label}
-        className="font-mono text-xs"
+        className="font-[family-name:var(--font-code)] text-xs"
         onFocus={(e) => e.currentTarget.select()}
       />
       <Button

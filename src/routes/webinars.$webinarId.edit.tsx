@@ -103,7 +103,8 @@ import {
   type EditorStep,
 } from "@/lib/webinar-draft";
 import { useSimulatedPurchases, useSocialProof } from "@/components/social-proof-editor";
-import { EntryScreen, entryLiveLabel, isDirectVideo, resolveTheme } from "@/components/room/entry-screen";
+import { EntryScreen, entryLiveLabel, resolveTheme } from "@/components/room/entry-screen";
+import { useVideoShape } from "@/components/video-player";
 import type { Appearance, Reaction } from "@/components/room/room-parts";
 import { emptyEditorForm, type EditorForm, type FocusProps } from "@/components/webinar-editor/form";
 import { HelpButton } from "@/components/webinar-editor/ui";
@@ -908,8 +909,6 @@ function EditWebinar() {
 
   /** O vídeo escolhido grava logo: o resto das etapas (e a transcrição) dependem dele. */
   const persistVideo = async (id: string) => {
-    // Vídeo novo: a posição do Live passa a ser a forma dele (a pessoa pode trocá-la a seguir).
-    autoShape.current = true;
     set({ video_source_id: id });
     const { error } = await supabase.from("webinars").update({ video_source_id: id }).eq("id", webinarId);
     if (error) {
@@ -1241,32 +1240,9 @@ function EditWebinar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offerOpenNow]);
 
-  // A forma do vídeo (deitado ou ao alto) lê-se do próprio ficheiro. Ao escolher um vídeo novo, a
-  // posição do Live passa a ser essa; depois, vale sempre a escolha da pessoa (também ao abrir o editor).
+  // A forma do vídeo (deitado ou ao alto) lê-se do ficheiro ou do Vimeo, como na sala; sem ela, a gravada.
   const shapeUrl = selectedVideo?.source_url && /^https?:\/\//i.test(selectedVideo.source_url) ? selectedVideo.source_url : null;
-  const [videoShape, setVideoShape] = useState<LiveSettings["desk"] | null>(null);
-  const autoShape = useRef(false);
-  useEffect(() => {
-    setVideoShape(null);
-    if (!shapeUrl || !isDirectVideo(shapeUrl, selectedVideo?.provider)) return;
-    const probe = document.createElement("video");
-    probe.preload = "metadata";
-    probe.muted = true;
-    probe.onloadedmetadata = () => {
-      if (probe.videoWidth && probe.videoHeight) setVideoShape(probe.videoWidth >= probe.videoHeight ? "horizontal" : "vertical");
-    };
-    probe.src = shapeUrl;
-    return () => {
-      probe.onloadedmetadata = null;
-      probe.removeAttribute("src");
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapeUrl]);
-  useEffect(() => {
-    if (!videoShape || !autoShape.current) return;
-    autoShape.current = false;
-    setForm((prev) => (prev.live.desk === videoShape ? prev : { ...prev, live: { ...prev.live, desk: videoShape } }));
-  }, [videoShape]);
+  const videoShape: LiveSettings["desk"] = useVideoShape(shapeUrl, selectedVideo?.provider) ?? form.live.desk;
 
   /* ---------- Desenho ---------- */
 
@@ -1367,6 +1343,7 @@ function EditWebinar() {
       device={screenDevice === "desktop" ? "desktop" : rotated ? `${screenDevice}-landscape` : screenDevice}
       live={form.room_format === "live"}
       videoShape={videoShape}
+      entryShown={step === "video"}
       liveSettings={form.live}
       theme={previewTheme}
       appearance={previewAppearance}
@@ -1572,7 +1549,10 @@ function EditWebinar() {
                 <div className="shrink-0 border-b">
                   {phoneScreen && !full ? (
                     <>
-                      <div className="flex items-center justify-end gap-2 px-4 pt-2.5">{tools}</div>
+                      <div className="flex items-center justify-between gap-2 px-4 pt-2.5">
+                        <span className="truncate text-[12px] text-muted-foreground">Pré-visualização</span>
+                        {tools}
+                      </div>
                       <div className="h-[min(64dvh,600px)] px-2">
                         <DeviceStage
                           device={screenDevice}
@@ -1694,7 +1674,6 @@ function EditWebinar() {
                     onFormat={(room_format) => set({ room_format })}
                     live={form.live}
                     onLive={(patch) => setForm((prev) => ({ ...prev, live: { ...prev.live, ...patch } }))}
-                    detected={videoShape}
                   />
                 ) : step === "chat" ? (
                   <StepChat
@@ -1811,7 +1790,10 @@ function EditWebinar() {
                     kind={scheduleKind}
                     onKind={chooseScheduleKind}
                     nextSession={nextSession}
+                    nextStartMs={nextWindow.startMs}
                     ended={sessionEnded}
+                    theme={previewTheme}
+                    fields={entryFields}
                   />
                 )}
               </div>
@@ -1860,7 +1842,10 @@ function EditWebinar() {
               <div className="flex shrink-0 items-center gap-3 px-4 pt-2.5">
                 <span className="flex min-w-0 flex-1 items-center gap-2 text-[12.5px] font-medium">
                   <ScreenIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="truncate">{screenName}</span>
+                  <span className="truncate">
+                    {screenName}
+                    <span className="font-normal text-muted-foreground"> · pré-visualização</span>
+                  </span>
                 </span>
                 {tools}
               </div>

@@ -4,10 +4,10 @@ import {
   ChevronRight,
   FileText,
   Film,
+  Heart,
   Link2,
   Loader2,
   Mic,
-  Monitor,
   RectangleVertical,
   Upload,
   Video as VideoIcon,
@@ -26,7 +26,7 @@ import { formatBytes, type VideoUploadProgress } from "@/lib/video-upload";
 import type { Appearance } from "@/components/room/room-parts";
 import { ROOM_FORMATS, type LiveSettings, type RoomFormat } from "@/lib/room-logic";
 import { RoomOptions } from "../room-options";
-import { CountPill, Field, HelpButton, Note, Section, Seg, Tag, TimeChip } from "../ui";
+import { CountPill, Note, Section, TimeChip } from "../ui";
 
 export type VideoSourceLite = {
   id: string;
@@ -76,7 +76,6 @@ export function StepVideo({
   onFormat,
   live,
   onLive,
-  detected,
 }: {
   video: VideoSourceLite | null;
   library: readonly VideoSourceLite[];
@@ -93,8 +92,6 @@ export function StepVideo({
   onFormat: (format: RoomFormat) => void;
   live: LiveSettings;
   onLive: (patch: Partial<LiveSettings>) => void;
-  /** A orientação lida do ficheiro do vídeo (null quando não dá para ler, ex.: Vimeo). */
-  detected?: LiveSettings["desk"] | null | undefined;
 }) {
   const [dialog, setDialog] = useState(false);
   const [full, setFull] = useState(false);
@@ -157,7 +154,12 @@ export function StepVideo({
       )}
 
       <Section icon={RectangleVertical} title="Formato da sala" help="formato">
-        <div className="grid grid-cols-2 gap-2.5" role="radiogroup" aria-label="Formato da sala">
+        <div
+          className="grid gap-2.5"
+          style={{ gridTemplateColumns: `repeat(${ROOM_FORMATS.length}, minmax(0, 150px))` }}
+          role="radiogroup"
+          aria-label="Formato da sala"
+        >
           {ROOM_FORMATS.map(({ id: value, name: label, hint: sub }) => {
             const on = format === value;
             return (
@@ -167,30 +169,29 @@ export function StepVideo({
                 role="radio"
                 aria-checked={on}
                 onClick={() => onFormat(value)}
-                className="group grid gap-2 text-left"
+                className="group grid content-start gap-1.5 text-left"
               >
                 <span
                   className={cn(
-                    "relative block overflow-hidden rounded-xl ring-1 ring-black/10 transition",
+                    "relative block aspect-[2/1] overflow-hidden rounded-xl ring-1 ring-black/10 transition",
                     on ? "ring-2 ring-foreground ring-offset-2" : "group-hover:ring-black/25",
                   )}
                 >
-                  {value === "webinar" ? <RoomThumb theme="dark" /> : <LiveThumb />}
+                  {FORMAT_THUMB[value]()}
                   {on ? (
-                    <span className="absolute right-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-foreground text-background">
+                    <span className="absolute right-1.5 top-1.5 grid size-[18px] place-items-center rounded-full bg-foreground text-background">
                       <Check className="size-3" />
                     </span>
                   ) : null}
                 </span>
                 <span className="grid leading-tight">
                   <span className={cn("text-[13px]", on ? "font-semibold" : "font-medium text-muted-foreground")}>{label}</span>
-                  <span className="text-[12px] text-muted-foreground">{sub}</span>
+                  <span className="text-[11.5px] text-muted-foreground">{sub}</span>
                 </span>
               </button>
             );
           })}
         </div>
-        {format === "live" ? <PositionPicker value={live.desk} detected={detected ?? null} onChange={(desk) => onLive({ desk })} /> : null}
       </Section>
       <RoomOptions live={live} onLive={onLive} appearance={appearance} onAppearance={onAppearance} clock={c} transcript={transcript} />
 
@@ -253,128 +254,62 @@ export function StepVideo({
   );
 }
 
+/** Um comentário em miniatura: o avatar e a linha do texto. */
+function ThumbLine({ w, tone = "bg-white/30" }: { w: number; tone?: string }) {
+  return (
+    <span className="flex items-center gap-[3px]">
+      <i className="block size-[5px] shrink-0 rounded-full bg-white/45" />
+      <i className={cn("block h-[3px] rounded-full", tone)} style={{ width: `${w}%` }} />
+    </span>
+  );
+}
+
 /**
- * A posição do vídeo no Live: horizontal (16:9) ou vertical (9:16). Escolhe quem apresenta; a forma
- * do vídeo vem marcada e, se a escolha for a outra, diz como fica (inteiro, com preto à volta).
+ * Cada formato em miniatura. Um formato novo (ex.: um tipo Zoom) só precisa da sua entrada aqui e
+ * em ROOM_FORMATS; a grelha dos cartões ajusta-se ao número de formatos.
  */
-function PositionPicker({
-  value,
-  detected,
-  onChange,
-}: {
-  value: LiveSettings["desk"];
-  detected: LiveSettings["desk"] | null;
-  onChange: (desk: LiveSettings["desk"]) => void;
-}) {
-  const options = [
-    {
-      id: "horizontal" as const,
-      label: "Horizontal",
-      ratio: "16:9",
-      text: "Como no YouTube. No computador, o vídeo deitado ao centro; no telemóvel, no terço de cima, com o chat por baixo.",
-    },
-    {
-      id: "vertical" as const,
-      label: "Vertical",
-      ratio: "9:16",
-      text: "Como no Instagram. No telemóvel, o vídeo enche o ecrã; no computador, fica ao alto, ao centro.",
-    },
-  ];
-  const mismatch = detected !== null && detected !== value;
-  return (
-    <div className="grid gap-2.5">
-      <p className="flex items-center gap-1.5 text-[13px] font-medium">
-        Posição do vídeo
-        <HelpButton topic="posicao" />
-      </p>
-      <div className="grid grid-cols-2 gap-2.5" role="radiogroup" aria-label="Posição do vídeo">
-        {options.map((o) => {
-          const on = value === o.id;
-          return (
-            <button
-              key={o.id}
-              type="button"
-              role="radio"
-              aria-checked={on}
-              onClick={() => onChange(o.id)}
-              className={cn(
-                "grid content-start gap-2 rounded-xl border bg-white p-2.5 text-left transition hover:bg-gray-50",
-                on && "border-foreground shadow-[inset_0_0_0_1px_var(--foreground)]",
-              )}
-            >
-              {/* A moldura em pequeno: o ecrã e o vídeo dentro dele. */}
-              <span className="grid h-[78px] place-items-center rounded-lg bg-[#141414]">
-                <span
-                  className={cn(
-                    "block rounded-[3px] bg-[linear-gradient(160deg,#5b6170,#2a2d33)] ring-1 ring-white/10",
-                    o.id === "horizontal" ? "h-[34px] w-[60px]" : "h-[64px] w-[36px]",
-                  )}
-                />
-              </span>
-              <span className="flex flex-wrap items-center gap-1.5">
-                <b className="text-[13px] font-semibold">{o.label}</b>
-                <span className="font-mono text-[11.5px] text-muted-foreground">{o.ratio}</span>
-                {detected === o.id ? <Tag tone="blue">O seu vídeo</Tag> : null}
-              </span>
-              <span className="text-[12px] leading-snug text-muted-foreground">{o.text}</span>
-            </button>
-          );
-        })}
-      </div>
-      {mismatch ? (
-        <p className="rounded-lg bg-[#FBEBCF] px-3 py-2 text-[12.5px] leading-snug text-[#6B4300]">
-          {detected === "horizontal"
-            ? "O seu vídeo é deitado. Em Vertical aparece inteiro, mais pequeno, a meio do ecrã e com preto em cima e em baixo. Nunca se corta nem se estica."
-            : "O seu vídeo é ao alto. Em Horizontal aparece inteiro, mais pequeno, com preto dos lados. Nunca se corta nem se estica."}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-/** Uma sala em miniatura no tema escolhido: o vídeo à esquerda e o chat à direita. */
-function RoomThumb({ theme }: { theme: Appearance }) {
-  const half = (dark: boolean) => (
-    <span className={cn("grid h-full grid-cols-[1fr_34%] gap-1 p-1.5", dark ? "bg-[#141414]" : "bg-white")}>
+export const FORMAT_THUMB: Record<RoomFormat, () => ReactNode> = {
+  // Webinar, como o YouTube: o leitor deitado com o play e a barra, o título por baixo e o chat ao lado.
+  webinar: () => (
+    <span className="grid h-full grid-cols-[1fr_32%] gap-1 bg-[#0F0F0F] p-1.5">
       <span className="grid content-start gap-1">
-        <span className={cn("block aspect-video rounded-[3px]", dark ? "bg-[#2E2E2E]" : "bg-[#E5E5E5]")}>
-          <i className="m-1 block h-1.5 w-3.5 rounded-[2px] bg-[#E5243B]" />
+        <span className="relative grid aspect-video place-items-center overflow-hidden rounded-[3px] bg-[linear-gradient(160deg,#4B5160,#272A31)]">
+          <i className="ml-px block size-0 border-y-[5px] border-l-[8px] border-y-transparent border-l-white/90" />
+          <i className="absolute inset-x-0 bottom-0 block h-[2px] bg-white/20">
+            <i className="block h-full w-2/5 bg-[#FF0033]" />
+          </i>
         </span>
-        <i className={cn("block h-1.5 w-4/5 rounded-full", dark ? "bg-[#3A3A3A]" : "bg-[#D4D4D4]")} />
+        <i className="block h-[3px] w-4/5 rounded-full bg-white/40" />
+        <i className="block h-[3px] w-1/2 rounded-full bg-white/20" />
       </span>
-      <span className={cn("grid content-end gap-1 rounded-[3px] p-1", dark ? "bg-[#1F1F1F]" : "bg-white ring-1 ring-[#E5E5E5]")}>
-        {[0.9, 0.7, 0.8].map((w, i) => (
-          <i key={i} className={cn("block h-1 rounded-full", dark ? "bg-[#3A3A3A]" : "bg-[#E5E5E5]")} style={{ width: `${w * 100}%` }} />
-        ))}
-        <i className={cn("mt-0.5 block h-2 rounded-full", dark ? "bg-[#2E2E2E]" : "bg-[#F2F2F2] ring-1 ring-[#E5E5E5]")} />
+      <span className="grid content-end gap-[4px] rounded-[3px] bg-[#212121] p-1">
+        <ThumbLine w={70} />
+        <ThumbLine w={50} />
+        <ThumbLine w={62} />
+        <i className="mt-px block h-[7px] rounded-full ring-1 ring-white/25" />
       </span>
     </span>
-  );
-  if (theme !== "system") return <span className="block aspect-[16/10]">{half(theme === "dark")}</span>;
-  return (
-    <span className="relative block aspect-[16/10]">
-      <span className="absolute inset-0">{half(true)}</span>
-      <span className="absolute inset-0 [clip-path:polygon(100%_0,100%_100%,0_100%)]">{half(false)}</span>
-    </span>
-  );
-}
-
-/** O formato Live em miniatura: o vídeo ao alto ao centro, com o selo e o chat por cima. */
-function LiveThumb() {
-  return (
-    <span className="grid aspect-[16/10] place-items-center bg-[#141414] py-1.5">
-      <span className="relative block h-full aspect-[9/16] overflow-hidden rounded-[5px] bg-[linear-gradient(165deg,#6B7280,#2A2F38_70%)]">
-        <i className="absolute left-1 top-1 block h-1.5 w-3 rounded-[2px] bg-[#E5243B]" />
-        <span className="absolute inset-x-1 bottom-1 grid gap-[3px]">
-          {[0.85, 0.6, 0.75].map((w, i) => (
-            <i key={i} className="block h-[3px] rounded-full bg-white/75" style={{ width: `${w * 100}%` }} />
-          ))}
-          <i className="mt-0.5 block h-2 rounded-full bg-white/20 ring-1 ring-white/50" />
+  ),
+  // Live, como o Instagram: o ecrã ao alto, com quem apresenta e o AO VIVO em cima e o chat por cima do vídeo.
+  live: () => (
+    <span className="grid h-full place-items-center bg-[#0F0F0F] py-1">
+      <span className="relative block h-full aspect-[9/16] overflow-hidden rounded-[5px] bg-[linear-gradient(170deg,#6B7280,#2A2F38_75%)]">
+        <span className="absolute inset-x-[3px] top-[3px] flex items-center gap-[2px]">
+          <i className="block size-[5px] shrink-0 rounded-full bg-white/80" />
+          <i className="block h-[4px] w-[9px] rounded-[1px] bg-[#E5243B]" />
+        </span>
+        <span className="absolute inset-x-[3px] bottom-[3px] grid gap-[3px]">
+          <ThumbLine w={60} tone="bg-white/75" />
+          <ThumbLine w={45} tone="bg-white/75" />
+          <span className="flex items-center gap-[2px]">
+            <i className="block h-[6px] flex-1 rounded-full ring-1 ring-white/60" />
+            <Heart className="size-[7px] shrink-0 fill-[#FF3B5C] text-[#FF3B5C]" />
+          </span>
         </span>
       </span>
     </span>
-  );
-}
+  ),
+};
 
 function SentenceRow({
   at,

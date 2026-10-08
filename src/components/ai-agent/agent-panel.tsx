@@ -39,7 +39,6 @@ import {
 import { cn } from "@/lib/utils";
 import { friendlyError } from "@/lib/friendly-error";
 import {
-  AGENT_MODES,
   EMOJI_LEVELS,
   ESCALATION_REASONS,
   LANGUAGES,
@@ -156,7 +155,8 @@ export function AgentPanel({
 
 
 
-  const [tab, setTab] = useState<(typeof SUBTABS)[number]["id"]>("visao");
+  // O interruptor e a autonomia ficam no passo Agente; aqui abre-se no conhecimento.
+  const [tab, setTab] = useState<(typeof SUBTABS)[number]["id"]>("conhecimento");
   const { data, isLoading } = useQuery({
     queryKey: ["ai-agent", webinarId],
     queryFn: () => load({ data: { webinarId } }),
@@ -218,39 +218,6 @@ export function AgentPanel({
 
       {tab === "visao" ? (
         <section className="space-y-4 rounded-card bg-card p-5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold">Agente ativo</p>
-              <p className="text-xs text-muted-foreground">
-                Quando desligado, nenhuma mensagem é lida nem respondida pelo assistente.
-              </p>
-            </div>
-            <Switch
-              checked={Boolean(agent["enabled"])}
-              onCheckedChange={(checked) => update({ enabled: checked })}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Modo de funcionamento</Label>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {AGENT_MODES.map((mode) => (
-                <button
-                  key={mode.id}
-                  type="button"
-                  onClick={() => update({ mode: mode.id })}
-                  className={cn(
-                    "rounded-xl border px-3 py-2.5 text-left transition-colors",
-                    agent["mode"] === mode.id ? "border-primary bg-primary/5" : "hover:bg-muted",
-                  )}
-                >
-                  <span className="text-sm font-medium">{mode.label}</span>
-                  <span className="mt-0.5 block text-xs text-muted-foreground">{mode.hint}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="rounded-xl border p-4">
             <div className="flex items-start justify-between gap-4">
               <div>

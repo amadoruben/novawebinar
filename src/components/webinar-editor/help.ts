@@ -1,15 +1,20 @@
-/** Uma ajuda do (i): para que serve, como usar por ordem, um exemplo e, se fizer falta, dicas. */
+/**
+ * Uma ajuda do (i), em três partes: cabeça (o que faz, uma frase), tronco (a ilustração, em
+ * help-scene.tsx) e membros (como usar e um exemplo). Pouco texto: o ecrã já diz o resto.
+ */
 export type Help = {
   title: string;
-  /** Para que serve, em uma ou duas frases. */
+  /** O que faz, numa frase. */
   what: string;
-  /** Como usar, pela ordem em que se faz (3 a 5 passos, cada um uma frase com o verbo no imperativo). */
+  /** Como usar, por ordem: 1 a 4 passos curtos, com o verbo no imperativo. */
   steps: readonly string[];
-  /** Um exemplo concreto e realista (um webinar de vendas em Angola ou Portugal, com números e nomes). */
+  /** Um exemplo concreto (um webinar em Angola ou Portugal, com números e nomes), uma ou duas frases. */
   example: string;
-  /** Opcional: 1 a 3 cuidados ou dicas que evitam erros. */
-  tips?: readonly string[];
+  /** Opcional: um cuidado que evita um erro. */
+  tip?: string;
 };
+
+const SAME_LINK = "Depois de partilhar o link, não mude o endereço: os links antigos deixam de abrir.";
 
 /** Os textos do (i) de cada etapa e de cada secção do editor. */
 export const HELP = {
@@ -17,751 +22,445 @@ export const HELP = {
 
   inicio: {
     title: "Webinar e quem apresenta",
-    what: "Dá nome ao webinar, escolhe o endereço da sala e mostra quem fala. É o que o público lê na página de entrada, na sala e no link partilhado.",
+    what: "Dá nome ao webinar, cria o link da sala e mostra quem apresenta.",
     steps: [
-      "Escreva o «Título»: é o que o público vê na página e na sala.",
-      "Confirme o «Endereço da sala» e copie-o com o botão ao lado.",
-      "Em «Quem apresenta», carregue a «Foto» e escreva o «Nome» e a «Descrição curta».",
-      "Abra «Cartão do link» para escolher como o link aparece no WhatsApp.",
+      "Escreva o «Título» que o público vê.",
+      "Copie o «Endereço da sala»: é o link a partilhar.",
+      "Em «Quem apresenta», ponha a foto, o nome e uma linha sobre a pessoa.",
+      "Em «Cartão do link», escolha como o link aparece no WhatsApp.",
     ],
-    example:
-      "Título «Como vender no Instagram sem anúncios», nome interno «IG · turma de outubro», endereço …/w/vender-no-instagram. Apresenta Edna Kiala, «Estrategista de vendas no Instagram», com a foto dela.",
-    tips: ["Depois de partilhar o link, não mude o endereço: os links antigos deixam de abrir a sala."],
+    example: "«Como vender no Instagram sem anúncios», em …/w/vender-no-instagram, apresentado por Edna Kiala.",
+    tip: SAME_LINK,
   },
   webinar: {
     title: "Webinar",
-    what: "O título que o público vê, um nome só para a sua equipa e o endereço da sala, que é o link que vai partilhar.",
+    what: "O título público, um nome só para a equipa e o endereço da sala.",
     steps: [
       "Escreva o «Título», curto e com a promessa da aula.",
-      "Dê um «Nome interno» para distinguir este webinar dos outros; só a sua equipa o vê.",
-      "Ajuste o «Endereço da sala» em letras minúsculas, com hífenes em vez de espaços.",
-      "Carregue no botão de copiar para levar o link para os anúncios e as mensagens.",
+      "Dê um «Nome interno» para o distinguir dos outros.",
+      "Ajuste o «Endereço da sala» e copie-o.",
     ],
-    example:
-      "Título «Contabilidade simples para freelancers», nome interno «Contabilidade · Lisboa · outubro», endereço …/w/contabilidade-freelancers. O link copiado vai para a bio do Instagram e para o anúncio.",
-    tips: [
-      "Se deixar o endereço vazio, fica feito a partir do título.",
-      "Depois de partilhar o link, não mude o endereço: os links antigos deixam de abrir a sala.",
-    ],
+    example: "Título «Contabilidade simples para freelancers», nome interno «Contabilidade · outubro», endereço …/w/contabilidade-freelancers.",
+    tip: SAME_LINK,
   },
   apresentador: {
     title: "Quem apresenta",
-    what: "A foto, o nome e uma frase sobre quem fala. Aparecem na sala, junto ao vídeo, e dão confiança a quem chega.",
-    steps: [
-      "Carregue em «Foto» e escolha uma imagem do rosto, de frente.",
-      "Escreva o «Nome»: uma pessoa ou a sua empresa.",
-      "Escreva a «Descrição curta»: o que a pessoa faz, numa linha.",
-      "Ligue o «Selo de verificado» se quiser o selo ao lado do nome.",
-    ],
-    example:
-      "Foto da Edna Kiala, nome «Edna Kiala», descrição «Estrategista de vendas no Instagram» e selo ligado. Na sala, o nome dela aparece com o selo ao lado, no Webinar e no Live.",
-    tips: [
-      "O selo não aparece no cartão do editor: só na sala, com o desenho de cada formato. Veja-o na pré-visualização.",
-    ],
+    what: "A foto, o nome e uma linha sobre quem fala, junto ao vídeo.",
+    steps: ["Carregue uma «Foto» do rosto, de frente.", "Escreva o «Nome» e a «Descrição curta».", "Ligue o «Selo de verificado», se quiser."],
+    example: "Edna Kiala, «Estrategista de vendas no Instagram», com o selo.",
+    tip: "O selo só aparece na sala: veja-o na pré-visualização.",
   },
   partilha: {
     title: "Partilha e ligações",
-    what: "Como o link da sala aparece quando alguém o partilha no WhatsApp, e o WebHook, que avisa o seu sistema de cada entrada e de cada clique na oferta.",
+    what: "Como o link aparece no WhatsApp, e o WebHook que avisa o seu sistema de cada entrada.",
     steps: [
-      "Abra «Cartão do link» e escreva o «Título do cartão»; vazio, usa o título do webinar.",
-      "Escreva a «Frase por baixo» e carregue uma «Imagem», se quiser.",
-      "Abra «WebHook», cole o «Endereço» do seu sistema e ligue «Enviar».",
-      "Confirme a bola verde ao lado de cada linha: quer dizer que está ligado.",
+      "Em «Cartão do link», escreva o título e a frase e escolha a imagem.",
+      "Em «WebHook», cole o endereço do seu sistema e ligue «Enviar».",
+      "Confirme a bola verde: está ligado.",
     ],
-    example:
-      "Cartão com o título «Aula grátis: vender no Instagram», a frase «Ao vivo hoje às 20:00» e a foto da Edna. WebHook para https://crm.minhaloja.ao/webhook: cada inscrição e cada clique no botão da oferta chega ao CRM, em JSON.",
-    tips: [
-      "O WebHook só envia com um endereço válido e com «Enviar» ligado.",
-      "O WhatsApp guarda o cartão durante algum tempo: acerte-o antes de começar a partilhar o link.",
-    ],
+    example: "Cartão «Aula grátis: vender no Instagram», com «Ao vivo hoje às 20:00». Cada inscrição chega ao CRM pelo WebHook.",
+    tip: "O WhatsApp guarda o cartão algum tempo: acerte-o antes de partilhar.",
   },
 
   /* ---------- Página de entrada ---------- */
 
   entrada: {
     title: "Página de entrada",
-    what: "A página antes da sala. Não é uma página de vendas: serve para saber quem entra e para alimentar os contactos e as automações.",
-    steps: [
-      "Escolha «Página do Convertewebinar» ou «A minha página».",
-      "Deixe em «Captar contactos» só os campos que vai usar.",
-      "Escreva o «Texto do botão» e, se quiser, ligue a «Barra de vagas».",
-      "Escolha as «Cores» do cartão e do botão e veja o resultado na pré-visualização.",
-    ],
-    example:
-      "Webinar «Como vender no Instagram»: página do Convertewebinar com Nome e WhatsApp, botão «Quero assistir à aula» e barra de vagas a 87%. Quem preenche entra na sala e passa a receber as mensagens pelo WhatsApp.",
-    tips: [
-      "Cada campo a mais faz perder entradas.",
-      "Se já tem uma página feita, escolha «A minha página» e cole lá o formulário.",
-    ],
-  },
-  pagina: {
-    title: "Página",
-    what: "O que a pessoa vê antes de entrar na sala: o título com «Ao vivo», os campos e o botão. O chat e o número de pessoas a ver só aparecem na sala.",
-    steps: [
-      "Confirme o título: vem do Início.",
-      "Veja o selo: antes da hora mostra «Começa às 20:00»; à hora, passa a «Ao vivo».",
-      "Confira a ordem dos campos e os obrigatórios, marcados com *.",
-      "Escolha o tema claro ou escuro na etapa Vídeo, em «Aparência».",
-    ],
-    example:
-      "Sessão marcada para as 20:00 em Luanda. Às 18:30, a página mostra «Começa às 20:00»; às 20:00 passa a «Ao vivo». A Kátia escreve o nome e o WhatsApp, carrega no botão e entra na sala.",
-    tips: ["No tema claro, o cartão escuro da página passa a branco."],
+    what: "A página antes da sala: recolhe o contacto de quem entra.",
+    steps: ["Escolha a página do Convertewebinar ou a sua.", "Deixe só os campos que vai usar.", "Escreva o texto do botão e escolha as cores."],
+    example: "Nome e WhatsApp, botão «Quero assistir à aula» e barra de vagas a 87%.",
+    tip: "Cada campo a mais faz perder inscrições.",
   },
   ligarPagina: {
     title: "Ligar a sua página",
-    what: "Para quem já tem uma página de inscrição feita noutro sítio. Quem se inscreve lá entra nos contactos e nas automações, como quem entra pela página do Convertewebinar.",
+    what: "Liga uma página de inscrição que já tem noutro sítio aos contactos e às automações.",
     steps: [
-      "Copie o «Link da sala» e ponha-o no botão da sua página.",
-      "Carregue em «Criar o formulário», se o código ainda não existir.",
-      "Copie o «Código para colar na sua página» e cole-o no editor da sua página.",
-      "Faça uma inscrição de teste e confirme que aparece nos contactos.",
+      "Carregue em «Criar o formulário».",
+      "Copie o código e cole-o num bloco de HTML da sua página.",
+      "Faça uma inscrição de teste e veja-a nos contactos.",
     ],
-    example:
-      "A Edna tem a página de inscrição no WordPress. Cola o código a meio da página e põe o link da sala no botão «Entrar na aula». Quem se inscreve no WordPress entra na automação de inscrição do fluxo, como os outros.",
-    tips: ["Cole o código num bloco de HTML ou de código: num bloco de texto normal, o formulário não aparece."],
+    example: "Página no WordPress com o código a meio e o botão «Entrar na aula» a levar à sala.",
+    tip: "Num bloco de texto normal, o formulário não aparece.",
   },
   contactos: {
     title: "Captar contactos",
-    what: "Os dados que a pessoa deixa para entrar na sala. São a base dos contactos e das automações: sem e-mail nem WhatsApp, não há a quem enviar mensagens.",
+    what: "Os dados que a pessoa deixa para entrar; sem e-mail nem WhatsApp, não há a quem escrever.",
     steps: [
-      "Clique no ícone de cada campo para o trocar e no nome para o reescrever.",
-      "Ligue «Obrigatório» nos campos sem os quais a pessoa não entra.",
-      "Carregue em «Adicionar campo» para uma pergunta nova (até 8 campos).",
-      "Tire com o X o que não vai usar; «Repor» volta a pôr o nome, o e-mail ou o WhatsApp.",
+      "Toque no ícone ou no nome de um campo para o mudar.",
+      "Ligue «Obrigatório» no que for indispensável.",
+      "Use «Adicionar campo» para uma pergunta nova (até 8).",
+      "Tire com o X o que não vai usar.",
     ],
-    example:
-      "Webinar em Angola, onde quase tudo se resolve pelo WhatsApp: «Nome completo» e «WhatsApp» obrigatórios, sem e-mail. Um campo novo, «Qual é o seu negócio?», opcional, com um ícone à escolha.",
-    tips: [
-      "Precisa sempre de um contacto: e-mail ou WhatsApp.",
-      "Cada campo a mais faz perder entradas. Peça só o que vai usar.",
-      "O WhatsApp leva a bandeira e o indicativo do país; a pessoa pode trocá-los.",
-    ],
+    example: "Em Angola: «Nome completo» e «WhatsApp» obrigatórios, sem e-mail.",
+    tip: "Precisa sempre de um contacto: e-mail ou WhatsApp.",
   },
   botaoVagas: {
     title: "Botão e vagas",
-    what: "O texto do botão que leva à sala e uma barra opcional, «92% das vagas preenchidas», por cima do título, para dar pressa.",
-    steps: [
-      "Escreva o «Texto do botão» com o que a pessoa ganha ao carregar.",
-      "Ligue a «Barra de vagas» com o interruptor.",
-      "Escreva a percentagem, de 0 a 100.",
-      "Veja na pré-visualização a barra por cima do título.",
-    ],
-    example: "Botão «Quero assistir à aula» e barra de vagas a 87%. A página mostra «87% das vagas preenchidas», na cor do botão.",
-    tips: ["Use um número credível: com 100%, parece que já não há lugar."],
+    what: "O texto do botão e uma barra de vagas opcional, por cima do título.",
+    steps: ["Escreva no botão o que a pessoa ganha.", "Ligue a «Barra de vagas» e escreva a percentagem."],
+    example: "«Quero assistir à aula» e «87% das vagas preenchidas».",
+    tip: "Com 100%, parece que já não há lugar.",
   },
   coresPagina: {
     title: "Cores da página",
-    what: "A cor do cartão onde ficam os campos e a cor do botão. O texto ajusta-se sozinho para se ler bem.",
-    steps: [
-      "Escolha a cor do «Cartão» numa das sugestões.",
-      "Escolha a cor do «Botão»; de preferência, a da sua marca.",
-      "Abra a roda de cores ou escreva o código, por exemplo #E8440C, para uma cor que não está nas sugestões.",
-      "Confirme na pré-visualização que o botão se destaca do cartão.",
-    ],
-    example: "Marca de Lisboa em azul: cartão #0B1322, azul-noite, e botão #2563EB. O texto do botão fica branco sozinho.",
-    tips: ["No tema claro, o cartão escuro passa a branco: veja a página nos dois temas."],
+    what: "A cor do cartão e do botão; o texto ajusta-se sozinho.",
+    steps: ["Escolha a cor do «Cartão».", "Escolha a cor do «Botão», de preferência a da marca.", "Para outra cor, abra a roda ou escreva o código."],
+    example: "Cartão #0B1322 e botão #2563EB: o texto do botão fica branco.",
+    tip: "No tema claro, o cartão escuro passa a branco.",
   },
 
   /* ---------- Vídeo ---------- */
 
   video: {
     title: "Vídeo",
-    what: "O vídeo dá o tempo a tudo o que acontece na sala: chat, audiência, oferta e vendas. Aqui carrega o vídeo, escolhe o formato da sala e personaliza-a.",
-    steps: [
-      "Carregue em «Carregar vídeo» e escolha a origem: «Do computador» (MP4 ou MOV, até 5 GB), «Da Biblioteca», «De uma plataforma» (Vimeo, Panda Video, Bunny) ou «Por link».",
-      "Acompanhe o envio na barra com a percentagem; pode pausar, retomar ou cancelar.",
-      "Escolha o «Formato da sala»: Webinar ou Live.",
-      "Personalize a «Aparência», a «Cor do botão» e o «Botão Seguir».",
-      "Veja a «Transcrição» depois de gerar os comentários no Chat.",
-    ],
-    example:
-      "A Edna gravou uma aula de 23 minutos em MP4 (1,8 GB). Arrasta o ficheiro para «Do computador», a barra chega aos 100% e o vídeo fica escolhido e guardado na Biblioteca. Escolhe o formato Live, porque gravou com o telemóvel ao alto.",
-    tips: [
-      "O YouTube não serve: mostra os controlos e as sugestões dele por cima da aula.",
-      "Se a ligação cair, o envio continua.",
-    ],
+    what: "O vídeo dá o tempo a tudo na sala: chat, audiência, oferta e vendas.",
+    steps: ["Carregue em «Carregar vídeo» e escolha de onde vem.", "Espere que a barra chegue aos 100%.", "Escolha o «Formato da sala» e a aparência."],
+    example: "Aula de 23 minutos em MP4 (1,8 GB), arrastada do computador; fica também na Biblioteca.",
+    tip: "O YouTube não serve: mostra os controlos e as sugestões dele por cima da aula.",
   },
   formato: {
     title: "Formato da sala",
-    what: "Como a sala se arruma à volta do vídeo. Webinar: vídeo deitado e o chat ao lado. Live: vídeo com o chat por cima, como no Instagram, em ecrã inteiro e com fundo preto.",
+    what: "Como a sala se arruma à volta do vídeo: Webinar, com o chat ao lado, ou Live, com o chat por cima, como no Instagram.",
     steps: [
-      "Escolha «Webinar» para uma aula gravada deitada, com slides ou ecrã partilhado.",
-      "Escolha «Live» para um vídeo gravado com o telemóvel, com o chat por cima da imagem.",
-      "Confirme no Live a opção «No computador»: «Horizontal (16:9)» ou «Vertical (9:16)». Vem lida do ficheiro do vídeo, mas pode trocá-la.",
-      "Veja o resultado na pré-visualização, no telemóvel e no computador.",
+      "Escolha «Webinar» para uma aula com slides ou ecrã partilhado.",
+      "Escolha «Live» para um vídeo gravado com o telemóvel.",
+      "Veja como fica no computador, no tablet e no telemóvel, por cima da pré-visualização.",
     ],
-    example:
-      "Aula de 23 minutos gravada com o telemóvel ao alto: formato Live, e o sistema escolhe «Vertical (9:16)». No telemóvel o vídeo enche o ecrã; no computador fica ao alto, ao centro, com fundo preto.",
-    tips: [
-      "Com o Vimeo, o Panda ou o Bunny nem sempre dá para ler a orientação: confirme-a à mão.",
-      "A aparência, a cor do botão e o + Seguir são iguais nos dois formatos.",
-    ],
-  },
-  posicao: {
-    title: "Posição do vídeo",
-    what: "No formato Live, escolhe se a sala mostra o vídeo na horizontal (16:9, como no YouTube) ou na vertical (9:16, como no Instagram). O sistema marca a forma do seu vídeo, mas quem decide é você.",
-    steps: [
-      "Veja qual dos cartões tem «O seu vídeo»: é a forma do ficheiro.",
-      "Escolha «Horizontal» ou «Vertical».",
-      "Se escolher a forma contrária à do vídeo, leia o aviso: o vídeo aparece inteiro e mais pequeno, com preto à volta.",
-      "Confira na pré-visualização, no Telemóvel e no Computador.",
-    ],
-    example:
-      "A Edna gravou a aula com a câmara deitada (16:9) e escolhe «Horizontal»: no telemóvel o vídeo fica no terço de cima e o chat por baixo. Para um vídeo gravado no telemóvel ao alto, escolhe «Vertical»: o vídeo enche o ecrã, como num direto do Instagram.",
-    tips: [
-      "O vídeo nunca é cortado nem esticado, qualquer que seja a posição.",
-      "No formato Webinar o vídeo fica sempre na horizontal, com o chat ao lado.",
-    ],
+    example: "Aula gravada com o telemóvel ao alto: Live. No telemóvel, o vídeo enche o ecrã.",
+    tip: "A forma do vídeo vem do ficheiro; a sala ajusta-se sozinha a cada aparelho.",
   },
   transcricao: {
     title: "Transcrição",
-    what: "O texto do que o apresentador diz, minuto a minuto. Serve para criar os comentários, encontrar as perguntas e o minuto do pitch e sugerir os momentos do + Seguir.",
+    what: "O que o apresentador diz, minuto a minuto: dá os comentários, as perguntas e o minuto do pitch.",
     steps: [
-      "Gere os comentários com IA no Chat: a transcrição é feita nesse momento.",
-      "Leia aqui as frases à volta do minuto em que o vídeo está.",
-      "Carregue em «Ver a transcrição completa» para abrir todas as frases ao lado.",
-      "Clique numa frase para a sala ir a esse minuto.",
+      "Gere os comentários com IA no Chat: a transcrição faz-se aí.",
+      "Toque numa frase para a sala ir a esse minuto.",
+      "Abra «Ver a transcrição completa» para ler tudo.",
     ],
-    example:
-      "Aula de 23 minutos com 214 frases. Aos 17:52 a Edna diz «Agora vou mostrar-vos como entrar na mentoria»: é o minuto que a análise sugere para abrir a oferta.",
-    tips: ["Sem transcrição, não há perguntas do apresentador nem sugestões para o + Seguir."],
+    example: "Aos 17:52 a Edna diz «vou mostrar-vos a mentoria»: é o minuto sugerido para a oferta.",
+  },
+  botaoEntrar: {
+    title: "Botão de entrar",
+    what: "Aparece ao centro do vídeo até a pessoa tocar para começar a ver.",
+    steps: ["«Só o botão»: um botão a pulsar.", "«Botão com informação»: o botão com «Aula ao vivo»."],
+    example: "No telemóvel, a Kátia toca em «Assistir agora»: o vídeo começa, já com som.",
   },
   aparencia: {
     title: "Aparência",
     what: "Se a sala e a página de entrada aparecem claras ou escuras.",
-    steps: [
-      "Escolha «Automático» para seguir o telemóvel ou o computador de quem vê.",
-      "Escolha «Claro» ou «Escuro» para fixar o mesmo tema para todos.",
-      "Veja a sala e a página de entrada na pré-visualização.",
-    ],
-    example:
-      "Webinar às 21:00 em Luanda, quando muitos telemóveis já estão em modo escuro: com «Automático», a sala aparece escura a esses e clara a quem tem o telemóvel em modo claro.",
-    tips: ["Cada pessoa pode trocar o tema no ⚙ do vídeo."],
+    steps: ["«Automático» segue o aparelho de quem vê.", "«Claro» ou «Escuro» fixa o mesmo tema para todos."],
+    example: "Aula às 21:00: com «Automático», quem tem o telemóvel em modo escuro vê a sala escura.",
+    tip: "Cada pessoa pode trocar o tema no ⚙ do vídeo.",
   },
   corBotao: {
     title: "Cor do botão",
-    what: "A cor do botão e do cartão da oferta na sala. O texto do botão ajusta-se sozinho para se ler.",
-    steps: [
-      "Escolha uma das cores sugeridas em «Botão e oferta».",
-      "Abra a roda de cores para uma cor que não está nas sugestões.",
-      "Escreva o código da cor, por exemplo #16A34A, para acertar na cor da marca.",
-      "Veja na pré-visualização o botão e o cartão da oferta.",
-    ],
-    example:
-      "Mentoria com a marca em verde: código #16A34A. O botão «Quero minha vaga» fica verde com o texto branco; o selo «Ao vivo» continua vermelho.",
-    tips: [
-      "«Ao vivo» fica sempre vermelho e o + Seguir sempre no laranja da marca: escolha uma cor que não se confunda com eles.",
-    ],
+    what: "A cor do botão e do cartão da oferta na sala.",
+    steps: ["Escolha uma cor sugerida.", "Para a cor da marca, abra a roda ou escreva o código."],
+    example: "Marca verde #16A34A: «Quero minha vaga» fica verde, com o texto branco.",
+    tip: "«Ao vivo» é sempre vermelho e o + Seguir laranja: escolha uma cor que se distinga.",
   },
   seguir: {
     title: "Botão Seguir",
-    what: "Os links das suas redes. Quem toca em + Seguir, na foto ou no nome do apresentador vê estas redes e pode segui-lo.",
+    what: "Os links das suas redes, para quem toca em + Seguir ou no nome de quem apresenta.",
     steps: [
-      "Cole o link do perfil do Instagram na primeira linha.",
-      "Carregue em «Adicionar rede» para juntar o YouTube, o TikTok ou o Facebook.",
-      "Tire uma rede com o X ao lado.",
-      "Marque em «Quando aparece o + Seguir» os minutos em que o botão aparece.",
+      "Cole o link do perfil do Instagram.",
+      "Use «Adicionar rede» para o YouTube, o TikTok ou o Facebook.",
+      "Escolha em «Quando aparece o + Seguir» os minutos.",
     ],
-    example:
-      "Instagram https://www.instagram.com/ednakiala e YouTube https://www.youtube.com/@ednakiala. No telemóvel, cada rede abre na app; no computador, numa janela pequena ao lado da sala.",
-    tips: ["Cole o link completo do perfil, como no exemplo da caixa.", "Sem nenhum link, o + Seguir não aparece."],
+    example: "instagram.com/ednakiala: no telemóvel abre na app; no computador, numa janela ao lado.",
+    tip: "Sem nenhum link, o + Seguir não aparece.",
   },
   seguirMomentos: {
     title: "Quando aparece o + Seguir",
-    what: "Os minutos em que o botão + Seguir aparece na sala: aparece num minuto e sai noutro. Sem momentos, não aparece sozinho; durante a oferta, nunca aparece, para não tirar a atenção da compra.",
+    what: "Os minutos em que o + Seguir aparece e sai; durante a oferta, nunca aparece.",
     steps: [
-      "Leve o vídeo ao minuto em que o apresentador pede para seguir e carregue em «Adicionar momento», ou num dos minutos sugeridos pela transcrição.",
-      "Em cada momento, acerte «Aparece aos» e «Sai aos» nas rodas.",
-      "Escolha se «Quem já segue deixa de ver»: ligado, quem tocou numa rede não volta a ver o botão; desligado, vê-o em todos os momentos.",
-      "Carregue no X para tirar um momento.",
+      "Leve o vídeo ao minuto certo e carregue em «Adicionar momento».",
+      "Acerte «Aparece aos» e «Sai aos».",
+      "Ligue «Quem já segue deixa de ver» para não repetir.",
     ],
-    example:
-      "Aos 04:10 a Edna diz «sigam-me no Instagram». Ela junta o momento 04:10 → 04:40 e outro 12:00 → 12:30. A Marta segue logo aos 04:15: com «Quem já segue deixa de ver» ligado, aos 12:00 já não lhe aparece o botão.",
-    tips: [
-      "Ponha pelo menos um link em «Botão Seguir», senão o botão não aparece.",
-      "Dois momentos não se podem sobrepor.",
-    ],
+    example: "Aos 04:10 a Edna diz «sigam-me no Instagram»: momento 04:10 → 04:40.",
+    tip: "Dois momentos não se podem sobrepor.",
   },
 
   /* ---------- Chat ---------- */
 
   chat: {
     title: "Comentários simulados",
-    what: "Comentários de pessoas simuladas, sincronizados com o que o apresentador diz. Fazem a sala parecer cheia e respondem às perguntas dele.",
+    what: "Comentários de pessoas simuladas, ao ritmo do que o apresentador diz.",
     steps: [
-      "Escolha em «Quem está no chat» os países e o volume.",
-      "Ajuste em «Como escrevem» e em «Para parecer real» o tom e as regras.",
-      "Ligue em «Perguntas do apresentador» as respostas do chat.",
-      "Crie os comentários em «Gerar comentários»: com IA, de uma folha ou à mão.",
-      "Reveja-os em «Como ficou» e clique num para o ver na sala.",
+      "Escolha os países e o volume em «Quem está no chat».",
+      "Escolha o tom e as regras.",
+      "Gere os comentários: com IA, de uma folha ou à mão.",
+      "Reveja-os em «Como ficou».",
     ],
-    example:
-      "Webinar de 23 minutos para Angola e Portugal, com cerca de 300 pessoas na sala: tom «Vendas» com emojis, as 5 regras ligadas e 3 alunos da «Mentoria Vendas no Instagram» na oferta. O chat corre a uns 8 comentários por minuto.",
-    tips: ["Gerar com IA usa créditos de IA e substitui os comentários gerados antes; os escritos à mão ficam."],
+    example: "Aula de 23 minutos para Angola e Portugal, tom «Vendas»: uns 8 comentários por minuto.",
+    tip: "Gerar com IA substitui os gerados antes; os escritos à mão ficam.",
   },
   chatQuem: {
     title: "Quem está no chat",
-    what: "De onde são as pessoas do chat e quantas escrevem. Cada uma escreve no português do seu país, com nome e apelido de lá.",
-    steps: [
-      "Em «Países», carregue em «Escolher países» e marque um ou mais: Angola, Moçambique, Brasil, Portugal. Para tirar um, carregue no X dele.",
-      "Confira em «Nomes» exemplos de quem vai escrever.",
-      "Escolha o «Volume do chat»: «Menos», «Normal», «Mais» ou «Escolher» (escreve quantos comentários por minuto, até 60).",
-      "Carregue em «Seguinte» para passar a «Como escrevem».",
-    ],
-    example:
-      "Webinar para Angola e Portugal, com 600 pessoas na sala: «Normal» dá cerca de 12 comentários por minuto, escritos por nomes como Edson Mateus, Kátia Domingos, Inês e Tiago. Num lançamento com 5 000 pessoas, «Escolher» com 40 por minuto.",
-    tips: [
-      "O volume segue a Audiência: quando o número de pessoas desce, o chat acalma.",
-      "Sem nenhum país escolhido, não dá para gerar os comentários.",
-    ],
+    what: "De onde são as pessoas do chat e quantas escrevem.",
+    steps: ["Em «Países», escolha um ou mais.", "Confira os nomes de exemplo.", "Escolha o «Volume do chat» ou escreva quantos por minuto (até 60)."],
+    example: "Angola e Portugal com «Normal»: uns 12 comentários por minuto, de nomes como Kátia Domingos e Tiago.",
+    tip: "O volume segue a Audiência: quando o número desce, o chat acalma.",
   },
   paises: {
     title: "Países do chat",
-    what: "De onde são as pessoas que escrevem no chat. Cada país muda a forma de escrever (o português de lá) e os nomes. Vários países misturam-se na mesma aula.",
-    steps: [
-      "Carregue em «Escolher países» e marque os países do seu público.",
-      "Veja cada país numa linha, com a forma de escrever.",
-      "Para tirar um país, carregue no X ao lado dele; para juntar outro, em «Adicionar país».",
-    ],
-    example:
-      "Público de Luanda e de Maputo: escolhe Angola e Moçambique. No chat aparecem «Kátia Domingos: Boa noite, a ver de Luanda» e «Célia Macuácua: Boa noite, malta de Maputo aqui».",
-    tips: ["Escolha só os países do seu público: um chat com países que não são os seus parece falso."],
+    what: "Os países de quem escreve: cada um muda o português e os nomes.",
+    steps: ["Carregue em «Escolher países» e marque os do seu público.", "Tire um país com o X."],
+    example: "Angola e Moçambique: «Boa noite, a ver de Luanda» e «Boa noite, malta de Maputo aqui».",
+    tip: "Países que não são os do seu público tornam o chat falso.",
   },
   tom: {
     title: "Como escrevem",
-    what: "O tom das mensagens e, à parte, se levam emojis. Por baixo do tom, vê três mensagens de exemplo, com nomes dos países escolhidos.",
-    steps: [
-      "Escolha o «Tom»: «Natural», «Vendas» ou «Formal».",
-      "Leia as três mensagens de exemplo no tom escolhido.",
-      "Ligue ou desligue «Com emojis»: vale para qualquer tom, também o formal.",
-      "Carregue em «Seguinte» para passar a «Para parecer real».",
-    ],
-    example:
-      "No tom «Natural»: «Faz sentido, nunca tinha pensado nisso assim». No tom «Vendas»: «Quero entrar. Até quando dá para comprar?». Numa aula de contabilidade em Lisboa, «Formal» com poucos emojis: «Excelente explicação 👏».",
-    tips: ["O sistema não decide por si: o tom e os emojis escolhem-se em separado."],
+    what: "O tom das mensagens e, à parte, se levam emojis.",
+    steps: ["Escolha «Natural», «Vendas» ou «Formal».", "Leia as mensagens de exemplo.", "Ligue ou desligue «Com emojis»."],
+    example: "Em «Vendas»: «Quero entrar. Até quando dá para comprar?»",
   },
   realismo: {
     title: "Para parecer real",
-    what: "Um chat perfeito demais afasta as pessoas. Estas regras fazem-no parecer de pessoas reais, e alguns alunos contam que já compraram.",
+    what: "Regras para o chat parecer de pessoas reais, com alunos que já compraram.",
     steps: [
-      "Ligue as regras que quer: «Escrevem com atraso», «Há quem chegue atrasado», «Conversam entre si», «Escrita de telemóvel» e «Acompanham a audiência».",
-      "Ligue «Alunos que já compraram» para algumas pessoas dizerem que já são alunas.",
-      "Escreva em «Alunos de quê?» o nome do curso.",
-      "Escolha «Quantos» (de 1 a 8) e «Quando»: «Na oferta» ou «Na aula».",
+      "Ligue as regras que quer.",
+      "Ligue «Alunos que já compraram» e escreva o nome do curso.",
+      "Escolha quantos e quando: na aula ou na oferta.",
     ],
-    example:
-      "As 5 regras ligadas e 3 alunos da «Mentoria Vendas no Instagram», na oferta. Nos primeiros minutos alguém escreve «Já começou? A ver de Luanda»; depois de a oferta abrir, a Kátia Domingos escreve, com a etiqueta «Aluno do curso»: «Já fiz a Mentoria Vendas no Instagram e recomendo muito».",
-    tips: ["Ninguém promete resultados nem inventa números, e nenhuma mensagem se repete."],
+    example: "3 alunos da «Mentoria Vendas no Instagram», na oferta: «Já fiz e recomendo muito».",
+    tip: "Ninguém promete resultados e nenhuma mensagem se repete.",
   },
   perguntas: {
     title: "Perguntas do apresentador",
-    what: "Quando o apresentador pergunta algo ao público, algumas pessoas do chat respondem, como numa live a sério. As perguntas são encontradas na transcrição do vídeo.",
-    steps: [
-      "Ligue «O chat responde».",
-      "Escolha «Quantas pessoas respondem a cada pergunta»: «2 a 3», «3 a 5» ou «5 a 8».",
-      "Confira a lista das perguntas encontradas, com o minuto de cada uma.",
-      "Clique numa pergunta para ver a sala a tocar nesse minuto.",
-    ],
-    example:
-      "Aos 02:15 a Edna pergunta «De que cidade estão a ver?». Com «3 a 5», quatro pessoas respondem uns segundos depois, por exemplo «Luanda!» e «Do Porto».",
-    tips: ["As perguntas só aparecem depois da transcrição, que é feita ao gerar os comentários com IA."],
+    what: "Quando o apresentador pergunta algo, algumas pessoas do chat respondem.",
+    steps: ["Ligue «O chat responde».", "Escolha quantas pessoas respondem.", "Toque numa pergunta para ver esse minuto."],
+    example: "Aos 02:15, «De que cidade estão a ver?»: quatro respondem, «Luanda!», «Do Porto»…",
+    tip: "As perguntas vêm da transcrição, feita ao gerar com IA.",
   },
   gerar: {
     title: "Gerar comentários",
-    what: "Três maneiras de criar os comentários do chat: com IA a partir da fala do vídeo, de uma folha que já tem, ou um a um à mão.",
+    what: "Três maneiras de criar os comentários: com IA, de uma folha ou à mão.",
     steps: [
-      "Escolha «Com IA», «De uma folha» ou «À mão».",
-      "Com IA, confira o resumo, carregue em «Gerar comentários com IA» e, no fim, em «Rever os comentários gerados».",
-      "Com uma folha, arraste-a para a caixa: CSV ou copiada do Excel, com três colunas, minuto, nome e mensagem.",
-      "À mão, escolha o minuto na roda, escreva o comentário e carregue em «Adicionar».",
+      "Com IA: confira o resumo e carregue em «Gerar comentários com IA».",
+      "De uma folha: arraste um CSV com minuto, nome e mensagem.",
+      "À mão: escolha o minuto, escreva e carregue em «Adicionar».",
     ],
-    example:
-      "Aula de 23 minutos: com IA, o sistema lê a fala, encontra as perguntas e os momentos fortes, escreve no português de cada país e aplica as regras. Depois, a Edna junta à mão, aos 18:05, «Acabei de entrar na mentoria!», para reforçar a oferta.",
-    tips: [
-      "Com IA usa créditos de IA. Os gerados substituem os gerados antes; os escritos à mão e os da folha ficam.",
-      "Na folha, uma linha sem nome recebe um nome dos países escolhidos; linhas sem minuto ou sem mensagem ficam de fora.",
-    ],
+    example: "Gera com IA e junta à mão, aos 18:05, «Acabei de entrar na mentoria!».",
+    tip: "Com IA, usa créditos de IA.",
   },
   comoFicou: {
     title: "Comentários gerados",
-    what: "A lista de todos os comentários, minuto a minuto, para ver e corrigir um a um, e a mensagem fixada no topo do chat.",
+    what: "Todos os comentários, minuto a minuto, para rever e corrigir.",
     steps: [
-      "Carregue num comentário: a sala vai para esse minuto e o comentário abre para editar.",
-      "Mude o minuto na roda, o nome ou a mensagem, e carregue em «Guardar» (ou «Apagar» para o tirar).",
-      "Carregue em «Ver o chat a correr na sala» para o ver ao ritmo do vídeo.",
-      "Escreva a «Mensagem fixada no chat», que fica no topo do chat.",
+      "Toque num comentário: a sala vai a esse minuto e ele abre.",
+      "Mude o minuto, o nome ou o texto e guarde.",
+      "Escreva a «Mensagem fixada no chat».",
     ],
-    example:
-      "248 comentários de 64 pessoas. Aos 18:20 aparece «Quanto custa em kwanzas?», cedo demais: a Edna abre-o, passa-o para 21:05, depois do preço, e guarda. Fixa no chat «Bem-vindos! Escrevam de que cidade estão a ver».",
+    example: "«Quanto custa em kwanzas?» aos 18:20 é cedo demais: passa para 21:05, depois do preço.",
   },
   avisoSuporte: {
     title: "Aviso do Suporte",
-    what: "Quando o Suporte responde a uma pessoa e ela não abre a resposta em 20 segundos, o chat mostra-lhe «@Você, já respondemos à sua dúvida». Só ela vê. Funciona nos dois formatos, Webinar e Live.",
-    steps: [
-      "Ligue «Avisar no chat quando o Suporte responde».",
-      "Ligue o Agente IA ou tenha alguém da equipa no Atendimento, para haver quem responda no Suporte.",
-      "Faça um teste: escreva no Suporte da sala e espere pela resposta sem a abrir.",
-    ],
-    example:
-      "A Celma pergunta no Suporte «Dá para pagar por Multicaixa Express?». A resposta chega, mas ela está a ver o vídeo. 20 segundos depois, aparece-lhe no chat «@Você, já respondemos à sua dúvida» e ela abre a resposta.",
-    tips: ["Mais ninguém vê o aviso: o chat continua igual para os outros."],
+    what: "Se a pessoa não abrir a resposta do Suporte em 20 segundos, o chat avisa-a; só ela vê.",
+    steps: ["Ligue «Avisar no chat quando o Suporte responde».", "Garanta quem responda: o Agente IA ou a equipa no Atendimento."],
+    example: "A Celma pergunta por Multicaixa; 20 s depois da resposta, vê «@Você, já respondemos à sua dúvida».",
   },
 
   /* ---------- Audiência ---------- */
 
   audiencia: {
     title: "Audiência",
-    what: "Quantas pessoas a sala diz que estão a ver e como esse número muda ao longo do vídeo. O número também dá o ritmo ao chat.",
-    steps: [
-      "Escolha «Escrever» ou «Definir nas rodas».",
-      "Indique com quantas pessoas a sala «Começa com» e até quantas «Chega até».",
-      "Escolha na lista o «Formato» da curva.",
-      "Arraste o cursor em «Como fica ao vivo» para ver o número em cada minuto.",
-    ],
-    example:
-      "Webinar «Como vender no Instagram», 23 minutos: começa com 120 pessoas e chega até 480, no formato «Cresce até à oferta». O número sobe até às 480 pessoas aos 18:00, quando a oferta abre, e depois desce devagar.",
-    tips: [
-      "Use números que façam sentido para o seu público: 5 000 pessoas numa aula de nicho não convencem.",
-      "O máximo fica sempre acima do mínimo; o limite é 50 000.",
-    ],
+    what: "Quantas pessoas a sala diz que estão a ver, ao longo do vídeo.",
+    steps: ["Indique com quantas começa e até quantas chega.", "Escolha o «Formato» da curva.", "Arraste no gráfico para ver cada minuto."],
+    example: "Começa com 120 e chega a 480 aos 18:00, quando a oferta abre.",
+    tip: "Use números credíveis para o seu público (máximo 50 000).",
   },
   audienciaFormato: {
     title: "Formato da audiência",
-    what: "Como o número de pessoas muda ao longo do vídeo, ou se a sala mostra só quem está mesmo a ver.",
-    steps: [
-      "Abra a lista e leia, por baixo, o que faz o formato escolhido.",
-      "Escolha um formato simulado: «Acompanha a fala» (recomendado), «Dinâmica» ou «Cresce até à oferta».",
-      "Escolha «Real + simulada» para somar o número simulado a quem está mesmo a ver.",
-      "Escolha «Só a real» ou «Não mostrar» se não quer número simulado.",
-      "Confira a curva em «Como fica ao vivo».",
-    ],
-    example:
-      "Aula de contabilidade em Lisboa, 40 minutos, com «Dinâmica»: o número sobe nos primeiros minutos, mantém-se a meio e desce no fim, como numa live real.",
-    tips: ["Com «Só a real» ou «Não mostrar», as rodas e o gráfico desaparecem."],
+    what: "Como o número muda ao longo do vídeo, ou se mostra só quem está mesmo a ver.",
+    steps: ["Escolha um formato simulado; «Acompanha a fala» é o recomendado.", "Ou escolha «Real + simulada», «Só a real» ou «Não mostrar»."],
+    example: "«Dinâmica»: sobe no início, mantém-se a meio e desce no fim.",
+    tip: "Com «Só a real» ou «Não mostrar», o gráfico desaparece.",
   },
   audienciaCurva: {
     title: "Como fica ao vivo",
-    what: "O gráfico de quantas pessoas a sala mostra em cada minuto, com o que acontece por baixo: as ofertas, o + Seguir e as compras.",
-    steps: [
-      "Arraste no gráfico: o vídeo vai para esse minuto e a sala mostra o número.",
-      "Use as setas ← e → do teclado para andar 5 segundos de cada vez.",
-      "Leia as faixas por baixo: em cima as ofertas (laranja a principal, âmbar as relâmpago), em baixo o + Seguir, a azul.",
-      "Veja os pontos verdes na curva: cada um é uma compra.",
-      "Confira na legenda quantas ofertas, momentos do + Seguir e compras há.",
-    ],
-    example:
-      "Aula de 23 minutos: a curva sobe até 480 pessoas, a linha tracejada «Oferta 18:00» marca o pitch, uma faixa âmbar mostra a oferta relâmpago das 21:00 às 23:00, o + Seguir aparece às 04:10 e há 10 pontos verdes de compras depois das 18:00.",
-    tips: ["O gráfico só aparece com um formato simulado: «Acompanha a fala», «Dinâmica», «Cresce até à oferta» ou «Real + simulada»."],
+    what: "O número de pessoas em cada minuto, com as ofertas, o + Seguir e as compras por baixo.",
+    steps: ["Arraste no gráfico: a sala vai a esse minuto.", "Use ← e → para andar 5 segundos.", "Cada ponto verde é uma compra."],
+    example: "Sobe até 480, a linha «Oferta 18:00» marca o pitch e há 10 compras depois dela.",
   },
 
   /* ---------- Oferta ---------- */
 
   oferta: {
     title: "Oferta",
-    what: "O que vende na sala, para onde leva o botão e em que minutos aparece. Tem a oferta principal e até 3 ofertas relâmpago: outro produto, ou a entrada num grupo exclusivo.",
+    what: "O que vende na sala, para onde leva o botão e quando aparece.",
     steps: [
       "Ligue «Mostrar a oferta na sala».",
-      "Abra a «Oferta principal» e escreva o nome do produto e, se quiser, o preço inicial e o preço com desconto.",
-      "Em «O botão leva a», escolha «Página de compra» (checkout ou página de vendas) ou «Grupo» (WhatsApp ou Telegram) e cole o link.",
-      "Em «Quando aparece», escolha «Abre aos» e «Fecha aos»; «Validar» usa o minuto do pitch que a análise do vídeo encontrou.",
-      "Carregue em «Adicionar oferta relâmpago» para outra oferta; quando ela abre, a anterior fecha.",
+      "Escreva o nome e, se quiser, os preços.",
+      "Escolha para onde leva o botão e cole o link.",
+      "Escolha «Abre aos» e «Fecha aos».",
     ],
-    example:
-      "Oferta principal: «Mentoria Vendas no Instagram», de 100 000 Kz por 25 000 Kz, botão «Quero minha vaga» para o checkout da Kambafy, abre aos 18:00. Oferta relâmpago: «Grupo VIP», sem preço, botão «Entrar no grupo» para https://chat.whatsapp.com/…, abre aos 21:00 e fecha aos 24:00.",
-    tips: [
-      "O preço é texto livre e opcional: escreva a moeda, por exemplo «25 000 Kz» ou «97 €». Sem preço, o cartão mostra só o nome e o botão.",
-      "Sem o nome e sem o link, a oferta principal fica por acabar.",
-    ],
-  },
-  link: {
-    title: "Para onde leva o botão",
-    what: "Há dois destinos. «Página de compra» é qualquer página onde se paga: o checkout (Kambafy, Hotmart…) ou a página de vendas. «Grupo» leva a um grupo de WhatsApp ou Telegram, e a sala regista quem entrou.",
-    steps: [
-      "Escolha «Página de compra» para vender: cole o link do checkout (recomendado, tira um passo) ou da página de vendas.",
-      "Escolha «Grupo» para levar a um grupo exclusivo: cole o link do convite do grupo.",
-      "Confirme o «Texto do botão»: ao escolher o destino, o texto muda sozinho («Quero minha vaga» ou «Entrar no grupo»), e pode trocá-lo.",
-    ],
-    example:
-      "Curso de 15 000 Kz: «Página de compra», link do checkout da Kambafy, botão «Quero minha vaga». Grupo VIP: «Grupo», link https://chat.whatsapp.com/…, botão «Entrar no grupo»; na sala, a pessoa confirma o nome, o e-mail e o WhatsApp e entra no grupo, onde está o link com o desconto.",
-    tips: [
-      "O link do grupo começa por https://chat.whatsapp.com/ ou https://t.me/.",
-      "No grupo, fica registado quem entrou, para depois separar quem comprou de quem não comprou.",
-    ],
-  },
-  pitch: {
-    title: "Quando a oferta aparece",
-    what: "O minuto em que o separador Oferta abre na sala e o minuto em que fecha. Deve coincidir com o momento em que o apresentador começa a vender.",
-    steps: [
-      "Carregue em «Validar» se a análise do vídeo encontrou o pitch: usa esse minuto.",
-      "Carregue em «Abre aos» e rode os minutos e os segundos para escolher outro.",
-      "Carregue em «Fecha aos» e escolha um minuto, ou «No fim do vídeo».",
-      "Arraste as pegas na barra para acertar, e carregue em «Ver na sala» para ver a oferta a abrir.",
-    ],
-    example:
-      "A análise encontrou o pitch aos 17:52. A Edna carrega em «Validar», deixa «Fecha aos» no fim do vídeo e vê na sala o separador Oferta a abrir aos 17:52, com 5 minutos de aula ainda por dar.",
-    tips: ["Abrir a oferta antes do pitch confunde: a pessoa vê o preço antes de perceber o valor."],
+    example: "Mentoria de 100 000 Kz por 25 000 Kz, checkout da Kambafy, abre aos 18:00.",
+    tip: "Pode juntar até 3 ofertas relâmpago: quando uma abre, a anterior fecha.",
   },
   urgencia: {
     title: "Cronómetro e prazo",
-    what: "Duas formas de dar pressa a quem está a decidir. O cronómetro conta minutos na sala, a partir do momento em que a oferta abre. O prazo é um dia do calendário: depois dele, a oferta fecha também no replay.",
+    what: "Dá pressa: um cronómetro na sala e um último dia que fecha também o replay.",
     steps: [
-      "Em «Cronómetro», escolha quantos minutos conta: «Sem», 5, 10, 15 ou 30 min. Aparece no cartão da oferta como «A oferta acaba em 09:59».",
-      "Em «Quando chega a zero», escolha o que acontece: «O botão continua» (o cronómetro some e o botão continua a vender) ou «O botão fecha» (o botão passa a «Oferta encerrada»).",
-      "Em «Último dia da oferta», escolha, se quiser, o dia em que a oferta acaba de vez, na sala e no replay.",
-      "Tire o prazo com o X ao lado da data.",
+      "Escolha quantos minutos conta o cronómetro.",
+      "Escolha se, no zero, o botão continua ou fecha.",
+      "Escolha, se quiser, o «Último dia da oferta».",
     ],
-    example:
-      "A oferta abre aos 18:00 com 10 minutos. Com «O botão continua», aos 18:10 o cronómetro some e quem decide depois ainda compra. Com «O botão fecha», aos 18:10 aparece «Oferta encerrada». Aula a 12 de outubro e último dia a 14: quem vê o replay compra até dia 14; a 15, o botão fecha.",
-    tips: [
-      "Para começar, use 10 minutos com «O botão continua»: dá pressa sem perder quem decide tarde.",
-      "Use «O botão fecha» só se a oferta for mesmo só para quem está na aula, e diga-o no pitch.",
-      "Cada oferta relâmpago tem o seu «Prazo desta oferta», dentro do cartão dela.",
-    ],
+    example: "10 minutos com «O botão continua»: aos 18:10 o cronómetro some e ainda dá para comprar.",
+    tip: "Use «O botão fecha» só se o disser no pitch.",
   },
   depoisVideo: {
     title: "Quando a aula acaba",
-    what: "Quanto tempo a sala fica aberta para comprar depois de o vídeo acabar. Nesse tempo continuam a oferta, o cronómetro e o Suporte.",
-    steps: [
-      "Escolha o tempo: «Fecha já», 15 min, 30 min, 1 h ou 2 h.",
-      "Leia por baixo o que acontece nesse tempo.",
-      "Carregue em «Ver a sala depois do vídeo» para ver como fica.",
-    ],
-    example:
-      "Sessão às 20:00, aula de 23 minutos e 30 min depois do vídeo: a aula acaba às 20:23, mas a sala fica aberta até às 20:53. O Agente IA e a equipa respondem no Atendimento a quem ainda tem dúvidas.",
-    tips: ["Vale para a última oferta: é ela que fica aberta."],
+    what: "Quanto tempo a sala fica aberta para comprar depois do vídeo.",
+    steps: ["Escolha «Fecha já», 15 min, 30 min, 1 h ou 2 h.", "Veja como fica em «Ver a sala depois do vídeo»."],
+    example: "Aula das 20:00 com 23 minutos e 30 min depois: a sala fecha às 20:53.",
   },
   utm: {
     title: "Origem das vendas",
-    what: "Leva ao checkout a origem de cada pessoa: o anúncio de onde veio e o minuto em que clicou. Assim sabe que anúncio vendeu.",
-    steps: [
-      "Ligue «Levar a origem ao checkout».",
-      "Ponha nos anúncios o link da sala com utm_source e utm_campaign, para a origem ficar registada à entrada.",
-      "Veja no checkout ou nas suas métricas de onde veio cada venda.",
-    ],
-    example:
-      "A Edna anuncia no Instagram com …/w/vender-no-instagram?utm_source=instagram&utm_campaign=aula-outubro. A Yola entra por esse anúncio e clica na oferta aos 18:42. O checkout recebe utm_source=instagram, utm_campaign=aula-outubro e utm_content=sala-18m42s.",
-    tips: [
-      "Sem anúncio, a origem fica «convertewebinar».",
-      "Se o link do checkout já tiver UTM, esses valores ficam como estão.",
-    ],
+    what: "Leva ao checkout de onde veio cada pessoa, para saber que anúncio vendeu.",
+    steps: ["Ligue «Levar a origem ao checkout».", "Use nos anúncios o link da sala com utm_source e utm_campaign."],
+    example: "…/w/aula?utm_source=instagram: o checkout recebe utm_source=instagram e o minuto do clique.",
+    tip: "Sem anúncio, a origem fica «convertewebinar».",
   },
 
   /* ---------- Vendas ---------- */
 
   vendas: {
     title: "Vendas na sala",
-    what: "Os avisos de compra que aparecem na sala, como «Helena comprou a Mentoria». Podem ser de demonstração, para dar prova social, ou as compras reais da Kambafy.",
-    steps: [
-      "Ligue «Mostrar compras de demonstração» e escolha «Quantas compras» (de 1 a 50, ou 3, 6, 10 ou 20).",
-      "Ligue em «Compras reais» as compras da Kambafy.",
-      "Escolha «Onde aparecem»: no vídeo, no chat ou nos dois.",
-      "Escolha a «Cor do aviso».",
-      "Clique num ponto em «Na linha do vídeo» para ver a compra a aparecer.",
-    ],
-    example:
-      "Oferta aos 18:00 num vídeo de 23 minutos, com 10 compras de demonstração: espalham-se entre os 18:19 e os 22:43, mais ou menos uma a cada 30 segundos. As compras reais da Kambafy aparecem no momento em que acontecem, só com o primeiro nome.",
-    tips: [
-      "As de demonstração só aparecem depois do pitch e nunca entram nas métricas.",
-      "Sem o minuto do pitch marcado na Oferta, as compras contam desde o início do vídeo.",
-    ],
+    what: "Avisos de compra na sala, como «Helena comprou a Mentoria».",
+    steps: ["Ligue as compras de demonstração e escolha quantas.", "Ligue as compras reais da Kambafy, se quiser.", "Escolha onde aparecem e a cor."],
+    example: "10 compras de demonstração entre os 18:19 e os 22:43, depois do pitch.",
+    tip: "As de demonstração nunca entram nas métricas.",
   },
   comprasReais: {
     title: "Compras reais",
-    what: "As compras feitas na Kambafy aparecem na sala no momento em que acontecem, só com o primeiro nome de quem comprou.",
-    steps: [
-      "Ligue a Kambafy em Integrações.",
-      "Ligue «Mostrar as compras da Kambafy».",
-      "Escolha em «Onde aparecem» se o aviso sai no vídeo, no chat ou nos dois.",
-    ],
-    example:
-      "Aos 19:30, a Nádia Ngola paga a mentoria na Kambafy. Segundos depois, quem está na sala vê «Nádia comprou Mentoria Vendas no Instagram».",
-    tips: ["O apelido nunca aparece: só o primeiro nome."],
+    what: "As compras da Kambafy aparecem na sala no momento em que acontecem.",
+    steps: ["Ligue a Kambafy em Integrações.", "Ligue «Mostrar as compras da Kambafy»."],
+    example: "A Nádia paga às 19:30; segundos depois, a sala mostra «Nádia comprou…».",
+    tip: "Só aparece o primeiro nome.",
   },
   vendasOnde: {
     title: "Onde aparecem",
-    what: "Onde a sala mostra o aviso de compra: por cima do vídeo, como uma linha no chat, ou nos dois.",
-    steps: [
-      "Escolha «No vídeo» para um aviso por cima da imagem.",
-      "Escolha «No chat» para uma linha no meio dos comentários.",
-      "Escolha «Nos dois» para os dois avisos ao mesmo tempo.",
-      "Veja o resultado no exemplo de «Cor do aviso».",
-    ],
-    example:
-      "Com «Nos dois», quando o Bruno compra, aparece por cima do vídeo «Bruno comprou Contabilidade simples · agora mesmo» e, no chat, uma linha com o carrinho e o mesmo texto.",
-    tips: ["Vale para as compras de demonstração e para as reais."],
+    what: "Onde aparece o aviso de compra: no vídeo, no chat ou nos dois.",
+    steps: ["Escolha «No vídeo», «No chat» ou «Nos dois»."],
+    example: "«Nos dois»: um aviso por cima do vídeo e uma linha no chat.",
   },
   vendasCor: {
     title: "Cor do aviso",
     what: "A cor do aviso de compra, no vídeo e no chat.",
-    steps: [
-      "Escolha uma das 7 cores: Verde, Azul, Roxo, Laranja, Âmbar, Rosa ou Grafite.",
-      "Veja no exemplo escuro como fica o aviso no vídeo e a linha no chat.",
-      "Confirme na pré-visualização da sala que o aviso se distingue do botão da oferta.",
-    ],
-    example: "Botão da oferta em laranja e aviso de compra em verde: quem vê distingue logo a compra de outra pessoa do botão para comprar.",
-    tips: ["Evite a cor do botão da oferta: o aviso confunde-se com o botão."],
+    steps: ["Escolha uma das 7 cores.", "Confirme que se distingue do botão da oferta."],
+    example: "Botão laranja e aviso verde: não se confundem.",
   },
   vendasLinha: {
     title: "Na linha do vídeo",
-    what: "As compras ao longo do vídeo, como no gráfico da Audiência: a linha sobe a cada compra e cada ponto é uma compra.",
-    steps: [
-      "Arraste no gráfico para a sala ir a esse minuto.",
-      "Clique num ponto: a sala toca uns segundos antes e vê a compra a aparecer.",
-      "Leia em cima quantas compras já aconteceram até ao minuto em que está.",
-      "Confira a linha tracejada da oferta: as compras começam depois dela.",
-    ],
-    example:
-      "10 compras de demonstração: aos 20:00, o gráfico mostra «6 de 10 compras». Um clique no ponto das 20:15 toca a sala uns segundos antes e mostra o aviso «Inês comprou…» a aparecer.",
-    tips: ["O gráfico só aparece quando há compras para mostrar."],
+    what: "As compras ao longo do vídeo: cada ponto é uma compra.",
+    steps: ["Arraste no gráfico para ir a esse minuto.", "Toque num ponto para ver a compra a aparecer."],
+    example: "Aos 20:00, o gráfico mostra «6 de 10 compras».",
   },
 
   /* ---------- Automações ---------- */
 
   automacoes: {
     title: "Automações",
-    what: "As mensagens por WhatsApp e e-mail antes, durante e depois da sessão. Vivem no fluxo do webinar e só se editam no desenho do fluxo; aqui vê o resumo.",
+    what: "As mensagens por WhatsApp e e-mail antes, durante e depois da sessão; editam-se no desenho do fluxo.",
     steps: [
-      "Carregue em «Criar as automações base» se o webinar ainda não tem fluxo; nascem desligadas.",
-      "Veja as automações por momento: «Inscrição», «Ao vivo», «Fim da sessão» e «Checkout e compra».",
-      "Confira em cada uma quantas mensagens tem, os canais e se está «Ligada» ou «Desligada».",
-      "Carregue em «Abrir o fluxo», ou numa automação, para a escrever e ligar no desenho do fluxo.",
+      "Carregue em «Criar as automações base»; nascem desligadas.",
+      "Veja cada automação por momento e se está ligada.",
+      "Carregue em «Abrir o fluxo» para as escrever e ligar.",
     ],
-    example:
-      "Webinar das 20:00: na inscrição, uma mensagem de confirmação por WhatsApp. No fim da sessão, quem não comprou fica num segmento («Não acessou», «Saiu antes do pitch» ou «Assistiu o pitch») e recebe a mensagem desse segmento. Quem compra sai das automações de venda dessa oferta.",
-    tips: [
-      "Não há automações fora do fluxo: para mudar uma mensagem, abra o fluxo.",
-      "Nos grupos de WhatsApp a mensagem vai para todos: só o e-mail e o WhatsApp individual seguem o segmento de cada pessoa.",
-      "A condição de cada disparo é vista no momento em que sai: se a pessoa comprou entretanto, já não recebe a mensagem de venda.",
-    ],
+    example: "Confirmação por WhatsApp na inscrição; no fim, cada segmento de quem não comprou recebe a sua mensagem.",
+    tip: "Quem compra sai das automações de venda dessa oferta.",
   },
 
   /* ---------- Agente IA ---------- */
 
   agente: {
     title: "Agente IA",
-    what: "O agente da plataforma a responder no Suporte da sala deste webinar. É o mesmo agente do Atendimento; o que não sabe ou não pode fazer passa à equipa.",
+    what: "Responde no Suporte da sala; o que não sabe ou não pode fazer passa à equipa.",
     steps: [
-      "Ligue «Ligar o agente neste webinar».",
-      "Escolha em «O que faz» a «Autonomia» e as fontes de «Responde com».",
-      "Abra «Regras» e escolha quando «Passa à equipa» e o «Nome no chat».",
-      "Carregue em «Conhecimento, perguntas e simulador» para lhe ensinar a oferta e testar respostas.",
+      "Âmbito: só este webinar ou todos os webinars da conta.",
+      "Conhecimento: o que sabe e o simulador.",
+      "Autonomia: até onde vai sem a equipa.",
+      "Ligar: o nome no chat e o interruptor.",
     ],
-    example:
-      "Webinar da mentoria com 400 pessoas: o agente, com o nome «Equipa Edna», responde no Suporte às dúvidas sobre a aula e envia o link da oferta. Quando alguém pede um desconto, passa a conversa ao Atendimento.",
-    tips: [
-      "Desligado, as mensagens do Suporte vão directo para o Atendimento.",
-      "Negociar ou dar desconto nunca é feito sozinho.",
-    ],
+    example: "«Equipa Edna» responde às dúvidas e envia o link da oferta; um pedido de desconto passa ao Atendimento.",
+    tip: "Desligado, o Suporte vai directo para o Atendimento.",
   },
   autonomia: {
     title: "Autonomia",
     what: "Até onde o agente vai sem pedir à equipa.",
     steps: [
-      "Escolha «Sugere» para o agente preparar a resposta e a equipa a aprovar.",
-      "Escolha «Controlo» para responder dentro das regras e passar à equipa o que é de risco.",
-      "Escolha «Automático» para responder sozinho a tudo o que sabe, dentro das regras.",
-      "Confira na lista o que faz em cada caso: «Sozinho», «Sugere», «Passa à equipa» ou «Nunca sozinho».",
+      "«Sugere»: escreve a resposta e a equipa aprova.",
+      "«Controlo»: responde quando tem a certeza; na dúvida passa à equipa.",
+      "«Automático»: responde a tudo o que sabe, sem revisão.",
     ],
-    example:
-      "Com «Controlo»: «Responder dúvidas do conteúdo» e «Enviar o link da oferta» ficam «Sozinho»; «Negociar ou dar desconto» fica «Nunca sozinho», com cadeado.",
-    tips: ["Comece por «Sugere» nos primeiros webinars e suba quando confiar nas respostas."],
+    example: "Com «Controlo», envia o link da oferta sozinho, mas nunca dá desconto.",
+    tip: "Comece por «Sugere» e suba quando confiar nas respostas.",
   },
   agenteFontes: {
-    title: "Responde com",
-    what: "De onde o agente tira as respostas: a oferta da sala (sempre da etapa Oferta), a transcrição do vídeo, as perguntas frequentes e o que escrever sobre o produto e o negócio.",
+    title: "Conhecimento",
+    what: "De onde vêm as respostas: o webinar, a agenda, a oferta, a transcrição e o que escrever.",
     steps: [
-      "Confirme a etapa Oferta: o nome, o preço, o link e o último dia de cada oferta passam sozinhos para o agente, a partir do minuto em que a oferta abre na sala.",
-      "Ligue «Transcrição do vídeo» para responder com o que o apresentador disse.",
-      "Carregue em «Perguntas frequentes» para escrever as perguntas e as respostas mais comuns.",
-      "Carregue em «Produto e negócio» e preencha as formas de pagamento, a garantia e o que está incluído.",
-      "Teste as respostas no simulador, em «Conhecimento, perguntas e simulador».",
+      "O webinar, a agenda, a página de inscrição e a oferta vêm do editor (a oferta só depois de abrir).",
+      "Ligue a «Transcrição do vídeo».",
+      "Escreva as «Perguntas frequentes» e o «Produto e negócio».",
     ],
-    example:
-      "A oferta abre aos 18:00 por 25 000 Kz. Às 17:50 alguém pergunta o preço: o agente ainda não o diz e passa à equipa. Às 18:05 responde «25 000 Kz, em vez de 100 000 Kz» com o link do checkout. Se a Edna mudar o preço na etapa Oferta, o agente usa logo o novo.",
-    tips: [
-      "Não escreva o preço nem o link noutro sítio: se houver diferença, vale o da etapa Oferta.",
-      "Se a resposta não estiver em nenhuma fonte, ligue «Não sabe responder» em «Passa à equipa quando».",
-    ],
+    example: "Às 17:50 ainda não diz o preço; às 18:05 responde «25 000 Kz» com o link.",
+    tip: "Não escreva o preço noutro sítio: vale o da etapa Oferta.",
   },
   agenteEquipa: {
     title: "Passa à equipa quando",
-    what: "Os casos em que o agente deixa de responder e passa a conversa à equipa, no Atendimento.",
-    steps: [
-      "Ligue «Não sabe responder» para as perguntas que não estão no que ele sabe.",
-      "Ligue «Pedem uma pessoa» para quem quer falar com alguém da equipa.",
-      "Ligue «É sobre pagamento» para a equipa tratar dos pagamentos.",
-      "Responda a essas conversas no Atendimento.",
-    ],
-    example:
-      "O Hélder escreve no Suporte «Paguei por transferência e ainda não recebi o acesso». Com «É sobre pagamento» ligado, a conversa vai para o Atendimento e a equipa responde lá.",
-    tips: ["Se ninguém da equipa estiver a ver o Atendimento durante a sessão, essas pessoas ficam sem resposta."],
+    what: "Quando o agente pára e passa a conversa à equipa, no Atendimento.",
+    steps: ["Ligue os casos: não sabe, pedem uma pessoa, é sobre pagamento.", "Responda a essas conversas no Atendimento."],
+    example: "«Paguei e não recebi o acesso» vai para o Atendimento.",
+    tip: "Tenha alguém no Atendimento durante a sessão.",
   },
   agenteNome: {
-    title: "Nome no chat",
-    what: "O nome com que o agente aparece no Suporte da sala.",
-    steps: [
-      "Escreva o nome, por exemplo «Equipa» ou «Suporte Edna Kiala».",
-      "Pare de escrever: o nome guarda-se sozinho.",
-      "Veja na pré-visualização como aparece no chat.",
-    ],
-    example: "Nome «Equipa Vendas no Instagram»: quem pergunta no Suporte vê as respostas assinadas assim.",
-    tips: ["Se o deixar vazio, fica «Assistente»."],
+    title: "Ligar",
+    what: "O nome com que o agente assina no Suporte e o interruptor.",
+    steps: ["Escreva o nome; guarda-se sozinho.", "Ligue quando o simulador responder bem."],
+    example: "«Equipa Vendas no Instagram».",
+    tip: "Vazio, fica «Assistente».",
   },
 
   /* ---------- Agenda ---------- */
 
   agenda: {
     title: "Agenda",
-    what: "Quando a sessão acontece: numa data, a repetir, a cada poucos minutos ou sempre que alguém entra.",
+    what: "Quando a sessão acontece; quem se inscreve não escolhe data, fica na próxima sessão.",
     steps: [
-      "Escolha em «O que está a programar»: «Uma data», «Repetir», «Just in time» ou «Sempre disponível».",
-      "Preencha «Quando» ou o «Intervalo», com o fuso horário.",
-      "Confira a «Próxima sessão» no cartão escuro.",
-      "Escolha em «Sessão» a sala de espera, o vídeo sincronizado e o replay.",
+      "«Uma data»: uma sessão num dia e hora. Para um lançamento.",
+      "«Repetir»: nos dias e horas que escolher. Para vender todas as semanas.",
+      "«Just in time»: a cada 15, 30 ou 60 min. Para anúncios o dia todo.",
+      "«Sempre disponível»: começa quando a pessoa entra. Para uma aula sem hora.",
     ],
-    example:
-      "Lançamento em Luanda: «Repetir» às terças e quintas às 20:00, com o fuso «Angola · Luanda». O cartão «Próxima sessão» mostra a próxima terça ou quinta às 20:00.",
-    tips: ["Confirme o fuso: 20:00 em Luanda são 20:00 em Lisboa no verão, mas 19:00 no inverno."],
+    example: "Repetir às terças e quintas às 20:00: quem se inscreve na segunda vê «Começa a 13/10, 20:00» e fica nessa sessão.",
+    tip: "Confirme o fuso: 20:00 em Luanda são 19:00 em Lisboa no inverno.",
   },
   agendaQuando: {
     title: "Quando",
-    what: "O dia e a hora da sessão. Com «Uma data», há uma sessão; com «Repetir», há sessões nos dias e nas horas que escolher.",
-    steps: [
-      "Escolha a «Data» e a «Hora», se programou «Uma data».",
-      "Escolha os «Dias» e as «Horas», se programou «Repetir»; «+ Hora» junta outra, até 6.",
-      "Escolha o «Fuso horário» da cidade onde marca a hora.",
-      "Confira por baixo a «Próxima sessão».",
-    ],
-    example:
-      "Workshop em Lisboa às segundas e quartas, às 13:00 e às 21:00, com o fuso «Portugal · Lisboa»: são quatro sessões por semana com o mesmo vídeo.",
-    tips: [
-      "Com «Repetir» e sem dias escolhidos, repete todos os dias.",
-      "Uma data que já passou fica marcada como terminada: escolha uma nova.",
-    ],
+    what: "O dia, a hora e o fuso da sessão.",
+    steps: ["«Uma data»: escolha a data e a hora.", "«Repetir»: escolha os dias e as horas (até 6).", "Escolha o fuso da cidade onde marca a hora."],
+    example: "Segundas e quartas às 13:00 e às 21:00, fuso de Lisboa: quatro sessões por semana.",
+    tip: "Sem dias escolhidos, repete todos os dias.",
   },
   agendaIntervalo: {
     title: "Intervalo",
-    what: "Com «Just in time», há uma sessão a começar a cada 15, 30 ou 60 minutos, para quem chega não esperar muito.",
-    steps: [
-      "Escolha o intervalo: «15 min», «30 min» ou «1 hora».",
-      "Ligue «Sem sessões de noite» para não haver sessões entre as 22:00 e as 07:00.",
-      "Escolha o «Fuso horário» do seu público.",
-    ],
-    example:
-      "Anúncio a correr todo o dia em Angola, com intervalo de 15 min: quem se inscreve às 14:07 entra na sessão das 14:15. Com «Sem sessões de noite», quem se inscreve às 23:30 fica para a sessão das 07:00.",
-    tips: ["As 22:00 e as 07:00 contam no fuso escolhido."],
+    what: "Com «Just in time», começa uma sessão a cada 15, 30 ou 60 minutos.",
+    steps: ["Escolha o intervalo.", "Ligue «Sem sessões de noite» (das 22:00 às 07:00).", "Escolha o fuso do seu público."],
+    example: "A cada 15 min: quem se inscreve às 14:07 entra às 14:15.",
   },
   agendaSessao: {
     title: "Sessão",
-    what: "O que acontece à volta da hora marcada: a sala de espera antes, o vídeo a acompanhar o relógio e o replay depois.",
+    what: "A espera antes da hora, o vídeo a acompanhar o relógio e o replay depois.",
     steps: [
-      "Ligue «Sala de espera» para mostrar uma contagem decrescente antes da hora.",
-      "Ligue «Vídeo sincronizado» para quem chega atrasado ver a partir do minuto em que a sessão vai.",
-      "Ligue «Replay depois da sessão» para quem não viu ao vivo ver o mesmo vídeo.",
+      "«Sala de espera»: contagem até à hora.",
+      "«Vídeo sincronizado»: quem chega às 20:05 vê a partir do minuto 5.",
+      "«Replay»: quem faltou vê o mesmo vídeo depois.",
     ],
-    example:
-      "Sessão às 20:00: às 19:50 a Yola entra e vê a contagem decrescente. O Nelson entra às 20:05 e vê a partir do minuto 5, como numa live. Quem faltou vê o replay, com o botão da oferta aberto até ao último dia da oferta.",
-    tips: ["Com «Sempre disponível», só há o «Replay depois da sessão»: o vídeo começa quando a pessoa entra."],
+    example: "A Yola entra às 19:50 e vê a contagem; o Nelson entra às 20:05 e apanha o minuto 5.",
+    tip: "Com «Sempre disponível», só há o replay.",
   },
 } satisfies Record<string, Help>;
 

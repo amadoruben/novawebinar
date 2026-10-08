@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowRight, ChevronDown, CircleCheck, Info, Lightbulb, Minus, Plus, type LucideIcon } from "lucide-react";
+import { ArrowRight, ChevronDown, Info, Lightbulb, Minus, Plus, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -13,16 +13,14 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { clock } from "@/lib/room-logic";
-import { HELP, type HelpTopic } from "./help";
-import { helpScene } from "./help-scene";
+import { HELP, type Help, type HelpTopic } from "./help";
+import { HelpScene } from "./help-scene";
 
 /** As peças do painel de cada etapa, com a medida do protótipo aprovado (versão 13). */
 
 export function HelpButton({ topic, className }: { topic: HelpTopic; className?: string }) {
   const [open, setOpen] = useState(false);
-  const help = HELP[topic];
-  const scene = helpScene(topic);
-  const heading = "text-[11.5px] font-semibold uppercase tracking-[0.08em]";
+  const help: Help = HELP[topic];
   return (
     <>
       <button
@@ -38,67 +36,38 @@ export function HelpButton({ topic, className }: { topic: HelpTopic; className?:
         <Info className="size-[15px]" />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-[600px] gap-0 overflow-y-auto p-0 sm:p-0">
-          <DialogHeader className="flex-row items-start gap-3 space-y-0 border-b border-[#E0F0FF] bg-[#F0F7FF] px-5 pb-4 pt-5 text-left sm:px-6">
-            <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[#0072F5] text-white">
-              <Info className="size-4" />
-            </span>
-            <div className="min-w-0 space-y-1 pr-6">
-              <p className={cn(heading, "text-[#0068D6]")}>Para que serve</p>
-              <DialogTitle className="text-[17px] font-semibold tracking-tight">{help.title}</DialogTitle>
-              <DialogDescription className="leading-relaxed text-[#3D3D3D]">{help.what}</DialogDescription>
-            </div>
+        {/* Cabeça (o que faz), tronco (onde aparece, desenhado) e membros (como usar e um exemplo). */}
+        <DialogContent className="max-h-[calc(100dvh-1.5rem)] max-w-[520px] gap-0 overflow-y-auto p-0 sm:p-0">
+          <DialogHeader className="space-y-1 px-5 pb-3.5 pr-12 pt-5 text-left sm:px-6 sm:pr-12">
+            <DialogTitle className="text-[17px] font-semibold tracking-tight">{help.title}</DialogTitle>
+            <DialogDescription className="text-[14px] leading-snug text-[#4D4D4D]">{help.what}</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-6 px-5 py-5 sm:px-6">
-            {/* Onde aparece: o ecrã em miniatura, com o sítio realçado a azul. */}
-            <section className="flex items-center gap-4 rounded-xl border bg-[#FAFAFA] p-3.5">
-              {scene.phone}
-              <div className="grid min-w-0 gap-1.5">
-                <h4 className={cn(heading, "text-muted-foreground")}>Como fica no ecrã</h4>
-                <p className="text-sm leading-relaxed">{scene.where}</p>
-                <p className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
-                  <i className="block size-2 shrink-0 rounded-full bg-[#0072F5]" />
-                  Em destaque, o que esta secção muda.
-                </p>
-              </div>
-            </section>
-            <section className="grid gap-3">
-              <h4 className={cn(heading, "text-muted-foreground")}>Como usar, por ordem</h4>
-              <ol className="grid">
-                {help.steps.map((step, i) => (
-                  <li key={step} className="relative flex gap-3 pb-3.5 last:pb-0">
-                    {/* A linha que liga os passos, como um caminho. */}
-                    {i < help.steps.length - 1 ? <span aria-hidden className="absolute bottom-0 left-3 top-6 w-px bg-[#E0F0FF]" /> : null}
-                    <span className="relative grid size-6 shrink-0 place-items-center rounded-full bg-[#0072F5] font-mono text-[12px] font-semibold text-white">
-                      {i + 1}
-                    </span>
-                    <span className="pt-0.5 text-sm leading-relaxed">{step}</span>
-                  </li>
-                ))}
-              </ol>
-            </section>
-            <section className="grid gap-2 rounded-xl border border-[#C7EBCB] bg-[#F1FBF2] px-4 py-3.5">
-              <h4 className={cn(heading, "flex items-center gap-1.5 text-[#297A3A]")}>
-                <Lightbulb className="size-3.5" />
-                Exemplo
-              </h4>
-              <p className="text-sm leading-relaxed text-[#1E3D24]">{help.example}</p>
-            </section>
-            {"tips" in help && help.tips?.length ? (
-              <section className="grid gap-2 rounded-xl border border-[#F5DEA0] bg-[#FFF8E6] px-4 py-3.5">
-                <h4 className={cn(heading, "text-[#A35200]")}>Dicas</h4>
-                <ul className="grid gap-2">
-                  {help.tips.map((tip) => (
-                    <li key={tip} className="flex gap-2.5 text-sm leading-relaxed text-[#4D3300]">
-                      <CircleCheck className="mt-0.5 size-4 shrink-0 text-[#A35200]" />
-                      <span>{tip}</span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
+          <div className="px-5 sm:px-6">
+            <HelpScene topic={topic} />
+          </div>
+          <div className="grid gap-3.5 px-5 pb-5 pt-4 sm:px-6">
+            <ol className="grid gap-2">
+              {help.steps.map((step, i) => (
+                <li key={step} className="flex gap-2.5 text-[13.5px] leading-snug">
+                  <span className="grid size-5 shrink-0 place-items-center rounded-full bg-[#EBEBEB] text-[11px] font-semibold tabular-nums text-[#171717]">
+                    {i + 1}
+                  </span>
+                  <span className="pt-px">{step}</span>
+                </li>
+              ))}
+            </ol>
+            <p className="rounded-lg bg-[#F5F5F5] px-3.5 py-2.5 text-[13px] leading-snug text-[#4D4D4D]">
+              <b className="mr-1 font-semibold text-[#171717]">Exemplo:</b>
+              {help.example}
+            </p>
+            {help.tip ? (
+              <p className="flex gap-2 text-[12.5px] leading-snug text-[#A35200]">
+                <Lightbulb className="mt-px size-3.5 shrink-0" />
+                {help.tip}
+              </p>
             ) : null}
           </div>
-          <div className="flex justify-end border-t px-5 py-3 sm:px-6">
+          <div className="sticky bottom-0 flex justify-end border-t bg-white px-5 py-2.5 sm:px-6">
             <Button variant="dark" size="sm" onClick={() => setOpen(false)}>
               Percebi
             </Button>

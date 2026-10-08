@@ -1,4 +1,4 @@
-import { Check, Clock, Moon, Palette, Plus, UserPlus, X } from "lucide-react";
+import { Check, CirclePlay, Clock, Moon, Palette, Play, Plus, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -10,6 +10,7 @@ import {
   OFFER_COLOR_SUGGESTIONS,
   suggestFollowMoments,
   type FollowMoment,
+  type EntryLook,
   type FollowNetwork,
   type LiveSettings,
 } from "@/lib/room-logic";
@@ -81,6 +82,37 @@ export function RoomOptions({
         <p className="text-[12.5px] text-muted-foreground">
           «Automático» segue o telemóvel ou o computador de quem vê. Cada pessoa pode trocar no ⚙ do vídeo.
         </p>
+      </Section>
+
+      <Section icon={CirclePlay} title="Botão de entrar" help="botaoEntrar">
+        <div className="grid grid-cols-2 gap-2.5" role="radiogroup" aria-label="Botão de entrar">
+          {(
+            [
+              ["pulse", "Só o botão"],
+              ["info", "Botão com informação"],
+            ] as const
+          ).map(([value, label]) => {
+            const on = live.entry === value;
+            return (
+              <button key={value} type="button" role="radio" aria-checked={on} onClick={() => onLive({ entry: value })} className="group grid gap-2 text-left">
+                <span
+                  className={cn(
+                    "relative grid aspect-video place-items-center overflow-hidden rounded-xl bg-[linear-gradient(160deg,#2a2f38,#121417)] ring-1 ring-black/10 transition",
+                    on ? "ring-2 ring-foreground ring-offset-2" : "group-hover:ring-black/25",
+                  )}
+                >
+                  <EntryThumb look={value} />
+                  {on ? (
+                    <span className="absolute right-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-foreground text-background">
+                      <Check className="size-3" />
+                    </span>
+                  ) : null}
+                </span>
+                <span className={cn("text-[13px]", on ? "font-semibold" : "font-medium text-muted-foreground")}>{label}</span>
+              </button>
+            );
+          })}
+        </div>
       </Section>
 
       <Section icon={Palette} title="Cor do botão" help="corBotao">
@@ -247,6 +279,26 @@ export function RoomOptions({
         ) : null}
       </Section>
     </>
+  );
+}
+
+/** O botão de entrar em miniatura, ao centro de um vídeo: a pulsar, ou com a linha de informação. */
+export function EntryThumb({ look }: { look: EntryLook }) {
+  const dot = (size: string) => (
+    <span className={cn("relative grid shrink-0 place-items-center rounded-full bg-[#E8440C]", size)}>
+      <span className="absolute inset-0 animate-ping rounded-full bg-[#E8440C]/50 motion-reduce:animate-none" />
+      <Play className="relative size-[45%] translate-x-[0.5px] fill-white text-white" />
+    </span>
+  );
+  if (look === "pulse") return dot("size-8");
+  return (
+    <span className="flex items-center gap-1.5 rounded-full bg-black/60 py-1 pl-1 pr-2.5 text-white ring-1 ring-white/15">
+      {dot("size-5")}
+      <span className="leading-none">
+        <small className="block text-[6.5px] font-bold uppercase tracking-[0.14em] text-white/70">Aula ao vivo</small>
+        <b className="mt-0.5 block text-[9px] font-semibold">Assistir agora</b>
+      </span>
+    </span>
   );
 }
 

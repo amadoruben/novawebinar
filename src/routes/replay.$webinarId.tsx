@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { InternalWebinarRoom } from "@/components/webinar-room-internal";
+import { ROOM_VIEWPORT } from "@/components/webinar-room";
 
 export const Route = createFileRoute("/replay/$webinarId")({
   ssr: false,
   head: () => ({
     meta: [
       { title: "Replay | Convertewebinar" },
+      ROOM_VIEWPORT,
       { name: "description", content: "Reveja o webinar com o mesmo vídeo da transmissão." },
       { property: "og:title", content: "Replay | Convertewebinar" },
       { property: "og:description", content: "Reveja o webinar quando quiser." },

@@ -87,11 +87,13 @@ const LIVE_CSS = `
 .lv-ping{animation:lvPing 1.4s ease-out infinite}
 .lv-pop{animation:lvPop .3s ease}
 .lv-dot{animation:lvDot 1.6s ease-in-out infinite}
-/* As folhas e o cartão da oferta: no escuro, um cinza que se destaca do vídeo preto; no claro, branco. */
-.lv-sheet{--room-surface:#262626;--room-raised:#353535;--room-line:#3D3D3D}
+/* As folhas e o cartão da oferta: no escuro, o cinza das folhas do YouTube (#212121), que se destaca do vídeo preto; no claro, branco. */
+.lv-sheet{--room-surface:#212121;--room-raised:#303030;--room-line:#3F3F3F}
 .room-light .lv-sheet{--room-surface:#FFFFFF;--room-raised:#F2F2F2;--room-line:#E5E5E5}
 .lv-feed{-webkit-mask-image:linear-gradient(180deg,transparent 0,rgba(0,0,0,.35) 40px,#000 110px);mask-image:linear-gradient(180deg,transparent 0,rgba(0,0,0,.35) 40px,#000 110px)}
 @media (prefers-reduced-motion:reduce){.lv-in,.lv-up,.lv-follow,.lv-ping,.lv-pop,.lv-dot{animation:none}}
+/* Palco deitado (telemóvel deitado): a folha abre na coluna da direita, como o chat, de cima a baixo; o vídeo fica à vista. */
+@container (orientation:landscape){.lv-sheet-panel{left:auto;right:max(14px,env(safe-area-inset-right));top:12px;width:min(380px,50%);max-height:none;overflow-y:auto}}
 `;
 
 export function LiveStyle() {
@@ -112,7 +114,7 @@ export function LiveBadge({ label = "Ao vivo", tone = "live" }: { label?: string
   return (
     <span
       className={cn(
-        "lv-badge-font inline-flex h-[26px] items-center gap-[6px] rounded-[6px] pl-[7px] pr-2 pt-px text-[15.5px] font-bold uppercase leading-none tracking-[0.04em] text-white",
+        "lv-badge-font inline-flex h-[26px] shrink-0 items-center gap-[6px] whitespace-nowrap rounded-[6px] pl-[7px] pr-2 pt-px text-[15.5px] font-bold uppercase leading-none tracking-[0.04em] text-white",
         tone === "live" ? "bg-[linear-gradient(90deg,#E11D48,#E3141F)]" : tone === "replay" ? "bg-[#2563EB]" : "bg-black/45",
       )}
     >
@@ -124,7 +126,7 @@ export function LiveBadge({ label = "Ao vivo", tone = "live" }: { label?: string
 
 export function LiveViewers({ count }: { count: number }) {
   return (
-    <span className="lv-badge-font inline-flex h-[26px] items-center gap-1 rounded-[6px] bg-black/[0.42] px-[7px] pt-px text-[15.5px] font-semibold leading-none tabular-nums text-white">
+    <span className="lv-badge-font inline-flex h-[26px] shrink-0 items-center gap-1 whitespace-nowrap rounded-[6px] bg-black/[0.42] px-[7px] pt-px text-[15.5px] font-semibold leading-none tabular-nums text-white">
       <Eye className="-mt-px size-3.5" />
       {count.toLocaleString("pt-PT")}
     </span>
@@ -160,8 +162,12 @@ function Avatar({ host, size }: { host: LiveHost; size: number }) {
     .slice(0, 2)
     .map((p) => p[0]?.toUpperCase())
     .join("");
+  // Sem borda branca, como no Instagram: a foto ligeiramente ampliada corta um aro que venha na
+  // própria imagem, e um contorno quase invisível separa uma foto escura do vídeo.
   return host.avatarUrl ? (
-    <img src={host.avatarUrl} alt="" className="block shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />
+    <span className="block shrink-0 overflow-hidden rounded-full outline -outline-offset-1 outline-white/10" style={{ width: size, height: size }}>
+      <img src={host.avatarUrl} alt="" className="block size-full scale-[1.08] object-cover" />
+    </span>
   ) : (
     <span
       className="grid shrink-0 place-items-center rounded-full bg-room-raised text-[12px] font-bold text-room-text"
@@ -628,17 +634,18 @@ export function LiveComposer({
 
 /**
  * Uma folha que sobe por cima da sala, no tema da sala. Puxa-se pela pega: para baixo fecha; tocar
- * fora também fecha. Ocupa o contentor (relative) onde está.
+ * fora também fecha. Ocupa o contentor (relative) onde está; num palco deitado, a coluna da direita.
  */
 export function LiveSheet({ onClose, children, label, className }: { onClose: () => void; children: ReactNode; label: string; className?: string | undefined }) {
   const drag = useDrag(onClose);
   return (
     <div className="absolute inset-0 z-40">
-      <button type="button" aria-label="Fechar" onClick={onClose} className="absolute inset-0 bg-black/45" />
+      {/* O fundo escurece pouco: o vídeo continua à vista por cima da folha. */}
+      <button type="button" aria-label="Fechar" onClick={onClose} className="absolute inset-0 bg-black/25" />
       <div
         role="dialog"
         aria-label={label}
-        className={cn("lv-sheet lv-up absolute inset-x-0 bottom-0 flex flex-col rounded-t-2xl bg-room-surface text-room-text shadow-[0_-10px_40px_rgba(0,0,0,.5)]", className)}
+        className={cn("lv-sheet lv-sheet-panel lv-up absolute inset-x-0 bottom-0 flex flex-col rounded-t-2xl bg-room-surface pb-[env(safe-area-inset-bottom)] text-room-text shadow-[0_-10px_40px_rgba(0,0,0,.5)]", className)}
         style={drag.dy > 0 ? { transform: `translateY(${drag.dy}px)` } : { transition: "transform .2s" }}
       >
         <div {...drag.handlers} aria-hidden className="flex h-5 shrink-0 cursor-grab touch-none items-end justify-center active:cursor-grabbing">
@@ -839,7 +846,11 @@ export function LiveFollowSheet({
   );
 }
 
-/** A oferta inteira numa folha: «Reduzir» volta à barra. Por dentro usa o cartão de oferta da sala. */
+/**
+ * A oferta inteira numa folha que sobe por baixo até perto de dois terços do ecrã: o vídeo continua à
+ * vista (e a tocar) por cima, como nas compras de um Live do Instagram. «Reduzir» volta à barra; o
+ * resto da oferta rola dentro da folha, com o botão de compra preso ao fundo (`stickyBuy`).
+ */
 export function LiveOfferSheet({
   countdown,
   onClose,
@@ -852,7 +863,7 @@ export function LiveOfferSheet({
   children: ReactNode;
 }) {
   return (
-    <LiveSheet onClose={onClose} label="Oferta" className="top-10 overflow-hidden rounded-t-[18px]">
+    <LiveSheet onClose={onClose} label="Oferta" className="max-h-[66%] overflow-hidden rounded-t-[18px]">
       <div className="flex shrink-0 items-center gap-2 pb-2.5 pl-3 pr-2">
         <button type="button" onClick={onClose} className="inline-flex h-8 items-center gap-1 rounded-full pl-2 pr-3 text-[13px] font-bold ring-1 ring-room-line">
           <ChevronDown className="size-4" strokeWidth={2.4} />

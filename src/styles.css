@@ -29,6 +29,8 @@
 @import "../convertewebinar-design/tokens/room.css";
 
 @custom-variant dark (&:is(.dark *));
+/* Telemóvel deitado: ecrã deitado e baixo. Uma janela pequena ou um tablet deitado ficam de fora. */
+@custom-variant phone-land (@media (orientation: landscape) and (max-width: 1023px) and (max-height: 540px));
 
 /*
  * Ponte shadcn/Tailwind → tokens. As classes bg-primary, bg-card, text-muted-
@@ -41,7 +43,10 @@
   /* Iguais a typography.css (escritos por extenso: o mesmo nome não pode
      apontar para si próprio). */
   --font-sans: "Geist Variable", "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Números: a Geist com algarismos de largura fixa. O zero da Geist Mono tem
+     traço e parecia cortado (8/10); o código continua em Geist Mono. */
+  --font-mono: "Geist Variable", "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-code: "Geist Mono Variable", "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-room: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   /* Raios do Geist: controlos 6, grandes 8, cartões/menus/janelas 12, ecrã 16. */
   --radius-xs: 4px;
@@ -195,12 +200,12 @@
 /* O temporizador mantém sempre o visual escuro dos modelos, independentemente
    do tema claro ou escuro escolhido para a restante sala do webinar. */
 .prelive-dark {
-  --room-bg: #141414;
-  --room-surface: #1f1f1f;
-  --room-raised: #262626;
-  --room-line: #2e2e2e;
+  --room-bg: #0f0f0f;
+  --room-surface: #212121;
+  --room-raised: #272727;
+  --room-line: #3f3f3f;
   --room-ink: var(--white);
-  --room-ink-2: #a3a3a3;
+  --room-ink-2: #aaaaaa;
   --room-glow: color-mix(in oklab, var(--orange) 16%, transparent);
 }
 
@@ -236,26 +241,42 @@
   border: 1px solid var(--room-line);
 }
 
-/* Sala ao vivo no telemóvel: acompanha a área visível acima do teclado.
-   Isto evita que o Safari desloque o vídeo para fora do ecrã ao escrever. */
+/* Sala ao vivo no telemóvel: acompanha a área visível acima do teclado, sem animação (com
+   animação a sala ficava um instante desalinhada e parecia subir). Isto evita que o Safari
+   desloque o vídeo para fora do ecrã ao escrever. */
 .live-room-shell {
   position: fixed;
   inset-inline: 0;
   top: var(--room-visible-top, 0px);
   height: var(--room-visible-height, 100dvh);
-  transition:
-    top 140ms linear,
-    height 140ms linear;
-  will-change: top, height;
 }
 
 .live-room-shell--keyboard {
   overscroll-behavior: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .live-room-shell {
-    transition: none;
+/* Fora da sala (barras do navegador, zona da barra de casa, puxar a página) vê-se o fundo da
+   sala, nunca o do painel: no escuro tudo #0F0F0F, no claro tudo branco. */
+html:has(.live-room-shell),
+html:has(.live-room-shell) body {
+  background: var(--room-bg);
+}
+html:has(.live-room-shell.room-light),
+html:has(.live-room-shell.room-light) body {
+  background: #ffffff;
+}
+/* No Live o palco é preto nos dois temas: as barras e o resto da página também. */
+html:has(.live-room-shell.live-room-shell--stage),
+html:has(.live-room-shell.live-room-shell--stage) body {
+  background: #000000;
+}
+
+@media (max-width: 1023px) {
+  /* A página não rola por trás da sala (o teclado não a empurra para cima). */
+  html:has(.live-room-shell),
+  html:has(.live-room-shell) body {
+    overflow: hidden;
+    overscroll-behavior: none;
   }
 }
 
@@ -264,7 +285,6 @@
     position: relative;
     top: auto;
     height: auto;
-    transition: none;
   }
 }
 
@@ -323,7 +343,11 @@
   kbd,
   samp,
   pre {
-    font-family: var(--font-mono);
+    font-family: var(--font-code);
+  }
+
+  .font-mono {
+    font-variant-numeric: tabular-nums;
   }
 }
 

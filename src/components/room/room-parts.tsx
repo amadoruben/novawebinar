@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Captions,
   Check,
@@ -8,13 +8,13 @@ import {
   Headset,
   Heart,
   Monitor,
+  MonitorPlay,
   Moon,
-  RotateCw,
+  Play,
   SendHorizontal,
   Settings,
   ShoppingCart,
   Smile,
-  Sparkles,
   Sun,
   Users,
   Volume1,
@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { liveVideoPlace, type EntryLook, type LiveVideoPlace } from "@/lib/room-logic";
 
 /**
  * Peças da sala que a sala pública e a pré-visualização do editor desenham iguais. As cores
@@ -152,9 +153,13 @@ export function RoomTitle({
 
 /* ---------- Definições do vídeo, como no YouTube ---------- */
 
+/** O menu do ⚙ em vidro, como no YouTube: transparente, mas legível por cima de qualquer vídeo. */
+const GLASS = "rounded-xl bg-[rgba(20,20,20,.74)] p-1.5 text-white shadow-[0_12px_40px_rgba(0,0,0,.45)] ring-1 ring-white/10 backdrop-blur-xl backdrop-saturate-150";
+
 /**
  * O botão ⚙ do vídeo: volume, legendas, qualidade (automática, sempre a melhor) e aparência.
- * Sem velocidade nem avançar: a sessão parece sempre ao vivo.
+ * Sem velocidade nem avançar: a sessão parece sempre ao vivo. `inline` (Live): o menu abre para baixo
+ * dentro da própria sala, para nunca sair do ecrã (nem da moldura do aparelho na pré-visualização).
  */
 export function VideoSettings({
   volume,
@@ -165,6 +170,7 @@ export function VideoSettings({
   appearance,
   onAppearance,
   compact,
+  inline,
 }: {
   volume: number;
   onVolume: (volume: number) => void;
@@ -174,107 +180,148 @@ export function VideoSettings({
   appearance: Appearance;
   onAppearance: (appearance: Appearance) => void;
   compact?: boolean | undefined;
+  inline?: boolean | undefined;
 }) {
   const [page, setPage] = useState<"main" | "appearance">("main");
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  // Fora do menu, um toque ou o Esc fecham-no (o Popover faz isto sozinho; o menu na sala não).
+  useEffect(() => {
+    if (!inline || !open) return;
+    const away = (event: PointerEvent) => {
+      if (!box.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const esc = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [inline, open]);
   const VolumeIcon = volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
   const appearanceLabel = { system: "Do sistema", dark: "Escuro", light: "Claro" }[appearance];
   const row = "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[14px] hover:bg-white/10";
-  return (
-    <Popover onOpenChange={(open) => open && setPage("main")}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label="Definições do vídeo"
-          title="Definições"
-          className={cn(
-            "grid place-items-center rounded-full bg-black/55 text-white backdrop-blur transition hover:bg-black/75",
-            compact ? "size-8" : "size-10",
-          )}
-        >
-          <Settings className={compact ? "size-4" : "size-5"} />
+  const trigger = (
+    <button
+      type="button"
+      aria-label="Definições do vídeo"
+      aria-expanded={inline ? open : undefined}
+      title="Definições"
+      onClick={
+        inline
+          ? () => {
+              setPage("main");
+              setOpen((o) => !o);
+            }
+          : undefined
+      }
+      className={cn(
+        "grid place-items-center rounded-full bg-black/55 text-white backdrop-blur transition hover:bg-black/75",
+        compact ? "size-9" : "size-10",
+        inline && open && "bg-black/75",
+      )}
+    >
+      <Settings className={compact ? "size-[18px]" : "size-5"} />
+    </button>
+  );
+  const menu =
+    page === "main" ? (
+      <div className="grid gap-0.5">
+        <div className="flex items-center gap-3 px-3 py-2.5">
+          <button
+            type="button"
+            onClick={() => onVolume(volume === 0 ? 1 : 0)}
+            aria-label={volume === 0 ? "Ligar o som" : "Tirar o som"}
+            className="grid size-7 shrink-0 place-items-center rounded-md hover:bg-white/10"
+          >
+            <VolumeIcon className="size-[18px]" />
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={volume}
+            onChange={(e) => onVolume(Number(e.target.value))}
+            aria-label="Volume"
+            className="h-1 flex-1 cursor-pointer accent-white"
+          />
+        </div>
+        {hasCaptions ? (
+          <button type="button" onClick={() => onCaptions(!captions)} className={row}>
+            <Captions className="size-[18px] shrink-0" />
+            <span className="flex-1">Legendas</span>
+            <span className="text-[13px] text-white/65">{captions ? "Ligadas" : "Desligadas"}</span>
+          </button>
+        ) : null}
+        <div className={cn(row, "cursor-default hover:bg-transparent")}>
+          <MonitorPlay className="size-[18px] shrink-0" />
+          <span className="flex-1">Qualidade</span>
+          <span className="text-[13px] text-white/65">Automática</span>
+        </div>
+        <button type="button" onClick={() => setPage("appearance")} className={row}>
+          <Moon className="size-[18px] shrink-0" />
+          <span className="flex-1">Aparência</span>
+          <span className="text-[13px] text-white/65">{appearanceLabel}</span>
+          <ChevronRight className="size-4 text-white/65" />
         </button>
-      </PopoverTrigger>
-      <PopoverContent
-        side="top"
-        align="end"
-        className="w-[272px] rounded-xl border-0 bg-[rgba(28,28,28,.94)] p-1.5 text-white shadow-2xl backdrop-blur-md"
-      >
-        {page === "main" ? (
-          <div className="grid gap-0.5">
-            <div className="flex items-center gap-3 px-3 py-2.5">
-              <button
-                type="button"
-                onClick={() => onVolume(volume === 0 ? 1 : 0)}
-                aria-label={volume === 0 ? "Ligar o som" : "Tirar o som"}
-                className="grid size-7 shrink-0 place-items-center rounded-md hover:bg-white/10"
-              >
-                <VolumeIcon className="size-[18px]" />
-              </button>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={volume}
-                onChange={(e) => onVolume(Number(e.target.value))}
-                aria-label="Volume"
-                className="h-1 flex-1 cursor-pointer accent-white"
-              />
-            </div>
-            {hasCaptions ? (
-              <button type="button" onClick={() => onCaptions(!captions)} className={row}>
-                <Captions className="size-[18px] shrink-0" />
-                <span className="flex-1">Legendas</span>
-                <span className="text-[13px] text-white/60">{captions ? "Ligadas" : "Desligadas"}</span>
-              </button>
-            ) : null}
-            <div className={cn(row, "cursor-default hover:bg-transparent")}>
-              <Sparkles className="size-[18px] shrink-0" />
-              <span className="flex-1">Qualidade</span>
-              <span className="text-[13px] text-white/60">Automática</span>
-            </div>
-            <button type="button" onClick={() => setPage("appearance")} className={row}>
-              <Moon className="size-[18px] shrink-0" />
-              <span className="flex-1">Aparência</span>
-              <span className="text-[13px] text-white/60">{appearanceLabel}</span>
-              <ChevronRight className="size-4 text-white/60" />
-            </button>
+      </div>
+    ) : (
+      <div className="grid gap-0.5">
+        <button type="button" onClick={() => setPage("main")} className={cn(row, "border-b border-white/10 pb-3")}>
+          <ChevronLeft className="size-4" />
+          <span className="flex-1 font-medium">Aparência</span>
+        </button>
+        {(
+          [
+            ["system", "Do sistema", Monitor],
+            ["dark", "Escuro", Moon],
+            ["light", "Claro", Sun],
+          ] as const
+        ).map(([value, label, Icon]) => (
+          <button key={value} type="button" onClick={() => onAppearance(value)} className={row}>
+            <Icon className="size-[18px] shrink-0" />
+            <span className="flex-1">{label}</span>
+            {appearance === value ? <Check className="size-4" /> : null}
+          </button>
+        ))}
+      </div>
+    );
+  if (inline) {
+    return (
+      <div ref={box} className="relative">
+        {trigger}
+        {open ? (
+          // As unidades cq medem o palco da sala: o menu nunca fica mais largo do que o ecrã.
+          <div role="dialog" aria-label="Definições do vídeo" className={cn(GLASS, "absolute right-0 top-[calc(100%+8px)] z-50 w-[272px] max-w-[calc(100cqw-24px)]")}>
+            {menu}
           </div>
-        ) : (
-          <div className="grid gap-0.5">
-            <button type="button" onClick={() => setPage("main")} className={cn(row, "border-b border-white/10 pb-3")}>
-              <ChevronLeft className="size-4" />
-              <span className="flex-1 font-medium">Aparência</span>
-            </button>
-            {(
-              [
-                ["system", "Do sistema", Monitor],
-                ["dark", "Escuro", Moon],
-                ["light", "Claro", Sun],
-              ] as const
-            ).map(([value, label, Icon]) => (
-              <button key={value} type="button" onClick={() => onAppearance(value)} className={row}>
-                <Icon className="size-[18px] shrink-0" />
-                <span className="flex-1">{label}</span>
-                {appearance === value ? <Check className="size-4" /> : null}
-              </button>
-            ))}
-          </div>
-        )}
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <Popover onOpenChange={(next) => next && setPage("main")}>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverContent side="top" align="end" className={cn(GLASS, "w-[272px] border-0")}>
+        {menu}
       </PopoverContent>
     </Popover>
   );
 }
 
-/** A legenda da fala, por cima do vídeo, como no YouTube. */
+/** A legenda da fala, um pouco acima do fundo do vídeo, como no cinema: curta, no máximo duas linhas. */
 export function CaptionLine({ text, compact }: { text: string | null; compact?: boolean | undefined }) {
   if (!text) return null;
   return (
-    <div className={cn("pointer-events-none absolute inset-x-0 flex justify-center px-6", compact ? "bottom-3" : "bottom-6")}>
+    <div className={cn("pointer-events-none absolute inset-x-0 z-[1] flex justify-center px-6", compact ? "bottom-[6%]" : "bottom-[7%]")}>
       <span
         className={cn(
-          "max-w-[80%] rounded-md bg-black/75 px-2.5 py-1 text-center font-medium leading-snug text-white",
-          compact ? "text-[11px]" : "text-[17px]",
+          "line-clamp-2 max-w-[78%] rounded bg-black/60 px-2 py-0.5 text-center font-medium leading-snug text-white [box-decoration-break:clone]",
+          compact ? "text-[12px]" : "text-[16px]",
         )}
       >
         {text}
@@ -380,13 +427,13 @@ export function ChatComposer({
   );
 }
 
-const EMOJI_FONT = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
-
-/** O coração: as reações sobem a direito por cima dele, com um leve balanço, como no YouTube. */
+/** O vermelho das reações (só delas). */
+const HEART = "#FF3B5C";
 
 /**
  * O coração das reações: um contorno; enquanto a pessoa toca enche-se de vermelho (sabe que reagiu)
- * e sobem corações vermelhos, a direito e com um leve balanço. Um vermelho só das reações.
+ * e sobem corações planos, como no YouTube, a direito e com um leve balanço, por cima do botão
+ * (no canto de baixo à direita).
  */
 export function HeartButton({
   onHeart,
@@ -411,17 +458,16 @@ export function HeartButton({
       {reactions.length > 0 ? (
         <span aria-hidden className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 h-[230px] w-12 -translate-x-1/2 [--h:210px]">
           {reactions.map((r) => {
-            const size = Math.max(26, Math.min(34, r.size ?? 30));
+            const size = Math.max(24, Math.min(30, (r.size ?? 28) * 0.9));
             const sway = Math.max(-7, Math.min(7, Math.round(r.offset / 5))) || 4;
             return (
-              // O coração do emoji (❤️), como nas reações do iPhone: no iPhone e no Mac é o da Apple.
-              <span
+              <Heart
                 key={r.id}
-                className="cw-rx absolute bottom-0 leading-none opacity-0 drop-shadow-[0_2px_4px_rgba(0,0,0,.3)]"
-                style={{ left: `calc(50% - ${size / 2}px)`, fontFamily: EMOJI_FONT, fontSize: size * 0.86, width: size, height: size, "--sway": `${sway}px` } as CSSProperties}
-              >
-                ❤️
-              </span>
+                fill="currentColor"
+                strokeWidth={0}
+                className="cw-rx absolute bottom-0 opacity-0"
+                style={{ left: `calc(50% - ${size / 2}px)`, width: size, height: size, color: HEART, "--sway": `${sway}px` } as CSSProperties}
+              />
             );
           })}
         </span>
@@ -437,9 +483,7 @@ export function HeartButton({
         className={className}
       >
         {pressed ? (
-          <span key="on" className="cw-pop grid size-5 place-items-center text-[17px] leading-none" style={{ fontFamily: EMOJI_FONT }}>
-            ❤️
-          </span>
+          <Heart key="on" fill="currentColor" strokeWidth={0} className={cn("cw-pop size-5", iconClassName)} style={{ color: HEART }} />
         ) : (
           <Heart key="off" className={cn("size-5", iconClassName)} />
         )}
@@ -612,6 +656,7 @@ export function OfferCard({
   group,
   compact,
   highlight,
+  stickyBuy,
 }: {
   productName?: string | null | undefined;
   imageUrl?: string | null | undefined;
@@ -631,6 +676,8 @@ export function OfferCard({
   group?: boolean | undefined;
   compact?: boolean | undefined;
   highlight?: string | null | undefined;
+  /** Numa folha que rola: o botão fica preso ao fundo, sempre à vista. */
+  stickyBuy?: boolean | undefined;
 }) {
   const hl = (key: string) =>
     highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
@@ -674,19 +721,21 @@ export function OfferCard({
           ) : null}
         </div>
       ) : null}
-      <button
-        type="button"
-        onClick={onBuy}
-        disabled={closed}
-        className={cn(
-          "flex w-full items-center justify-center gap-2.5 rounded-xl bg-[var(--of,#E8440C)] font-black uppercase tracking-[0.03em] text-[var(--of-on,#FFFFFF)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-room-raised disabled:text-room-subtle",
-          compact ? "h-[54px] text-[15px]" : "h-[60px] text-[17px]",
-          hl("cta"),
-        )}
-      >
-        {group ? <Users className="size-5" /> : <ShoppingCart className="size-5" />}
-        {closed ? "Oferta encerrada" : buttonText}
-      </button>
+      <div className={stickyBuy ? "sticky bottom-0 z-[1] -mx-4 -mb-4 bg-room-surface px-4 pb-4 pt-1" : "contents"}>
+        <button
+          type="button"
+          onClick={onBuy}
+          disabled={closed}
+          className={cn(
+            "flex w-full items-center justify-center gap-2.5 rounded-xl bg-[var(--of,#E8440C)] font-black uppercase tracking-[0.03em] text-[var(--of-on,#FFFFFF)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-room-raised disabled:text-room-subtle",
+            compact ? "h-[54px] text-[15px]" : "h-[60px] text-[17px]",
+            hl("cta"),
+          )}
+        >
+          {group ? <Users className="size-5" /> : <ShoppingCart className="size-5" />}
+          {closed ? "Oferta encerrada" : buttonText}
+        </button>
+      </div>
       {showCountdown ? <CountdownBlocks seconds={countdownSeconds} compact={compact} /> : null}
     </div>
   );
@@ -732,52 +781,61 @@ export const LIVE_COVER =
 export const LIVE_WIDE =
   "absolute left-1/2 top-1/2 aspect-video w-[min(calc(100cqw-64px),calc((100cqh-112px)*16/9))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl";
 /**
- * O vídeo deitado no telemóvel ao alto (Live): inteiro, no terço de cima, sem cortar nem esticar. As
- * bordas de cima e de baixo desvanecem para o preto, como no cinema, em vez de uma linha dura.
+ * O vídeo deitado no telemóvel ao alto (Live): à largura do ecrã, encostado em cima (logo abaixo da
+ * zona da câmara, `--live-top`), com a barra de cima por dentro. Só um esbatido preto curto nas
+ * bordas; o vídeo nunca fica desfocado.
  */
 export const LIVE_TOP =
-  "absolute inset-x-0 top-[30%] aspect-video w-full -translate-y-1/2 [mask-image:linear-gradient(180deg,transparent,#000_9%,#000_88%,transparent)]";
-/** O vídeo deitado a meio do telemóvel (posição vertical com um vídeo deitado): inteiro, com as bordas a desvanecer. */
-export const LIVE_MID =
-  "absolute inset-x-0 top-1/2 aspect-video w-full -translate-y-1/2 [mask-image:linear-gradient(180deg,transparent,#000_9%,#000_88%,transparent)]";
+  "absolute inset-x-0 top-[var(--live-top,0px)] aspect-video w-full [mask-image:linear-gradient(180deg,rgba(0,0,0,.7),#000_4%,#000_93%,transparent)]";
+/** O vídeo ao alto no computador (Live): uma coluna 9:16 ao centro, quase da altura do palco. */
+export const LIVE_COLUMN =
+  "absolute left-1/2 top-1/2 aspect-[9/16] h-[calc(100cqh-48px)] max-w-[calc(100cqw-48px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl shadow-[0_0_0_1px_rgba(255,255,255,.06),0_30px_80px_rgba(0,0,0,.6)]";
+/** O fundo discreto atrás da coluna ao alto: um cinzento muito escuro que se apaga para as bordas. */
+export const LIVE_COLUMN_BG = "absolute inset-0 bg-[radial-gradient(50%_75%_at_50%_50%,#1f1f1f,#0a0a0a_70%,#000)]";
+
+const LIVE_BOXES: Record<LiveVideoPlace, string> = { fill: LIVE_COVER, top: LIVE_TOP, wide: LIVE_WIDE, column: LIVE_COLUMN };
 
 /**
- * A moldura do vídeo no Live: a posição que o apresentador escolhe (horizontal 16:9 ou vertical
- * 9:16) e a forma do vídeo. Nunca corta nem estica: só enche o ecrã quando um vídeo ao alto está na
- * posição vertical do telemóvel; nos outros casos, o vídeo fica inteiro, com preto à volta.
+ * A moldura do vídeo no Live: depende só da forma do vídeo (lida do ficheiro) e do aparelho, com
+ * regras fixas (`liveVideoPlace`). Só enche o ecrã um vídeo ao alto no telemóvel; nunca estica.
  */
-export function liveFrame(choice: "horizontal" | "vertical", shape: "horizontal" | "vertical" | null, where: "desk" | "phone") {
-  if (where === "desk") return { box: choice === "vertical" ? LIVE_CONTAIN : LIVE_WIDE, fit: "contain" as const };
-  if (choice === "horizontal") return { box: LIVE_TOP, fit: "contain" as const };
-  return shape === "horizontal" ? { box: LIVE_MID, fit: "contain" as const } : { box: LIVE_COVER, fit: "cover" as const };
+export function liveFrame(shape: "horizontal" | "vertical" | null | undefined, where: "desk" | "phone") {
+  const place = liveVideoPlace(shape, where);
+  return { place, box: LIVE_BOXES[place], fit: place === "fill" ? ("cover" as const) : ("contain" as const) };
 }
 
 /** Num ecrã deitado o vídeo ao alto fica inteiro, ao centro, em fundo preto. */
 export const LIVE_CONTAIN = "absolute left-1/2 top-1/2 h-full w-[56.25cqh] -translate-x-1/2 -translate-y-1/2";
 
 /**
- * A dica de como ver melhor: um vídeo deitado vê-se maior com o ecrã deitado. Fecha-se no X; na sala,
- * esconde-se sozinha quando a pessoa roda o ecrã.
+ * O botão para começar a ver (o navegador só deixa tocar com som depois de um toque), ao centro do
+ * vídeo e sem o tapar: só o botão a pulsar, ou o botão com uma linha de informação.
  */
-export function RotateHint({ onClose, className, style }: { onClose: () => void; className?: string; style?: CSSProperties }) {
+export function EntryPlay({ look, kicker, compact }: { look: EntryLook; kicker: string; compact?: boolean | undefined }) {
+  const big = look === "pulse";
   return (
-    <div
-      role="note"
+    <span
       className={cn(
-        "flex w-max max-w-[calc(100%-24px)] items-center gap-2 whitespace-nowrap rounded-full bg-black/75 py-1 pl-1 pr-1 text-[12.5px] text-white shadow-[0_6px_18px_rgba(0,0,0,.35)] ring-1 ring-white/10 backdrop-blur-md",
-        className,
+        "pointer-events-none flex items-center text-white",
+        !big && "gap-3 rounded-full bg-black/60 py-1.5 pl-1.5 pr-5 text-left ring-1 ring-white/15 backdrop-blur-md",
+        !big && compact && "gap-2 py-1 pl-1 pr-3.5",
       )}
-      style={style}
     >
-      <span className="grid size-7 shrink-0 place-items-center rounded-full bg-white/15">
-        <RotateCw className="size-3.5" />
+      <span
+        className={cn(
+          "relative grid shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-[0_8px_24px_rgba(0,0,0,.35)]",
+          big ? (compact ? "size-14" : "size-[72px]") : compact ? "size-9" : "size-11",
+        )}
+      >
+        <span className="absolute inset-0 animate-ping rounded-full bg-primary/50 motion-reduce:animate-none" />
+        <Play className={cn("relative translate-x-px", big ? (compact ? "size-6" : "size-8") : compact ? "size-4" : "size-[18px]")} fill="currentColor" />
       </span>
-      <span className="min-w-0 leading-tight">
-        <b className="font-semibold">Melhor na horizontal:</b> rode o ecrã
-      </span>
-      <button type="button" onClick={onClose} aria-label="Fechar a dica" className="grid size-7 shrink-0 place-items-center rounded-full transition hover:bg-white/15">
-        <X className="size-3.5" />
-      </button>
-    </div>
+      {big ? null : (
+        <span className="leading-tight">
+          <small className={cn("block font-bold uppercase tracking-[0.16em] text-white/70", compact ? "text-[9.5px]" : "text-[11px]")}>{kicker}</small>
+          <b className={cn("block font-semibold", compact ? "text-[13px]" : "text-[15px]")}>Assistir agora</b>
+        </span>
+      )}
+    </span>
   );
 }

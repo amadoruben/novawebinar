@@ -5,6 +5,7 @@ import {
   isGroupLink,
   roomFormat,
   liveSettings,
+  liveVideoPlace,
   followMomentAt,
   profileHandle,
   followWebLink,
@@ -189,6 +190,7 @@ describe("opções da sala", () => {
       room_format: "live",
       live: {
         desk: "vertical",
+        entry: "pulse",
         badge: "blue",
         links: { instagram: " https://www.instagram.com/amadorubenn/ ", youtube: "", x: "y" },
         moments: [{ start: 130, end: 160 }, { start: 50, end: 40 }, { start: 10, end: 40 }],
@@ -198,16 +200,27 @@ describe("opções da sala", () => {
       },
     });
     expect(live.desk).toBe("vertical");
+    expect(live.entry).toBe("pulse");
     expect(live.links).toEqual({ instagram: "https://www.instagram.com/amadorubenn/" });
     expect(live.moments).toEqual([{ start: 10, end: 40 }, { start: 130, end: 160 }]);
     expect(live.notify).toBe(false);
     expect(live.hideFollowed).toBe(false);
     // As cores gravadas por nome passam ao código hex; um código escreve-se em maiúsculas.
     expect(live.offerColor).toBe("#2563EB");
-    expect(liveSettings(null)).toMatchObject({ desk: "horizontal", notify: true, hideFollowed: true, offerColor: "#E8440C" });
+    expect(liveSettings({ live: { entry: "outro" } }).entry).toBe("info");
+    expect(liveSettings(null)).toMatchObject({ desk: "horizontal", entry: "info", notify: true, hideFollowed: true, offerColor: "#E8440C" });
     expect(liveSettings({ live: { offerColor: "rosa" } }).offerColor).toBe("#E8440C");
     expect(liveSettings({ live: { offerColor: "#ff00aa" } }).offerColor).toBe("#FF00AA");
     expect(liveSettings({ live: { offerColor: "#ff00a" } }).offerColor).toBe("#E8440C");
+  });
+
+  it("o lugar do vídeo depende só da forma do ficheiro e do aparelho", () => {
+    expect(liveVideoPlace("vertical", "phone")).toBe("fill");
+    expect(liveVideoPlace("vertical", "desk")).toBe("column");
+    expect(liveVideoPlace("horizontal", "phone")).toBe("top");
+    expect(liveVideoPlace("horizontal", "desk")).toBe("wide");
+    // Sem a forma (vídeo embebido de outra plataforma), conta como deitado.
+    expect(liveVideoPlace(null, "phone")).toBe("top");
   });
 
   it("o + Seguir só aparece dentro dos momentos", () => {

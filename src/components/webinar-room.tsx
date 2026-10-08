@@ -5,7 +5,6 @@ import {
   Headset,
   MessagesSquare,
   Pin,
-  Play,
   Settings,
   ShoppingCart,
   Volume2,
@@ -14,7 +13,7 @@ import {
 } from "lucide-react";
 import { useHearts, useLivePresence } from "@/lib/live-presence";
 import { Input } from "@/components/ui/input";
-import { VideoPlayer } from "@/components/video-player";
+import { useVideoShape, VideoPlayer } from "@/components/video-player";
 import {
   activeOffer,
   checkoutLink,
@@ -36,13 +35,13 @@ import {
   CaptionLine,
   ChatComposer,
   ChatLine,
-  LIVE_COVER,
+  EntryPlay,
+  LIVE_COLUMN_BG,
   liveFrame,
   OfferCard,
   PulseDot,
   RoomPartsStyle,
   RoomTitle,
-  RotateHint,
   SaleLine,
   SupportNotice,
   VideoSettings,
@@ -72,6 +71,17 @@ import { GroupJoinDialog } from "@/components/room/group-join";
 import { cn, isHttpUrl } from "@/lib/utils";
 import { PreliveCountdown, unlockPreliveAudio } from "@/components/prelive-countdown";
 import { watchedStep } from "@/lib/participant-facts";
+
+/**
+ * O viewport das páginas da sala: ocupa o ecrã todo do iPhone (as zonas seguras tratam-se com
+ * env(safe-area-inset-*)). O teclado trata-se pela área visível (visualViewport), igual no iPhone
+ * e no Android: sem `interactive-widget=resizes-content`, que num telemóvel pequeno com o teclado
+ * aberto deixava o ecrã mais largo do que alto e trocava a sala para o desenho deitado.
+ */
+export const ROOM_VIEWPORT = {
+  name: "viewport",
+  content: "width=device-width, initial-scale=1, viewport-fit=cover",
+};
 
 /** O que a sala envia com cada sinal de progresso. */
 export type RoomProgressOptions = {
@@ -338,11 +348,12 @@ export function WebinarRoom({
   // Formato Live: no telemóvel o vídeo enche o ecrã e o chat fica por cima; o Suporte e a oferta
   // inteira abrem numa folha por baixo. No computador o vídeo fica ao centro e o chat ao lado.
   const liveLayout = format === "live";
-  // O vídeo diz se é deitado ou ao alto: assim nunca se corta, mesmo que a opção gravada seja a outra.
-  // Sem o ficheiro à mão (Vimeo, Panda, Bunny embebidos), vale a opção do editor.
-  const [videoShape, setVideoShape] = useState<LiveSettings["desk"] | null>(null);
-  // A forma real do vídeo (deitado ou ao alto); sem o ficheiro à mão, a da posição escolhida.
-  const shape = videoShape ?? live.desk;
+  // O vídeo diz se é deitado ou ao alto, e cada aparelho tem regras fixas para cada forma (ver
+  // `liveFrame`). A forma lê-se antes de o leitor abrir (ficheiro ou oEmbed do Vimeo); o leitor
+  // confirma-a (HLS). Quando a plataforma não diz (Bunny, Panda), vale a forma gravada (dados antigos).
+  const [playerShape, setPlayerShape] = useState<LiveSettings["desk"] | null>(null);
+  const probedShape = useVideoShape(liveLayout ? webinar.video_url : null, webinar.video_provider);
+  const videoShape = playerShape ?? probedShape ?? live.desk;
   const [wide, setWide] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches);
   useEffect(() => {
     const media = window.matchMedia("(min-width: 1024px)");
@@ -352,8 +363,6 @@ export function WebinarRoom({
   }, []);
   // No Live o Suporte, a oferta inteira e as redes abrem numa folha por cima da sala.
   const [sheet, setSheet] = useState<null | "support" | "offer" | "follow">(null);
-  // A dica «melhor na horizontal» (só no telemóvel ao alto, com o vídeo deitado); fecha-se no X.
-  const [rotateHint, setRotateHint] = useState(true);
   const [offerMin, setOfferMin] = useState(false);
   const [tapped, setTapped] = useState<Partial<Record<FollowNetwork, boolean>>>({});
   // Quem já seguiu (tocou numa rede e fechou) deixa de ver o + Seguir neste webinar.
@@ -436,6 +445,16 @@ export function WebinarRoom({
       window.removeEventListener("orientationchange", updateVisibleRoom);
     };
   }, []);
+
+  // As barras do navegador ficam com a cor do que está por baixo delas: preto no Live (o palco) e no
+  // telemóvel (em cima está sempre o vídeo, como no YouTube); no computador, o fundo da sala.
+  useEffect(() => {
+    const meta = document.createElement("meta");
+    meta.name = "theme-color";
+    meta.content = liveLayout || !wide ? "#000000" : theme === "light" ? "#ffffff" : "#0f0f0f";
+    document.head.appendChild(meta);
+    return () => meta.remove();
+  }, [theme, liveLayout, wide]);
 
   const scheduled = mode === "live" && startMs !== null;
   const elapsed = startMs === null ? 0 : (now - startMs) / 1000;
@@ -682,8 +701,11 @@ export function WebinarRoom({
     onCtaView?.();
   }, [ctaVisible, ctaLogged, onCtaView]);
 
-  // Quando uma oferta abre, o separador dela salta para a frente.
+  // Webinar com o telemóvel deitado: o chat fica recolhido num botão para o vídeo ter o ecrã.
+  const [sideOpen, setSideOpen] = useState(false);
+  // Quando uma oferta abre, o separador dela salta para a frente (deitado, o chat abre-se para a mostrar).
   useEffect(() => {
+    if (currentOffer) setSideOpen(true);
     if (currentOffer) setTab("offer");
     else setTab((prev) => (prev === "offer" ? "chat" : prev));
     // No Live, cada oferta nova abre como cartão; a folha da oferta fecha quando ela acaba.
@@ -828,7 +850,7 @@ export function WebinarRoom({
       : null;
   const purchaseToast = showToasts && toastPurchase ? (
     <div
-      className={`pointer-events-none absolute z-20 max-w-[min(20rem,80%)] rounded-2xl p-3 shadow-lg ring-1 backdrop-blur ${proofColor.panel} ${proofColor.ring} ${liveLayout ? "left-3 top-16" : proofPosition} ${proofAnimation}`}
+      className={`pointer-events-none absolute z-20 max-w-[min(20rem,80%)] rounded-2xl p-3 shadow-lg ring-1 backdrop-blur ${proofColor.panel} ${proofColor.ring} ${liveLayout ? "left-[max(12px,env(safe-area-inset-left))] top-[calc(env(safe-area-inset-top)+60px)] md:portrait:left-5 md:portrait:top-[calc(env(safe-area-inset-top)+68px)] lg:left-5 lg:top-16" : proofPosition} ${proofAnimation}`}
     >
       <div className="flex items-center gap-2.5">
         <span className="grid size-9 shrink-0 place-items-center rounded-full bg-white/25 text-white">
@@ -943,7 +965,7 @@ export function WebinarRoom({
   })();
 
   const overlay = (
-    <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex items-start justify-between gap-2">
+    <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex items-start justify-between gap-2 group-[.live-room-shell--keyboard]/room:hidden">
       {/* Selo da referência: vermelho só para AO VIVO; replay a azul; resto neutro. */}
       <span className="flex items-center gap-[5px]">
         {prelive ? null : (
@@ -987,14 +1009,14 @@ export function WebinarRoom({
     const video = liveVideoRef.current;
     if (!liveLayout || !video) return;
     const read = () => {
-      if (video.videoWidth && video.videoHeight) setVideoShape(video.videoWidth >= video.videoHeight ? "horizontal" : "vertical");
+      if (video.videoWidth && video.videoHeight) setPlayerShape(video.videoWidth >= video.videoHeight ? "horizontal" : "vertical");
     };
     read();
     video.addEventListener("loadedmetadata", read);
     return () => video.removeEventListener("loadedmetadata", read);
   }, [liveLayout, videoArmed]);
-  // A moldura do Live: a posição escolhida no editor e a forma do vídeo.
-  const liveBox = liveFrame(live.desk, videoShape, wide ? "desk" : "phone");
+  // A moldura do Live: só a forma do vídeo e o aparelho (a posição antiga gravada já não conta).
+  const liveBox = liveFrame(videoShape, wide ? "desk" : "phone");
   const videoNode = webinar.video_url ? (
     <VideoPlayer
       url={webinar.video_url}
@@ -1053,8 +1075,9 @@ export function WebinarRoom({
     setVolume(next);
     if (next > 0 && !soundOn) enableSound();
   };
+  const entryKicker = mode === "replay" ? "Replay da aula" : "Aula ao vivo";
   const videoControls = videoNode ? (
-    <div className="pointer-events-none absolute inset-0 z-30">
+    <div className="pointer-events-none absolute inset-0 z-30 group-[.live-room-shell--keyboard]/room:hidden">
       <div className="pointer-events-auto absolute bottom-3 right-3">
         <VideoSettings
           volume={soundOn ? volume : 0}
@@ -1082,6 +1105,42 @@ export function WebinarRoom({
   const needsAudioUnlock =
     !soundOn && !prelive && !waiting && !finished && Boolean(webinar.video_url);
 
+  const status = prelive
+    ? null
+    : waiting
+      ? { label: "Em breve", tone: "muted" as const }
+      : finished
+        ? { label: "Terminou", tone: "muted" as const }
+        : mode === "live"
+          ? { label: "Ao vivo", tone: "live" as const }
+          : { label: "Replay", tone: "replay" as const };
+  const viewerCount = !finished && audienceFormat !== "off" ? (prelive ? preliveViewers : viewers) : null;
+  const settings =
+    videoNode && !showPrelive && !needsAudioUnlock ? (
+      <VideoSettings
+        inline
+        compact={!wide}
+        volume={soundOn ? volume : 0}
+        onVolume={changeVolume}
+        captions={captionsOn}
+        onCaptions={setCaptionsOn}
+        hasCaptions={captions.length > 0}
+        appearance={appearance}
+        onAppearance={(next) => onAppearance?.(next)}
+      />
+    ) : null;
+  // No computador, o selo, quantos vêem e o ⚙ ficam dentro do vídeo, no canto de cima (nunca no preto à volta).
+  const cornersInVideo = liveLayout && wide && videoArmed && Boolean(videoNode) && !waiting && !finished;
+  const deskCorners = (
+    <>
+      <div className={cn("absolute z-20 flex items-center gap-[5px]", cornersInVideo ? "left-3 top-3" : "left-5 top-5")}>
+        {status ? <LiveBadge label={status.label} tone={status.tone} /> : null}
+        {viewerCount !== null ? <LiveViewers count={viewerCount} /> : null}
+      </div>
+      {settings ? <div className={cn("pointer-events-auto absolute z-30", cornersInVideo ? "right-3 top-3" : "right-5 top-5")}>{settings}</div> : null}
+    </>
+  );
+
   // No Live o ecrã de cada estado enche o palco ao alto; no webinar tem a proporção do vídeo.
   // No Webinar, o telemóvel deitado mostra o vídeo em ecrã inteiro, como no YouTube.
   const frame = liveLayout ? "size-full" : "aspect-video";
@@ -1093,28 +1152,31 @@ export function WebinarRoom({
         liveLayout ? "" : theme === "light" ? "bg-room-surface" : "bg-black",
       )}
     >
-      <div
-        className={cn(
-          "relative h-full w-full",
-          needsAudioUnlock && "blur-[6px] brightness-[0.85]",
-        )}
-      >
+      <div className="relative h-full w-full">
         {/* O leitor só é montado quando a transmissão está armada. Isto impede o
             navegador de desenhar um botão nativo por cima da contagem no refresh. */}
+        {liveLayout && liveBox.place === "column" ? <div className={LIVE_COLUMN_BG} /> : null}
         {videoArmed &&
           (liveLayout ? (
-            // A posição que o apresentador escolheu, sem cortar nem esticar o vídeo (ver `liveFrame`).
+            // Regras fixas por aparelho, sem cortar nem esticar o vídeo (ver `liveFrame`).
             // Com o telemóvel deitado, o vídeo fica inteiro e ao centro.
             <div
               className={cn(
                 liveBox.box,
                 !wide &&
-                  (liveBox.box === LIVE_COVER
+                  (liveBox.place === "fill"
                     ? "max-lg:landscape:h-full max-lg:landscape:w-[56.25cqh]"
-                    : "max-lg:landscape:left-1/2 max-lg:landscape:top-1/2 max-lg:landscape:w-[min(100cqw,177.78cqh)] max-lg:landscape:-translate-x-1/2"),
+                    : "max-lg:landscape:left-1/2 max-lg:landscape:top-1/2 max-lg:landscape:w-[min(100cqw,177.78cqh)] max-lg:landscape:-translate-x-1/2 max-lg:landscape:-translate-y-1/2"),
               )}
             >
               {videoNode}
+              {/* A legenda e o botão de entrar ficam no próprio vídeo (com o vídeo ao alto, a legenda sobe acima do chat). */}
+              {liveBox.place !== "fill" && !showPrelive && !needsAudioUnlock ? <CaptionLine text={caption} compact={!wide} /> : null}
+              {needsAudioUnlock ? (
+                <div className="absolute inset-0 grid place-items-center">
+                  <EntryPlay look={live.entry} kicker={entryKicker} compact={!wide} />
+                </div>
+              ) : null}
             </div>
           ) : (
             videoNode
@@ -1156,50 +1218,28 @@ export function WebinarRoom({
           />
         )}
         {!showPrelive && !needsAudioUnlock ? (
-          liveLayout && !wide ? (
-            // No telemóvel o chat ocupa o fundo do ecrã: a legenda sobe para o meio.
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-[55%]">
-              <CaptionLine text={caption} />
-            </div>
-          ) : (
+          !liveLayout ? (
             <CaptionLine text={caption} />
-          )
+          ) : liveBox.place === "fill" ? (
+            // O vídeo ao alto enche o ecrã e o chat ocupa o fundo: a legenda sobe para o meio.
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-[55%]">
+              <CaptionLine text={caption} compact />
+            </div>
+          ) : null
         ) : null}
         {!showPrelive && !needsAudioUnlock && !liveLayout && videoControls}
       </div>
 
       {needsAudioUnlock && (
+        // Tocar em qualquer sítio começa a aula; o botão fica ao centro do vídeo, sem o tapar (no Live
+        // está dentro da moldura do vídeo, acima).
         <button
           type="button"
           onClick={enableSound}
-          className={cn(
-            "absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 px-3 py-4 text-center transition-colors sm:gap-6",
-            "bg-black/40 text-white hover:bg-black/45",
-          )}
+          aria-label="Clique aqui para assistir"
+          className="absolute inset-0 z-40 grid place-items-center bg-black/20 transition-colors hover:bg-black/25"
         >
-          <div className={cn(
-            "flex w-full max-w-[min(24rem,calc(100%-1rem))] flex-col items-center gap-3 rounded-xl p-4 ring-1 sm:max-w-lg sm:rounded-2xl sm:p-10 sm:gap-5",
-            "bg-black/70 text-white ring-white/10 shadow-2xl",
-          )}>
-            <span className="relative flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg sm:size-20">
-              <Play className="size-5 sm:size-9" fill="currentColor" />
-              <span className="absolute inset-0 animate-ping rounded-full bg-primary/60" />
-            </span>
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-primary sm:text-xs">
-                {mode === "replay" ? "Replay" : "Ao Vivo"}
-              </p>
-              <h2 className="mt-1 text-lg font-bold sm:text-3xl">
-                A sua aula começou
-              </h2>
-            </div>
-            <p className="max-w-[16rem] text-xs leading-relaxed text-white/85 sm:max-w-sm sm:text-base">
-              Clique para assistir.
-            </p>
-            <span className="mt-1 inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-lg ring-1 ring-white/10 sm:px-7 sm:py-3 sm:text-base">
-              Clique aqui para assistir
-            </span>
-          </div>
+          {liveLayout ? null : <EntryPlay look={live.entry} kicker={entryKicker} compact={!wide} />}
         </button>
       )}
     </div>
@@ -1413,8 +1453,10 @@ export function WebinarRoom({
     </div>
   );
 
-  const offerPanel = currentOffer ? (
-    <div className="flex-1 overflow-y-auto overscroll-contain">
+  // Na folha do Live o tempo já está no topo da folha: sem os blocos grandes, e o botão de compra fica
+  // sempre à vista no fundo da folha (quem rola é a folha).
+  const offerPanel = (inSheet = false) => currentOffer ? (
+    <div className={cn(!inSheet && "flex-1 overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]")}>
       <OfferCard
         productName={currentOffer.product || undefined}
         imageUrl={currentOffer.id === "main" ? webinar.cta_image_url || undefined : undefined}
@@ -1423,7 +1465,9 @@ export function WebinarRoom({
         buttonText={currentOffer.button || "Quero entrar"}
         onBuy={clickCta}
         countdownSeconds={offerRemaining}
-        showCountdown={countdownTotal > 0}
+        showCountdown={countdownTotal > 0 && !inSheet}
+        compact={inSheet}
+        stickyBuy={inSheet}
         closed={offerClosed}
         group={isGroupLink(currentOffer.url)}
         banner={
@@ -1542,7 +1586,7 @@ export function WebinarRoom({
   // No Live do telemóvel o chat já está por cima do vídeo: a folha só tem o Suporte e a Oferta.
   const sheetMode = liveLayout && !wide;
   const panel = (
-    <div className="room-panel flex min-h-0 flex-1 flex-col bg-room-surface text-room-text md:portrait:rounded-2xl md:portrait:ring-1 md:portrait:ring-inset md:portrait:ring-room-line lg:rounded-2xl lg:ring-1 lg:ring-inset lg:ring-room-line">
+    <div className="room-panel flex min-h-0 flex-1 flex-col bg-room-surface text-room-text max-md:portrait:bg-room-bg md:portrait:rounded-2xl md:portrait:ring-1 md:portrait:ring-inset md:portrait:ring-room-line lg:rounded-2xl lg:ring-1 lg:ring-inset lg:ring-room-line">
       <div className="mx-3 -mt-2 mb-0 flex items-center gap-1 border-b border-room-line md:portrait:mt-0 max-lg:landscape:mt-0 lg:mt-0">
         {(
           [
@@ -1572,9 +1616,18 @@ export function WebinarRoom({
             ) : null}
           </button>
         ))}
+        {/* Deitado, o chat por cima do vídeo fecha-se aqui. */}
+        <button
+          type="button"
+          onClick={() => setSideOpen(false)}
+          aria-label="Fechar o chat"
+          className="hidden size-9 shrink-0 place-items-center rounded-full text-room-subtle transition hover:text-room-text phone-land:grid"
+        >
+          <X className="size-5" />
+        </button>
       </div>
       {chatPin}
-      {tab === "offer" ? offerPanel : feed}
+      {tab === "offer" ? offerPanel() : feed}
       {mode === "replay" && tab !== "offer" ? (
         <p className="border-t border-room-line p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-center text-xs text-room-subtle">
           Esta é uma gravação. O chat está fechado — vê as mensagens tal como aconteceram ao vivo.
@@ -1660,31 +1713,6 @@ export function WebinarRoom({
 
   if (liveLayout) {
     const host = followHost;
-    const status = prelive
-      ? null
-      : waiting
-        ? { label: "Em breve", tone: "muted" as const }
-        : finished
-          ? { label: "Terminou", tone: "muted" as const }
-          : mode === "live"
-            ? { label: "Ao vivo", tone: "live" as const }
-            : { label: "Replay", tone: "replay" as const };
-    const viewerCount = !finished && audienceFormat !== "off" ? (prelive ? preliveViewers : viewers) : null;
-    const settings =
-      videoNode && !showPrelive && !needsAudioUnlock ? (
-        <VideoSettings
-          compact={!wide}
-          volume={soundOn ? volume : 0}
-          onVolume={changeVolume}
-          captions={captionsOn}
-          onCaptions={setCaptionsOn}
-          hasCaptions={captions.length > 0}
-          appearance={appearance}
-          onAppearance={(next) => onAppearance?.(next)}
-        />
-      ) : null;
-
-
     // O chat por cima do vídeo, com o aviso do Suporte no seu momento.
     const feedItems: LiveFeedItem[] = [
       ...chatThread.map((item) => ({
@@ -1728,26 +1756,30 @@ export function WebinarRoom({
       ) : null;
 
     // A parte de baixo: o chat, a oferta (cartão ou barra) e a caixa de escrever.
+    // No tablet ao alto, o chat e a oferta ficam numa coluna à escala de um telemóvel; a linha de escrever
+    // vai de margem a margem, com o coração no canto de baixo à direita.
     const lower = (
       <>
-        <LiveFeed
-          feedRef={liveFeedRef}
-          items={feedItems}
-          onNotice={() => setSheet("support")}
-          panel={wide}
-          className={
-            wide
-              ? "min-h-0 flex-1 pr-0"
-              : offerCardOpen
-                ? "max-h-[18cqh] md:portrait:max-h-[36cqh] max-lg:landscape:max-h-none max-lg:landscape:min-h-0 max-lg:landscape:flex-1"
-                : "max-h-[30cqh] md:portrait:max-h-[46cqh] max-lg:landscape:max-h-none max-lg:landscape:min-h-0 max-lg:landscape:flex-1"
-          }
-        />
-        {pin}
-        {liveOffer && offerCardOpen ? (
-          <LiveOfferCard offer={liveOffer} onBuy={clickCta} onMinimize={() => setOfferMin(true)} onExpand={() => setSheet("offer")} panel={wide} />
-        ) : null}
-        {liveOffer && !offerCardOpen && sheet !== "offer" ? <LiveOfferSlim offer={liveOffer} onOpen={() => setSheet("offer")} /> : null}
+        <div className={cn("contents", !wide && "md:portrait:flex md:portrait:w-[460px] md:portrait:flex-col")}>
+          <LiveFeed
+            feedRef={liveFeedRef}
+            items={feedItems}
+            onNotice={() => setSheet("support")}
+            panel={wide}
+            className={
+              wide
+                ? "min-h-0 flex-1 pr-0"
+                : offerCardOpen
+                  ? "max-h-[18cqh] md:portrait:max-h-[22cqh] max-lg:landscape:max-h-none max-lg:landscape:min-h-0 max-lg:landscape:flex-1"
+                  : "max-h-[30cqh] md:portrait:max-h-[28cqh] max-lg:landscape:max-h-none max-lg:landscape:min-h-0 max-lg:landscape:flex-1"
+            }
+          />
+          {pin}
+          {liveOffer && offerCardOpen ? (
+            <LiveOfferCard offer={liveOffer} onBuy={clickCta} onMinimize={() => setOfferMin(true)} onExpand={() => setSheet("offer")} panel={wide} />
+          ) : null}
+          {liveOffer && !offerCardOpen && sheet !== "offer" ? <LiveOfferSlim offer={liveOffer} onOpen={() => setSheet("offer")} /> : null}
+        </div>
         {mode === "replay" ? (
           <p className="mt-3 text-center text-xs text-white/75">Esta é uma gravação. O chat está fechado.</p>
         ) : (
@@ -1771,7 +1803,7 @@ export function WebinarRoom({
         {sheet === "support" ? <LiveSupportSheet thread={answered.map((m) => ({ key: m.key, text: m.text, fromTeam: m.fromTeam }))} teamName={supportName} onClose={closeSheet} /> : null}
         {sheet === "offer" && currentOffer ? (
           <LiveOfferSheet countdown={liveOffer?.countdown ?? null} onClose={closeSheet} onSupport={() => setSheet("support")}>
-            {offerPanel}
+            {offerPanel(true)}
           </LiveOfferSheet>
         ) : null}
         {followSheet}
@@ -1792,7 +1824,7 @@ export function WebinarRoom({
       return (
         <main
           ref={roomRef}
-          className={cn("live-room-shell room-ambient min-h-dvh overflow-hidden bg-black text-room-text", theme === "light" && "room-light")}
+          className={cn("live-room-shell live-room-shell--stage room-ambient min-h-dvh overflow-hidden bg-black text-room-text", theme === "light" && "room-light")}
           style={liveOfferVars(live.offerColor)}
         >
           <RoomPartsStyle />
@@ -1801,11 +1833,8 @@ export function WebinarRoom({
             <section className="relative min-w-0 flex-1 overflow-hidden bg-black text-white [container-type:size]">
               {player}
               <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[120px] bg-[linear-gradient(180deg,rgba(0,0,0,.24),rgba(0,0,0,.07)_55%,transparent)]" />
-              <div className="absolute left-5 top-5 z-20 flex items-center gap-[5px]">
-                {status ? <LiveBadge label={status.label} tone={status.tone} /> : null}
-                {viewerCount !== null ? <LiveViewers count={viewerCount} /> : null}
-              </div>
-              {settings ? <div className="absolute bottom-4 right-4 z-20">{settings}</div> : null}
+              {/* Uma moldura igual à do vídeo, por cima de tudo, só para os cantos (o escudo de toque fica por baixo). */}
+              {cornersInVideo ? <div className={cn(liveBox.box, "pointer-events-none z-30 shadow-none")}>{deskCorners}</div> : deskCorners}
               {soundPrompt}
               {purchaseToast}
             </section>
@@ -1823,28 +1852,23 @@ export function WebinarRoom({
     return (
       <main
         ref={roomRef}
-        className={cn("live-room-shell room-ambient relative flex h-dvh flex-col overflow-hidden bg-black text-white", theme === "light" && "room-light")}
+        className={cn("live-room-shell live-room-shell--stage room-ambient relative flex h-dvh flex-col overflow-hidden bg-black text-white", theme === "light" && "room-light")}
         style={liveOfferVars(live.offerColor)}
       >
         <RoomPartsStyle />
         <LiveStyle />
-        <div className="relative min-h-0 flex-1 overflow-hidden bg-black [container-type:size]">
+        {/* O vídeo deitado encosta logo abaixo da zona da câmara (`--live-top`); por cima dela, só preto. */}
+        <div className="relative min-h-0 flex-1 overflow-hidden bg-black [--live-top:env(safe-area-inset-top)] [container-type:size]">
           {player}
           {shades}
-          <div className="absolute inset-x-3 top-[max(12px,env(safe-area-inset-top))] z-20 md:portrait:inset-x-auto md:portrait:left-1/2 md:portrait:w-[600px] md:portrait:-translate-x-1/2">
+          {/* O topo fica por dentro do vídeo, encostado às margens (como no Instagram), e por cima do resto: o menu do ⚙ abre aqui. */}
+          <div className="absolute inset-x-3 top-[calc(env(safe-area-inset-top)+10px)] z-30 md:portrait:inset-x-5 md:portrait:top-[calc(env(safe-area-inset-top)+16px)] max-lg:landscape:left-[max(12px,env(safe-area-inset-left))] max-lg:landscape:right-[max(12px,env(safe-area-inset-right))]">
             <LiveTopBar host={host} follow={follow} onHost={openFollow} status={status} viewers={viewerCount} extra={settings} />
           </div>
           {soundPrompt}
           {purchaseToast}
-          {rotateHint && shape === "horizontal" && live.desk === "horizontal" && videoNode && !finished ? (
-            <RotateHint
-              onClose={() => setRotateHint(false)}
-              className="absolute left-1/2 z-20 -translate-x-1/2 md:hidden landscape:hidden"
-              style={{ top: "calc(30% + 28.125cqw + 14px)" }}
-            />
-          ) : null}
-          {/* Em baixo, o chat. No tablet ao alto, numa coluna centrada; deitado, à direita, de cima a baixo (como no YouTube). */}
-          <div className="absolute inset-x-3.5 bottom-[max(16px,env(safe-area-inset-bottom))] z-20 flex flex-col md:portrait:inset-x-auto md:portrait:left-1/2 md:portrait:w-[600px] md:portrait:-translate-x-1/2 max-lg:landscape:left-auto max-lg:landscape:right-3.5 max-lg:landscape:top-16 max-lg:landscape:w-[min(340px,42vw)] max-lg:landscape:justify-end">
+          {/* Em baixo, o chat. No tablet ao alto, numa coluna à esquerda com a largura de um telemóvel (ver `lower`); deitado, à direita, de cima a baixo (como no YouTube). */}
+          <div className="absolute inset-x-3.5 bottom-[max(10px,env(safe-area-inset-bottom))] z-20 flex flex-col md:portrait:inset-x-5 md:portrait:bottom-[max(20px,env(safe-area-inset-bottom))] max-lg:landscape:left-auto max-lg:landscape:right-[max(14px,env(safe-area-inset-right))] max-lg:landscape:top-16 max-lg:landscape:w-[min(340px,42vw)] max-lg:landscape:justify-end">
             {lower}
           </div>
           {sheets}
@@ -1856,16 +1880,23 @@ export function WebinarRoom({
   return (
     <main
       ref={roomRef}
-      className={`${theme === "light" ? "room-light " : ""}live-room-shell room-ambient flex flex-col overflow-hidden text-room-text lg:min-h-dvh lg:overflow-visible`}
+      className={`${theme === "light" ? "room-light " : ""}live-room-shell group/room room-ambient flex flex-col overflow-hidden text-room-text lg:min-h-dvh lg:overflow-visible`}
       style={liveOfferVars(live.offerColor)}
     >
       <RoomPartsStyle />
       <LiveStyle />
-      <div className="mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col md:portrait:gap-4 md:portrait:p-6 max-lg:landscape:flex-row lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-6 lg:p-6">
-        <section className="flex min-w-0 shrink-0 flex-col max-lg:landscape:flex-1 max-lg:landscape:justify-center max-lg:landscape:bg-black max-lg:landscape:pl-[env(safe-area-inset-left)]">
+      {/* A zona da câmara do iPhone fica a preto, como no YouTube. */}
+      <div className="h-[env(safe-area-inset-top)] shrink-0 bg-black lg:hidden" />
+      <div className="relative mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col md:portrait:gap-4 md:portrait:p-6 max-lg:landscape:flex-row lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-6 lg:p-6">
+        {/* Telemóvel deitado (ecrã baixo, `phone-land`): o vídeo inteiro com a altura toda, entre as zonas
+            seguras; o chat não o aperta, fica num botão e abre por cima, à direita. Num ecrã deitado mais
+            alto (janela pequena, tablet pequeno), o chat fica ao lado, como antes. */}
+        <section className="flex min-w-0 shrink-0 flex-col max-lg:landscape:flex-1 max-lg:landscape:justify-center max-lg:landscape:bg-black max-lg:landscape:pl-[env(safe-area-inset-left)] phone-land:items-center phone-land:pr-[env(safe-area-inset-right)] phone-land:[container-type:size]">
           <div
             className={cn(
-              "room-panel relative ring-1 ring-room-line md:portrait:overflow-hidden md:portrait:rounded-2xl max-lg:landscape:ring-0 lg:overflow-hidden lg:rounded-2xl",
+              "room-panel relative ring-1 ring-room-line md:portrait:overflow-hidden md:portrait:rounded-2xl phone-land:w-[min(100cqw,177.78cqh)] max-lg:landscape:ring-0 lg:overflow-hidden lg:rounded-2xl",
+              // Teclado aberto num ecrã baixo: o vídeo encolhe (inteiro, ao centro) para a caixa de escrever caber.
+              "group-[.live-room-shell--keyboard]/room:mx-auto group-[.live-room-shell--keyboard]/room:w-[min(100%,calc((var(--room-visible-height,100dvh)_-_150px)_*_16_/_9))]",
               theme === "light" ? "bg-room-surface" : "bg-black shadow-[0_30px_80px_-20px_rgb(0_0_0/0.8)]",
             )}
           >
@@ -1874,12 +1905,8 @@ export function WebinarRoom({
             {soundPrompt}
             {purchaseToast}
           </div>
-          {rotateHint && videoNode && !finished ? (
-            <div className="flex justify-center px-3 pt-2.5 md:hidden landscape:hidden">
-              <RotateHint onClose={() => setRotateHint(false)} />
-            </div>
-          ) : null}
-          <div className="md:portrait:hidden max-lg:landscape:hidden lg:hidden">
+          {/* Com o teclado aberto, o título sai: ficam o vídeo, as últimas mensagens e a caixa de escrever. */}
+          <div className="md:portrait:hidden max-lg:landscape:hidden lg:hidden group-[.live-room-shell--keyboard]/room:hidden">
             <RoomTitle
               compact
               kicker=""
@@ -1904,11 +1931,31 @@ export function WebinarRoom({
             ) : null}
           </div>
         </section>
-        <aside className="relative flex min-h-0 flex-1 flex-col overflow-hidden md:portrait:rounded-2xl max-lg:landscape:w-[min(340px,42vw)] max-lg:landscape:flex-none max-lg:landscape:border-l max-lg:landscape:border-room-line lg:sticky lg:top-6 lg:h-[calc(100dvh-3rem)] lg:rounded-2xl">
+        <aside
+          className={cn(
+            "relative flex min-h-0 flex-1 flex-col overflow-hidden md:portrait:rounded-2xl max-lg:landscape:w-[min(340px,42vw)] max-lg:landscape:flex-none max-lg:landscape:border-l max-lg:landscape:border-room-line phone-land:absolute phone-land:inset-y-0 phone-land:right-0 phone-land:z-50 phone-land:bg-room-surface phone-land:pr-[env(safe-area-inset-right)] phone-land:shadow-[-24px_0_48px_-12px_rgb(0_0_0/0.5)] lg:sticky lg:top-6 lg:h-[calc(100dvh-3rem)] lg:rounded-2xl",
+            !sideOpen && "phone-land:hidden",
+          )}
+        >
           {panel}
           {/* As redes abrem por cima do painel, como no Live. */}
           {followSheet}
         </aside>
+        {sideOpen ? null : (
+          <button
+            type="button"
+            onClick={() => setSideOpen(true)}
+            aria-label={ctaVisible ? "Abrir o chat e a oferta" : "Abrir o chat"}
+            className="absolute right-[max(12px,env(safe-area-inset-right))] top-3 z-40 hidden size-11 place-items-center rounded-full bg-black/60 text-white ring-1 ring-white/15 backdrop-blur phone-land:grid"
+          >
+            {ctaVisible ? <ShoppingCart className="size-5" /> : <MessagesSquare className="size-5" />}
+            {ctaVisible || supportUnread > 0 ? (
+              <span className="absolute right-1 top-1 flex">
+                <PulseDot />
+              </span>
+            ) : null}
+          </button>
+        )}
       </div>
       {groupDialog}
     </main>

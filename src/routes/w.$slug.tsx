@@ -8,7 +8,7 @@ import { leadSource } from "@/lib/contacts";
 import { loadPixels, trackPixels } from "@/lib/pixels";
 import { retry } from "@/lib/utils";
 import { DEFAULT_PHONE_COUNTRY, phoneCountryForIso, type PhoneCountry } from "@/lib/phone-countries";
-import { WebinarRoom, type RoomProgressOptions } from "@/components/webinar-room";
+import { ROOM_VIEWPORT, WebinarRoom, type RoomProgressOptions } from "@/components/webinar-room";
 import { RoomSkeleton, getCachedRoomTheme, cacheRoomTheme } from "@/components/room-skeleton";
 import { EntryScreen, entryLiveLabel, isDirectVideo, resolveTheme } from "@/components/room/entry-screen";
 import type { Appearance } from "@/components/room/room-parts";
@@ -62,6 +62,7 @@ export const Route = createFileRoute("/w/$slug")({
     return {
       meta: [
         { title: `${title} | Convertewebinar` },
+        ROOM_VIEWPORT,
         { name: "description", content: description },
         { property: "og:title", content: title },
         { property: "og:description", content: description },

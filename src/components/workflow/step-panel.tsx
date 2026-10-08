@@ -299,7 +299,7 @@ function ActionEditor({ node, status, onChange }: { node: ActionNode; status: Ch
                       type="button"
                       title={v.label}
                       onClick={() => update(i, { message: `${s.message ?? ""}{{${v.key}}}` })}
-                      className="rounded-md border bg-card px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground hover:border-primary hover:text-primary"
+                      className="rounded-md border bg-card px-1.5 py-0.5 font-[family-name:var(--font-code)] text-[11px] text-muted-foreground hover:border-primary hover:text-primary"
                     >
                       {`{{${v.key}}}`}
                     </button>

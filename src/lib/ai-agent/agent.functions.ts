@@ -14,6 +14,17 @@ type Row = Record<string, any>;
 
 const uuid = z.string().uuid();
 
+/** O agente da conta: a linha sem webinar (migração 0073). Antes da migração não existe. */
+async function accountAgent(supabase: any, organizationId: string) {
+  const { data } = await supabase
+    .from("ai_agents")
+    .select("*")
+    .eq("organization_id", organizationId)
+    .is("webinar_id", null)
+    .maybeSingle();
+  return (data ?? null) as Row | null;
+}
+
 async function ensureAgentRow(supabase: any, webinarId: string) {
   const { data: existing } = await supabase
     .from("ai_agents")
@@ -29,12 +40,15 @@ async function ensureAgentRow(supabase: any, webinarId: string) {
     .single();
   if (!webinar) throw new Error("Webinar não encontrado.");
 
+  // Com agente da conta, um webinar novo segue-o («Todos os webinars»).
+  const account = await accountAgent(supabase, webinar.organization_id);
   const { data: created, error } = await supabase
     .from("ai_agents")
     .insert({
       webinar_id: webinarId,
       organization_id: webinar.organization_id,
       permissions: defaultPermissions(),
+      ...(account ? { scope: "account" } : {}),
     })
     .select("*")
     .single();
@@ -54,11 +68,52 @@ async function ensureAgentRow(supabase: any, webinarId: string) {
   return created as Row;
 }
 
+const AGENT_TABLES = ["ai_agent_knowledge", "ai_agent_faqs", "ai_agent_objections"] as const;
+
+/** Cria o agente da conta como cópia do agente deste webinar: definições e conhecimento. */
+async function ensureAccountAgent(supabase: any, own: Row) {
+  const existing = await accountAgent(supabase, own["organization_id"]);
+  if (existing) return existing;
+  const { id, webinar_id, created_at, updated_at, ...settings } = own;
+  const { data: created, error } = await supabase
+    .from("ai_agents")
+    .insert({ ...settings, webinar_id: null, scope: "account" })
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  for (const table of AGENT_TABLES) {
+    const { data: rows, error: readError } = await supabase.from(table).select("*").eq("agent_id", id);
+    const copies = ((rows ?? []) as Row[]).map(({ id: _id, created_at: _c, updated_at: _u, ...row }) => ({
+      ...row,
+      agent_id: created.id,
+    }));
+    const failed = readError ?? (copies.length ? (await supabase.from(table).insert(copies)).error : null);
+    if (failed) {
+      // Cópia a meio: apaga o agente da conta (as cópias vão com ele) para a próxima vez copiar tudo.
+      await supabase.from("ai_agents").delete().eq("id", created.id);
+      throw new Error(failed.message);
+    }
+  }
+  return created as Row;
+}
+
+/** O agente que o editor mostra e grava: o do webinar ou, com «Todos os webinars», o da conta. */
+async function resolveAgentRow(supabase: any, webinarId: string) {
+  const own = await ensureAgentRow(supabase, webinarId);
+  if (own["scope"] !== "account") return own;
+  return ensureAccountAgent(supabase, own);
+}
+
+export type AgentScope = "webinar" | "account";
+
 export type AgentBundle = {
   agent: Row;
   knowledge: Row[];
   faqs: Row[];
   objections: Row[];
+  scope: AgentScope;
+  /** Falso enquanto a migração 0073 não estiver aplicada: só há «Só este webinar». */
+  accountReady: boolean;
 };
 
 export const getAgent = createServerFn({ method: "POST" })
@@ -66,7 +121,9 @@ export const getAgent = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => z.object({ webinarId: uuid }).parse(data))
   .handler(async ({ data, context }): Promise<AgentBundle> => {
     const supabase = context.supabase as never as any;
-    const agent = await ensureAgentRow(supabase, data.webinarId);
+    const own = await ensureAgentRow(supabase, data.webinarId);
+    const scope: AgentScope = own["scope"] === "account" ? "account" : "webinar";
+    const agent = scope === "account" ? await ensureAccountAgent(supabase, own) : own;
     const [{ data: knowledge }, { data: faqs }, { data: objections }] = await Promise.all([
       supabase.from("ai_agent_knowledge").select("*").eq("agent_id", agent["id"]).order("position"),
       supabase.from("ai_agent_faqs").select("*").eq("agent_id", agent["id"]).order("position"),
@@ -77,7 +134,29 @@ export const getAgent = createServerFn({ method: "POST" })
       knowledge: (knowledge ?? []) as Row[],
       faqs: (faqs ?? []) as Row[],
       objections: (objections ?? []) as Row[],
+      scope,
+      accountReady: "scope" in own,
     };
+  });
+
+/** Âmbito do agente neste webinar. «Todos os webinars» precisa da migração 0073. */
+export const saveAgentScope = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) =>
+    z.object({ webinarId: uuid, scope: z.enum(["webinar", "account"]) }).parse(data),
+  )
+  .handler(async ({ data, context }) => {
+    const supabase = context.supabase as never as any;
+    const own = await ensureAgentRow(supabase, data.webinarId);
+    if (!("scope" in own)) throw new Error("«Todos os webinars» ainda não está disponível.");
+    // Primeiro o agente da conta; o âmbito só muda se ele existir.
+    if (data.scope === "account") await ensureAccountAgent(supabase, own);
+    const { error } = await supabase
+      .from("ai_agents")
+      .update({ scope: data.scope, updated_at: new Date().toISOString() })
+      .eq("id", own["id"]);
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });
 
 export const saveAgent = createServerFn({ method: "POST" })
@@ -92,7 +171,7 @@ export const saveAgent = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const supabase = context.supabase as never as any;
-    const agent = await ensureAgentRow(supabase, data.webinarId);
+    const agent = await resolveAgentRow(supabase, data.webinarId);
     const { error } = await supabase
       .from("ai_agents")
       .update({ ...data.patch, updated_at: new Date().toISOString() })
@@ -150,7 +229,7 @@ export const saveAgentFaq = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const supabase = context.supabase as never as any;
-    const agent = await ensureAgentRow(supabase, data.webinarId);
+    const agent = await resolveAgentRow(supabase, data.webinarId);
     const payload = {
       question: data.question,
       answer: data.answer,
@@ -187,7 +266,7 @@ export const saveAgentObjection = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const supabase = context.supabase as never as any;
-    const agent = await ensureAgentRow(supabase, data.webinarId);
+    const agent = await resolveAgentRow(supabase, data.webinarId);
     const payload = {
       objection: data.objection,
       response: data.response,
@@ -389,7 +468,7 @@ export const generateAgentContent = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }): Promise<GeneratedContent> => {
     const supabase = context.supabase as never as any;
-    const agent = await ensureAgentRow(supabase, data.webinarId);
+    const agent = await resolveAgentRow(supabase, data.webinarId);
 
     const [{ data: webinar }, { data: knowledge }, { latestReadyVersion }, { chatJson }] =
       await Promise.all([

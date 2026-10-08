@@ -7,21 +7,6 @@
 
 export type AgentMode = "desativado" | "copiloto" | "hibrido" | "automatico";
 
-export const AGENT_MODES: { id: AgentMode; label: string; hint: string }[] = [
-  { id: "desativado", label: "Desativado", hint: "Não lê nem responde mensagens." },
-  { id: "copiloto", label: "Copiloto", hint: "Prepara a resposta e espera aprovação da equipa." },
-  {
-    id: "hibrido",
-    label: "Híbrido",
-    hint: "Responde sozinho quando tem confiança alta; o resto vai para a equipa.",
-  },
-  {
-    id: "automatico",
-    label: "Automático",
-    hint: "Responde diretamente dentro das regras configuradas.",
-  },
-];
-
 export const TONES = [
   { id: "profissional", label: "Profissional" },
   { id: "proximo", label: "Próximo" },

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import {
@@ -365,7 +365,8 @@ export function ZoomControl({ zoom, onZoom, dark }: { zoom: number | null; onZoo
         className={cn("inline-flex h-[34px] shrink-0 items-center gap-1.5 rounded-[10px] px-2.5 text-[12px] font-medium", dark ? SEG_BOX.dark : SEG_BOX.light, segItem(false, dark))}
       >
         <ZoomIn className="size-3.5" />
-        Zoom
+        {/* No telemóvel, só a lupa: o nome do ecrã precisa do espaço. */}
+        <span className="sr-only sm:not-sr-only">Zoom</span>
       </button>
     );
   }
@@ -419,25 +420,34 @@ const DEVICES: readonly [Device, string, typeof Monitor][] = [
   ["phone", "Telemóvel", Smartphone],
 ];
 
-/** Os ecrãs para ver: computador, tablet e telemóvel, com o ícone e o nome pequeno. */
+/**
+ * Ver o mesmo ecrã em cada aparelho: só muda a pré-visualização, não é uma configuração. Daí o
+ * rótulo «Ver em» à frente e o «pré-visualização» ao lado do nome do ecrã.
+ */
 export function DeviceToggle({ device, onChange, dark }: { device: Device; onChange: (device: Device) => void; dark?: boolean | undefined }) {
+  const id = useId();
   return (
-    <div role="radiogroup" aria-label="Ver em" className={cn("inline-flex shrink-0 gap-0.5 rounded-[10px] p-[3px]", dark ? SEG_BOX.dark : SEG_BOX.light)}>
-      {DEVICES.map(([value, label, Icon]) => (
-        <button
-          key={value}
-          type="button"
-          role="radio"
-          aria-checked={device === value}
-          aria-label={label}
-          title={label}
-          onClick={() => onChange(value)}
-          className={cn("inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-[7px] px-2 text-[11.5px] font-medium transition", segItem(device === value, dark))}
-        >
-          <Icon className="size-3.5" />
-          <span className="hidden sm:inline">{label}</span>
-        </button>
-      ))}
+    <div className="inline-flex shrink-0 items-center gap-1.5">
+      <span id={id} className={cn("text-[11.5px] font-medium", dark ? "text-[#A1A1A1]" : "text-muted-foreground")}>
+        Ver em
+      </span>
+      <div role="radiogroup" aria-labelledby={id} className={cn("inline-flex gap-0.5 rounded-[10px] p-[3px]", dark ? SEG_BOX.dark : SEG_BOX.light)}>
+        {DEVICES.map(([value, label, Icon]) => (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={device === value}
+            aria-label={label}
+            title={`Ver no ${label.toLowerCase()}`}
+            onClick={() => onChange(value)}
+            className={cn("inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-[7px] px-2 text-[11.5px] font-medium transition", segItem(device === value, dark))}
+          >
+            <Icon className="size-3.5" />
+            <span className="hidden sm:inline">{label}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -669,8 +679,12 @@ export function FullScreen({
   }, [onClose]);
   return (
     <div className="fixed inset-0 z-[80] flex flex-col bg-[#0A0A0A] text-[#EDEDED]" role="dialog" aria-label={name}>
-      <div className="flex h-14 shrink-0 items-center gap-3 px-4">
-        <b className="min-w-0 flex-1 truncate text-sm">{name}</b>
+      <div className="flex h-14 shrink-0 items-center gap-2 px-4 sm:gap-3">
+        {/* Por baixo do nome, para não se confundir a escolha do aparelho com uma configuração. */}
+        <span className="grid min-w-0 flex-1 leading-tight">
+          <b className="truncate text-sm">{name}</b>
+          <small className="truncate text-[11px] text-[#A1A1A1]">Pré-visualização</small>
+        </span>
         {tools}
         <DeviceToggle dark device={device} onChange={onDevice} />
         <button
