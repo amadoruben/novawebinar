@@ -500,6 +500,33 @@ export function quietUntil(
   return new Date(zonedTimeToMs(p.year, p.month, p.day + (p.hour >= QUIET_HOURS.from ? 1 : 0), QUIET_HOURS.to, 0, ctx.timeZone));
 }
 
+/* ---------- Quanto falta ---------- */
+
+/**
+ * {{falta}}: quanto falta para a sessão desta pessoa, no fuso do webinar, à hora do envio (não do
+ * agendamento): «faltam 3 dias», «é amanhã às 20:00», «é hoje às 20:00», «começa daqui a 2 horas»,
+ * «começa daqui a 15 minutos», «começa agora», «já começou», «já terminou». Até 6 horas conta em
+ * horas, mesmo que passe a meia-noite; depois conta pelos dias do calendário. Sem sessão, vazio.
+ */
+export function timeLeft(session: SessionTimes | null, now: Date, timeZone = "UTC"): string {
+  const start = session?.startsAt ? Date.parse(session.startsAt) : NaN;
+  if (Number.isNaN(start)) return "";
+  const t = now.getTime();
+  if (session?.endsAt && t >= Date.parse(session.endsAt)) return "já terminou";
+  if (t >= start) return "já começou";
+  const minutes = Math.round((start - t) / 60_000);
+  if (minutes < 1) return "começa agora";
+  if (minutes < 55) return `começa daqui a ${durationLabel(minutes)}`;
+  if (minutes < 6 * 60) return `começa daqui a ${durationLabel(Math.round(minutes / 60) * 60)}`;
+  const s = zoneParts(start, timeZone);
+  const n = zoneParts(t, timeZone);
+  const days = Math.round((Date.UTC(s.year, s.month - 1, s.day) - Date.UTC(n.year, n.month - 1, n.day)) / 86_400_000);
+  const at = `${s.hour === 1 ? "à" : "às"} ${String(s.hour).padStart(2, "0")}:${String(s.minute).padStart(2, "0")}`;
+  if (days <= 0) return `é hoje ${at}`;
+  if (days === 1) return `é amanhã ${at}`;
+  return `faltam ${days} dias`;
+}
+
 /* ---------- Mensagens ---------- */
 
 export const MESSAGE_VARIABLES = [
@@ -509,6 +536,7 @@ export const MESSAGE_VARIABLES = [
   { key: "webinar", label: "Título do webinar" },
   { key: "data", label: "Data da sessão" },
   { key: "hora", label: "Hora da sessão" },
+  { key: "falta", label: "Quanto falta para a sessão da pessoa: «faltam 2 dias», «é amanhã às 20:00», «começa daqui a 2 horas»" },
   { key: "link", label: "Link da sala" },
   { key: "link_oferta", label: "Link da oferta (checkout)" },
   { key: "preco", label: "Preço da oferta" },
@@ -525,17 +553,18 @@ export function renderMessage(template: string | undefined, vars: MessageVars) {
   );
 }
 
-/** De onde vem cada link: o que falta configurar quando ele está vazio. */
+/** De onde vem cada link (e o {{falta}}): o que falta configurar quando sai vazio. */
 const LINK_SOURCE = {
   link: "o endereço da sala do webinar",
   link_oferta: "o link da oferta no webinar",
   link_grupo: "o link do grupo de WhatsApp no Fluxo",
   link_replay: "o replay ligado no webinar",
+  falta: "a sessão da pessoa: este gatilho não a traz",
 } as const;
 
 /**
- * Os links que a mensagem usa e que sairiam vazios. Uma mensagem com um botão sem destino não
- * sai: o passo falha com o que falta configurar.
+ * Os links (e o {{falta}}) que a mensagem usa e que sairiam vazios. Uma mensagem com um botão sem
+ * destino, ou com «Olá Ana, !», não sai: o passo falha com o que falta configurar.
  */
 export function missingLinks(texts: (string | undefined)[], vars: MessageVars): string[] {
   const used = new Set(texts.flatMap((t) => [...(t ?? "").matchAll(/\{\{\s*([a-z_]+)\s*\}\}/g)].map((m) => m[1]!)));
@@ -620,6 +649,26 @@ export function readCanvas(value: unknown): Canvas {
     positions: known && v.positions && typeof v.positions === "object" ? v.positions : {},
     orientation: v.orientation === "horizontal" ? "horizontal" : "vertical",
   };
+}
+
+/**
+ * O convite do fluxo: o link do primeiro grupo que o tem. É o {{link_grupo}} das mensagens e o botão
+ * do grupo na página de obrigado. Só http(s) (vai parar a um link numa página pública); sem
+ * protocolo, ganha https://.
+ */
+export function groupInvite(canvas: Canvas): string | null {
+  for (const node of canvas.nodes) {
+    // O canvas vem da base sem validação: um nó estranho não pode partir a página da sala, que lê isto.
+    if (node?.kind !== "group" || typeof node.url !== "string" || !node.url.trim()) continue;
+    const raw = node.url.trim();
+    try {
+      const url = new URL(/^[a-z][a-z\d+.-]*:/i.test(raw) ? raw : `https://${raw}`);
+      if (url.protocol === "https:" || url.protocol === "http:") return url.href;
+    } catch {
+      /* link inválido: o grupo seguinte */
+    }
+  }
+  return null;
 }
 
 export function readSteps(value: unknown): Steps | null {

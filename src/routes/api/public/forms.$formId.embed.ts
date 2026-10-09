@@ -94,7 +94,8 @@ export const Route = createFileRoute("/api/public/forms/$formId/embed")({
     '.row{display:flex;gap:8px}.row input{flex:1}.req{color:' + cfg.color + '}' +
     'input:focus,select:focus{outline:2px solid ' + cfg.color + ';outline-offset:1px}.consent{display:flex;gap:8px;align-items:flex-start;font-weight:400;font-size:12px;color:#444}' +
     'button{font:inherit;font-weight:700;padding:13px;border:0;border-radius:10px;background:' + cfg.color + ';color:' + cfg.colorText + ';cursor:pointer}button[disabled]{opacity:.6;cursor:wait}' +
-    '.err{color:#b91c1c;font-size:12px;font-weight:500}.ok{padding:14px;border-radius:10px;background:#ecfdf5;color:#065f46;font-weight:600}.hp{position:absolute;left:-9999px}' +
+    '.err{color:#b91c1c;font-size:12px;font-weight:500}.ok{font:600 15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:420px;padding:14px;border-radius:10px;background:#ecfdf5;color:#065f46}.hp{position:absolute;left:-9999px}' +
+    '.wa{display:block;margin-top:10px;padding:12px;border-radius:10px;background:#25D366;color:#0B141A;font-weight:700;text-align:center;text-decoration:none}' +
     '</style>' +
     '<form novalidate>' +
     cfg.fields.map(field).join('') +
@@ -150,6 +151,13 @@ export const Route = createFileRoute("/api/public/forms/$formId/embed")({
         }
         if (res.body.redirect_url) { location.href = res.body.redirect_url; return; }
         var ok = document.createElement("div"); ok.className = "ok"; ok.textContent = res.body.message || "Inscrição confirmada.";
+        // Convite do grupo do fluxo: o endereço vai como propriedade (nunca por innerHTML) e só http(s).
+        var group = res.body.group_url;
+        if (typeof group === "string" && /^https?:/.test(group)) {
+          var wa = document.createElement("a"); wa.className = "wa"; wa.href = group;
+          wa.target = "_blank"; wa.rel = "noopener noreferrer"; wa.textContent = "Entrar no grupo de WhatsApp";
+          ok.appendChild(wa);
+        }
         form.replaceWith(ok);
       })
       .catch(function () { err.textContent = "Sem ligação. Tente outra vez."; button.disabled = false; });

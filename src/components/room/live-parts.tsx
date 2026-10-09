@@ -320,6 +320,8 @@ export function LiveFeed({
   /** No painel do computador: o texto segue o tema, sem a sombra que o destaca do vídeo. */
   panel?: boolean | undefined;
 }) {
+  // O texto das mensagens um pouco transparente, na cor do tema; o nome fica cheio.
+  const ink = panel ? "text-room-text/88" : "text-white/90";
   return (
     <div ref={feedRef} className={cn("lv-feed flex flex-col overflow-y-auto overscroll-contain pr-11 [scrollbar-width:none]", className)}>
       <div
@@ -356,7 +358,7 @@ export function LiveFeed({
               <p className="min-w-0 break-words">
                 <b className="mr-1.5 font-bold">{item.team?.name ?? "Você"}</b>
                 {item.team ? <TeamBadge text={item.team.badge} /> : null}
-                <span className="font-medium">{item.text}</span>
+                <span className={cn("font-medium", ink)}>{item.text}</span>
                 {item.team ? null : <OnlyYou panel={panel} />}
                 {item.reaction ? <ReactionPill text={item.reaction} onVideo={!panel} /> : null}
               </p>
@@ -366,7 +368,7 @@ export function LiveFeed({
             <p key={item.key} className="lv-in min-w-0 break-words">
               <b className="mr-1.5 font-bold">{item.author}</b>
               {item.badge ? <TeamBadge text={item.badge} /> : null}
-              <span className="font-medium">{item.text}</span>
+              <span className={cn("font-medium", ink)}>{item.text}</span>
               {item.reaction ? <ReactionPill text={item.reaction} onVideo={!panel} /> : null}
             </p>
           ),

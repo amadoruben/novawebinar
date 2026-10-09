@@ -35,6 +35,9 @@ import {
   type Webinar,
 } from "@/lib/data";
 import { lifecycleDetail, lifecycleLabel } from "@/lib/schedule";
+import { friendlyError } from "@/lib/friendly-error";
+import { smallImage } from "@/lib/shrink-image";
+import { deleteWebinar } from "@/lib/webinar-delete.functions";
 
 export { CalendarDays, Clock3, MoreHorizontal, Play, Radio, Users };
 
@@ -234,36 +237,33 @@ function WebinarDetailsDialog({
   );
 }
 
+/** Capa na lista (mostrada a 44–48 px): pequena pelo optimizador da Vercel; se ele não responder, a original. */
+function CoverThumb({ url, alt, className }: { url: string; alt: string; className: string }) {
+  return (
+    <img
+      src={import.meta.env.PROD ? smallImage(url) : url}
+      alt={alt}
+      className={className}
+      loading="lazy"
+      decoding="async"
+      onError={(e) => {
+        if (e.currentTarget.src !== url) e.currentTarget.src = url;
+      }}
+    />
+  );
+}
+
 function DeleteWebinarButton({ webinar }: { webinar: WebinarRow }) {
   const queryClient = useQueryClient();
   const remove = useMutation({
+    // No servidor, com a permissão confirmada; se parar a meio, diz o que ficou e repetir continua.
     mutationFn: async () => {
-      const wid = webinar.id;
-      const { data: conversations } = await supabase
-        .from("private_conversations")
-        .select("id")
-        .eq("webinar_id", wid);
-      const conversationIds = (conversations ?? []).map((c) => c.id);
-      if (conversationIds.length > 0) {
-        await supabase.from("private_messages").delete().in("conversation_id", conversationIds);
-      }
-      await supabase.from("private_conversations").delete().eq("webinar_id", wid);
-      await supabase.from("analytics_events").delete().eq("webinar_id", wid);
-      await supabase.from("cta_events").delete().eq("webinar_id", wid);
-      await supabase.from("scheduled_comments").delete().eq("webinar_id", wid);
-      await supabase.from("audience_configuration").delete().eq("webinar_id", wid);
-      await supabase.from("social_proof_settings").delete().eq("webinar_id", wid);
-      await supabase.from("simulated_purchase_events").delete().eq("webinar_id", wid);
-      await supabase.from("viewer_sessions").delete().eq("webinar_id", wid);
-      await supabase.from("participants").delete().eq("webinar_id", wid);
-      const { error } = await supabase.from("webinars").delete().eq("id", wid);
-      if (error) throw error;
+      const result = await deleteWebinar({ data: { webinarId: webinar.id } });
+      if (!result.ok) throw new Error(`${result.error} Ficou por apagar: ${result.remaining.join(", ")}. Tente outra vez.`);
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["webinars"] });
-      toast.success("Webinar eliminado");
-    },
-    onError: () => toast.error("Não foi possível eliminar o webinar"),
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ["webinars"] }),
+    onSuccess: () => toast.success("Webinar eliminado"),
+    onError: (error) => toast.error(friendlyError(error, "Não foi possível eliminar o webinar")),
   });
   return (
     <Button
@@ -327,11 +327,10 @@ export function WebinarTable({
                   <td className="px-6 py-3.5">
                     <div className="flex items-center gap-3">
                       {w.registration_cover_url ? (
-                        <img
-                          src={w.registration_cover_url}
+                        <CoverThumb
+                          url={w.registration_cover_url}
                           alt={`Capa de ${w.public_title || w.internal_name}`}
                           className="size-11 shrink-0 rounded-sm object-cover"
-                          loading="lazy"
                         />
                       ) : (
                         <span className="flex size-11 shrink-0 items-center justify-center rounded-sm bg-gray-100 text-gray-700">
@@ -409,11 +408,7 @@ export function WebinarTable({
             <article key={w.id} className="p-4">
               <div className="flex items-start gap-3">
                 {w.registration_cover_url ? (
-                  <img
-                    src={w.registration_cover_url}
-                    alt=""
-                    className="size-12 shrink-0 rounded-sm object-cover"
-                  />
+                  <CoverThumb url={w.registration_cover_url} alt="" className="size-12 shrink-0 rounded-sm object-cover" />
                 ) : (
                   <span className="flex size-12 shrink-0 items-center justify-center rounded-sm bg-gray-100 text-gray-700">
                     <Play className="size-4" strokeWidth={1.5} />

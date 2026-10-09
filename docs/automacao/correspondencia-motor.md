@@ -11,7 +11,7 @@ Ao criar ou renomear um gatilho, um facto ou uma automação pronta, actualize e
 | `src_facebook`, `src_instagram`, `src_youtube` | Origem: plataforma e sítio (Meta Ads · Facebook, Meta Ads · Instagram, Google Ads · YouTube) | Nó `origin` do canvas, com `source` e `placement`. Só representação. | Feito |
 | `pg_landing` | Página de inscrição | Formulário de inscrição do webinar; página `inscricao` | Feito |
 | `pg_acesso` | Sala do webinar | `/w/<slug>` (variável `{{link}}`) | Feito |
-| `lk_redirect` | Grupo de WhatsApp, com o link de convite | Nós `group` do canvas; `{{link_grupo}}` é o link do primeiro grupo que o tem | Feito, sem rotação de grupos cheios |
+| `lk_redirect` | Grupo de WhatsApp, com o link de convite. Aparece também como botão na página de obrigado (depois da inscrição), sem passo extra | Nós `group` do canvas; `groupInvite` dá o link do primeiro grupo que o tem (só http(s)): é o `{{link_grupo}}` das mensagens e, por `flowGroupInvite` (`flow-group.server.ts`), o do botão do obrigado | Feito, sem rotação de grupos cheios. O botão no obrigado está por ligar na sala e no formulário embed |
 | `grp_1`, `grp_2`, `grp_3` | Grupos de WhatsApp do fluxo (um ou vários, lado a lado no desenho). A mensagem nos grupos escolhe um ou vários: um disparo por grupo, cada um com o seu texto | Um nó `group` por grupo; cada disparo com `send.target = "group"` e `send.group` = nome do grupo no WhatsApp (o motor procura-o pelo nome). Mudar o nome do grupo no fluxo muda-o nas mensagens (`renameGroupIn`) | Feito. Até 6 disparos por mensagem (limite da base de dados); não há destino «todos os grupos» que acompanhe grupos novos |
 | `ai_aquecimento` | Automações «Aquecimento» e «Lembretes» do modelo (menu «Mensagens de aquecimento») | Gatilho `webinar_registered` | Feito |
 | `sala` | Momentos «Webinar ao vivo» e «Fim da sessão» | Gatilhos `webinar_session_started` e `webinar_session_ended` | Feito |
@@ -23,6 +23,12 @@ Ao criar ou renomear um gatilho, um facto ou uma automação pronta, actualize e
 | `pg_upsell`, `pg_downsell`, `pg_obrigado` | Páginas do fluxo: upsell, downsell, obrigado (compra) | Nós `page` do canvas. Só representação. | Feito como desenho |
 | `cond_upsell`, `seq_upsell` | Não existe | Não existe | Por fazer: o motor não sabe se o upsell foi comprado |
 | `ai_upsell_pos` | Passo «Upsell» da automação «Pós-compra» | Gatilho `purchase_approved` | Feito, com a mensagem por escrever |
+
+## Variáveis das mensagens
+
+| No mapa | No produto | No motor | Estado |
+|---|---|---|---|
+| «Contagem regressiva: faltam 7 dias» (passos 4 e 5) | Variável `{{falta}}`: quanto falta para a sessão da pessoa | `timeLeft(sessão da execução, agora, fuso do webinar)`, calculada no envio (`executeAction`). Até 6 h: «começa daqui a 2 horas» / «15 minutos» / «começa agora»; depois, pelo calendário do fuso: «é hoje às 20:00», «é amanhã às 20:00», «faltam 3 dias»; «já começou», «já terminou». Cada pessoa conta a partir da sua sessão (`run.webinar_session_id`). Sem sessão, a mensagem não sai (`missingLinks`) | Feito |
 
 ## Acontecimentos e segmentos
 

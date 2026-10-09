@@ -17,6 +17,7 @@ import { sendWhatsapp } from "@/lib/whatsapp.server";
 import {
   conditionsAtSend,
   conditionsHold,
+  groupInvite,
   guardsHold,
   lateReminder,
   MAX_LOG,
@@ -29,6 +30,7 @@ import {
   renderMessage,
   runLog,
   sendMissing,
+  timeLeft,
   walk,
   type ActionNode,
   type LogEntry,
@@ -106,7 +108,6 @@ async function payloadFor(run: Run) {
         "workflow",
       )
     : null;
-  const group = readCanvas(workflow?.canvas).nodes.find((n) => n.kind === "group" && n.url.trim());
   return {
     run_id: run.id,
     automation: { id: a.id, name: a.name },
@@ -115,7 +116,7 @@ async function payloadFor(run: Run) {
     purchase: purchaseOf(ev?.data),
     webinar: w ? { id: w.id, title: w.public_title || w.internal_name, timezone: w.timezone } : null,
     offer: w?.cta_url ? { url: w.cta_url, price: w.cta_price_now || null } : null,
-    group_url: group?.kind === "group" ? group.url : null,
+    group_url: groupInvite(readCanvas(workflow?.canvas)),
     room_url: w ? `${APP_URL}/w/${w.slug}` : null,
     // O replay público é a sala com ?replay=1; /replay/<id> é a pré-visualização da equipa.
     replay_url: w?.replay_enabled ? `${APP_URL}/w/${w.slug}?replay=1` : null,
@@ -250,6 +251,8 @@ async function executeAction(
     webinar: data.webinar?.title ?? "",
     data: when ? when.toLocaleDateString("pt-PT", { day: "2-digit", month: "long", timeZone }) : "",
     hora: when ? when.toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit", timeZone }) : "",
+    // Quanto falta para a sessão desta pessoa (a da sua inscrição), contado agora, no envio.
+    falta: timeLeft(session ? { startsAt: session.starts_at, endsAt: session.ends_at } : null, new Date(), timeZone),
     link: data.room_url,
     link_oferta: data.offer?.url ?? "",
     preco: data.offer?.price ?? "",

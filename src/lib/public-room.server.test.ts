@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 type Result = { data: unknown; error: { message: string } | null; count?: number | null };
 let answers: Record<string, Result>;
 let inserts: string[];
+let signings = 0;
 
 vi.mock("@/integrations/supabase/client.server", () => {
   const query = (table: string) => {
@@ -35,7 +36,11 @@ vi.mock("@/integrations/supabase/client.server", () => {
     supabaseAdmin: {
       from: (table: string) => query(table),
       rpc: async () => ({ data: null, error: null }),
-      storage: { from: () => ({ createSignedUrl: async () => ({ data: null }) }) },
+      storage: {
+        from: () => ({
+          createSignedUrl: async (path: string) => ({ data: { signedUrl: `https://cdn/${path}?token=${++signings}` } }),
+        }),
+      },
     },
   };
 });
@@ -77,6 +82,26 @@ describe("sala pública com a base de dados em baixo", () => {
     const loaded = await loadPublicRoom("sessao");
     expect(loaded?.webinar.id).toBe("w-1");
     expect(loaded?.comments).toHaveLength(1);
+  });
+
+  it("o vídeo do Storage sai com o mesmo URL assinado para todos, para o CDN o servir da cache", async () => {
+    answers["webinars.select"] = {
+      data: { ...WEBINAR, video_sources: { storage_path: "org/aula.mp4", source_url: null } },
+      error: null,
+    };
+    const first = await loadPublicRoom("sessao");
+    const second = await loadPublicRoom("sessao");
+    expect(first?.webinar.video_url).toMatch(/^https:\/\/cdn\/org\/aula\.mp4\?token=/);
+    expect(second?.webinar.video_url).toBe(first?.webinar.video_url);
+  });
+
+  it("o convite do grupo do fluxo vem com a sala; sem grupo, null", async () => {
+    expect((await loadPublicRoom("sessao"))?.webinar.group_url).toBeNull();
+    answers["automation_workflows.select"] = {
+      data: [{ canvas: { nodes: [{ kind: "group", url: "chat.whatsapp.com/abc" }] } }],
+      error: null,
+    };
+    expect((await loadPublicRoom("sessao"))?.webinar.group_url).toBe("https://chat.whatsapp.com/abc");
   });
 
   it("falha a ler as mensagens é erro, não uma conversa vazia", async () => {

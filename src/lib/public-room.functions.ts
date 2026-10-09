@@ -22,7 +22,7 @@ const joinSchema = z.object({
   // Entrada pela sala de teste: aberta mesmo com a sessão inativa e sem
   // disparar avisos para sistemas externos.
   teste: z.boolean().optional(),
-  device: z.enum(["mobile", "desktop"]).optional(),
+  device: z.enum(["mobile", "tablet", "desktop"]).optional(),
   city: z.string().trim().max(120).optional(),
   country: z.string().trim().max(120).optional(),
   countryCode: z.string().trim().max(8).optional(),

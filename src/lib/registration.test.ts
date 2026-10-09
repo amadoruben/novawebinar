@@ -136,7 +136,7 @@ beforeEach(() => {
   answers = {
     registration_forms: { data: FORM, error: null },
     webinars: { data: WEBINAR, error: null },
-    webinar_sessions: { data: { starts_at: "2026-10-01T20:00:00Z" }, error: null },
+    webinar_sessions: { data: { starts_at: "2099-10-01T20:00:00Z" }, error: null },
     participants: [
       { data: null, error: null }, // mesma submissão? não
       { data: [], error: null }, // mesma pessoa na sessão? não
@@ -326,6 +326,57 @@ describe("captura: idempotência, API sem formulário e origem", () => {
       req(),
     );
     expect(inserts.at(-1)!.row).toMatchObject({ utm_source: "instagram", referrer: "https://l.instagram.com/" });
+  });
+});
+
+describe("segunda inscrição: fica na sessão original", () => {
+  it("captura: a pessoa já está numa sessão que não acabou (o just in time já abriu outra): não duplica", async () => {
+    answers["participants"] = [
+      { data: null, error: null },
+      { data: [{ id: "p-old", contact_id: "c-1", webinar_session_id: "session-old", watched_seconds: 0 }], error: null },
+    ];
+    answers["webinar_sessions"] = { data: { starts_at: "2099-10-01T20:00:00Z", ends_at: "2099-10-01T21:00:00Z" }, error: null };
+    const res = await registerFromCapture(body({ submission_id: "outra-vez" }), req());
+    expect(res.body).toMatchObject({ status: "already_registered" });
+    expect(inserts).toEqual([]);
+  });
+
+  it("sala: outro aparelho cria a participação na sessão original (o evento de inscrição não se repete)", async () => {
+    const { createRegistration } = await import("./registration.server");
+    answers["participants"] = [
+      { data: [{ id: "p-old", contact_id: "c-1", webinar_session_id: "session-old", watched_seconds: 300 }], error: null },
+      { data: { id: "p-new", name: "Ana", contact_id: "c-1", webinar_session_id: "session-old" }, error: null },
+    ];
+    // Já acabou, mas a pessoa viu: fica na mesma (a sala mostra-lhe o replay, não outro «Ao vivo»).
+    answers["webinar_sessions"] = { data: { starts_at: "2099-10-01T20:00:00Z", ends_at: "2020-01-01T21:00:00Z" }, error: null };
+    const base = { name: "Ana", email: "ana@exemplo.com", phone: null, mode: "live" as const, device: null, city: null, country: null, countryCode: null, utm: {}, referrer: null, source: "room" as const };
+    await createRegistration(WEBINAR as never, base, "session-1");
+    expect(inserts.at(-1)!.row).toMatchObject({ webinar_session_id: "session-old" });
+  });
+
+  it("sala: quem nunca entrou numa sessão que já acabou vai para a actual", async () => {
+    const { createRegistration } = await import("./registration.server");
+    answers["participants"] = [
+      { data: [{ id: "p-old", contact_id: "c-1", webinar_session_id: "session-old", watched_seconds: 0 }], error: null },
+      { data: { id: "p-new", name: "Ana", contact_id: "c-1", webinar_session_id: "session-1" }, error: null },
+    ];
+    answers["webinar_sessions"] = { data: { starts_at: "2099-10-01T20:00:00Z", ends_at: "2020-01-01T21:00:00Z" }, error: null };
+    const base = { name: "Ana", email: "ana@exemplo.com", phone: null, mode: "live" as const, device: null, city: null, country: null, countryCode: null, utm: {}, referrer: null, source: "room" as const };
+    await createRegistration(WEBINAR as never, base, "session-1");
+    expect(inserts.at(-1)!.row).toMatchObject({ webinar_session_id: "session-1" });
+  });
+
+  it("data única remarcada: a sessão antiga não prende quem se inscreve outra vez (vai para a nova data)", async () => {
+    answers["participants"] = [
+      { data: null, error: null },
+      { data: [{ id: "p-old", contact_id: "c-1", webinar_session_id: "session-old", watched_seconds: 0 }], error: null },
+      { data: { id: "p-new", contact_id: "c-1", webinar_session_id: "session-1" }, error: null },
+    ];
+    // A sessão antiga ainda não acabou, mas já não é a data do webinar (2099-10-01T20:00).
+    answers["webinar_sessions"] = { data: { starts_at: "2099-09-24T20:00:00Z", ends_at: "2099-09-24T21:00:00Z" }, error: null };
+    const res = await registerFromCapture(body({ submission_id: "remarcado" }), req());
+    expect(res.body).toMatchObject({ status: "registered" });
+    expect(inserts.at(-1)!.row).toMatchObject({ webinar_session_id: "session-1" });
   });
 });
 

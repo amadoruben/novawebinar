@@ -17,6 +17,10 @@ import { entryNotice, parseEntryFields, validateEntry } from "@/lib/entry-fields
 import { offerDeadlinePassed, parseExtraOffers, roomCountdown } from "@/lib/room-logic";
 import { useRoomTeam, type TeamRole } from "@/lib/room-team";
 import { checkTeamRoomToken, getTeamRoomToken } from "@/lib/room-team.functions";
+import { recordRoomHearts } from "@/lib/room-reactions.functions";
+import { getViewerState } from "@/lib/room-viewer.functions";
+import { viewerPlan, type ViewerPlan } from "@/lib/room-return";
+import { useDataSaver } from "@/lib/room-data-saver";
 import { TeamEntry, TeamNotice } from "@/components/room/team-entry";
 import { WaitingScreen } from "@/components/room/waiting-screen";
 import { preliveTitle } from "@/lib/prelive-templates";
@@ -144,8 +148,10 @@ export function PublicRoom({
   const joinGroup = useServerFn(joinOfferGroup);
   const fetchMessages = useServerFn(getPublicRoomMessages);
   const trackProgress = useServerFn(trackPublicRoomProgress);
+  const saveHearts = useServerFn(recordRoomHearts);
 
   const [viewer, setViewer] = useState<Viewer | null>(null);
+  const [saveData] = useDataSaver();
   // O que a pessoa escreve, campo a campo (pelo id do campo).
   const [values, setValues] = useState<Record<string, string>>(() => ({
     ...(prefill?.name ? { name: prefill.name } : {}),
@@ -223,6 +229,8 @@ export function PublicRoom({
     // sala a quem a tem aberta: fica a que já estava e tenta-se outra vez.
     refetchInterval: (query) =>
       query.state.status === "error" ? 5000 : viewer ? false : 60_000,
+    // A sala veio no HTML (loader): não se volta a pedir logo a seguir a abrir a página.
+    staleTime: 60_000,
   });
 
   // A equipa: confirma o link (ou a sessão iniciada na organização) e guarda o nome escolhido neste browser.
@@ -286,10 +294,35 @@ export function PublicRoom({
     if (data) cacheRoomTheme(slug, roomTheme);
   }, [data, roomTheme, slug]);
 
-  // A sessão seguinte ainda não começou: a sala de espera reabre sozinha.
-  const nextStartMs = data?.webinar.session_start
-    ? new Date(data.webinar.session_start).getTime()
-    : null;
+  // Quem regressa: a sala segue a sessão desta pessoa (não a próxima do webinar). Uma leitura por visita;
+  // ao vivo pela ligação normal (no replay pelo link e na sala de teste, a sala de sempre).
+  const fetchViewerState = useServerFn(getViewerState);
+  const viewerState = useQuery({
+    queryKey: ["viewer-state", viewer?.token],
+    enabled: Boolean(viewer?.token) && !testMode && roomMode === "live",
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    retry: 1,
+    queryFn: () => fetchViewerState({ data: { token: viewer!.token } }),
+  });
+  const plan: ViewerPlan =
+    data && viewer && !testMode && !equipa && roomMode === "live"
+      ? viewerPlan(viewerState.data, {
+          // A hora da leitura: o plano não muda a meio da visita (quem vê o fim ao vivo não passa para o replay).
+          nowMs: viewerState.dataUpdatedAt,
+          durationSeconds: data.webinar.duration_seconds,
+          replayEnabled: Boolean(data.webinar.replay_enabled),
+          schedule: data.webinar,
+        })
+      : { kind: "global" };
+
+  // A sessão seguinte (ou a desta pessoa) ainda não começou: a sala de espera reabre sozinha.
+  const nextStartMs =
+    plan.kind === "session"
+      ? plan.startMs
+      : data?.webinar.session_start
+        ? new Date(data.webinar.session_start).getTime()
+        : null;
   useEffect(() => {
     if (nextStartMs !== null && nextStartMs > Date.now()) setWaiting(true);
   }, [nextStartMs]);
@@ -319,11 +352,14 @@ export function PublicRoom({
     }
   }, [slug]);
 
-  // As respostas da equipa de suporte chegam por sondagem, de 5 em 5 segundos.
+  // As respostas da equipa de suporte chegam por sondagem: de 30 em 30 segundos e, nos dois minutos
+  // a seguir a escrever (quando a resposta é esperada), de 5 em 5. Antes eram 12 pedidos por minuto a
+  // cada pessoa na sala, mesmo sem conversa.
+  const lastSentRef = useRef(0);
   const { data: privateThread, refetch: refetchThread, error: threadError } = useQuery({
     queryKey: ["public-room-messages", viewer?.token],
     enabled: Boolean(viewer?.token),
-    refetchInterval: 5000,
+    refetchInterval: () => (Date.now() - lastSentRef.current < 120_000 ? 5000 : 30_000),
     queryFn: () => fetchMessages({ data: { token: viewer!.token } }),
   });
   // Credencial recusada pelo servidor: volta ao formulário em vez de falhar de 5 em 5 segundos.
@@ -353,6 +389,7 @@ export function PublicRoom({
           sessionSeconds: Math.max(0, Math.round(positionRef.current)),
         },
       });
+      lastSentRef.current = Date.now();
       void refetchThread();
     },
     [sendMessage, viewer, refetchThread],
@@ -426,6 +463,7 @@ export function PublicRoom({
   const lastSentPeakRef = useRef(0);
   // Segundos vistos que ainda não chegaram ao servidor: se um envio falha, seguem no próximo.
   const pendingPlayedRef = useRef(0);
+  const pendingHeartsRef = useRef(0);
   const onProgress = useCallback(
     (seconds: number, peakSeconds?: number, options?: RoomProgressOptions) => {
       positionRef.current = seconds;
@@ -451,6 +489,18 @@ export function PublicRoom({
         }
       }
       if (!viewer) return;
+      // Ao esconder ou fechar a página, keepalive deixa o pedido terminar sem bloquear.
+      const keepalive: typeof fetch = (input, init) => fetch(input, { ...init, keepalive: true });
+      // Os corações juntos desde o último sinal: um registo para o Painel (se falhar, seguem no próximo).
+      pendingHeartsRef.current += options?.hearts ?? 0;
+      const hearts = Math.min(pendingHeartsRef.current, 500);
+      if (hearts > 0) {
+        pendingHeartsRef.current -= hearts;
+        const heartsData = { token: viewer.token, count: hearts, videoSecond: Math.max(0, Math.round(seconds)) };
+        void saveHearts(options?.final ? { data: heartsData, fetch: keepalive } : { data: heartsData }).catch(() => {
+          pendingHeartsRef.current += hearts;
+        });
+      }
       pendingPlayedRef.current += options?.played ?? 0;
       // O servidor soma no máximo 120 s por sinal; o resto segue no próximo.
       const played = Math.min(pendingPlayedRef.current, 120);
@@ -465,17 +515,17 @@ export function PublicRoom({
         ...(options?.entry != null ? { entrySeconds: options.entry } : {}),
         playedSeconds: played,
       };
-      // Ao esconder ou fechar a página, keepalive deixa o pedido terminar sem bloquear.
-      const keepalive: typeof fetch = (input, init) => fetch(input, { ...init, keepalive: true });
       void trackProgress(options?.final ? { data, fetch: keepalive } : { data }).catch(() => {
         if (lastSentPeakRef.current === peak) lastSentPeakRef.current = previous;
         pendingPlayedRef.current += played;
       });
     },
-    [trackProgress, viewer, slug],
+    [trackProgress, saveHearts, viewer, slug],
   );
 
   if (!hydrated || isLoading) return <RoomSkeleton theme={skeletonTheme} />;
+  // Quem já entrou: espera-se pela sessão dela antes de desenhar (sem mostrar a espera ou o «ao vivo» errado).
+  if (viewerState.isLoading) return <RoomSkeleton theme={skeletonTheme} />;
 
   if (!data)
     return (
@@ -497,7 +547,7 @@ export function PublicRoom({
   });
   const offerClosedByDeadline = offerDeadlinePassed(webinar.offer_deadline, webinar.timezone, Date.now());
 
-  const startMs = webinar.session_start ? new Date(webinar.session_start).getTime() : null;
+  const startMs = plan.kind === "session" ? plan.startMs : webinar.session_start ? new Date(webinar.session_start).getTime() : null;
   // Com o temporizador de arranque ligado, a sala abre antes da hora: as pessoas
   // entram, o chat funciona e o lugar do vídeo mostra a contagem animada.
   const countdown = roomCountdown(webinar.live.countdown, webinar);
@@ -507,7 +557,8 @@ export function PublicRoom({
     roomMode === "live" &&
     !testMode &&
     webinar.waiting_room_enabled &&
-    webinar.waiting_open !== false &&
+    // Quem já tem a sessão acabada (replay, terminou, comprou) não espera pela próxima sessão do webinar.
+    (plan.kind === "session" || (plan.kind === "global" && webinar.waiting_open !== false)) &&
     roomOpensMs !== null &&
     roomOpensMs > Date.now() &&
     waiting;
@@ -516,6 +567,7 @@ export function PublicRoom({
   // transmissão. A sala de espera só volta a abrir no dia da sessão seguinte.
   // A sala de teste nunca mostra este ecrã — entra sempre.
   const sessionClosed =
+    plan.kind === "global" &&
     roomMode === "live" &&
     !testMode &&
     Boolean(webinar.session_ended) &&
@@ -580,8 +632,41 @@ export function PublicRoom({
       </main>
     );
 
+  // A sessão desta pessoa já acabou e ela já comprou: tem acesso, não volta a ver a venda.
+  if (plan.kind === "bought")
+    return (
+      <main className={`room-ambient flex min-h-dvh items-center justify-center px-6 text-center ${themeClass}`}>
+        <div className="max-w-sm space-y-3">
+          <p className="text-xs font-bold uppercase tracking-[0.3em] text-room-subtle">Compra confirmada</p>
+          <h1 className="text-2xl font-black text-room-text">Já tem acesso</h1>
+          <p className="text-sm leading-relaxed text-room-subtle">
+            A sua compra de «{webinar.public_title}» está confirmada. Use o acesso que recebeu depois do pagamento; se não o
+            encontrar, procure no e-mail que usou na compra.
+          </p>
+        </div>
+      </main>
+    );
+
+  // A sessão desta pessoa já acabou e o webinar não tem replay: terminou para ela (sem a convidar para «a
+  // próxima» como se fosse nova; o mesmo «ao vivo» não volta a passar-lhe).
+  if (plan.kind === "ended")
+    return (
+      <main className={`room-ambient flex min-h-dvh items-center justify-center px-6 text-center ${themeClass}`}>
+        <div className="max-w-md space-y-4">
+          <p className="text-xs font-bold uppercase tracking-[0.3em] text-room-subtle">Transmissão terminou</p>
+          <h1 className="text-2xl font-black text-room-text sm:text-3xl">{webinar.public_title}</h1>
+          <p className="text-sm leading-relaxed text-room-subtle">
+            A sua sessão ({formatSessionStart(plan.startMs, webinar.timezone)}) já terminou e esta aula não fica gravada.
+          </p>
+        </div>
+      </main>
+    );
+
+  // A sessão desta pessoa acabou e há replay: retoma onde ficou, como gravação.
+  const effectiveMode = plan.kind === "replay" ? "replay" : roomMode;
+
   // O prazo da oferta fecha também o replay.
-  if (roomMode === "replay" && offerClosedByDeadline && !testMode)
+  if (effectiveMode === "replay" && offerClosedByDeadline && !testMode)
     return (
       <main className={`room-ambient flex min-h-dvh items-center justify-center px-6 text-center ${themeClass}`}>
         <div className="max-w-sm space-y-3">
@@ -663,8 +748,9 @@ export function PublicRoom({
         title={webinar.public_title}
         live={live.live}
         liveLabel={live.label}
+        // O vídeo desfocado por trás do formulário é enfeite: a poupar dados, fica o fundo liso (nada descarrega).
         video={
-          isDirectVideo(webinar.video_url, webinar.video_provider)
+          !saveData && isDirectVideo(webinar.video_url, webinar.video_provider)
             ? { url: webinar.video_url!, startSeconds: elapsed }
             : null
         }
@@ -689,9 +775,14 @@ export function PublicRoom({
   // contagem de prelive e sem depender da hora marcada. O vídeo arranca de
   // imediato (retoma onde parou, se já tiver visto) e todo o conteúdo segue o
   // relógio do vídeo, como num replay ao vivo.
-  const roomStartsAt = testMode ? null : webinar.session_start;
-  const syncWithStart = testMode ? false : webinar.sync_video_with_start;
-  const effectivePreliveSeconds = testMode ? 0 : preliveSeconds;
+  // Quem regressa segue a sua sessão (`plan`); no replay depois da sessão, retoma onde ficou (neste aparelho,
+  // ou até onde viu noutro).
+  const roomStartsAt =
+    testMode || plan.kind === "replay" ? null : plan.kind === "session" ? new Date(plan.startMs).toISOString() : webinar.session_start;
+  const syncWithStart = testMode || plan.kind === "replay" ? false : webinar.sync_video_with_start;
+  const effectivePreliveSeconds = testMode || plan.kind === "replay" ? 0 : preliveSeconds;
+  const resumeAt = plan.kind === "replay" ? (resumeSeconds ?? plan.resumeSeconds) : resumeSeconds;
+  const resumePeak = plan.kind === "replay" ? Math.max(resumePeakSeconds ?? 0, plan.resumeSeconds) : resumePeakSeconds;
 
 
 
@@ -720,7 +811,7 @@ export function PublicRoom({
         email: values["email"] ?? "",
         phone: values["whatsapp"] ? `${phoneCountry.dial} ${values["whatsapp"]}` : "",
       }}
-      mode={roomMode}
+      mode={effectiveMode}
       startsAt={roomStartsAt}
       viewerName={asTeam?.name ?? viewer?.name ?? ""}
       // A equipa não entra na presença: não conta na Vista ao vivo.
@@ -734,8 +825,8 @@ export function PublicRoom({
       socialProof={socialProof}
       purchases={simulatedPurchases}
       syncWithStart={syncWithStart}
-      resumeSeconds={syncWithStart ? null : resumeSeconds}
-      resumePeakSeconds={resumePeakSeconds}
+      resumeSeconds={syncWithStart ? null : resumeAt}
+      resumePeakSeconds={resumePeak}
       preliveSeconds={effectivePreliveSeconds}
       preliveSound={countdown.sound}
       preliveMessage={preliveTitle(webinar.prelive_message)}
@@ -783,6 +874,8 @@ export function PublicRoom({
         video_url: webinar.video_url,
         video_provider: webinar.video_provider,
         duration_seconds: webinar.duration_seconds,
+        // O convite do grupo do fluxo (vem do servidor; leitura opcional até todas as versões o trazerem).
+        group_url: (webinar as { group_url?: string | null }).group_url ?? null,
       }}
     />
   );

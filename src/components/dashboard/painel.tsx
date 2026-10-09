@@ -423,6 +423,8 @@ export type Results = {
   buyers: number;
   /** Mensagens escritas na sala; null quando não foi possível ler. */
   messages: number | null;
+  /** Corações tocados na sala; null quando não foi possível ler. */
+  reactions?: number | null;
   /** Pagamentos aprovados no período. */
   purchases: number;
   revenue: { currency: string; amount: number }[];
@@ -514,10 +516,10 @@ export function ResultsCard({
         />
         <Stat
           loading={busy}
-          label="Mensagens no chat"
-          value={r?.messages == null ? "—" : nf.format(r.messages)}
-          sub={r?.messages == null ? "Não foi possível contar" : "As reacções não ficam guardadas"}
-          title="Mensagens que os participantes escreveram no chat da sala. As reacções não ficam guardadas, por isso não se contam."
+          label="Reacções"
+          value={r?.reactions == null ? "—" : nf.format(r.reactions)}
+          sub={r?.messages == null ? "Mensagens por contar" : `${nf.format(r.messages)} mensagens no chat`}
+          title="Corações tocados na sala e mensagens que os participantes escreveram no chat."
         />
         <Stat
           loading={busy}

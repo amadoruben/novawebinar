@@ -703,6 +703,34 @@ describe("horas de silêncio, links e sessão que mudou", () => {
     expect(advances()[0]).toMatchObject({ _status: "failed", _error: "A mensagem usa {{link_oferta}} (falta o link da oferta no webinar)" });
   });
 
+  it("{{falta}}: conta à hora do envio, a partir da sessão desta pessoa, no fuso do webinar", async () => {
+    at("2026-10-11T08:00:00Z"); // 09:00 em Luanda
+    const remind = (sessionId: string, startsAt: string) => {
+      flow([{ channel: "email", target: "contact", subject: "Lembrete", message: "Olá {{primeiro_nome}}, {{falta}}!" }], "webinar_registered");
+      answers["rpc.claim_automation_runs"] = {
+        data: [{ ...RUN, webinar_session_id: sessionId, occurrence_key: "webinar_registered:1", cursor: "m", guards: [], steps_log: [] }],
+        error: null,
+      };
+      answers["webinars"] = { data: { id: "web-1", public_title: "Aula", internal_name: "aula", slug: "aula", timezone: "Africa/Luanda" }, error: null };
+      answers["webinar_sessions"] = { data: { id: sessionId, starts_at: startsAt, ends_at: null }, error: null };
+    };
+    const sent = () => (advances().at(-1)!["_log"] as { preview?: { message: string }[] }[])[0]!.preview![0]!.message;
+    remind("tarde", "2026-10-11T10:00:00Z");
+    await runDueAutomations();
+    expect(sent()).toBe("Olá Ana, começa daqui a 2 horas!");
+    remind("noite", "2026-10-12T19:00:00Z");
+    await runDueAutomations();
+    expect(sent()).toBe("Olá Ana, é amanhã às 20:00!");
+    expect(filters.filter((f) => f.table === "webinar_sessions" && f.name === "eq" && f.args[0] === "id").map((f) => f.args[1])).toEqual(["tarde", "noite"]);
+  });
+
+  it("{{falta}} sem sessão: a mensagem não sai e diz porquê", async () => {
+    at("2026-07-10T12:00:00Z");
+    flow([{ channel: "email", target: "contact", subject: "Lembrete", message: "Olá, {{falta}}!" }]);
+    await runDueAutomations();
+    expect(advances()[0]).toMatchObject({ _status: "failed", _error: "A mensagem usa {{falta}} (falta a sessão da pessoa: este gatilho não a traz)" });
+  });
+
   it("a sessão passou para mais tarde: o lembrete acompanha a hora nova em vez de sair cedo", async () => {
     at("2026-10-01T19:00:00Z");
     flow([{ channel: "webhook", target: "webhook" }], "webinar_registered", [{ id: "w", kind: "wait", mode: "before_session", minutes: 60, next: "m" }]);

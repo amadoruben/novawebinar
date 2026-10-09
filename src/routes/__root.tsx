@@ -12,6 +12,22 @@ import type { ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import appCss from "../styles.css?url";
 
+// Depois de uma publicação, os ficheiros do deploy anterior dão 404: quem tinha a página aberta (a sala
+// durante um live) recarregava a meio e ficava preso. Recarrega uma vez; no máximo uma por minuto, para
+// nunca entrar num ciclo se o erro for outro.
+if (typeof window !== "undefined") {
+  window.addEventListener("vite:preloadError", (event) => {
+    try {
+      if (Date.now() - Number(window.sessionStorage.getItem("cw:reload") ?? 0) < 60_000) return;
+      window.sessionStorage.setItem("cw:reload", String(Date.now()));
+    } catch {
+      return;
+    }
+    event.preventDefault();
+    window.location.reload();
+  });
+}
+
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">

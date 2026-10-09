@@ -10,10 +10,12 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { fetchAll } from "@/lib/fetch-all";
+import { flowGroupInvite } from "@/lib/flow-group.server";
 import { PROVIDERS } from "@/lib/integrations";
 import { notifyOutgoing } from "@/lib/integrations.server";
 import { liveSettings, parseExtraOffers, roomFormat } from "@/lib/room-logic";
 import { sessionWindow } from "@/lib/schedule";
+import { smallImage } from "@/lib/shrink-image";
 
 const UNAVAILABLE = "Serviço temporariamente indisponível. Tente novamente.";
 
@@ -39,6 +41,25 @@ export async function notifyWebhook(
   }
 }
 
+/**
+ * Um só URL assinado por vídeo, partilhado por quem entra durante 12 h (vale 24 h): o CDN do
+ * Supabase serve-o da cache (HIT, ~0,12 s ao primeiro byte) em vez de ir à origem por cada pessoa.
+ * Uma assinatura falhada não fecha a sala: fica o link guardado.
+ * ponytail: memória da instância da função; cada instância assina o seu. Chega enquanto forem poucas.
+ */
+const signedVideos = new Map<string, { url: string; until: number }>();
+async function signedVideoUrl(path: string): Promise<string | null> {
+  const cached = signedVideos.get(path);
+  if (cached && cached.until > Date.now()) return cached.url;
+  const { data } = await supabaseAdmin.storage
+    .from("webinar-videos")
+    .createSignedUrl(path, 60 * 60 * 24)
+    .catch(() => ({ data: null }));
+  if (!data?.signedUrl) return null;
+  signedVideos.set(path, { url: data.signedUrl, until: Date.now() + 12 * 3600_000 });
+  return data.signedUrl;
+}
+
 export async function loadPublicRoom(slug: string) {
   const { data: webinar, error: webinarError } = await supabaseAdmin
     .from("webinars")
@@ -52,7 +73,9 @@ export async function loadPublicRoom(slug: string) {
   if (webinarError) throw new Error(UNAVAILABLE);
   if (!webinar) return null;
 
-  const parts = await Promise.all([
+  const source = webinar.video_sources;
+  // A assinatura do vídeo e o convite do grupo correm ao lado das seis leituras, em vez de esperar por elas.
+  const [parts, signedVideo, groupUrl] = await Promise.all([Promise.all([
     // Um webinar longo passa dos 1000 comentários; cortados, o chat calava-se a meio.
     fetchAll((from, to) =>
       supabaseAdmin
@@ -97,7 +120,9 @@ export async function loadPublicRoom(slug: string) {
       .select("segments, video_source_id")
       .eq("webinar_id", webinar.id)
       .maybeSingle(),
-  ]);
+  ]), source?.storage_path ? signedVideoUrl(source.storage_path) : null,
+    // Nunca rejeita: sem grupo no fluxo (ou com a leitura falhada) vem null e o botão não aparece.
+    flowGroupInvite(webinar.organization_id, webinar.id)]);
   // Uma sala sem comentários ou sem oferta por causa de uma leitura falhada
   // substituiria a sala boa de quem já está a assistir.
   if (parts.some((part) => part.error)) throw new Error(UNAVAILABLE);
@@ -120,19 +145,12 @@ export async function loadPublicRoom(slug: string) {
     if (info?.setting?.pattern.test(id)) pixels[row.provider as keyof typeof pixels] = id;
   }
 
-  const source = webinar.video_sources;
   const duration = source?.duration_seconds || webinar.duration_seconds;
   const session = sessionWindow({ ...webinar, duration_seconds: duration });
 
-  // Vídeo guardado no bucket privado: URL assinado só para esta reprodução.
-  // Vídeos externos (ou enviados antes de existir `storage_path`) mantêm o link guardado.
-  let videoUrl: string | null = source?.source_url ?? null;
-  if (source?.storage_path) {
-    const { data: signed } = await supabaseAdmin.storage
-      .from("webinar-videos")
-      .createSignedUrl(source.storage_path, 60 * 60 * 24);
-    if (signed?.signedUrl) videoUrl = signed.signedUrl;
-  }
+  // Vídeo guardado no bucket privado: URL assinado. Vídeos externos (ou enviados antes de existir
+  // `storage_path`) mantêm o link guardado.
+  const videoUrl: string | null = signedVideo ?? source?.source_url ?? null;
 
   // Legendas só da transcrição deste vídeo: a de um vídeo trocado diria outra coisa.
   const captions =
@@ -153,7 +171,8 @@ export async function loadPublicRoom(slug: string) {
       description: webinar.description,
       host_name: webinar.host_name ?? "",
       host_role: webinar.host_role ?? "",
-      host_avatar_url: webinar.host_avatar_url ?? "",
+      // Na Vercel, a foto carregada antes da redução (até 900 KB, mostrada a 28–48 px) sai pequena.
+      host_avatar_url: process.env["VERCEL"] ? smallImage(webinar.host_avatar_url ?? "") : (webinar.host_avatar_url ?? ""),
       chat_pin_title: webinar.chat_pin_title ?? "",
       chat_pin_message: webinar.chat_pin_message ?? "",
       offer_pin_title: webinar.offer_pin_title ?? "",
@@ -215,6 +234,8 @@ export async function loadPublicRoom(slug: string) {
       share_description: webinar.share_description,
       share_image_url: webinar.share_image_url,
       video_url: videoUrl,
+      /** Convite do grupo de WhatsApp do fluxo deste webinar (o mesmo de {{link_grupo}}). */
+      group_url: groupUrl,
       video_provider: source?.provider ?? null,
     },
     comments: comments ?? [],

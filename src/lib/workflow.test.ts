@@ -11,6 +11,8 @@ import {
   conditionsHold,
   connect,
   duplicateNode,
+  groupInvite,
+  readCanvas,
   guardsHold,
   insertAfter,
   isModelAsIs,
@@ -35,6 +37,7 @@ import {
   sendLabel,
   sendMissing,
   stageOf,
+  timeLeft,
   unreachable,
   validateSteps,
   waitLabel,
@@ -654,5 +657,76 @@ describe("o modelo entra só quando se escolhe", () => {
     expect((renameGroupIn(steps, "Velho", "Novo")!.nodes[0] as ActionNode).sends.map((s) => s.group)).toEqual(["Novo", undefined]);
     expect(renameGroupIn(steps, "Outro", "Novo")).toBeNull();
     expect(renameGroupIn(steps, "Velho", "Velho")).toBeNull();
+  });
+});
+
+describe("quanto falta ({{falta}})", () => {
+  // Luanda (UTC+1, sem hora de verão): a sessão das 15:00 é às 14:00Z e a das 20:00 às 19:00Z.
+  const LUANDA = "Africa/Luanda";
+  const at = (iso: string) => new Date(iso);
+  const s = (startsAt: string, endsAt: string | null = null) => ({ startsAt, endsAt });
+  const noite = s("2026-10-12T19:00:00Z", "2026-10-12T20:30:00Z");
+
+  it("dias, amanhã e hoje pelo calendário do fuso do webinar", () => {
+    expect(timeLeft(s("2026-10-17T19:00:00Z"), at("2026-10-10T08:00:00Z"), LUANDA)).toBe("faltam 7 dias");
+    expect(timeLeft(noite, at("2026-10-10T08:00:00Z"), LUANDA)).toBe("faltam 2 dias");
+    expect(timeLeft(noite, at("2026-10-11T08:00:00Z"), LUANDA)).toBe("é amanhã às 20:00");
+    expect(timeLeft(noite, at("2026-10-12T08:00:00Z"), LUANDA)).toBe("é hoje às 20:00");
+  });
+
+  it("nas últimas 6 horas conta em horas e minutos, mesmo a passar a meia-noite", () => {
+    expect(timeLeft(noite, at("2026-10-12T17:00:00Z"), LUANDA)).toBe("começa daqui a 2 horas");
+    expect(timeLeft(noite, at("2026-10-12T18:01:00Z"), LUANDA)).toBe("começa daqui a 1 hora");
+    expect(timeLeft(noite, at("2026-10-12T18:45:00Z"), LUANDA)).toBe("começa daqui a 15 minutos");
+    expect(timeLeft(noite, at("2026-10-12T18:59:50Z"), LUANDA)).toBe("começa agora");
+    const madrugada = s("2026-10-12T00:00:00Z"); // 01:00 em Luanda
+    expect(timeLeft(madrugada, at("2026-10-11T21:00:00Z"), LUANDA)).toBe("começa daqui a 3 horas");
+    expect(timeLeft(madrugada, at("2026-10-11T17:00:00Z"), LUANDA)).toBe("é amanhã à 01:00");
+  });
+
+  it("o fuso muda o dia e a hora: o do webinar, nunca o do servidor", () => {
+    const now = at("2026-10-11T23:30:00Z"); // 00:30 do dia 12 em Luanda; 23:30 do dia 11 em UTC
+    expect(timeLeft(noite, now, LUANDA)).toBe("é hoje às 20:00");
+    expect(timeLeft(noite, now, "UTC")).toBe("é amanhã às 19:00");
+    expect(timeLeft(noite, now, "America/Sao_Paulo")).toBe("é amanhã às 16:00");
+    expect(timeLeft(noite, now)).toBe("é amanhã às 19:00");
+  });
+
+  it("cada pessoa conta a partir da sua sessão (tarde, noite, outro dia)", () => {
+    const now = at("2026-10-12T12:00:00Z"); // 13:00 em Luanda
+    expect(timeLeft(s("2026-10-12T14:00:00Z"), now, LUANDA)).toBe("começa daqui a 2 horas");
+    expect(timeLeft(noite, now, LUANDA)).toBe("é hoje às 20:00");
+    expect(timeLeft(s("2026-10-13T14:00:00Z"), now, LUANDA)).toBe("é amanhã às 15:00");
+    expect(timeLeft(s("2026-10-15T19:00:00Z"), now, LUANDA)).toBe("faltam 3 dias");
+  });
+
+  it("sessão a decorrer, terminada ou em falta", () => {
+    expect(timeLeft(noite, at("2026-10-12T19:30:00Z"), LUANDA)).toBe("já começou");
+    expect(timeLeft(s("2026-10-12T19:00:00Z"), at("2026-10-13T19:00:00Z"), LUANDA)).toBe("já começou");
+    expect(timeLeft(noite, at("2026-10-12T20:30:00Z"), LUANDA)).toBe("já terminou");
+    expect(timeLeft(null, at("2026-10-12T19:30:00Z"), LUANDA)).toBe("");
+    expect(timeLeft(s(null as never), at("2026-10-12T19:30:00Z"), LUANDA)).toBe("");
+  });
+
+  it("vazio não sai: a mensagem com {{falta}} sem sessão falha com o motivo", () => {
+    expect(missingLinks(["Olá {{primeiro_nome}}, {{falta}}!"], { falta: "" })).toEqual(["{{falta}} (falta a sessão da pessoa: este gatilho não a traz)"]);
+    expect(missingLinks(["Olá {{primeiro_nome}}, {{falta}}!"], { falta: "faltam 2 dias" })).toEqual([]);
+    expect(renderMessage("Olá {{primeiro_nome}}, {{falta}}!", { primeiro_nome: "Ana", falta: "é amanhã às 20:00" })).toBe("Olá Ana, é amanhã às 20:00!");
+  });
+});
+
+describe("convite do grupo do fluxo", () => {
+  const canvas = (...urls: string[]) => ({ nodes: urls.map((url, i) => ({ id: `g${i}`, kind: "group" as const, name: `G${i}`, url })), positions: {} });
+
+  it("o primeiro grupo com link; sem protocolo ganha https://; só http(s)", () => {
+    expect(groupInvite(canvas("", " https://chat.whatsapp.com/AbC ", "https://chat.whatsapp.com/Outro"))).toBe("https://chat.whatsapp.com/AbC");
+    expect(groupInvite(canvas("chat.whatsapp.com/AbC"))).toBe("https://chat.whatsapp.com/AbC");
+    expect(groupInvite(canvas("javascript:alert(1)", "mailto:x@y.z"))).toBeNull();
+    expect(groupInvite(canvas())).toBeNull();
+  });
+
+  it("um canvas estragado na base não parte a sala (que lê o convite ao abrir)", () => {
+    const broken = readCanvas({ nodes: [null, { kind: "group", url: 42 }, { kind: "group", url: "chat.whatsapp.com/Ok" }] });
+    expect(groupInvite(broken)).toBe("https://chat.whatsapp.com/Ok");
   });
 });

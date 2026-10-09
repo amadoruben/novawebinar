@@ -335,6 +335,11 @@ function ActionEditor({ node, status, groups, onChange }: { node: ActionNode; st
                     </button>
                   ))}
                 </div>
+                {/\{\{\s*falta\s*\}\}/.test(s.message ?? "") && (
+                  <p className="text-xs text-muted-foreground">
+                    {"{{falta}}"} conta a partir da sessão de cada pessoa, à hora do envio: «faltam 2 dias», «é amanhã às 20:00», «começa daqui a 2 horas» ou «já começou».
+                  </p>
+                )}
               </>
             )}
             {missing.length > 0 && <p className="text-xs font-medium text-warning">Falta: {missing.join(", ")}</p>}

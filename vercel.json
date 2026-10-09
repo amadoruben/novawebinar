@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["gru1"],
+  "images": {
+    "sizes": [160],
+    "domains": [],
+    "remotePatterns": [
+      {
+        "protocol": "https",
+        "hostname": "xvijbyddczciqswtaycj.supabase.co",
+        "pathname": "^/storage/v1/object/sign/.*$"
+      }
+    ],
+    "formats": ["image/webp"],
+    "minimumCacheTTL": 2678400
+  }
+}

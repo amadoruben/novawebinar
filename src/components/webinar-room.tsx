@@ -85,6 +85,8 @@ import { PreliveCountdown, unlockPreliveAudio } from "@/components/prelive-count
 import { watchedStep } from "@/lib/participant-facts";
 import { chatEcho, placeOf, type ChatPerson } from "@/lib/chat-reactions";
 import type { RoomTeamMessage, TeamRole } from "@/lib/room-team";
+import { useDataSaver } from "@/lib/room-data-saver";
+import whatsappIcon from "@/assets/local/whatsapp-icon.webp";
 
 /** O que a sala envia com cada sinal de progresso. */
 export type RoomProgressOptions = {
@@ -93,6 +95,8 @@ export type RoomProgressOptions = {
   entry?: number | null;
   /** Segundos vistos desde o sinal anterior. */
   played?: number;
+  /** Corações que a pessoa tocou desde o sinal anterior (o Painel conta-os). */
+  hearts?: number;
 };
 
 type Mode = "live" | "replay";
@@ -125,6 +129,8 @@ export type RoomWebinar = {
   video_url: string | null;
   video_provider: string | null;
   duration_seconds: number;
+  /** O convite do grupo de WhatsApp do fluxo: o botão na espera (o «Obrigado» depois da inscrição). */
+  group_url?: string | null;
 };
 
 export type RoomSocialProof = {
@@ -307,10 +313,19 @@ export function WebinarRoom({
   const roomRef = useRef<HTMLElement>(null);
   const feedRef = useRef<HTMLDivElement>(null);
   const keyboardFrameRef = useRef<number | null>(null);
-  const { hearts, sendHeart } = useHearts(webinar.id);
+  const { hearts, sendHeart: shareHeart } = useHearts(webinar.id);
+  // Os corações desta pessoa juntam-se e seguem com o progresso (de 30 em 30 s), nunca um pedido por toque.
+  const tappedRef = useRef(0);
+  const sendHeart = useCallback(() => {
+    tappedRef.current += 1;
+    shareHeart();
+  }, [shareHeart]);
   const [checkout, setCheckout] = useState(false);
   // O navegador só deixa arrancar sem som. Pedimos um toque para ligar o áudio.
   const [soundOn, setSoundOn] = useState(false);
+  // «Poupar dados» (rede lenta, poupança do telemóvel ou escolhido no ⚙): no máximo 360p e o vídeo só
+  // descarrega depois do toque (por trás do botão de entrar fica a capa, em vez do vídeo a correr).
+  const [saveData, setSaveData] = useDataSaver();
   const [volume, setVolume] = useState(1);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [captionsOn, setCaptionsOn] = useState(false);
@@ -348,6 +363,17 @@ export function WebinarRoom({
   // baixo, o chat e a caixa de escrever, no tema da sala. O vídeo ao alto continua a encher o ecrã.
   const portrait = useMedia("(orientation: portrait)");
   const liveStack = liveLayout && !wide && portrait && videoShape !== "vertical";
+  // A moldura do Live: só a forma do vídeo e o aparelho (a posição antiga gravada já não conta).
+  const liveBox = liveFrame(videoShape, wide ? "desk" : "phone");
+  // A moldura do vídeo no palco do Live (fora do empilhado), com as regras do telemóvel deitado.
+  const liveBoxClass = cn(
+    liveStack ? "absolute inset-0" : liveBox.box,
+    !wide &&
+      !liveStack &&
+      (liveBox.place === "fill"
+        ? "max-lg:landscape:h-full max-lg:landscape:w-[56.25cqh]"
+        : "max-lg:landscape:left-1/2 max-lg:landscape:top-1/2 max-lg:landscape:w-[min(100cqw,177.78cqh)] max-lg:landscape:-translate-x-1/2 max-lg:landscape:-translate-y-1/2"),
+  );
   // No Live o Suporte, a oferta inteira e as redes abrem numa folha por cima da sala.
   const [sheet, setSheet] = useState<null | "support" | "offer" | "follow">(null);
   const [offerMin, setOfferMin] = useState(false);
@@ -621,17 +647,19 @@ export function WebinarRoom({
   const flushProgress = useCallback((options?: { final?: boolean }) => {
     const played = Math.floor(playedRef.current);
     playedRef.current -= played;
+    const tapped = tappedRef.current;
+    tappedRef.current = 0;
     onProgressRef.current?.(
       Math.round(contentSecondsRef.current),
       Math.round(contentPeakRef.current),
-      { ...options, entry: entryRef.current, played },
+      { ...options, entry: entryRef.current, played, hearts: tapped },
     );
   }, []);
-  // Batimento fixo de 15 s (não reinicia com o tempo do vídeo), mais uma
-  // gravação ao esconder ou fechar a página e ao sair da sala.
+  // Batimento fixo de 30 s (não reinicia com o tempo do vídeo), mais uma
+  // gravação ao esconder ou fechar a página e ao sair da sala (o que fica por enviar segue no próximo).
   useEffect(() => {
     if (!onProgress) return;
-    const timer = window.setInterval(() => flushProgress(), 15000);
+    const timer = window.setInterval(() => flushProgress(), 30_000);
     const onHidden = () => {
       if (document.visibilityState === "hidden") flushProgress({ final: true });
     };
@@ -776,7 +804,8 @@ export function WebinarRoom({
     }
   }, [proofSchedule, waiting]);
 
-  // Compras reais da Kambafy: chegam no momento em que acontecem (de 20 em 20 segundos).
+  // Compras reais da Kambafy: lidas de minuto a minuto (a primeira leitura 15 s depois de entrar, para
+  // não juntar pedidos no arranque de um live); cada uma aparece quando chega.
   const fetchRealPurchases = useServerFn(getPublicRoomPurchases);
   const [realPurchases, setRealPurchases] = useState<{ id: string; buyer: string; product: string; arrived: Date }[]>([]);
   const realSinceRef = useRef(Date.now() - 10 * 60 * 1000);
@@ -798,10 +827,11 @@ export function WebinarRoom({
         /* tenta outra vez na próxima volta */
       }
     };
-    void load();
-    const timer = window.setInterval(() => void load(), 20_000);
+    const first = window.setTimeout(() => void load(), 15_000);
+    const timer = window.setInterval(() => void load(), 60_000);
     return () => {
       stopped = true;
+      window.clearTimeout(first);
       window.clearInterval(timer);
     };
   }, [sales?.real, mode, webinar.id, fetchRealPurchases]);
@@ -816,28 +846,25 @@ export function WebinarRoom({
     : realActive
       ? { name: realActive.buyer, text: `comprou ${realActive.product || "a vaga"}` }
       : null;
-  // O aviso de compra: no Webinar num ecrã ao alto, por cima do chat, logo acima da caixa de escrever; deitado e
-  // no computador (e no Live empilhado), no canto de baixo do vídeo (`SALE_TOAST_SPOT`, igual na
-  // pré-visualização); no palco do Live, por baixo da barra de cima. A posição antiga gravada
+  // O aviso de compra fica sempre no ecrã do vídeo, no canto de baixo, dentro da moldura (`SALE_TOAST_SPOT`,
+  // igual na pré-visualização); a legenda sobe por cima dele. Só no Live com o vídeo ao alto a encher o ecrã
+  // (o chat tapa o fundo do vídeo) entra logo acima das mensagens. A posição antiga gravada
   // (`socialProof.position`) já não se escolhe no editor e deixou de contar.
-  const toastInChat = !liveLayout && !wide && portrait;
-  const purchaseToast = showToasts && toastPurchase ? (
+  const toastOverChat = liveLayout && !liveStack && !wide && portrait && liveBox.place === "fill";
+  // Aí, com as compras também no chat, a linha do chat (logo ali, sobre o vídeo, como no Instagram) já é o
+  // aviso: dois iguais colados um ao outro só repetiam.
+  const purchaseToast = showToasts && toastPurchase && !(toastOverChat && showChatSales) ? (
     <SaleToast
       name={toastPurchase.name}
       text={toastPurchase.text}
       color={socialProof?.notification_color}
       compact={phoneSize}
-      className={
-        liveLayout && !liveStack
-          ? "left-[max(12px,env(safe-area-inset-left))] top-[calc(env(safe-area-inset-top)+60px)] md:portrait:left-5 md:portrait:top-[calc(env(safe-area-inset-top)+68px)] lg:left-5 lg:top-16"
-          : toastInChat
-            ? SALE_TOAST_SPOT.chat
-            : phoneSize
-              ? SALE_TOAST_SPOT.phone
-              : SALE_TOAST_SPOT.desk
-      }
+      className={toastOverChat ? SALE_TOAST_SPOT.feed : phoneSize ? SALE_TOAST_SPOT.phone : SALE_TOAST_SPOT.desk}
     />
   ) : null;
+  // No palco do Live, uma moldura igual à do vídeo, por cima dos véus, só para o aviso.
+  const liveToast =
+    purchaseToast && !toastOverChat ? <div className={cn(liveBoxClass, "pointer-events-none z-20 shadow-none")}>{purchaseToast}</div> : null;
 
   // O histórico de comentários segue o ponto mais avançado do vídeo: recuar
   // num replay não apaga o que já foi mostrado.
@@ -990,8 +1017,6 @@ export function WebinarRoom({
     video.addEventListener("loadedmetadata", read);
     return () => video.removeEventListener("loadedmetadata", read);
   }, [liveLayout, videoArmed]);
-  // A moldura do Live: só a forma do vídeo e o aparelho (a posição antiga gravada já não conta).
-  const liveBox = liveFrame(videoShape, wide ? "desk" : "phone");
   const videoNode = webinar.video_url ? (
     <VideoPlayer
       url={webinar.video_url}
@@ -1000,7 +1025,8 @@ export function WebinarRoom({
       // Nem ao vivo nem em replay se pode avançar ou recuar a sessão.
       controls={false}
       mediaRef={liveVideoRef}
-      autoPlay={videoArmed && !testPaused}
+      autoPlay={videoArmed && !testPaused && (soundOn || !saveData)}
+      saveData={saveData}
       muted={!videoArmed || (preliveEnding && !preliveReveal) || !soundOn}
       // Um leitor novo (rodar o tablet para o computador) retoma onde a pessoa ia, não no ponto de entrada.
       startAtSeconds={videoSeconds > 0 ? videoSeconds : startAtSeconds}
@@ -1067,6 +1093,8 @@ export function WebinarRoom({
           hasCaptions={captions.length > 0}
           appearance={appearance}
           onAppearance={(next) => onAppearance?.(next)}
+          saveData={saveData}
+          onSaveData={setSaveData}
         />
       </div>
     </div>
@@ -1125,6 +1153,8 @@ export function WebinarRoom({
         hasCaptions={captions.length > 0}
         appearance={appearance}
         onAppearance={(next) => onAppearance?.(next)}
+        saveData={saveData}
+        onSaveData={setSaveData}
       />
     ) : null;
   // No computador, o selo, quantos vêem e o ⚙ ficam dentro do vídeo, no canto de cima (nunca no preto à volta).
@@ -1159,20 +1189,11 @@ export function WebinarRoom({
           (liveLayout ? (
             // Regras fixas por aparelho, sem cortar nem esticar o vídeo (ver `liveFrame`).
             // Com o telemóvel deitado, o vídeo fica inteiro e ao centro.
-            <div
-              className={cn(
-                // Empilhado, a moldura já é o 16:9 do vídeo, no topo da sala.
-                liveStack ? "absolute inset-0" : liveBox.box,
-                !wide &&
-                  !liveStack &&
-                  (liveBox.place === "fill"
-                    ? "max-lg:landscape:h-full max-lg:landscape:w-[56.25cqh]"
-                    : "max-lg:landscape:left-1/2 max-lg:landscape:top-1/2 max-lg:landscape:w-[min(100cqw,177.78cqh)] max-lg:landscape:-translate-x-1/2 max-lg:landscape:-translate-y-1/2"),
-              )}
-            >
+            // Empilhado, a moldura já é o 16:9 do vídeo, no topo da sala.
+            <div className={liveBoxClass}>
               {videoNode}
               {/* A legenda e o botão de entrar ficam no próprio vídeo (com o vídeo ao alto, a legenda sobe acima do chat). */}
-              {liveBox.place !== "fill" && !showPrelive && !needsAudioUnlock ? <CaptionLine text={caption} compact={!wide} size={captionSize} raised={liveStack && Boolean(purchaseToast)} /> : null}
+              {liveBox.place !== "fill" && !showPrelive && !needsAudioUnlock ? <CaptionLine text={caption} compact={!wide} size={captionSize} raised={Boolean(purchaseToast)} /> : null}
               {needsAudioUnlock ? (
                 <div className={cn("absolute inset-0 grid place-items-center", ENTRY_DIM)}>
                   <EntryPlay look={live.entry} kicker={entryKicker} compact={phoneSize} />
@@ -1222,7 +1243,7 @@ export function WebinarRoom({
         )}
         {!showPrelive && !needsAudioUnlock ? (
           !liveLayout ? (
-            <CaptionLine text={caption} compact={phoneSize} size={captionSize} raised={Boolean(purchaseToast) && !toastInChat} />
+            <CaptionLine text={caption} compact={phoneSize} size={captionSize} raised={Boolean(purchaseToast)} />
           ) : liveBox.place === "fill" ? (
             // O vídeo ao alto enche o ecrã e o chat ocupa o fundo: a legenda sobe para o meio.
             <div className="pointer-events-none absolute inset-x-0 top-0 h-[55%]">
@@ -1251,30 +1272,46 @@ export function WebinarRoom({
   // Live empilhado: os ecrãs de estado cabem na faixa 16:9 do vídeo, por baixo da barra do Live (letra e
   // espaços menores no telemóvel; a oferta já está no cartão por baixo).
   const strip = liveStack;
+  // A espera com o botão do grupo: no telemóvel, a mesma medida apertada da faixa, para tudo caber no 16:9.
+  const tight = strip || (phoneSize && Boolean(webinar.group_url));
   const player = showPrelive ? (
     liveArea
 
   ) : waiting ? (
-    <div className={cn("flex flex-col items-center justify-center text-center", frame, strip ? "gap-2 px-4 pb-2 pt-12 md:gap-4 md:pt-16" : "gap-5 px-6")}>
-      <p className={cn("font-bold uppercase tracking-[0.22em] text-primary", strip ? "text-[10px] md:text-[11px]" : "text-[11px]")}>
+    <div className={cn("flex flex-col items-center justify-center text-center", frame, tight ? "gap-2 px-4 pb-2 pt-12 md:gap-4 md:pt-16" : "gap-5 px-6")}>
+      <p className={cn("font-bold uppercase tracking-[0.22em] text-primary", tight ? "text-[10px] md:text-[11px]" : "text-[11px]")}>
         A transmissão começa em
       </p>
-      <div className={cn("flex", strip ? "gap-2 md:gap-3" : "gap-3")}>
+      <div className={cn("flex", tight ? "gap-2 md:gap-3" : "gap-3")}>
         {countdown.map(([value, label]) => (
           <div
             key={label}
-            className={cn("rounded-2xl bg-room-raised ring-1 ring-room-line", strip ? "min-w-14 px-2.5 py-1.5 md:min-w-20 md:px-4 md:py-3" : "min-w-20 px-4 py-3")}
+            className={cn("rounded-2xl bg-room-raised ring-1 ring-room-line", tight ? "min-w-14 px-2.5 py-1.5 md:min-w-20 md:px-4 md:py-3" : "min-w-20 px-4 py-3")}
           >
-            <p className={cn("font-black tabular-nums text-room-text", strip ? "text-lg md:text-2xl" : "text-2xl")}>
+            <p className={cn("font-black tabular-nums text-room-text", tight ? "text-lg md:text-2xl" : "text-2xl")}>
               {String(value).padStart(2, "0")}
             </p>
-            <p className={cn("font-bold uppercase tracking-widest text-room-subtle", strip ? "text-[9px] md:text-[10px]" : "text-[10px]")}>
+            <p className={cn("font-bold uppercase tracking-widest text-room-subtle", tight ? "text-[9px] md:text-[10px]" : "text-[10px]")}>
               {label}
             </p>
           </div>
         ))}
       </div>
-      <p className={cn("text-room-subtle", strip ? "text-[12px] md:text-sm" : "text-sm")}>Fique por aqui. Entramos no ar à hora marcada.</p>
+      <p className={cn("text-room-subtle", tight ? "text-[12px] md:text-sm" : "text-sm")}>Fique por aqui. Entramos no ar à hora marcada.</p>
+      {webinar.group_url ? (
+        <a
+          href={webinar.group_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(
+            "inline-flex h-11 shrink-0 items-center gap-2 rounded-xl bg-[#25D366] px-5 font-semibold text-[#0B141A] shadow-[0_6px_18px_rgba(37,211,102,.25)] transition hover:brightness-95 active:scale-[.98]",
+            tight ? "text-[14px] md:text-[15px]" : "text-[15px]",
+          )}
+        >
+          <img src={whatsappIcon} alt="" className="size-5" />
+          Entrar no grupo de WhatsApp
+        </a>
+      ) : null}
     </div>
   ) : finished && openAfter !== null && !offerClosed ? (
     <div className={cn("flex flex-col items-center justify-center text-center text-white", frame, strip ? "gap-1 px-4 pb-2 pt-12 md:gap-3 md:pt-16" : "gap-3 px-6")}>
@@ -1481,8 +1518,8 @@ export function WebinarRoom({
   // As compras também entram no chat: a última fica à vista (também no chat por cima do vídeo).
   useEffect(() => {
     for (const node of [feedRef.current, liveFeedRef.current]) if (node) node.scrollTop = node.scrollHeight;
-    // O aviso de compra no fluxo do chat (Webinar ao alto) encolhe-o: a última mensagem continua à vista.
-  }, [chatThread.length, liveStack, toastInChat && Boolean(toastPurchase)]);
+    // O aviso de compra por cima das mensagens (Live com o vídeo ao alto) encolhe o chat: a última continua à vista.
+  }, [chatThread.length, liveStack, toastOverChat && Boolean(toastPurchase)]);
 
 
   // Quem responde no Suporte (nos dois formatos): a equipa de quem apresenta.
@@ -1763,7 +1800,6 @@ export function WebinarRoom({
       </div>
       {chatPin}
       {tab === "offer" ? offerPanel() : feed}
-      {toastInChat ? purchaseToast : null}
       {phoneOffer}
       {mode === "replay" && tab !== "offer" ? (
         <p className="border-t border-room-line p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-center text-xs text-room-subtle">
@@ -1899,6 +1935,7 @@ export function WebinarRoom({
     const lower = (
       <>
         <div className={cn("contents", !wide && "md:portrait:flex md:portrait:w-[460px] md:portrait:flex-col", liveStack && "md:portrait:min-h-0 md:portrait:flex-1")}>
+          {toastOverChat ? purchaseToast : null}
           <LiveFeed
             feedRef={liveFeedRef}
             items={feedItems}
@@ -1977,7 +2014,7 @@ export function WebinarRoom({
               {/* Uma moldura igual à do vídeo, por cima de tudo, só para os cantos (o escudo de toque fica por baixo). */}
               {cornersInVideo ? <div className={cn(liveBox.box, "pointer-events-none z-30 shadow-none")}>{deskCorners}</div> : deskCorners}
               {soundPrompt}
-              {purchaseToast}
+              {liveToast}
               {testBar("absolute bottom-5 left-1/2 -translate-x-1/2")}
             </section>
             <aside className="relative flex h-full w-[400px] shrink-0 flex-col border-l border-room-line bg-room-surface">
@@ -2027,7 +2064,7 @@ export function WebinarRoom({
               shades
             )}
             {soundPrompt}
-            {purchaseToast}
+            {liveStack ? purchaseToast : liveToast}
             {liveStack ? lessonTimer({ bar: "absolute inset-x-0 bottom-0 z-20" }) : null}
           </div>
           {/* A barra do Live dentro do vídeo, encostada às margens (como no Instagram), por cima de tudo: o menu do ⚙ abre por baixo dela, dentro do ecrã. */}
@@ -2100,7 +2137,7 @@ export function WebinarRoom({
               chip: cn("absolute right-3 top-3 z-10 phone-land:right-16", test && ownVideo && !phoneSize && "top-14"),
             })}
             {soundPrompt}
-            {toastInChat ? null : purchaseToast}
+            {purchaseToast}
             {testBar(phoneSize ? "absolute left-2.5 top-12" : "absolute right-3 top-3")}
           </div>
           {/* Com o teclado aberto, o título sai: ficam o vídeo, as últimas mensagens e a caixa de escrever.

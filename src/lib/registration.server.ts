@@ -8,6 +8,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { leadSource } from "@/lib/contacts";
 import { fieldApiKey, parseEntryFields, validateEntry } from "@/lib/entry-fields";
 import { normalizeName, normalizePhone, originAllowed, parseRegistration, RateLimiter, type RegistrationError } from "@/lib/registration";
+import { originalRegistration } from "@/lib/room-viewer.server";
 
 export const WEBINAR_REGISTRATION_COLUMNS =
   "id, organization_id, status, slug, public_title, internal_name, webhook_url, webhook_enabled, schedule_mode, scheduled_at, session_end_time, recurrence_enabled, recurrence_pattern, recurrence_weekday, recurrence_start_time, recurrence_end_time, recurrence_days, recurrence_times, jit_interval_minutes, jit_skip_night, timezone, duration_seconds, entry_fields, registration_collect_phone, registration_require_phone, video_sources(duration_seconds)";
@@ -25,7 +26,7 @@ type RegistrationWebinar = NonNullable<Awaited<ReturnType<typeof loadRegistratio
 
 /** Dispositivo e localização a partir dos cabeçalhos do pedido. */
 export function audienceMetaFromHeaders(headers: Headers): {
-  device: "mobile" | "desktop" | null;
+  device: "mobile" | "tablet" | "desktop" | null;
   city: string | null;
   country: string | null;
   countryCode: string | null;
@@ -33,6 +34,8 @@ export function audienceMetaFromHeaders(headers: Headers): {
   const ua = headers.get("user-agent") ?? "";
   const mobileHint = headers.get("sec-ch-ua-mobile");
   const isMobile = mobileHint === "?1" || /Android|iPhone|iPad|iPod|Mobile|Opera Mini|IEMobile/i.test(ua);
+  // Tablet: iPad, «Tablet», ou Android sem «Mobile» (o iPadOS que se diz Mac só o browser distingue: detectDevice).
+  const isTablet = /iPad|Tablet|PlayBook|Silk|Kindle/i.test(ua) || (/Android/i.test(ua) && !/Mobi/i.test(ua));
   const code = (headers.get("cf-ipcountry") ?? headers.get("x-vercel-ip-country") ?? "").trim().toUpperCase();
   const rawCity = headers.get("cf-ipcity") ?? headers.get("x-vercel-ip-city") ?? headers.get("x-geo-city");
   let city = "";
@@ -42,7 +45,7 @@ export function audienceMetaFromHeaders(headers: Headers): {
     city = rawCity ?? "";
   }
   return {
-    device: ua ? (isMobile ? "mobile" : "desktop") : null,
+    device: ua ? (isTablet ? "tablet" : isMobile ? "mobile" : "desktop") : null,
     city: city || null,
     country: code && code !== "XX" ? countryNameFromIso(code) : null,
     countryCode: code && code !== "XX" ? code : null,
@@ -93,7 +96,7 @@ export type NewRegistration = {
   /** Respostas aos campos novos da página. */
   answers?: Record<string, string>;
   mode: "live" | "replay";
-  device: "mobile" | "desktop" | null;
+  device: "mobile" | "tablet" | "desktop" | null;
   city: string | null;
   country: string | null;
   countryCode: string | null;
@@ -107,10 +110,20 @@ export type NewRegistration = {
 };
 
 /** Grava a participação e avisa quem tem de ser avisado. O contacto nasce na base de dados. */
-export async function createRegistration(webinar: RegistrationWebinar, r: NewRegistration, sessionId: string | null) {
+export async function createRegistration(
+  webinar: RegistrationWebinar,
+  r: NewRegistration,
+  sessionId: string | null,
+  /** `false` quando quem chama já procurou a inscrição anterior (a captura). */
+  findOriginal = true,
+) {
   // Sala de teste: entra como convidado. Sem email real nem telefone a base de dados não cria
   // contacto, por isso não há evento de inscrição nem automações; a sala comporta-se igual.
   const internal = Boolean(r.email?.endsWith("@sala.local"));
+  // Uma segunda inscrição da mesma pessoa (outro aparelho, o formulário outra vez) fica na sessão original:
+  // o evento de inscrição não se repete (nem aquecimento nem lembretes) e a sala segue a sessão dela.
+  const original =
+    findOriginal && !r.teste && !internal ? await originalRegistration(webinar, { email: r.email, phone: r.phone }) : null;
   const email = r.teste && !internal ? `teste-${crypto.randomUUID().slice(0, 8)}@sala.local` : r.email;
   const { data: participant, error } = await supabaseAdmin
     .from("participants")
@@ -131,7 +144,7 @@ export async function createRegistration(webinar: RegistrationWebinar, r: NewReg
       utm_content: r.utm.utm_content ?? null,
       utm_term: r.utm.utm_term ?? null,
       referrer: r.referrer,
-      webinar_session_id: sessionId,
+      webinar_session_id: original?.webinar_session_id ?? sessionId,
       registration_source: r.source,
       form_id: r.formId ?? null,
       consent_at: r.consentAt ?? null,
@@ -284,15 +297,15 @@ export async function registerFromCapture(
   type Row = { id: string; contact_id: string | null; webinar_session_id: string | null };
   /** `own`: quem pede criou esta inscrição (agora, ou com a mesma submissão); só então leva os ids. */
   const done = async (status: "registered" | "already_registered", participant: Row, own = true) => {
-    let startsAt = webinar.scheduled_at;
-    if (participant.webinar_session_id) {
-      const { data } = await supabaseAdmin
-        .from("webinar_sessions")
-        .select("starts_at")
-        .eq("id", participant.webinar_session_id)
-        .maybeSingle();
-      startsAt = data?.starts_at ?? startsAt;
-    }
+    const { flowGroupInvite } = await import("@/lib/flow-group.server");
+    // A hora da sessão desta pessoa e o convite do grupo do fluxo (o formulário mostra o botão), lidos juntos.
+    const [session, groupUrl] = await Promise.all([
+      participant.webinar_session_id
+        ? supabaseAdmin.from("webinar_sessions").select("starts_at").eq("id", participant.webinar_session_id).maybeSingle()
+        : null,
+      flowGroupInvite(webinar.organization_id, webinar.id),
+    ]);
+    const startsAt = session?.data?.starts_at ?? webinar.scheduled_at;
     return {
       status: status === "registered" ? 201 : 200,
       body: {
@@ -303,6 +316,7 @@ export async function registerFromCapture(
           : {}),
         webinar: { id: webinar.id, title: webinar.public_title || webinar.internal_name, starts_at: startsAt },
         room_url: `${req.appOrigin}/w/${webinar.slug}`,
+        group_url: groupUrl,
         message: form?.success_message || "Inscrição confirmada.",
         redirect_url: form?.redirect_url ?? null,
       },
@@ -324,17 +338,14 @@ export async function registerFromCapture(
   const same = await sameSubmission();
   if (same) return done("already_registered", same);
 
-  const sessionId = await openRegistrationSession(webinar, "live");
-  // A mesma pessoa na mesma sessão: uma inscrição (e o mesmo contacto, pela base de dados).
+  // A mesma pessoa outra vez: uma inscrição (e o mesmo contacto, pela base de dados), na sessão original enquanto
+  // ela não acabou ou se já viu (room-viewer.server); só quem nunca entrou numa sessão acabada passa para a seguinte.
   // A origem da primeira inscrição fica: nada é sobrescrito. Só o email (ou, sem ele, o WhatsApp)
   // coincide e qualquer pessoa o pode escrever: a resposta confirma sem devolver os ids da inscrição que já existe.
-  let existing = supabaseAdmin.from("participants").select(IDS).eq("webinar_id", webinar.id).limit(1);
-  existing = person.email
-    ? existing.ilike("email", person.email.replace(/[\\%_]/g, (c) => `\\${c}`))
-    : existing.eq("phone", person.phone!);
-  existing = sessionId ? existing.eq("webinar_session_id", sessionId) : existing.is("webinar_session_id", null);
-  const { data: already } = await existing;
-  if (already?.[0]) return done("already_registered", already[0], false);
+  const sessionId = await openRegistrationSession(webinar, "live");
+  const already = await originalRegistration(webinar, person);
+  // Uma inscrição sem sessão (replay) não prende quem agora se inscreve numa sessão.
+  if (already && (already.webinar_session_id !== null || sessionId === null)) return done("already_registered", already, false);
 
   // Sem UTM: os ids de clique dos anúncios (fbclid, gclid) no endereço da página e depois o
   // site de onde a pessoa chegou, com as mesmas regras da sala (leadSource).
@@ -385,6 +396,7 @@ export async function registerFromCapture(
       submissionId: v.submission_id ?? null,
     },
     sessionId,
+    false,
   );
   if (error || !participant) {
     // Duas submissões iguais ao mesmo tempo: a segunda encontra a primeira.

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { cn, isHttpUrl } from "@/lib/utils";
 import { posterFromUrl } from "@/components/video-thumb";
+import { levelCap } from "@/lib/room-data-saver";
 
 type Props = {
   url: string | null;
@@ -37,6 +38,8 @@ type Props = {
   syncToleranceSeconds?: number;
   /** Tema visual do leitor. */
   theme?: "dark" | "light";
+  /** Poupar dados: no HLS, no máximo 360p e pouco vídeo guardado à frente. */
+  saveData?: boolean;
 };
 
 function embedUrl(url: string, provider?: string | null): string | null {
@@ -139,13 +142,25 @@ export function VideoPlayer({
   syncToleranceSeconds = 4,
   theme = "dark",
   fit = "cover",
+  saveData = false,
 }: Props) {
   const ownVideoRef = useRef<HTMLVideoElement>(null);
   const videoRef = mediaRef ?? ownVideoRef;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const seekedRef = useRef(false);
   const targetRef = useRef<number | null>(liveTargetSeconds);
-  const hlsRef = useRef<{ startLoad: () => void; recoverMediaError: () => void } | null>(null);
+  const hlsRef = useRef<{
+    startLoad: () => void;
+    recoverMediaError: () => void;
+    levels: { height?: number }[];
+    autoLevelCapping: number;
+    capLevelToPlayerSize: boolean;
+    config: { maxBufferLength: number };
+  } | null>(null);
+  const autoPlayRef = useRef(autoPlay);
+  autoPlayRef.current = autoPlay;
+  const saveDataRef = useRef(saveData);
+  saveDataRef.current = saveData;
   const recoveryRef = useRef(0);
   const [failed, setFailed] = useState(false);
   const [playbackVisible, setPlaybackVisible] = useState(controls);
@@ -170,7 +185,8 @@ export function VideoPlayer({
   // com a imagem atrás do chat e da oferta — parece que o vídeo travou.
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || controls) return;
+    // Parado à espera do toque (poupar dados), não se acerta o ponto: cada salto descarregava vídeo.
+    if (!video || controls || !autoPlay) return;
 
     const resync = (force = false) => {
       const target = targetRef.current;
@@ -193,6 +209,7 @@ export function VideoPlayer({
     };
 
 
+    resync();
     const interval = window.setInterval(() => resync(), 2000);
     document.addEventListener("visibilitychange", wake);
     window.addEventListener("focus", wake);
@@ -220,6 +237,16 @@ export function VideoPlayer({
     video.setAttribute("webkit-playsinline", "");
   }, [muted, url]);
 
+  // O salto para o ponto de entrada, uma vez. A poupar dados e parado à espera do toque, fica para quando tocar:
+  // saltar antes descarregava vídeo que ninguém via.
+  const jumpToStart = (video: HTMLVideoElement) => {
+    const wanted = targetRef.current ?? startAtSeconds;
+    if (wanted > 0 && !seekedRef.current && Number.isFinite(video.duration)) {
+      seekedRef.current = true;
+      video.currentTime = Math.min(wanted, Math.max(0, video.duration - 1));
+    }
+  };
+
   // Mantém o leitor carregado e garante a reprodução assim que a sala o arma.
   // Durante a passagem ele arranca mudo atrás do preto, evitando bloqueios de autoplay.
   useEffect(() => {
@@ -245,6 +272,7 @@ export function VideoPlayer({
       }
     };
 
+    if (video.readyState >= HTMLMediaElement.HAVE_METADATA) jumpToStart(video);
     video.muted = muted;
     if (!muted) video.volume = 1;
     void ensurePlaying();
@@ -323,23 +351,22 @@ export function VideoPlayer({
         setFailed(true);
         return;
       }
-      // Sem limitar a qualidade ao tamanho do elemento: a imagem é desenhada
-      // num canvas em ecrã inteiro, por isso queremos sempre a resolução máxima.
+      // A qualidade nunca passa do tamanho do leitor no ecrã (o <video> escondido tem o tamanho do
+      // canvas) e arranca pela rede medida, não pela melhor: em 3G, 1080p logo à partida eram
+      // paragens e dados gastos. A poupar dados, no máximo 360p e só 10 s guardados à frente.
+      // O tecto pelo tamanho reescreve `autoLevelCapping` a cada mudança de tamanho: a poupar dados fica
+      // desligado, senão os 360p duravam até à primeira medição do leitor.
       const hls = new Hls({
-        capLevelToPlayerSize: false,
+        capLevelToPlayerSize: !saveDataRef.current,
         startLevel: -1,
-        maxBufferLength: 30,
+        maxBufferLength: saveDataRef.current ? 10 : 30,
       });
-      hls.autoLevelCapping = -1;
       hlsRef.current = hls;
       hls.loadSource(playbackUrl);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        const best = hls.levels.length - 1;
-        if (best >= 0) {
-          hls.startLevel = best;
-        }
-        if (autoPlay) void video.play().catch(() => undefined);
+        if (saveDataRef.current) hls.autoLevelCapping = levelCap(hls.levels);
+        if (autoPlayRef.current) void video.play().catch(() => undefined);
       });
       // Antes de desistir, tentamos recuperar: falhas de rede recarregam o
       // fluxo, falhas de imagem são reparadas pelo próprio motor. Só depois de
@@ -367,7 +394,23 @@ export function VideoPlayer({
       };
     });
     return () => destroy?.();
-  }, [autoPlay, isHls, playbackUrl, valid]);
+    // Sem `autoPlay`: o toque que liga o som não pode voltar a carregar o vídeo (o iPhone perdia o som).
+  }, [isHls, playbackUrl, valid]);
+
+  // Ligar ou desligar «Poupar dados» a meio: muda o tecto e o que se guarda à frente, sem recarregar.
+  useEffect(() => {
+    const hls = hlsRef.current;
+    if (!hls) return;
+    // Ligar o tecto pelo tamanho mede o leitor e escreve o seu tecto; desligá-lo apaga o tecto: a ordem conta.
+    if (saveData) {
+      hls.capLevelToPlayerSize = false;
+      hls.autoLevelCapping = levelCap(hls.levels);
+    } else {
+      hls.autoLevelCapping = -1;
+      hls.capLevelToPlayerSize = true;
+    }
+    hls.config.maxBufferLength = saveData ? 10 : 30;
+  }, [saveData]);
 
 
   const cls = cn(frameClass, className);
@@ -438,17 +481,15 @@ export function VideoPlayer({
       muted={muted}
       loop={loop}
       playsInline
-      preload="auto"
+      // Parado (pausado no editor), só os metadados; a poupar dados e à espera do toque, nada: por trás do botão
+      // fica a capa (ou o escuro), e o vídeo só começa a descarregar quando a pessoa toca.
+      preload={autoPlay ? "auto" : saveData ? "none" : "metadata"}
       disablePictureInPicture
       controlsList="nodownload noplaybackrate noremoteplayback"
       className={controls ? cn(cls, "object-cover") : "nw-live-video pointer-events-none absolute inset-0 size-full object-cover opacity-0"}
       onLoadedMetadata={(e) => {
         const video = e.currentTarget;
-        const wanted = targetRef.current ?? startAtSeconds;
-        if (wanted > 0 && !seekedRef.current && Number.isFinite(video.duration)) {
-          seekedRef.current = true;
-          video.currentTime = Math.min(wanted, Math.max(0, video.duration - 1));
-        }
+        if (autoPlay || !saveData) jumpToStart(video);
         if (autoPlay) void video.play().catch(() => undefined);
       }}
       tabIndex={-1}

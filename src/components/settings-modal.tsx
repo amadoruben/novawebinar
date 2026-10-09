@@ -22,6 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { useInvalidate, useWorkspace, type Workspace } from "@/lib/data";
 import { friendlyError } from "@/lib/friendly-error";
+import { IMAGE_PRESETS, imageExtension, shrinkImage } from "@/lib/shrink-image";
 import { useSettingsRoute } from "@/lib/modal-route";
 
 const SECTIONS = [
@@ -142,11 +143,12 @@ function Profile({ workspace }: { workspace: Workspace }) {
       return;
     }
     setUploading(true);
-    const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
-    const path = `${workspace.userId}/avatar-${Date.now()}.${ext}`;
+    // Mostrada a 28–40 px: 160 px quadrada em vez da fotografia inteira.
+    const small = await shrinkImage(file, IMAGE_PRESETS.avatar);
+    const path = `${workspace.userId}/avatar-${Date.now()}${small !== file ? "-160" : ""}.${imageExtension(small)}`;
     const { error: uploadError } = await supabase.storage
       .from("avatars")
-      .upload(path, file, { upsert: true });
+      .upload(path, small, { upsert: true, ...(small.type ? { contentType: small.type } : {}) });
     if (uploadError) {
       setUploading(false);
       toast.error("Não foi possível carregar a imagem.");

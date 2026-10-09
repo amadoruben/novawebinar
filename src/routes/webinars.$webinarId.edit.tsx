@@ -1,4 +1,6 @@
 import { friendlyError } from "@/lib/friendly-error";
+import { IMAGE_PRESETS, imageExtension, shrinkImage } from "@/lib/shrink-image";
+import { deleteWebinar } from "@/lib/webinar-delete.functions";
 import { createFileRoute, Link, useBlocker, useNavigate } from "@tanstack/react-router";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -921,9 +923,15 @@ function EditWebinar() {
   const uploadImage = async (file: File, field: "host_avatar_url" | "share_image_url" | "cta_image_url") => {
     setUploadingImage(true);
     try {
-      const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-      const path = `${webinarId}/${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from("webinar-covers").upload(path, file, { upsert: true });
+      // Reduzida no navegador ao tamanho em que aparece: a foto da sala passa de ~900 KB a ~6 KB.
+      const preset = field === "host_avatar_url" ? IMAGE_PRESETS.avatar : field === "share_image_url" ? IMAGE_PRESETS.cover : IMAGE_PRESETS.offer;
+      const small = await shrinkImage(file, preset);
+      // «-160» marca a foto já reduzida: a sala serve-a como está (ver smallImage).
+      const mark = small !== file && field === "host_avatar_url" ? "-160" : "";
+      const path = `${webinarId}/${Date.now()}${mark}.${imageExtension(small)}`;
+      const { error } = await supabase.storage
+        .from("webinar-covers")
+        .upload(path, small, { upsert: true, ...(small.type ? { contentType: small.type } : {}) });
       if (error) throw error;
       const { data, error: signError } = await supabase.storage
         .from("webinar-covers")
@@ -1254,10 +1262,16 @@ function EditWebinar() {
 
   /* ---------- Eliminar ---------- */
 
+  // No servidor, com a permissão confirmada; se parar a meio, diz o que ficou e repetir continua.
   const removeWebinar = async () => {
-    const { error } = await supabase.from("webinars").delete().eq("id", webinarId);
-    if (error) {
-      toast.error(friendlyError(error));
+    const result = await deleteWebinar({ data: { webinarId } }).catch((error: unknown) => ({
+      ok: false as const,
+      error: friendlyError(error),
+      remaining: [] as string[],
+    }));
+    if (!result.ok) {
+      invalidate(["webinars"]);
+      toast.error(result.remaining.length ? `${result.error} Ficou por apagar: ${result.remaining.join(", ")}. Tente outra vez.` : result.error);
       return;
     }
     invalidate(["webinars"]);

@@ -34,6 +34,7 @@ import {
   type Webinar,
 } from "@/lib/data";
 import { fetchAll } from "@/lib/fetch-all";
+import { HEARTS_EVENT } from "@/lib/room-reactions.functions";
 import { useLiveViewers } from "@/lib/live-presence";
 import { FACT_COLUMNS, funnelSummary } from "@/lib/participant-facts";
 import { lifecycleLabel, type WebinarLifecycle } from "@/lib/schedule";
@@ -212,7 +213,7 @@ function Dashboard() {
       const start = periodStart(period);
       const since = <T extends { gte: (column: string, value: string) => T }>(q: T, column: string) =>
         start ? q.gte(column, start) : q;
-      const [facts, purchases, messages] = await Promise.all([
+      const [facts, purchases, messages, reactions] = await Promise.all([
         fetchAll((from, to) =>
           since(
             supabase
@@ -236,7 +237,7 @@ function Dashboard() {
             .order("id")
             .range(from, to),
         ),
-        // As mensagens que os participantes escreveram na sala (as reacções não se guardam).
+        // As mensagens que os participantes escreveram na sala.
         since(
           supabase
             .from("event_log")
@@ -245,14 +246,31 @@ function Dashboard() {
             .eq("name", "message_sent"),
           "occurred_at",
         ).then(({ count, error }) => (error ? null : (count ?? 0))),
+        // Os corações da sala: um registo por pessoa de 30 em 30 s, com a contagem (room-reactions).
+        fetchAll((from, to) =>
+          since(
+            supabase
+              .from("analytics_events")
+              .select("count:properties->count", { count: "exact" })
+              .eq("organization_id", orgId!)
+              .eq("event_name", HEARTS_EVENT)
+              .eq("is_real", true),
+            "occurred_at",
+          )
+            .order("id")
+            .range(from, to),
+        ).then(
+          (rows) => rows.reduce((sum, row) => sum + (Number(row.count) || 0), 0),
+          () => null,
+        ),
       ]);
-      return { facts, purchases, messages, start };
+      return { facts, purchases, messages, reactions, start };
     },
   });
 
   const view = useMemo(() => {
     if (!results.data) return null;
-    const { facts, purchases, messages, start } = results.data;
+    const { facts, purchases, messages, reactions, start } = results.data;
     const s = funnelSummary(facts);
     const summary: Results = {
       registered: s.registered,
@@ -262,6 +280,7 @@ function Dashboard() {
       clicked: s.clicked,
       buyers: s.buyers,
       messages,
+      reactions,
       purchases: purchases.length,
       revenue: sumByCurrency(purchases).sort((a, b) => b.amount - a.amount),
       webinarsCreated: list.filter((w) => !start || w.created_at >= start).length,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { Headset, MessagesSquare, Pin, Play, ShoppingCart, X } from "lucide-react";
 import { VideoPlayer } from "@/components/video-player";
 import { PreliveCountdown } from "@/components/prelive-countdown";
@@ -375,8 +375,7 @@ function WebinarPreview(props: RoomPreviewProps) {
   }, [props.tab, shown?.id]);
   const followButton = (big: boolean) => (social.follow ? <FollowButton big={big} label={social.follow.label} onClick={social.follow.onClick} /> : null);
   const [captionSize, setCaptionSize] = useState<CaptionSize>("md");
-  // Como na sala: num ecrã ao alto o aviso de compra entra por baixo do chat, logo acima da caixa de escrever.
-  const toastInChat = props.device === "phone" || tablet;
+  // Como na sala: o aviso de compra no canto de baixo do vídeo (`SALE_TOAST_SPOT`); a legenda sobe por cima dele.
   const saleToast = lastSale ? (
     <SaleToast
       key={lastSale.id}
@@ -384,7 +383,7 @@ function WebinarPreview(props: RoomPreviewProps) {
       text={`comprou ${lastSale.product}`}
       color={props.saleColor}
       compact={phone}
-      className={toastInChat ? SALE_TOAST_SPOT.chat : phone ? SALE_TOAST_SPOT.phone : SALE_TOAST_SPOT.desk}
+      className={phone ? SALE_TOAST_SPOT.phone : SALE_TOAST_SPOT.desk}
     />
   ) : null;
 
@@ -424,8 +423,8 @@ function WebinarPreview(props: RoomPreviewProps) {
           </span>
         ) : null}
       </div>
-      {toastInChat ? null : saleToast}
-      {props.captionsOn ? <CaptionLine text={said} compact={phone} size={captionSize} raised={Boolean(lastSale) && !toastInChat} /> : null}
+      {saleToast}
+      {props.captionsOn ? <CaptionLine text={said} compact={phone} size={captionSize} raised={Boolean(lastSale)} /> : null}
       {afterVideo ? (
         <div className="absolute inset-0 z-[5] grid place-items-center bg-black/90 px-6 text-center text-white">
           <div className={cn("grid justify-items-center", phone ? "gap-1.5" : "gap-3")}>
@@ -560,7 +559,7 @@ function WebinarPreview(props: RoomPreviewProps) {
       )}
       <div className={cn("relative flex min-h-0 flex-col", phone ? "flex-1" : tablet ? "mt-4 flex-1 overflow-hidden rounded-2xl" : "overflow-hidden rounded-2xl")}>
         {/* No tema claro, o painel e o vídeo ganham uma borda que se vê (como no YouTube): `room-panel`. */}
-        <Panel {...props} tab={tab} shown={shown} open={open} hl={hl} phone={phone} afterVideo={afterVideo} notice={live.notify && props.agent.on} toast={toastInChat ? saleToast : null} />
+        <Panel {...props} tab={tab} shown={shown} open={open} hl={hl} phone={phone} afterVideo={afterVideo} notice={live.notify && props.agent.on} />
         {social.sheet}
       </div>
     </div>
@@ -618,9 +617,24 @@ function LivePreview(props: RoomPreviewProps) {
   if (live.notify && props.agent.on && !supportOpen) feed.push({ key: "notice", kind: "notice" });
   const thread = supportExample(props, shown);
 
+  // Como na sala: no canto de baixo do vídeo, dentro da moldura (`SALE_TOAST_SPOT`); com o vídeo ao alto a encher o
+  // ecrã (o chat tapa-lhe o fundo), logo acima das mensagens; com as compras também no chat, a linha do chat já é o aviso.
+  const toastOverChat = portrait && !stack;
+  const saleToast = lastSale && !(toastOverChat && props.salesWhere !== "video") ? (
+    <SaleToast
+      key={lastSale.id}
+      name={lastSale.buyer}
+      text={`comprou ${lastSale.product}`}
+      color={props.saleColor}
+      compact={!tablet && phone}
+      className={toastOverChat ? SALE_TOAST_SPOT.feed : !tablet && phone ? SALE_TOAST_SPOT.phone : SALE_TOAST_SPOT.desk}
+    />
+  ) : null;
+
   const lower = (
     <>
       <div className={cn("contents", tablet && "flex w-[460px] flex-col", tablet && stack && "min-h-0 flex-1")}>
+        {toastOverChat ? saleToast : null}
         <LiveFeed
           items={feed}
           onNotice={() => props.onTab("support")}
@@ -697,6 +711,9 @@ function LivePreview(props: RoomPreviewProps) {
       : frame.box;
   // A legenda fica no próprio vídeo; com o vídeo ao alto a encher o ecrã, sobe acima do chat.
   const inVideoCaption = !(frame.place === "fill" && !landscape);
+  // No palco, uma moldura igual à do vídeo, por cima dos véus, só para o aviso de compra.
+  const frameToast =
+    saleToast && !toastOverChat ? <div className={cn(props.video.url ? videoBox : "absolute inset-0", "pointer-events-none z-20 shadow-none")}>{saleToast}</div> : null;
   const video = (
     <>
       {frame.place === "column" && props.video.url ? <div className={LIVE_COLUMN_BG} /> : null}
@@ -711,7 +728,7 @@ function LivePreview(props: RoomPreviewProps) {
             fit={frame.fit}
             ambient={showsEntry(props)}
           />
-          {props.captionsOn && inVideoCaption ? <CaptionLine text={said} compact={phone} size={captionSize} raised={stack && Boolean(lastSale)} /> : null}
+          {props.captionsOn && inVideoCaption ? <CaptionLine text={said} compact={phone} size={captionSize} raised={Boolean(lastSale)} /> : null}
           {!props.playing ? (
             <span className={cn("absolute inset-0 grid place-items-center", showsEntry(props) && ENTRY_DIM)}>
               <PausedPlay props={props} compact={phone && !tablet} />
@@ -773,18 +790,6 @@ function LivePreview(props: RoomPreviewProps) {
       {lessonTimer({ bar: "absolute inset-x-0 bottom-0 z-20", chip: "absolute right-3 top-14 z-20" })}
     </>
   );
-  // Como na sala: empilhado, em baixo à esquerda do vídeo (`SALE_TOAST_SPOT`); no palco, por baixo da barra de cima.
-  const saleToast = lastSale ? (
-    <SaleToast
-      key={lastSale.id}
-      name={lastSale.buyer}
-      text={`comprou ${lastSale.product}`}
-      color={props.saleColor}
-      compact={!tablet && phone}
-      className={stack ? SALE_TOAST_SPOT.phone : cn(tablet ? "left-5" : "left-3", !portrait && "top-[56px]")}
-      style={portrait && !stack ? { top: tall.top + (tablet ? 64 : 58) } : undefined}
-    />
-  ) : null;
   const ended = afterVideo ? (
     <div className="absolute inset-0 z-[5] grid place-items-center bg-black/90 px-6 text-center text-white">
       <div className="grid justify-items-center gap-1.5">
@@ -812,7 +817,7 @@ function LivePreview(props: RoomPreviewProps) {
           <div className="prelive-dark relative aspect-video w-full overflow-hidden bg-black text-white">
             {video}
             {lessonTimer({ bar: "absolute inset-x-0 bottom-0 z-20" })}
-            {saleToast}
+            {frameToast}
             {ended}
           </div>
           <div className={cn("absolute z-40", tablet ? "inset-x-5 top-4" : "inset-x-3 top-2")}>
@@ -844,7 +849,7 @@ function LivePreview(props: RoomPreviewProps) {
               extra={settings}
             />
           </div>
-          {saleToast}
+          {frameToast}
           {ended}
           {/* Em baixo, logo acima da barra do iPhone: a caixa de escrever desce o mais possível sem lhe tocar. */}
           <div
@@ -872,7 +877,7 @@ function LivePreview(props: RoomPreviewProps) {
         {video}
         {/* Como na sala: o selo e o ⚙ dentro do vídeo, no canto de cima (numa moldura igual à do vídeo). */}
         {props.video.url ? <div className={cn(frame.box, "pointer-events-none z-30 shadow-none")}>{corners}</div> : corners}
-        {saleToast}
+        {frameToast}
         {ended}
       </section>
       <aside className="relative flex h-full w-[400px] shrink-0 flex-col border-l border-room-line bg-room-surface">
@@ -896,7 +901,6 @@ function Panel({
   sheet,
   notice,
   onClose,
-  toast,
   ...props
 }: RoomPreviewProps & {
   phone: boolean;
@@ -911,8 +915,6 @@ function Panel({
   notice?: boolean | undefined;
   /** Deitado, o chat por cima do vídeo fecha-se no X. */
   onClose?: (() => void) | undefined;
-  /** O aviso de compra por baixo das últimas mensagens, logo acima da caixa de escrever (Webinar ao alto). */
-  toast?: ReactNode;
 }) {
   const [text, setText] = useState("");
   const tabs: [RoomTab, string, typeof MessagesSquare][] = [
@@ -1029,7 +1031,6 @@ function Panel({
               </div>
             )}
           </div>
-          {toast}
           {card ? (
             <div className={cn("shrink-0 px-3 pb-2.5", hl("pitch"))}>
               {offerMin ? (

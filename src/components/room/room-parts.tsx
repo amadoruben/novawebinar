@@ -168,7 +168,7 @@ export function RoomTitle({
 const GLASS = "rounded-xl bg-[rgba(20,20,20,.74)] p-1.5 text-white shadow-[0_12px_40px_rgba(0,0,0,.45)] ring-1 ring-white/10 backdrop-blur-xl backdrop-saturate-150";
 
 /**
- * O botão ⚙ do vídeo: volume, legendas (e o tamanho delas), qualidade (automática, sempre a melhor) e
+ * O botão ⚙ do vídeo: volume, legendas (e o tamanho delas), qualidade (automática, ou «Poupar dados») e
  * aparência. Sem velocidade nem avançar: a sessão parece sempre ao vivo. `inline` (Live): só o ícone,
  * sem fundo, e o menu abre para baixo dentro da própria sala, para nunca sair do ecrã (nem da moldura do
  * aparelho na pré-visualização).
@@ -185,6 +185,8 @@ export function VideoSettings({
   onAppearance,
   compact,
   inline,
+  saveData,
+  onSaveData,
 }: {
   volume: number;
   onVolume: (volume: number) => void;
@@ -197,8 +199,11 @@ export function VideoSettings({
   onAppearance: (appearance: Appearance) => void;
   compact?: boolean | undefined;
   inline?: boolean | undefined;
+  /** «Poupar dados» (no máximo 360p, sem descarregar antes do toque); sem `onSaveData`, a qualidade só se mostra. */
+  saveData?: boolean | undefined;
+  onSaveData?: ((on: boolean) => void) | undefined;
 }) {
-  const [page, setPage] = useState<"main" | "appearance" | "captions">("main");
+  const [page, setPage] = useState<"main" | "appearance" | "captions" | "quality">("main");
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   // Fora do menu, um toque ou o Esc fecham-no (o Popover faz isto sozinho; o menu na sala não).
@@ -253,7 +258,26 @@ export function VideoSettings({
     </button>
   );
   const menu =
-    page === "captions" ? (
+    page === "quality" ? (
+      // Qualidade: a melhor para o ecrã e a rede, ou «Poupar dados» (para dados móveis caros).
+      <div className="grid gap-0.5">
+        {back("Qualidade")}
+        {(
+          [
+            [false, "Automática", "A melhor para o ecrã e a rede"],
+            [true, "Poupar dados", "Até 360p; o vídeo só descarrega depois de tocar"],
+          ] as const
+        ).map(([on, name, hint]) => (
+          <button key={name} type="button" onClick={() => onSaveData?.(on)} className={cn(row, "items-start")}>
+            <span className="flex-1">
+              <span className="block">{name}</span>
+              <span className="block text-[12.5px] leading-snug text-white/60">{hint}</span>
+            </span>
+            {Boolean(saveData) === on ? <Check className="mt-0.5 size-4" /> : null}
+          </button>
+        ))}
+      </div>
+    ) : page === "captions" ? (
       // Legendas: desligadas ou num de três tamanhos (o tamanho só existe com quem o escolhe).
       <div className="grid gap-0.5">
         {back("Legendas")}
@@ -309,11 +333,20 @@ export function VideoSettings({
             <ChevronRight className="size-4 text-white/65" />
           </button>
         ) : null}
-        <div className={cn(row, "cursor-default hover:bg-transparent")}>
-          <MonitorPlay className="size-[18px] shrink-0" />
-          <span className="flex-1">Qualidade</span>
-          <span className="text-[13px] text-white/65">Automática</span>
-        </div>
+        {onSaveData ? (
+          <button type="button" onClick={() => setPage("quality")} className={row}>
+            <MonitorPlay className="size-[18px] shrink-0" />
+            <span className="flex-1">Qualidade</span>
+            <span className="text-[13px] text-white/65">{saveData ? "Poupar dados" : "Automática"}</span>
+            <ChevronRight className="size-4 text-white/65" />
+          </button>
+        ) : (
+          <div className={cn(row, "cursor-default hover:bg-transparent")}>
+            <MonitorPlay className="size-[18px] shrink-0" />
+            <span className="flex-1">Qualidade</span>
+            <span className="text-[13px] text-white/65">Automática</span>
+          </div>
+        )}
         <button type="button" onClick={() => setPage("appearance")} className={row}>
           <Moon className="size-[18px] shrink-0" />
           <span className="flex-1">Aparência</span>
@@ -386,7 +419,7 @@ export function CaptionLine({
     <div
       className={cn(
         "pointer-events-none absolute inset-x-0 z-[1] flex justify-center px-6",
-        raised ? (compact ? "bottom-[42px]" : "bottom-[76px]") : compact ? "bottom-[6%]" : "bottom-[7%]",
+        raised ? (compact ? "bottom-[48px]" : "bottom-[72px]") : compact ? "bottom-[6%]" : "bottom-[7%]",
       )}
     >
       <span
@@ -691,7 +724,8 @@ export function ChatLine({
             {badge}
           </span>
         ) : null}
-        {text}
+        {/* O texto um pouco transparente, na cor do tema; o nome fica cheio. */}
+        <span className={onVideo ? "text-white/90" : "text-room-text/88"}>{text}</span>
         {reaction ? <ReactionPill text={reaction} onVideo={onVideo} /> : null}
       </p>
     </div>
@@ -997,15 +1031,15 @@ export function SaleLine({
 }
 
 /**
- * Onde o aviso de compra aparece no Webinar. Num ecrã ao alto (telemóvel, tablet) sai do vídeo e entra
- * por baixo das últimas mensagens, logo acima da caixa de escrever (`chat`, no fluxo: o chat sobe e nada
- * fica tapado); deitado e no computador, no canto de baixo do vídeo (`phone`, `desk`). Para o mover (na
- * sala e na pré-visualização ao mesmo tempo), muda-se só aqui.
+ * Onde o aviso de compra aparece, no Webinar e no Live: no canto de baixo do vídeo, dentro da moldura
+ * (`phone` no telemóvel, `desk` no tablet e no computador); a legenda sobe por cima dele. No Live com o
+ * vídeo ao alto a encher o ecrã, o chat tapa o fundo do vídeo: o aviso entra logo acima das mensagens,
+ * à esquerda (`feed`, no fluxo). Para o mover (na sala e na pré-visualização ao mesmo tempo), muda-se só aqui.
  */
 export const SALE_TOAST_SPOT = {
   phone: "bottom-2 left-2",
   desk: "bottom-3 left-3",
-  chat: "relative mx-3 mb-2 max-w-[calc(100%-24px)] shrink-0 self-start",
+  feed: "relative mb-2 shrink-0 self-start",
 } as const;
 
 /** O aviso de compra por cima do vídeo: uma pílula na cor escolhida nas Vendas, numa só linha. */

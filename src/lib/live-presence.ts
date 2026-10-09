@@ -13,7 +13,8 @@ export type LiveViewer = {
   webinarTitle: string;
   name: string;
   mode: "live" | "replay";
-  device: DeviceKind;
+  /** A Vista ao vivo separa telemóvel e computador: o tablet conta como telemóvel (como sempre contou). */
+  device: "mobile" | "desktop";
   city: string | null;
   country: string | null;
   countryCode: string | null;
@@ -25,19 +26,26 @@ export type LiveViewer = {
   joinedAt: string;
 };
 
-export type DeviceKind = "mobile" | "desktop";
+export type DeviceKind = "mobile" | "tablet" | "desktop";
 
-/** Deteta se a pessoa está num telemóvel/tablet ou num computador. */
+/**
+ * O aparelho pelo browser: tablet (iPad, incluindo o iPadOS que se diz Mac mas tem toque; Android sem
+ * «Mobile»; Kindle), telemóvel ou computador. `coarseSmall`: ecrã de toque com menos de 1024 px.
+ */
+export function deviceOf(userAgent: string, touchPoints = 0, coarseSmall = false): DeviceKind {
+  if (/iPad|Tablet|PlayBook|Silk|Kindle/i.test(userAgent)) return "tablet";
+  if (/Macintosh/i.test(userAgent) && touchPoints > 1) return "tablet";
+  if (/Android/i.test(userAgent) && !/Mobi/i.test(userAgent)) return "tablet";
+  if (/Mobi|Android|iPhone|iPod|IEMobile/i.test(userAgent)) return "mobile";
+  return coarseSmall ? "mobile" : "desktop";
+}
+
+/** Deteta se a pessoa está num telemóvel, num tablet ou num computador. */
 export function detectDevice(): DeviceKind {
   if (typeof navigator === "undefined") return "desktop";
-  if (/Mobi|Android|iPhone|iPad|iPod|IEMobile/i.test(navigator.userAgent)) return "mobile";
-  if (
-    typeof window !== "undefined" &&
-    window.matchMedia?.("(pointer: coarse)").matches &&
-    window.innerWidth < 1024
-  )
-    return "mobile";
-  return "desktop";
+  const coarseSmall =
+    typeof window !== "undefined" && Boolean(window.matchMedia?.("(pointer: coarse)").matches) && window.innerWidth < 1024;
+  return deviceOf(navigator.userAgent, navigator.maxTouchPoints ?? 0, coarseSmall);
 }
 
 export type GeoPlace = {
@@ -252,7 +260,7 @@ export function useLiveViewers(organizationId: string | null | undefined) {
           webinarTitle: (entry["webinarTitle"] as string) ?? "Sessão",
           name: (entry["name"] as string) || "Participante",
           mode: entry["mode"] === "replay" ? "replay" : "live",
-          device: entry["device"] === "mobile" ? "mobile" : "desktop",
+          device: entry["device"] === "mobile" || entry["device"] === "tablet" ? "mobile" : "desktop",
           city: (entry["city"] as string) ?? null,
           country: (entry["country"] as string) ?? null,
           countryCode: typeof entry["countryCode"] === "string" ? (entry["countryCode"] as string) : null,
