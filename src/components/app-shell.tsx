@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { ChevronRight, Ellipsis, LogOut, Plus, Search } from "lucide-react";
+import { Check, ChevronRight, Ellipsis, LogOut, Plus, Search, X } from "lucide-react";
 import { lazy, Suspense, useEffect, useState, type ElementType, type ReactNode } from "react";
 import { toast } from "sonner";
 import iconAsset from "@/assets/brand/convertewebinar-icon.svg";
@@ -11,11 +11,11 @@ import {
   type RailItem,
 } from "@/components/ds/navigation";
 import { Avatar } from "@/components/panel-modal";
-import { NAV_ICON, navGroups, roleLabels, SidebarNav } from "@/components/ui/dashboard-sidebar";
+import { phoneNav, roleLabels, SidebarNav } from "@/components/ui/dashboard-sidebar";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { PageLoader, useInitialPageLoader } from "@/components/page-loader";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import { switchWorkspace, useAdminHostRedirect, useWorkspace, type Workspace } from "@/lib/data";
 import { useCreditsRoute, useIntegrationsRoute, useSettingsRoute } from "@/lib/modal-route";
@@ -131,27 +131,12 @@ export function AppShell({
   const showLoader = useInitialPageLoader(!authorized);
   const sidebarCollapsed = (rail || collapsed || tabletViewport) && !mobileViewport;
 
-  const tabItems: RailItem[] = supportOnly
-    ? [
-        { to: "/support", label: "Atendimento", icon: NAV_ICON.support },
-        { to: "/cases", label: "Casos", icon: NAV_ICON.cases },
-        { to: "/contacts", label: "Contactos", icon: NAV_ICON.contacts },
-      ]
-    : [
-        { to: "/dashboard", label: "Painel", icon: NAV_ICON.dashboard, exact: true },
-        { to: "/webinars", label: "Webinars", icon: NAV_ICON.webinars },
-        { to: "/calendar", label: "Agenda", icon: NAV_ICON.calendar },
-        { to: "/automations", label: "Automações", icon: NAV_ICON.automations },
-      ];
+  const { tabs: tabItems, more: moreGroups } = phoneNav(role);
   const tabActive = (item: RailItem) =>
     item.exact ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`);
   const integrations = useIntegrationsRoute();
   const settings = useSettingsRoute();
   const credits = useCreditsRoute();
-  const tabPaths = new Set(tabItems.map((t) => t.to));
-  const moreGroups = navGroups(role)
-    .map((g) => ({ ...g, items: g.items.filter((it) => !tabPaths.has(it.to)) }))
-    .filter((g) => g.items.length);
   const morePick = (to: string) => {
     setMoreOpen(false);
     if (to === "/integrations") integrations.go([]);
@@ -190,7 +175,9 @@ export function AppShell({
       </div>
       <div
         aria-hidden={showLoader ? true : undefined}
-        className={`flex min-h-screen flex-col transition-all duration-300 ${showLoader ? "invisible" : "visible"} ${sidebarCollapsed ? "md:pl-[72px]" : "md:pl-[260px]"}`}
+        // overflow-x-clip: um conteúdo largo demais não alarga a página no telemóvel
+        // (o browser encolhia tudo e o menu de baixo ficava distorcido).
+        className={`flex min-h-screen flex-col overflow-x-clip transition-all duration-300 ${showLoader ? "invisible" : "visible"} ${sidebarCollapsed ? "md:pl-[72px]" : "md:pl-[260px]"}`}
       >
         <MobileHeader
           home={supportOnly ? "/support" : "/dashboard"}
@@ -202,7 +189,7 @@ export function AppShell({
           className={
             bleed
               ? "flex w-full min-h-[calc(100dvh-3.5rem)] flex-1 flex-col pb-32 md:min-h-0 md:pb-0"
-              : `mx-auto flex w-full max-w-[1480px] min-h-[calc(100dvh-3.5rem)] flex-1 flex-col px-4 pt-4 pb-32 md:min-h-0 md:pb-10 ${compact ? "md:px-6 md:pt-6" : "md:px-8 md:pt-8"}`
+              : `mx-auto flex w-full max-w-[1480px] min-h-[calc(100dvh-3.5rem)] min-w-0 flex-1 flex-col px-4 pt-4 pb-[calc(96px+env(safe-area-inset-bottom))] md:min-h-0 md:pb-10 ${compact ? "md:px-6 md:pt-6" : "md:px-8 md:pt-8"}`
           }
         >
           {title && (
@@ -298,22 +285,22 @@ export function MobileHeader({
           Convertewebinar
         </span>
       </Link>
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="-mr-1.5 flex shrink-0 items-center">
         {workspace?.isTest && <TestBadge />}
         <button
           type="button"
           onClick={onSearch}
           aria-label="Pesquisar"
-          className="inline-flex size-9 cursor-pointer items-center justify-center rounded-full text-gray-700 transition-colors hover:bg-[var(--hover-ghost)]"
+          className="inline-flex size-11 cursor-pointer items-center justify-center rounded-full text-gray-700 transition-colors hover:bg-[var(--hover-ghost)]"
         >
           <Search className="size-5" strokeWidth={1.5} />
         </button>
-        <NotificationsBell quiet />
+        <NotificationsBell quiet className="size-11" />
         <button
           type="button"
           onClick={onProfile}
           aria-label="Perfil e definições"
-          className="ml-1 cursor-pointer rounded-full"
+          className="cursor-pointer rounded-full p-1.5"
         >
           {workspace ? (
             <Avatar workspace={workspace} />
@@ -327,8 +314,9 @@ export function MobileHeader({
 }
 
 /**
- * O «Mais» do telemóvel: o que não cabe nos quatro separadores de baixo, em mosaicos
- * grandes por grupo, e a conta no topo (abre as Definições).
+ * O «Mais» do telemóvel: a conta em cima (abre as Definições) e o resto do menu em
+ * listas agrupadas, como nas definições do iPhone e do Instagram: uma linha por
+ * entrada, sem mosaicos órfãos, os mesmos grupos da barra lateral.
  */
 export function MoreSheet({
   open,
@@ -354,104 +342,149 @@ export function MoreSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="bottom"
-        className="scrollbar-thin max-h-[88dvh] overflow-y-auto rounded-t-[20px] px-4 pt-3 pb-[max(16px,env(safe-area-inset-bottom))] md:hidden [&>button]:top-4 [&>button]:right-4 [&>button]:flex [&>button]:size-9 [&>button]:items-center [&>button]:justify-center [&>button]:rounded-full [&>button]:bg-chip [&>button]:opacity-100 [&>button>svg]:size-[18px]"
+        className="scrollbar-thin max-h-[88dvh] gap-0 overflow-y-auto rounded-t-[20px] border-0 bg-background px-4 pt-2 pb-[max(16px,env(safe-area-inset-bottom))] md:hidden [&>button]:hidden"
       >
-        <span className="mx-auto mb-3 block h-1 w-10 rounded-full bg-gray-300" aria-hidden />
-        <SheetTitle className="sr-only">Mais</SheetTitle>
+        <span className="mx-auto mb-2 block h-1 w-9 rounded-full bg-gray-300" aria-hidden />
+        <div className="mb-3 flex items-center justify-between">
+          <SheetTitle className="text-[17px] font-semibold tracking-[-0.02em]">Menu</SheetTitle>
+          <SheetClose
+            aria-label="Fechar"
+            className="relative inline-flex size-8 cursor-pointer items-center justify-center rounded-full bg-gray-150 text-gray-700 after:absolute after:-inset-1.5 after:content-[''] active:bg-gray-250"
+          >
+            <X className="size-4" strokeWidth={2} />
+          </SheetClose>
+        </div>
         <SheetDescription className="sr-only">O resto do menu e a sua conta.</SheetDescription>
-        {/* Num div: as regras [&>button] acima só valem para o X da folha. */}
-        <div>
+        <div className="flex flex-col gap-4">
           {workspace && (
             <button
               type="button"
               onClick={() => onPick("/settings")}
-              className="flex w-[calc(100%-3rem)] cursor-pointer items-center gap-3 rounded-xl py-1 text-left"
+              className="flex cursor-pointer items-center gap-3 rounded-xl bg-card px-3.5 py-3 text-left shadow-[var(--shadow-border)] active:bg-gray-100"
             >
               <Avatar workspace={workspace} className="size-10 text-[15px]" />
               <span className="min-w-0 flex-1 leading-tight">
                 <span className="block truncate text-[15px] font-medium">
                   {workspace.fullName || "A minha conta"}
                 </span>
-                <span className="block truncate text-[12px] text-muted-foreground">
+                <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">
                   {workspace.organizationName} · {roleLabels[workspace.role]}
                 </span>
               </span>
-              <ChevronRight className="size-4 shrink-0 text-gray-500" aria-hidden />
+              <ChevronRight className="size-4 shrink-0 text-gray-400" aria-hidden />
             </button>
           )}
-          <div className="mt-4 flex flex-col gap-4">
-            {groups.map((g) => (
-              <section key={g.heading}>
-                <h3 className="mb-2 px-1 text-[12px] font-medium text-gray-600">{g.heading}</h3>
-                <div className="grid grid-cols-3 gap-2">
-                  {g.items.map((it) => {
-                    const active = isActive(it.to);
-                    return (
-                      <button
-                        key={it.to}
-                        type="button"
-                        onClick={() => onPick(it.to)}
-                        aria-current={active ? "page" : undefined}
-                        className={cn(
-                          "flex h-[76px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl px-1 text-[13px] leading-tight transition-colors",
-                          active
-                            ? "bg-accent font-medium text-accent-700"
-                            : "bg-gray-100 text-foreground active:bg-gray-200",
-                        )}
-                      >
-                        <it.icon
-                          className={cn("size-6", active ? "text-brand" : "text-gray-800")}
-                          strokeWidth={1.6}
-                          aria-hidden
-                        />
-                        <span className="max-w-full truncate">{it.title}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
-            {workspace && workspace.organizations.length > 1 && (
-              <section>
-                <h3 className="mb-2 px-1 text-[12px] font-medium text-gray-600">
-                  Espaço de trabalho
-                </h3>
-                <div className="flex flex-col gap-1.5">
-                  {workspace.organizations.map((org) => {
-                    const current = org.id === workspace.organizationId;
-                    return (
-                      <button
-                        key={org.id}
-                        type="button"
-                        disabled={current}
-                        onClick={() => switchWorkspace(org.id)}
-                        className={cn(
-                          "flex h-12 cursor-pointer items-center gap-2 rounded-xl px-4 text-left text-[14px] disabled:cursor-default",
-                          current ? "bg-chip font-medium" : "bg-gray-100 active:bg-gray-200",
-                        )}
-                      >
-                        <span className="min-w-0 flex-1 truncate">{org.name}</span>
-                        {org.isTest && <TestBadge />}
-                        {current && (
-                          <span className="text-[12px] text-muted-foreground">Actual</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
-            <button
-              type="button"
-              onClick={() => void signOut()}
-              className="flex h-12 cursor-pointer items-center justify-center gap-2 rounded-xl text-[14px] text-destructive active:bg-gray-100"
-            >
-              <LogOut className="size-[18px]" strokeWidth={1.75} aria-hidden /> Terminar sessão
-            </button>
-          </div>
+          {groups.map((g) => (
+            // O grupo principal não tem título, como na barra lateral.
+            <MoreGroup key={g.heading} heading={g.heading === "Principal" ? undefined : g.heading}>
+              {g.items.map((it, i) => {
+                const active = isActive(it.to);
+                return (
+                  <MoreRow key={it.to} onClick={() => onPick(it.to)} active={active}>
+                    <span
+                      className={cn(
+                        "flex size-7 shrink-0 items-center justify-center rounded-md",
+                        active ? "bg-accent text-brand" : "bg-gray-100 text-gray-800",
+                      )}
+                    >
+                      <it.icon className="size-[17px]" strokeWidth={1.75} aria-hidden />
+                    </span>
+                    <MoreLabel first={i === 0}>
+                      <span className={cn("min-w-0 flex-1 truncate", active && "font-medium")}>
+                        {it.title}
+                      </span>
+                      {active ? (
+                        <span className="size-1.5 shrink-0 rounded-full bg-brand" aria-hidden />
+                      ) : (
+                        <ChevronRight className="size-4 shrink-0 text-gray-400" aria-hidden />
+                      )}
+                    </MoreLabel>
+                  </MoreRow>
+                );
+              })}
+            </MoreGroup>
+          ))}
+          {workspace && workspace.organizations.length > 1 && (
+            <MoreGroup heading="Espaço de trabalho">
+              {workspace.organizations.map((org, i) => {
+                const current = org.id === workspace.organizationId;
+                return (
+                  <MoreRow
+                    key={org.id}
+                    disabled={current}
+                    onClick={() => switchWorkspace(org.id)}
+                  >
+                    <MoreLabel first={i === 0}>
+                      <span className={cn("min-w-0 flex-1 truncate", current && "font-medium")}>
+                        {org.name}
+                      </span>
+                      {org.isTest && <TestBadge />}
+                      {current && <Check className="size-4 shrink-0 text-brand" aria-label="Actual" />}
+                    </MoreLabel>
+                  </MoreRow>
+                );
+              })}
+            </MoreGroup>
+          )}
+          <MoreGroup>
+            <MoreRow onClick={() => void signOut()}>
+              <MoreLabel first>
+                <span className="flex flex-1 items-center justify-center gap-2 text-destructive">
+                  <LogOut className="size-[17px]" strokeWidth={1.75} aria-hidden /> Terminar sessão
+                </span>
+              </MoreLabel>
+            </MoreRow>
+          </MoreGroup>
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function MoreGroup({ heading, children }: { heading?: string | undefined; children: ReactNode }) {
+  return (
+    <section>
+      {heading && <h3 className="mb-1.5 px-3.5 text-[12px] font-medium text-gray-600">{heading}</h3>}
+      <div className="overflow-hidden rounded-xl bg-card shadow-[var(--shadow-border)]">{children}</div>
+    </section>
+  );
+}
+
+function MoreRow({
+  active,
+  disabled,
+  onClick,
+  children,
+}: {
+  active?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-current={active ? "page" : undefined}
+      className="flex h-11 w-full cursor-pointer items-center gap-3 pl-3.5 text-left text-[15px] tracking-[-0.01em] transition-colors active:bg-gray-100 disabled:cursor-default disabled:active:bg-transparent"
+    >
+      {children}
+    </button>
+  );
+}
+
+/** O texto da linha; a linha divisória começa no texto, não no ícone (como no iPhone). */
+function MoreLabel({ first, children }: { first: boolean; children: ReactNode }) {
+  return (
+    <span
+      className={cn(
+        "flex h-full min-w-0 flex-1 items-center gap-2 pr-3.5",
+        !first && "border-t border-[var(--border-subtle)]",
+      )}
+    >
+      {children}
+    </span>
   );
 }
 

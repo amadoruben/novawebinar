@@ -4,6 +4,7 @@ import { createFileRoute } from "@tanstack/react-router";
  * Formulário embed: um <script> que se coloca na página externa (WordPress, Elementor,
  * Framer, Webflow, HTML). Desenha o formulário num shadow DOM (o CSS da página não o
  * estraga), lê as UTM e o referrer da página onde está, e envia para /api/public/register.
+ * Os campos, o texto e a cor do botão vêm da etapa Página do editor: uma só fonte com a sala.
  *
  *   <script src="https://<app>/api/public/forms/<id>/embed" async></script>
  *
@@ -30,19 +31,37 @@ export const Route = createFileRoute("/api/public/forms/$formId/embed")({
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { data: form } = await supabaseAdmin
           .from("registration_forms")
-          .select("id, active, ask_phone, require_phone, consent_text, webinars(public_title, internal_name, status)")
+          .select(
+            "id, active, consent_text, webinars(status, entry_fields, registration_collect_phone, registration_require_phone, registration_button_text, entry_button_color)",
+          )
           .eq("id", params.formId)
           .maybeSingle();
-        if (!form || !form.active || form.webinars?.status === "draft")
+        const webinar = form?.webinars;
+        if (!form || !form.active || !webinar || webinar.status === "draft")
           return js("console.warn('Convertewebinar: formulário indisponível');", 404);
 
+        const { embedFields, parseEntryFields } = await import("@/lib/entry-fields");
+        const { entryPalette } = await import("@/lib/room-logic");
+        const { DEFAULT_PHONE_COUNTRY, PHONE_COUNTRIES } = await import("@/lib/phone-countries");
+        const fields = embedFields(
+          parseEntryFields(webinar.entry_fields, {
+            collectPhone: webinar.registration_collect_phone,
+            requirePhone: webinar.registration_require_phone,
+          }),
+        );
+        const palette = entryPalette(null, webinar.entry_button_color);
         const config = {
           formId: form.id,
           endpoint: `${new URL(request.url).origin}/api/public/register`,
-          askPhone: form.ask_phone || form.require_phone,
-          requirePhone: form.require_phone,
+          // O texto vai para innerHTML: escapado aqui; a chave vai só para o JSON do pedido.
+          fields: fields.map((f) => ({ ...f, label: escapeHtml(f.label), placeholder: escapeHtml(f.placeholder) })),
+          countries: fields.some((f) => f.phone)
+            ? PHONE_COUNTRIES.map((c) => ({ code: c.code, dial: c.dial, label: `${c.flag} ${c.dial}`, on: c === DEFAULT_PHONE_COUNTRY }))
+            : [],
+          button: escapeHtml(webinar.registration_button_text || "Entrar na sala"),
+          color: palette.button,
+          colorText: palette.buttonText,
           consent: form.consent_text ? escapeHtml(form.consent_text) : null,
-          title: escapeHtml(form.webinars?.public_title || form.webinars?.internal_name || "Webinar"),
         };
         // O JSON vai dentro de um script: "</" nunca pode fechar a tag.
         const cfg = JSON.stringify(config).replace(/</g, "\\u003c");
@@ -55,22 +74,34 @@ export const Route = createFileRoute("/api/public/forms/$formId/embed")({
   host.setAttribute("data-cw-ready", "1");
   var root = host.attachShadow ? host.attachShadow({ mode: "open" }) : host;
   var sid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2);
+  // O indicativo pelo fuso horário do aparelho (sem pedir nada à pessoa); senão, o de sempre.
+  var here = "";
+  try {
+    var tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    here = ({ "Africa/Luanda": "AO", "Europe/Lisbon": "PT", "Atlantic/Madeira": "PT", "Atlantic/Azores": "PT", "Africa/Maputo": "MZ", "Atlantic/Cape_Verde": "CV", "Africa/Bissau": "GW", "Africa/Sao_Tome": "ST", "Asia/Dili": "TL" })[tz] ||
+      (tz.indexOf("America/") === 0 && /^pt/i.test(navigator.language || "") ? "BR" : "");
+  } catch (e) {}
+  if (!cfg.countries.some(function (c) { return c.code === here; })) here = "";
+  var field = function (f) {
+    var input = '<input data-f type="' + f.input + '" maxlength="200" autocomplete="' + f.autoComplete + '" placeholder="' + f.placeholder + '"' + (f.required ? ' required' : '') + '>';
+    if (f.phone) input = '<div class="row"><select name="dial" aria-label="Indicativo">' + cfg.countries.map(function (c) { return '<option value="' + c.dial + '"' + ((here ? c.code === here : c.on) ? ' selected' : '') + '>' + c.label + '</option>'; }).join('') + '</select>' + input + '</div>';
+    return '<label><span>' + f.label + (f.required ? ' <b class="req">*</b>' : '') + '</span>' + input + '</label>';
+  };
   root.innerHTML =
     '<style>' +
-    ':host{all:initial}form{font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111;display:grid;gap:10px;max-width:420px}' +
-    'label{display:grid;gap:4px;font-size:13px;font-weight:600}input[type=text],input[type=email],input[type=tel]{font:inherit;padding:10px 12px;border:1px solid #d4d4d8;border-radius:10px;background:#fff;color:#111}' +
-    'input:focus{outline:2px solid #e11d2e;outline-offset:1px}.consent{display:flex;gap:8px;align-items:flex-start;font-weight:400;font-size:12px;color:#444}' +
-    'button{font:inherit;font-weight:700;padding:12px;border:0;border-radius:10px;background:#e11d2e;color:#fff;cursor:pointer}button[disabled]{opacity:.6;cursor:wait}' +
+    ':host{all:initial}form{font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111;display:grid;gap:12px;max-width:420px}' +
+    'label{display:grid;gap:6px;font-size:13px;font-weight:600}input:not([type=checkbox]),select{font:inherit;min-width:0;padding:11px 12px;border:1px solid #d4d4d8;border-radius:10px;background:#fff;color:#111}' +
+    '.row{display:flex;gap:8px}.row input{flex:1}.req{color:' + cfg.color + '}' +
+    'input:focus,select:focus{outline:2px solid ' + cfg.color + ';outline-offset:1px}.consent{display:flex;gap:8px;align-items:flex-start;font-weight:400;font-size:12px;color:#444}' +
+    'button{font:inherit;font-weight:700;padding:13px;border:0;border-radius:10px;background:' + cfg.color + ';color:' + cfg.colorText + ';cursor:pointer}button[disabled]{opacity:.6;cursor:wait}' +
     '.err{color:#b91c1c;font-size:12px;font-weight:500}.ok{padding:14px;border-radius:10px;background:#ecfdf5;color:#065f46;font-weight:600}.hp{position:absolute;left:-9999px}' +
     '</style>' +
     '<form novalidate>' +
-    '<label>Nome<input type="text" name="name" autocomplete="name" required></label>' +
-    '<label>Email<input type="email" name="email" autocomplete="email" required></label>' +
-    (cfg.askPhone ? '<label>WhatsApp' + (cfg.requirePhone ? '' : ' (opcional)') + '<input type="tel" name="phone" autocomplete="tel"' + (cfg.requirePhone ? ' required' : '') + '></label>' : '') +
+    cfg.fields.map(field).join('') +
     (cfg.consent ? '<label class="consent"><input type="checkbox" name="consent" required><span>' + cfg.consent + '</span></label>' : '') +
     '<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">' +
     '<div class="err" role="alert"></div>' +
-    '<button type="submit">Quero inscrever-me</button>' +
+    '<button type="submit">' + cfg.button + '</button>' +
     '</form>';
   var form = root.querySelector("form");
   var err = root.querySelector(".err");
@@ -91,22 +122,30 @@ export const Route = createFileRoute("/api/public/forms/$formId/embed")({
     e.preventDefault();
     var button = form.querySelector("button");
     var val = function (n) { var el = form.querySelector('[name="' + n + '"]'); return el ? (el.type === "checkbox" ? el.checked : el.value) : null; };
+    var inputs = form.querySelectorAll("[data-f]");
+    var answers = {};
     var payload = {
-      form_id: cfg.formId, submission_id: sid,
-      name: val("name"), email: val("email"), phone: val("phone") || null, consent: cfg.consent ? val("consent") : null,
+      form_id: cfg.formId, submission_id: sid, consent: cfg.consent ? val("consent") : null,
       utm_source: utm.utm_source || null, utm_medium: utm.utm_medium || null, utm_campaign: utm.utm_campaign || null,
       utm_content: utm.utm_content || null, utm_term: utm.utm_term || null,
       referrer: ref, page_url: location.href,
       device: window.matchMedia && matchMedia("(max-width: 767px)").matches ? "mobile" : "desktop",
       website: val("website")
     };
+    // Os campos da etapa Página: nome, e-mail e WhatsApp (com o indicativo) soltos; os outros em «answers».
+    cfg.fields.forEach(function (f, i) {
+      var v = inputs[i] ? inputs[i].value.trim() : "";
+      if (f.phone && v) v = val("dial") + " " + v.replace(/[^0-9\\s()-]/g, "");
+      if (f.base) payload[f.key] = v || null; else if (v) answers[f.key] = v;
+    });
+    payload.answers = answers;
     err.textContent = ""; button.disabled = true;
     fetch(cfg.endpoint, { method: "POST", headers: { "content-type": "application/json", "x-convertewebinar-embed": "1" }, body: JSON.stringify(payload) })
       .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
       .then(function (res) {
         if (!res.ok) {
           var f = res.body.fields || {};
-          err.textContent = f.name || f.email || f.phone || f.consent || res.body.message || "Não foi possível concluir a inscrição.";
+          err.textContent = f[Object.keys(f)[0]] || res.body.message || "Não foi possível concluir a inscrição.";
           button.disabled = false; return;
         }
         if (res.body.redirect_url) { location.href = res.body.redirect_url; return; }

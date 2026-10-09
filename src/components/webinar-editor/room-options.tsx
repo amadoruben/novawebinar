@@ -1,10 +1,11 @@
 import { useEffect } from "react";
-import { Check, CirclePlay, Clock, Eye, EyeOff, Moon, Palette, Play, Plus, Timer, UserPlus, X } from "lucide-react";
+import { Check, CirclePlay, Clock, Eye, EyeOff, Gauge, Moon, Palette, Play, Plus, Timer, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { NETWORK_ICONS } from "@/components/room/live-parts";
 import { CountdownThumb } from "@/components/prelive-countdown";
+import { TimerThumb } from "@/components/room/lesson-timer";
 import { peekCountdown, useCountdownPeek } from "./room-preview";
 import { cn } from "@/lib/utils";
 import {
@@ -16,9 +17,12 @@ import {
   FOLLOW_NETWORKS,
   OFFER_COLOR_SUGGESTIONS,
   suggestFollowMoments,
+  TIMER_MODELS,
+  TIMER_OFF,
   type FollowMoment,
   type EntryLook,
   type RoomCountdown,
+  type RoomTimer,
   type FollowNetwork,
   type LiveSettings,
 } from "@/lib/room-logic";
@@ -64,6 +68,13 @@ export function RoomOptions({
     peekCountdown(next.on && show);
   };
   useEffect(() => () => peekCountdown(false), []);
+  // O temporizador: ao mexer, a pré-visualização vai para dentro dos minutos escolhidos, para se ver.
+  const timer = live.timer ?? TIMER_OFF;
+  const setTimer = (patch: Partial<RoomTimer>) => {
+    const next = { ...timer, ...patch };
+    onLive({ timer: next });
+    if (next.on && (c.t < next.start || c.t > next.end)) c.seek(Math.round((next.start + next.end) / 2));
+  };
   return (
     <>
       <Section icon={Moon} title="Aparência" help="aparencia">
@@ -135,7 +146,7 @@ export function RoomOptions({
       <Section icon={Palette} title="Cor do botão" help="corBotao">
         <Swatches label="Botão de entrar e oferta" value={live.offerColor} onChange={(offerColor) => onLive({ offerColor })} options={OFFER_COLOR_SUGGESTIONS} />
         <p className="text-[12.5px] text-muted-foreground">
-          O botão de entrar, o botão da oferta e o cartão usam esta cor; o texto ajusta-se sozinho. «Ao vivo» fica sempre vermelho.
+          O botão de entrar e, por omissão, a oferta usam esta cor; o texto ajusta-se sozinho. «Ao vivo» fica sempre vermelho.
         </p>
       </Section>
 
@@ -201,6 +212,55 @@ export function RoomOptions({
               {peek ? <EyeOff /> : <Eye />}
               {peek ? "Voltar ao vídeo" : "Ver na sala"}
             </Button>
+          </>
+        ) : null}
+      </Section>
+
+      <Section icon={Gauge} title="Temporizador" help="temporizador">
+        <div className="rounded-xl border bg-white p-3">
+          <SwitchRow
+            title="Mostrar o temporizador"
+            description="A % da aula por cima do vídeo, nos minutos em que apresenta."
+            checked={timer.on}
+            onChange={(on) =>
+              setTimer(on && !(timer.end > timer.start) ? { on, start: 0, end: Math.max(60, Math.round(c.duration)) } : { on })
+            }
+          />
+        </div>
+        {timer.on ? (
+          <>
+            <TimeWindow
+              labels={["De", "A"]}
+              start={timer.start}
+              end={timer.end}
+              max={Math.max(1, c.duration)}
+              onStart={(start) => setTimer({ start, end: Math.max(timer.end, start + 60) })}
+              onEnd={(end) => setTimer({ end: Math.max(timer.start + 60, end) })}
+            />
+            <div className="grid grid-cols-2 gap-2.5" role="radiogroup" aria-label="Modelo do temporizador">
+              {TIMER_MODELS.map(({ id, name }) => {
+                const on = timer.model === id;
+                return (
+                  <button key={id} type="button" role="radio" aria-checked={on} onClick={() => setTimer({ model: id })} className="group grid gap-2 text-left">
+                    <span
+                      className={cn(
+                        "relative block overflow-hidden rounded-xl ring-1 ring-black/10 transition",
+                        on ? "ring-2 ring-foreground ring-offset-2" : "group-hover:ring-black/25",
+                      )}
+                    >
+                      <TimerThumb model={id} color={timer.color ?? live.offerColor} />
+                      {on ? (
+                        <span className="absolute left-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-foreground text-background">
+                          <Check className="size-3" />
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className={cn("text-[13px]", on ? "font-semibold" : "font-medium text-muted-foreground")}>{name}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <Swatches label="Cor do temporizador" value={timer.color ?? live.offerColor} onChange={(color) => setTimer({ color })} options={OFFER_COLOR_SUGGESTIONS} />
           </>
         ) : null}
       </Section>

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultEntryFields,
+  embedFields,
   entryFieldsProblem,
+  entryNotice,
   fieldIcon,
   parseEntryFields,
   validateEntry,
@@ -100,5 +102,48 @@ describe("ícones dos campos", () => {
     expect(fields[2]!.icon).toBeUndefined();
     expect(fieldIcon(fields[2]!)).toBe("help");
     expect(fieldIcon(fields[0]!)).toBe("mail");
+  });
+});
+
+describe("ícones das redes", () => {
+  it("TikTok, LinkedIn, Facebook e YouTube ficam guardados como os outros", () => {
+    const fields = parseEntryFields(
+      ["tiktok", "linkedin", "facebook", "youtube"].map((icon) => ({ id: `f_${icon}`, kind: "text", label: icon, required: false, icon })),
+      legacy,
+    );
+    expect(fields.map((f) => f.icon)).toEqual(["tiktok", "linkedin", "facebook", "youtube"]);
+    expect(fieldIcon(fields[0]!)).toBe("tiktok");
+  });
+});
+
+describe("formulário da página externa", () => {
+  it("leva os campos da etapa Página: o WhatsApp vai como «phone» e os campos novos em «answers»", () => {
+    const fields = parseEntryFields(
+      [
+        { kind: "name", label: "Nome", required: true },
+        { kind: "whatsapp", label: "WhatsApp", required: true },
+        { id: "f_ig", kind: "text", label: "Instagram", required: false, icon: "instagram" },
+      ],
+      legacy,
+    );
+    expect(embedFields(fields).map((f) => [f.key, f.base, f.input, f.required])).toEqual([
+      ["name", true, "text", true],
+      ["phone", true, "tel", true],
+      ["f_ig", false, "text", false],
+    ]);
+  });
+});
+
+describe("aviso no topo da página", () => {
+  const base = { registration_progress_enabled: false, registration_progress_value: 92, registration_badge_text: "" };
+  it("desligado por omissão", () => expect(entryNotice(base)).toBeNull());
+  it("vagas em %, entre 0 e 100", () => {
+    expect(entryNotice({ ...base, registration_progress_enabled: true, registration_progress_value: "87" })).toEqual({ kind: "progress", value: 87 });
+    expect(entryNotice({ ...base, registration_progress_enabled: true, registration_progress_value: 140 })).toEqual({ kind: "progress", value: 100 });
+  });
+  it("texto curto, até 40 letras; as vagas ganham ao texto", () => {
+    expect(entryNotice({ ...base, registration_badge_text: "  Só 50 lugares " })).toEqual({ kind: "text", text: "Só 50 lugares" });
+    expect(entryNotice({ ...base, registration_badge_text: "x".repeat(60) })).toEqual({ kind: "text", text: "x".repeat(40) });
+    expect(entryNotice({ ...base, registration_progress_enabled: true, registration_badge_text: "Só 50" })!.kind).toBe("progress");
   });
 });

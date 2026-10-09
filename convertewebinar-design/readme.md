@@ -95,3 +95,8 @@ Plus Jakarta Sans is loaded from Google Fonts (no binaries supplied).
 - Colors only via tokens (`var(--…)`); no hex in components or UI kits. Dark = `--navy`, never pure black.
 - Text on `--accent` is always white; on `--accent-soft` it is `--accent-700`.
 - Card groups in the Design System tab: Marca, Cores, Tipografia, Espaçamento, Efeitos, Componentes, App Convertewebinar.
+
+## Referências
+- **Geist (Vercel), 5/10:** estrutura do painel — neutros 100–1000, letra Geist, controlos 32/36/40 com 6px, cartões 12px, acção principal a preto.
+- **Nubank, 9/10:** lógica do site e da auth, com as nossas cores. Primitivos → papéis → temas de superfície (`[data-surface="base|warm|tint|inverse|footer"]` em `src/styles.css`); cada secção tem o seu fundo e o cartão é um degrau da mesma família, sem sombra. Tipografia fluida `--t-*`, botões em pílula de 48px, campos de 48px com raio 8 e aresta `--border-control`. Contraste: `--text-tertiary #6F6F6F`, `#E8440C` como texto só a partir de 24px. Sem faixa laranja. Estudo completo: `.scratch/arnes/design-nubank.md`.
+- **Leveza (Angola, dados móveis):** no site e na auth não entram bibliotecas novas; imagens em WebP com `width`/`height` e `loading="lazy"`; letras só do `@fontsource` (subconjunto latin descarregado à medida).

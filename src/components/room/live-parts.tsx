@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEve
 import { Check, ChevronDown, ChevronUp, Clock, Eye, Headset, Plus, SendHorizontal, ShoppingBag, ShoppingCart, Smile, Users, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { entryPalette, offerColor, type FollowNetwork, type OfferLook } from "@/lib/room-logic";
+import { entryPalette, offerColor, offerColorVars, type FollowNetwork, type OfferColors, type OfferLook } from "@/lib/room-logic";
 import { EMOJIS, HeartButton, OfferThumb, ReactionPill, saleColor, type Reaction } from "./room-parts";
 
 /**
@@ -90,7 +90,8 @@ const LIVE_CSS = `
 /* As folhas e o cartão da oferta: no escuro, o cinza das folhas do YouTube (#212121), que se destaca do vídeo preto; no claro, branco. */
 .lv-sheet{--room-surface:#212121;--room-raised:#303030;--room-line:#3F3F3F}
 .room-light .lv-sheet{--room-surface:#FFFFFF;--room-raised:#F2F2F2;--room-line:#E5E5E5}
-.lv-feed{-webkit-mask-image:linear-gradient(180deg,transparent 0,rgba(0,0,0,.35) 40px,#000 110px);mask-image:linear-gradient(180deg,transparent 0,rgba(0,0,0,.35) 40px,#000 110px)}
+/* As mensagens só desvanecem num traço curto no topo do chat, onde saem (sem faixa escura). */
+.lv-feed{-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 14px);mask-image:linear-gradient(180deg,transparent 0,#000 14px)}
 @media (prefers-reduced-motion:reduce){.lv-in,.lv-up,.lv-follow,.lv-ping,.lv-pop,.lv-dot{animation:none}}
 /* Palco deitado (telemóvel deitado): a folha abre na coluna da direita, como o chat, de cima a baixo; o vídeo fica à vista. */
 @container (orientation:landscape){.lv-sheet-panel{left:auto;right:max(14px,env(safe-area-inset-right));top:12px;width:min(380px,50%);max-height:none;overflow-y:auto}}
@@ -106,6 +107,9 @@ export function LiveStyle() {
  */
 export const LIVE_SCRIM =
   "linear-gradient(0deg, rgba(0,0,0,.9) 0%, rgba(0,0,0,.86) 7%, rgba(0,0,0,.8) 17%, rgba(0,0,0,.7) 26%, rgba(0,0,0,.58) 35%, rgba(0,0,0,.48) 43%, rgba(0,0,0,.38) 52%, rgba(0,0,0,.27) 62%, rgba(0,0,0,.15) 71%, rgba(0,0,0,.06) 81%, rgba(0,0,0,.02) 90%, rgba(0,0,0,0) 100%)";
+
+/** A altura do chat do Live no telemóvel: cinco linhas de mensagens (mais o traço onde desvanecem). */
+export const LIVE_FEED_LINES = "max-h-[156px]";
 
 /* ---------- Topo ---------- */
 
@@ -421,8 +425,10 @@ export type LiveOffer = {
   closed: boolean;
   /** A imagem do produto (só a oferta principal a tem). */
   image?: string | null | undefined;
-  /** «Quadrada» (o produto num quadrado grande, ao lado do nome) ou «Compacta» (uma linha com a miniatura). */
+  /** «Quadrada» (o produto num quadrado grande, ao lado do nome), «Compacta» (uma linha com a miniatura) ou «Clássica» (faixa na cor, fundo meio transparente). */
   look?: OfferLook | undefined;
+  /** As cores próprias da oferta (botão, fundo, texto); vazias, as da sala. */
+  colors?: OfferColors | undefined;
   /** O botão leva a um grupo (WhatsApp ou Telegram): o ícone das pessoas em vez do carrinho, como no separador Oferta. */
   group?: boolean | undefined;
 };
@@ -460,6 +466,7 @@ export function LiveOfferCard({
 }) {
   const drag = useDrag(onMinimize, onExpand);
   const compact = offer.look === "compact";
+  const paint = (offerColorVars(offer.colors) ?? undefined) as CSSProperties | undefined;
   const off = offer.closed ? null : priceDiscount(offer.priceFrom, offer.priceNow);
   const BuyIcon = offer.group ? Users : ShoppingCart;
   const buy = (
@@ -473,13 +480,16 @@ export function LiveOfferCard({
       {offer.closed ? "Oferta encerrada" : offer.button}
     </button>
   );
-  const reduce = (
+  const reduce = (onBand?: boolean) => (
     <button
       type="button"
       onClick={onMinimize}
       aria-label="Reduzir a oferta"
       title="Reduzir"
-      className="-mr-1 -mt-1 grid size-8 shrink-0 place-items-center self-start rounded-full bg-room-raised text-room-subtle transition hover:text-room-text"
+      className={cn(
+        "-mr-1 -mt-1 grid size-8 shrink-0 place-items-center self-start rounded-full transition",
+        onBand ? "bg-black/25 text-white hover:bg-black/40" : "bg-room-raised text-room-subtle hover:text-room-text",
+      )}
     >
       <ChevronDown className="size-[18px]" strokeWidth={2.4} />
     </button>
@@ -508,8 +518,34 @@ export function LiveOfferCard({
       >
         <span className={cn("block h-[5px] w-10 rounded-full", panel ? "bg-room-subtle/50" : "bg-white/80 shadow-[0_1px_4px_rgba(0,0,0,.4)]")} />
       </button>
-      {compact ? (
-        <div className="lv-sheet mt-1 overflow-hidden rounded-2xl bg-room-surface p-3 text-room-text shadow-[0_18px_40px_rgba(0,0,0,.45)] ring-1 ring-room-line">
+      {offer.look === "classic" ? (
+        // «Clássica»: a faixa na cor da oferta com o nome e, por baixo, o fundo meio transparente
+        // (nota-se o vídeo e o chat por trás); os preços com o tempo numa linha e o botão redondo.
+        <div
+          style={paint}
+          className="lv-sheet mt-1 overflow-hidden rounded-2xl bg-[color-mix(in_srgb,var(--room-surface)_78%,transparent)] text-room-text shadow-[0_18px_40px_rgba(0,0,0,.45)] ring-1 ring-room-line"
+        >
+          <div className="flex items-start gap-3 bg-[linear-gradient(110deg,var(--of-dark)_0%,var(--of-mid)_52%,var(--of)_100%)] px-4 pb-3.5 pt-3 text-white">
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="text-[10.5px] font-extrabold uppercase tracking-[0.2em] text-white/85">
+                {offer.closed ? "Inscrições encerradas" : "Inscrições abertas"}
+              </span>
+              <b className="mt-1 line-clamp-2 break-words text-[22px] font-extrabold leading-tight tracking-[-0.01em]">{offer.product || "A oferta"}</b>
+            </span>
+            {offer.image ? <OfferThumb imageUrl={offer.image} className="size-12" /> : null}
+            {reduce(true)}
+          </div>
+          <div className="px-3.5 pb-3.5 pt-3">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[14.5px]">
+              {offer.priceFrom ? <s className="text-room-subtle">De {offer.priceFrom}</s> : null}
+              {offer.priceNow ? <b className="font-extrabold">Por {offer.priceNow}</b> : null}
+              <OfferClock offer={offer} className="ml-auto" />
+            </div>
+            {buy}
+          </div>
+        </div>
+      ) : compact ? (
+        <div style={paint} className="lv-sheet mt-1 overflow-hidden rounded-2xl bg-room-surface p-3 text-room-text shadow-[0_18px_40px_rgba(0,0,0,.45)] ring-1 ring-room-line">
           <div className="flex items-center gap-3">
             <OfferThumb imageUrl={offer.image} className="size-12" />
             <span className="flex min-w-0 flex-1 flex-col leading-tight">
@@ -517,12 +553,12 @@ export function LiveOfferCard({
               <span className="mt-1">{prices}</span>
             </span>
             <OfferClock offer={offer} className="text-[14.5px]" />
-            {reduce}
+            {reduce()}
           </div>
           {buy}
         </div>
       ) : (
-        <div className="lv-sheet mt-1 overflow-hidden rounded-2xl bg-room-surface p-3 text-room-text shadow-[0_18px_40px_rgba(0,0,0,.45)] ring-1 ring-room-line">
+        <div style={paint} className="lv-sheet mt-1 overflow-hidden rounded-2xl bg-room-surface p-3 text-room-text shadow-[0_18px_40px_rgba(0,0,0,.45)] ring-1 ring-room-line">
           {/* O produto num quadrado grande (a imagem, ou o saco na cor da oferta), com o nome ao lado. */}
           <div className="flex gap-3">
             <span className="relative shrink-0">
@@ -539,7 +575,7 @@ export function LiveOfferCard({
               {prices}
               <OfferClock offer={offer} className="self-start text-[14px]" />
             </span>
-            {reduce}
+            {reduce()}
           </div>
           {buy}
         </div>
@@ -556,6 +592,7 @@ export function LiveOfferSlim({ offer, onOpen }: { offer: LiveOffer; onOpen: () 
       type="button"
       onClick={onOpen}
       aria-label="Ver a oferta"
+      style={(offerColorVars(offer.colors) ?? undefined) as CSSProperties | undefined}
       className="lv-up mt-3 flex h-[52px] w-full items-center gap-2.5 rounded-[14px] bg-[linear-gradient(100deg,var(--of-mid),var(--of))] pl-2 pr-2.5 text-left text-white"
     >
       <span className="relative grid size-9 shrink-0 place-items-center overflow-hidden rounded-[10px] bg-black/25">

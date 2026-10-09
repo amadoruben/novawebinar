@@ -16,7 +16,24 @@ import {
   Sparkles,
   Video,
 } from "lucide-react";
-import presenterAsset from "@/assets/local/nova-presenter.jpg";
+import presenter480 from "@/assets/local/nova-presenter-480.webp";
+import presenter720 from "@/assets/local/nova-presenter-720.webp";
+
+/** A foto da sala: WebP com tamanho fixo e lazy (18 KB ou 28 KB, conforme o ecrã). */
+function Presenter() {
+  return (
+    <img
+      src={presenter480}
+      srcSet={`${presenter480} 480w, ${presenter720} 720w`}
+      sizes="(min-width: 1024px) 40vw, 80vw"
+      width={720}
+      height={480}
+      loading="lazy"
+      decoding="async"
+      alt="Pessoa a fazer uma apresentação num ambiente profissional"
+    />
+  );
+}
 
 export function ScheduleVisual() {
   return (
@@ -42,7 +59,7 @@ export function RoomVisual({ sales = false }: { sales?: boolean }) {
   return (
     <div className="lp-room-ui" aria-label={sales ? "Sala ao vivo com notificações de venda" : "Sala ao vivo do Convertewebinar"}>
       <div className="lp-room-player">
-        <img src={presenterAsset} alt="Pessoa a fazer uma apresentação num ambiente profissional" />
+        <Presenter />
         <div className="lp-room-top">
           <span className="lp-live-group"><b className="lp-live-tag"><Radio /> Ao Vivo</b><b className="lp-live-count"><Eye /> 1 284</b></span>
         </div>
@@ -77,7 +94,7 @@ export function ReplayVisual() {
   return (
     <div className="lp-room-ui" aria-label="Sala em modo replay do Convertewebinar">
       <div className="lp-room-player">
-        <img src={presenterAsset} alt="Pessoa a fazer uma apresentação num ambiente profissional" />
+        <Presenter />
         <div className="lp-room-top">
           <span className="lp-live-group"><b className="lp-replay-tag"><Video /> Replay</b><b className="lp-live-count"><Eye /> 312</b></span>
         </div>
@@ -135,7 +152,7 @@ export function OfferVisual() {
   return (
     <div className="lp-room-ui is-offer" aria-label="Oferta apresentada durante a sessão ao vivo">
       <div className="lp-room-player">
-        <img src={presenterAsset} alt="Pessoa a fazer uma apresentação num ambiente profissional" />
+        <Presenter />
         <div className="lp-room-top">
           <span className="lp-live-group"><b className="lp-live-tag"><Radio /> Ao Vivo</b><b className="lp-live-count"><Eye /> 1 284</b></span>
         </div>

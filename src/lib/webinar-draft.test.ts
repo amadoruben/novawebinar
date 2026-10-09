@@ -147,6 +147,7 @@ describe("etapas do editor", () => {
       "automacoes",
       "agente",
       "agenda",
+      "revisao",
     ]);
   });
 

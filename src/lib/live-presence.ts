@@ -16,9 +16,12 @@ export type LiveViewer = {
   device: DeviceKind;
   city: string | null;
   country: string | null;
+  countryCode: string | null;
   lat: number | null;
   lon: number | null;
   checkout: boolean;
+  /** Com a oferta no ecrã; null quando a sala não o diz. */
+  offer: boolean | null;
   joinedAt: string;
 };
 
@@ -137,7 +140,27 @@ export function presenceChannelName(organizationId: string) {
   return `live-view:${organizationId}`;
 }
 
-/** Marca esta pessoa como presente na sala e avisa quando abre a oferta. */
+/**
+ * O canal de presença é público: qualquer pessoa com o id da conta o pode ouvir. Por isso
+ * vai só o primeiro nome e a inicial («Ana C.») e o sítio arredondado ao da cidade (~11 km).
+ * ponytail: mitigação; o canal privado precisa de políticas em realtime.messages e de
+ * desligar «Allow public access» no Realtime, o que corta os outros canais públicos.
+ */
+export function publicName(full: string) {
+  const [first = "", ...rest] = full.trim().split(/\s+/);
+  const last = rest.at(-1);
+  return `${first.split("@")[0]}${last ? ` ${last[0]!.toUpperCase()}.` : ""}`;
+}
+
+export function publicPlace(place: GeoPlace): GeoPlace {
+  const round = (n: number | null) => (n === null ? null : Math.round(n * 10) / 10);
+  return { ...place, lat: round(place.lat), lon: round(place.lon) };
+}
+
+/**
+ * Marca esta pessoa como presente na sala e avisa quando clica na oferta. `offerOpen`
+ * (opcional) diz se a oferta está no ecrã, para a Vista ao vivo contar «Na oferta».
+ */
 export function useLivePresence({
   organizationId,
   webinarId,
@@ -145,6 +168,7 @@ export function useLivePresence({
   name,
   mode,
   checkout,
+  offerOpen,
 }: {
   organizationId: string | null | undefined;
   webinarId: string;
@@ -152,9 +176,11 @@ export function useLivePresence({
   name: string;
   mode: "live" | "replay";
   checkout: boolean;
+  offerOpen?: boolean;
 }) {
-  const stateRef = useRef({ checkout });
-  stateRef.current = { checkout };
+  const stateRef = useRef({ checkout, offerOpen });
+  stateRef.current = { checkout, offerOpen };
+  const tracked = useRef<{ channel: ReturnType<typeof supabase.channel>; payload: Record<string, unknown> } | null>(null);
 
   useEffect(() => {
     if (!organizationId) return;
@@ -167,39 +193,40 @@ export function useLivePresence({
       channel = supabase.channel(presenceChannelName(organizationId), {
         config: { presence: { key: `${webinarId}:${Math.random().toString(36).slice(2)}` } },
       });
+      const payload = {
+        webinarId,
+        webinarTitle,
+        name: publicName(name),
+        mode,
+        device: detectDevice(),
+        joinedAt: new Date().toISOString(),
+        ...publicPlace(place),
+      };
       channel.subscribe((status) => {
-        if (status !== "SUBSCRIBED") return;
-        void channel?.track({
-          webinarId,
-          webinarTitle,
-          name,
-          mode,
-          device: detectDevice(),
-          checkout: stateRef.current.checkout,
-          joinedAt: new Date().toISOString(),
-          ...place,
-        });
+        if (status !== "SUBSCRIBED" || !channel) return;
+        tracked.current = { channel, payload };
+        const { checkout: clicked, offerOpen: offer } = stateRef.current;
+        void channel.track({ ...payload, checkout: clicked, ...(offer === undefined ? {} : { offer }) });
       });
     })();
 
     return () => {
       active = false;
+      tracked.current = null;
       if (channel) void supabase.removeChannel(channel);
     };
   }, [organizationId, webinarId, webinarTitle, name, mode]);
 
-  // Quando a pessoa clica em comprar, a presença é atualizada na hora.
+  // Quando a pessoa clica em comprar ou a oferta abre/fecha, a presença é atualizada na hora.
   useEffect(() => {
-    if (!organizationId || !checkout) return;
-    const channels = supabase
-      .getChannels()
-      .filter((c) => c.topic.endsWith(presenceChannelName(organizationId)));
-    for (const channel of channels) {
-      const current = channel.presenceState();
-      const mine = Object.values(current).flat()[0] as Record<string, unknown> | undefined;
-      void channel.track({ ...(mine ?? {}), webinarId, webinarTitle, name, mode, checkout: true });
-    }
-  }, [checkout, organizationId, webinarId, webinarTitle, name, mode]);
+    const current = tracked.current;
+    if (!current) return;
+    void current.channel.track({
+      ...current.payload,
+      checkout,
+      ...(offerOpen === undefined ? {} : { offer: offerOpen }),
+    });
+  }, [checkout, offerOpen]);
 }
 
 /** Lista, em tempo real, quem está agora dentro das salas do workspace. */
@@ -223,14 +250,16 @@ export function useLiveViewers(organizationId: string | null | undefined) {
           key,
           webinarId: entry["webinarId"] as string,
           webinarTitle: (entry["webinarTitle"] as string) ?? "Sessão",
-          name: (entry["name"] as string) ?? "Participante",
+          name: (entry["name"] as string) || "Participante",
           mode: entry["mode"] === "replay" ? "replay" : "live",
           device: entry["device"] === "mobile" ? "mobile" : "desktop",
           city: (entry["city"] as string) ?? null,
           country: (entry["country"] as string) ?? null,
+          countryCode: typeof entry["countryCode"] === "string" ? (entry["countryCode"] as string) : null,
           lat: typeof entry["lat"] === "number" ? (entry["lat"] as number) : null,
           lon: typeof entry["lon"] === "number" ? (entry["lon"] as number) : null,
           checkout: entry["checkout"] === true,
+          offer: typeof entry["offer"] === "boolean" ? (entry["offer"] as boolean) : null,
           joinedAt: (entry["joinedAt"] as string) ?? new Date().toISOString(),
         });
       }

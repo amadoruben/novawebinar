@@ -19,7 +19,7 @@ export type DraftFields = {
 };
 
 /**
- * As 10 etapas do editor, pela ordem do menu: antes da sala, na sala, depois da sala e lançar.
+ * As etapas do editor, pela ordem do menu: antes da sala, na sala, depois da sala e lançar (com a Revisão no fim).
  * Cada etapa faz uma só coisa; o vídeo dá o tempo às da sala.
  */
 export const EDITOR_STEPS = [
@@ -34,6 +34,8 @@ export const EDITOR_STEPS = [
   { id: "automacoes", label: "Automações", group: "depois" },
   { id: "agente", label: "Agente IA", group: "depois" },
   { id: "agenda", label: "Agenda", group: "lancar" },
+  // No fim: rever etapa a etapa e publicar.
+  { id: "revisao", label: "Revisão", group: "lancar" },
 ] as const;
 
 export type EditorStep = (typeof EDITOR_STEPS)[number]["id"];

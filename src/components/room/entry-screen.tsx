@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
-  AtSign,
   BookOpen,
   Briefcase,
   Building2,
@@ -30,7 +29,8 @@ import {
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PHONE_COUNTRIES, type PhoneCountry } from "@/lib/phone-countries";
-import { FIELD_KINDS, fieldIcon, type EntryField, type EntryFieldKind, type FieldIconKey } from "@/lib/entry-fields";
+import { FIELD_KINDS, fieldIcon, type EntryField, type EntryFieldKind, type EntryNotice, type FieldIconKey } from "@/lib/entry-fields";
+import { BrandLogo } from "@/components/ds/brand-icons";
 import { ENTRY_CARD_DEFAULT, entryPalette } from "@/lib/room-logic";
 import { cn } from "@/lib/utils";
 import whatsappIcon from "@/assets/local/whatsapp-icon.webp";
@@ -45,15 +45,19 @@ const ENTRY_CSS = `@keyframes cwBlink{50%{opacity:.25}}.cw-blink{animation:cwBli
 
 export const ROOM_FONT = '"Plus Jakarta Sans Variable", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif';
 
+/** Os logótipos das redes (cores da marca); o TikTok, preto, segue a cor do texto. */
+const BRAND_FIELD_ICONS = { instagram: "Instagram", tiktok: "TikTok", facebook: "Facebook", linkedin: "LinkedIn", youtube: "YouTube" } as const;
+type BrandFieldIcon = keyof typeof BRAND_FIELD_ICONS;
+const isBrandIcon = (key: FieldIconKey): key is BrandFieldIcon => key in BRAND_FIELD_ICONS;
+
 /** Os ícones que o organizador pode dar a um campo, iguais no editor e na página. */
-export const FIELD_ICON_COMPONENTS: Record<Exclude<FieldIconKey, "whatsapp">, LucideIcon> = {
+export const FIELD_ICON_COMPONENTS: Record<Exclude<FieldIconKey, "whatsapp" | BrandFieldIcon>, LucideIcon> = {
   user: UserRound,
   mail: Mail,
   phone: Phone,
   pin: MapPin,
   building: Building2,
   briefcase: Briefcase,
-  instagram: AtSign,
   calendar: CalendarDays,
   globe: Globe,
   school: GraduationCap,
@@ -84,6 +88,7 @@ export function FieldIcon({
 }) {
   const key = fieldIcon({ kind, icon });
   if (key === "whatsapp") return <img src={whatsappIcon} alt="" className={className} />;
+  if (isBrandIcon(key)) return <BrandLogo name={BRAND_FIELD_ICONS[key]} className={cn(className, key === "tiktok" && "fill-current")} />;
   const Icon = FIELD_ICON_COMPONENTS[key];
   return <Icon className={className} />;
 }
@@ -97,7 +102,8 @@ export type EntryScreenProps = {
   /** A aula por trás (só no tema escuro); sem vídeo legível, um fundo escuro. */
   video?: { url: string; startSeconds?: number } | null | undefined;
   buttonText: string;
-  progress?: number | null | undefined;
+  /** O aviso no topo do cartão (vagas em % ou texto curto); sem ele, só o título. */
+  notice?: EntryNotice | null | undefined;
   fields: readonly EntryField[];
   values: Readonly<Record<string, string>>;
   onChange?: ((values: Record<string, string>) => void) | undefined;
@@ -149,7 +155,7 @@ export function EntryScreen(props: EntryScreenProps) {
   const hl = (key: string) => ring(props.highlight === key);
   const inert = props.preview;
   const set = (id: string, value: string) => props.onChange?.({ ...props.values, [id]: value });
-  const progress = props.progress == null ? null : Math.min(100, Math.max(0, props.progress));
+  const notice = props.notice ?? null;
   const vars = {
     "--cw-btn": p.button,
     "--cw-line": p.line,
@@ -194,14 +200,17 @@ export function EntryScreen(props: EntryScreenProps) {
           boxShadow: light ? `0 10px 30px rgba(0,0,0,.08), 0 0 0 1px ${p.line}` : `0 30px 80px rgba(0,0,0,.45), 0 0 0 1px ${p.line}`,
         }}
       >
-        {progress != null ? (
-          <div className={cn("relative h-7 overflow-hidden rounded-full", hl("progress"))} style={{ background: p.line }}>
-            <div className="h-full rounded-full" style={{ width: `${progress}%`, background: p.button }} />
-            <span
-              className="absolute inset-0 grid place-items-center text-[12px] font-bold"
-              style={{ color: progress > 45 ? p.buttonText : p.text }}
-            >
-              {progress}% das vagas preenchidas
+        {notice ? (
+          // Uma linha leve por cima do título, com espaço antes dele: o título respira.
+          <div className={cn("mb-2 grid gap-1.5", hl("progress"))}>
+            {notice.kind === "progress" ? (
+              <div className="h-1.5 overflow-hidden rounded-full" style={{ background: p.line }}>
+                <div className="h-full rounded-full" style={{ width: `${notice.value}%`, background: p.button }} />
+              </div>
+            ) : null}
+            <span className="flex items-center gap-1.5 text-[12.5px] font-semibold" style={{ color: p.muted }}>
+              {notice.kind === "text" ? <i aria-hidden className="size-1.5 shrink-0 rounded-full" style={{ background: p.button }} /> : null}
+              {notice.kind === "progress" ? `${notice.value}% das vagas preenchidas` : notice.text}
             </span>
           </div>
         ) : null}
@@ -231,7 +240,7 @@ export function EntryScreen(props: EntryScreenProps) {
                   <FieldIcon
                     kind={field.kind}
                     icon={field.icon}
-                    className={cn("size-4 shrink-0", fieldIcon(field) !== "whatsapp" && "opacity-70")}
+                    className={cn("size-4 shrink-0", !isBrandIcon(fieldIcon(field)) && fieldIcon(field) !== "whatsapp" && "opacity-70")}
                   />
                   {field.label}
                 </>

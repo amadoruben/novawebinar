@@ -1,117 +1,102 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
-import { ChevronRight, Download, ListPlus, Pencil, Plus, Search, Sparkles, Trash2, Upload } from "lucide-react";
-import { useEffect, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ChevronLeft, ChevronRight, Ellipsis, Eye, ListPlus, Upload, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
-import { ContactSheet, TemperatureBadge } from "@/components/contacts/contact-sheet";
+import { ContactAutomations } from "@/components/automation-runs";
+import {
+  ContactFileView,
+  ContactList,
+  ContactsFrame,
+  GroupSummary,
+  ListChips,
+  ScopeNav,
+  ScopePicker,
+  type ContactsStep,
+  type ScopeGroup,
+} from "@/components/contacts/contacts-view";
+import { ExampleContacts } from "@/components/contacts/example";
 import { ImportContactsDialog } from "@/components/contacts/import-dialog";
 import { SegmentDialog } from "@/components/contacts/segment-dialog";
-import { segmentSentence } from "@/lib/segments";
-import { RUN_STATUS, type RunStatus } from "@/lib/automations";
-import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ds/data";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
+import { contactInsight, sourceLabel, stageLabel, TEMPERATURE_LABEL, type ContactSummary } from "@/lib/contacts";
 import {
-  contactInsight,
-  formatPhone,
-  paymentState,
-  relativeDays,
-  sourceLabel,
-  sourceVerdict,
-  stageLabel,
-  STAGES,
-  TEMPERATURE_LABEL,
-  type ContactSummary,
-} from "@/lib/contacts";
+  contactFile,
+  filterContacts,
+  launchLabel,
+  sourceRowsOf,
+  stageCountsOf,
+  themeGroups,
+} from "@/lib/contacts-journey";
 import {
   CONTACTS_PAGE_SIZE,
   fetchAllContacts,
+  switchWorkspace,
+  useContactDetail,
   useContactLists,
-  useContactSegments,
   useContacts,
   useContactSources,
   useContactStageCounts,
   useInvalidate,
   useWebinars,
-  switchWorkspace,
   useWorkspace,
   watchLabel,
-  type ContactList,
-  type SourceRow,
-  type StageCounts,
+  type ContactList as SavedList,
 } from "@/lib/data";
+import { segmentSentence } from "@/lib/segments";
+import { useContactContext, useContactConversations } from "@/lib/support/hooks";
+import { intentLabel, statusLabel } from "@/lib/support/model";
 import { downloadCsv, toCsv } from "@/lib/webinar-metrics";
 
-type Search = { contact?: string | undefined };
+/** `contact`: abre a ficha (ligações do Painel, das automações, do Atendimento). `exemplo`: pessoas fictícias, só no ecrã. */
+type Search = { contact?: string | undefined; exemplo?: 1 | undefined };
 
 export const Route = createFileRoute("/contacts")({
-  validateSearch: (search: Record<string, unknown>): Search =>
-    typeof search["contact"] === "string" ? { contact: search["contact"] } : {},
+  validateSearch: (search: Record<string, unknown>): Search => ({
+    ...(typeof search["contact"] === "string" ? { contact: search["contact"] } : {}),
+    ...(search["exemplo"] === 1 || search["exemplo"] === "1" ? { exemplo: 1 as const } : {}),
+  }),
   head: () => ({
     meta: [
       { title: "Contactos | Convertewebinar" },
-      { name: "description", content: "Todas as pessoas e a jornada de cada uma." },
+      { name: "description", content: "Todas as pessoas, por lançamento, e a jornada de cada uma." },
     ],
   }),
   component: ContactsPage,
 });
 
-type Scope = { kind: "all" } | { kind: "list"; id: string } | { kind: "event"; id: string };
-
-/** O que fazer com cada grupo, dito em linguagem de quem vende. */
-const ADVICE: Record<string, string> = {
-  checkout:
-    "Iniciaram o pagamento e não concluíram: são as pessoas mais perto de comprar. Fale com elas primeiro, de preferência no próprio dia; se o pagamento falhou, ofereça outra forma de pagar.",
-  clicked:
-    "Clicaram na oferta e não iniciaram o pagamento. Normalmente falta uma resposta a uma dúvida sobre preço, garantia ou prazo.",
-  reached_offer:
-    "Ficaram até à oferta mas não clicaram. Normalmente falta uma resposta a uma objeção ou um motivo para decidir agora.",
-  watched:
-    "Saíram antes da oferta. Enviar o replay a partir do ponto em que saíram traz uma parte delas de volta.",
-  no_show:
-    "Inscreveram-se e não apareceram. Um lembrete com o replay nas primeiras 24 horas recupera muitas destas pessoas.",
-  new: "Ainda não participaram em nenhum evento. Convide-as para o próximo webinar.",
-  customer: "Já compraram. São quem melhor pode dar um testemunho ou comprar a próxima oferta.",
-  returning: "Voltaram a dois ou mais eventos: há interesse repetido, mesmo que ainda não tenham clicado.",
-};
+const ALL = "all";
 
 function ContactsPage() {
+  const { contact: linkedId, exemplo } = Route.useSearch();
+  const navigate = useNavigate();
   const { data: workspace } = useWorkspace();
   const orgId = workspace?.organizationId;
   const invalidate = useInvalidate();
 
-  const [scope, setScope] = useState<Scope>({ kind: "all" });
+  const [scope, setScope] = useState(ALL);
   const [stage, setStage] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const routeSearch = Route.useSearch();
-  const navigate = Route.useNavigate();
-  const [openRow, setOpenRow] = useState<ContactSummary | null>(null);
+  const [openId, setOpenId] = useState<string | null>(linkedId ?? null);
+  const [step, setStep] = useState<ContactsStep>(linkedId ? "detail" : "list");
+  const [selected, setSelected] = useState<Set<string> | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   // Diálogo do segmento: null fechado; { segment: null } novo; { segment } a editar.
-  const [segmentDialog, setSegmentDialog] = useState<{ segment: ContactList | null } | null>(null);
+  const [segmentDialog, setSegmentDialog] = useState<{ segment: SavedList | null } | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput), 300);
@@ -119,58 +104,99 @@ function ContactsPage() {
   }, [searchInput]);
   useEffect(() => {
     setPage(0);
-    setSelected(new Set());
+    setSelected((s) => (s ? new Set() : s));
   }, [scope, stage, search]);
+  useEffect(() => {
+    if (linkedId) {
+      setOpenId(linkedId);
+      setStep("detail");
+    }
+  }, [linkedId]);
 
-  const listId = scope.kind === "list" ? scope.id : null;
-  const webinarId = scope.kind === "event" ? scope.id : null;
-  const filters = { stage, listId, webinarId, search, page };
+  const [kind, scopeId = null] = scope.split(":") as [string, string | undefined];
+  const listId = kind === "list" || kind === "segment" ? scopeId : null;
+  const webinarId = kind === "launch" ? scopeId : null;
+  const theme = kind === "theme" ? scopeId : null;
 
-  const { data: lists = [] } = useContactLists(orgId);
+  const { data: lists = [] } = useContactLists(exemplo ? undefined : orgId);
   const manualLists = lists.filter((l) => l.kind === "manual");
   const segments = lists.filter((l) => l.kind === "smart");
   const currentList = lists.find((l) => l.id === listId) ?? null;
-  const { data: webinars = [] } = useWebinars(orgId);
-  const { data: counts } = useContactStageCounts(orgId, listId, webinarId);
-  const { data: sources = [] } = useContactSources(orgId, listId, webinarId);
-  const { data, isLoading, isFetching } = useContacts(orgId, filters);
-  const rows = data?.rows ?? [];
-  const total = data?.total ?? 0;
-  const pageIds = rows.map((r) => r.id!).filter(Boolean);
-  const { data: runsByContact } = useContactRuns(pageIds);
-  const { data: segmentsByContact } = useContactSegments(segments.length ? pageIds : []);
-  const listNames = (c: ContactSummary) => [
-    ...manualLists.filter((l) => c.list_ids?.includes(l.id)).map((l) => l.name),
-    ...segments.filter((l) => segmentsByContact?.get(c.id!)?.includes(l.id)).map((l) => l.name),
-  ];
-  const webinarTitle = (id: string) => {
+  const { data: webinars = [] } = useWebinars(exemplo ? undefined : orgId);
+  const titleOf = (id: string) => {
     const w = webinars.find((x) => x.id === id);
     return w ? w.public_title || w.internal_name : undefined;
   };
-  const { data: linked } = useLinkedContact(routeSearch.contact, orgId);
-  // Aberto pela linha da tabela ou pela ligação (/contacts?contact=…), vindo de uma execução ou do Painel.
-  const open =
-    openRow ?? (routeSearch.contact ? (rows.find((r) => r.id === routeSearch.contact) ?? linked ?? null) : null);
-  const setOpen = (contact: ContactSummary | null) => {
-    setOpenRow(contact);
-    if (!contact && routeSearch.contact) void navigate({ search: {}, replace: true });
-  };
-  const webinarName = (ids: string[] | null) => {
-    const last = ids?.at(-1);
-    const w = last ? webinars.find((x) => x.id === last) : null;
-    if (!w) return null;
-    const title = w.public_title || w.internal_name;
-    return (ids?.length ?? 0) > 1 ? `${title} +${ids!.length - 1}` : title;
-  };
-  const testOrg = workspace?.organizations.find((o) => o.isTest && o.id !== orgId);
-  const pages = Math.max(1, Math.ceil(total / CONTACTS_PAGE_SIZE));
+  const { data: themes = [] } = useContactThemes(exemplo ? undefined : orgId);
+  const themeIds = themes.find((t) => t.id === theme)?.contactIds ?? [];
+  const { data: launchCounts } = useLaunchCounts(exemplo ? undefined : orgId, webinars.map((w) => w.id));
 
-  const scopeName =
-    scope.kind === "list"
-      ? lists.find((l) => l.id === scope.id)?.name
-      : scope.kind === "event"
-        ? webinars.find((w) => w.id === scope.id)?.public_title
-        : null;
+  const serverScope = exemplo || theme ? undefined : orgId;
+  const { data: serverCounts } = useContactStageCounts(serverScope, listId, webinarId);
+  const { data: serverSources } = useContactSources(serverScope, listId, webinarId);
+  const { data: page$, isLoading } = useContacts(serverScope, { stage, listId, webinarId, search, page });
+  const { data: themeRows = [], isLoading: themeLoading } = useThemeContacts(theme ? orgId : undefined, themeIds);
+  const rows = theme ? filterContacts(themeRows, { stage, search }) : (page$?.rows ?? []);
+  const inRows = rows.some((r) => r.id === openId);
+  const { data: linked } = useLinkedContact(exemplo || inRows ? undefined : openId, orgId);
+
+  const total = theme ? (themeLoading ? null : rows.length) : page$ ? page$.total : null;
+  const counts = theme ? stageCountsOf(themeRows) : serverCounts;
+  const sources = theme ? sourceRowsOf(themeRows) : serverSources;
+  const pages = theme ? 1 : Math.max(1, Math.ceil((page$?.total ?? 0) / CONTACTS_PAGE_SIZE));
+  const open = openId ? (rows.find((r) => r.id === openId) ?? linked ?? null) : null;
+
+  const groups: ScopeGroup[] = [
+    { id: "all", items: [{ key: ALL, kind: "all", label: "Todos os contactos" }] },
+    {
+      id: "launches",
+      title: "Lançamentos",
+      items: webinars
+        // Sem contagem (além das 30 primeiras), o lançamento aparece na mesma.
+        .filter((w) => !launchCounts || (launchCounts[w.id] ?? 1) > 0)
+        .map((w) => ({
+          key: `launch:${w.id}`,
+          kind: "launch" as const,
+          label: w.public_title || w.internal_name,
+          count: launchCounts?.[w.id] ?? null,
+        })),
+    },
+    {
+      id: "themes",
+      title: "Temas das conversas",
+      items: themes.map((t) => ({ key: `theme:${t.id}`, kind: "theme" as const, label: t.label, count: t.contactIds.length })),
+    },
+    {
+      id: "lists",
+      title: "Listas",
+      items: manualLists.map((l) => ({ key: `list:${l.id}`, kind: "list" as const, label: l.name })),
+      empty: "Junte pessoas à mão ou importe uma folha.",
+      add: { label: "Nova lista", onClick: () => void createList() },
+    },
+    {
+      id: "segments",
+      title: "Segmentos",
+      items: segments.map((l) => ({ key: `segment:${l.id}`, kind: "segment" as const, label: l.name })),
+      empty: "Regras sobre o que a pessoa fez e de onde veio: quem as cumpre entra sozinho.",
+      add: { label: "Novo segmento", onClick: () => setSegmentDialog({ segment: null }) },
+    },
+  ];
+  const scopeLabel = groups.flatMap((g) => g.items).find((i) => i.key === scope)?.label ?? "Todos os contactos";
+
+  const pickScope = (key: string) => {
+    setScope(key);
+    setStage(null);
+  };
+  const openContact = (id: string | null) => {
+    setOpenId(id);
+    setStep(id ? "detail" : "list");
+    if (!id && linkedId) void navigate({ to: "/contacts", search: {}, replace: true });
+  };
+  const showSummary = () => {
+    openContact(null);
+    setStep("detail");
+  };
+  const setExample = (on: boolean) => void navigate({ to: "/contacts", search: on ? { exemplo: 1 } : {}, replace: true });
 
   const createList = async () => {
     const name = window.prompt("Nome da nova lista")?.trim();
@@ -185,51 +211,47 @@ function ContactsPage() {
       return;
     }
     invalidate(["contacts"]);
-    setScope({ kind: "list", id: created.id });
+    pickScope(`list:${created.id}`);
   };
 
   const deleteList = async (id: string) => {
     if (!window.confirm("Apagar? Os contactos continuam guardados.")) return;
     const { error } = await supabase.from("contact_lists").delete().eq("id", id);
     if (error) {
-      toast.error("Não foi possível apagar a lista.");
+      toast.error("Não foi possível apagar.");
       return;
     }
-    setScope({ kind: "all" });
+    pickScope(ALL);
     invalidate(["contacts"]);
   };
 
   const addSelectedTo = async (targetList: string) => {
-    if (!orgId) return;
+    if (!orgId || !selected?.size) return;
     const { error } = await supabase.from("contact_list_members").upsert(
-      [...selected].map((contactId) => ({
-        list_id: targetList,
-        contact_id: contactId,
-        organization_id: orgId,
-      })),
+      [...selected].map((contactId) => ({ list_id: targetList, contact_id: contactId, organization_id: orgId })),
       { onConflict: "list_id,contact_id", ignoreDuplicates: true },
     );
     if (error) {
-      toast.error("Não foi possível adicionar à lista.");
+      toast.error("Não foi possível juntar à lista.");
       return;
     }
-    toast.success(`${selected.size} contactos adicionados.`);
-    setSelected(new Set());
+    toast.success(`${selected.size} ${selected.size === 1 ? "pessoa juntada" : "pessoas juntadas"} à lista.`);
+    setSelected(null);
     invalidate(["contacts"]);
   };
 
   const removeSelectedFromList = async () => {
-    if (!listId) return;
+    if (!listId || !selected?.size) return;
     const { error } = await supabase
       .from("contact_list_members")
       .delete()
       .eq("list_id", listId)
       .in("contact_id", [...selected]);
     if (error) {
-      toast.error("Não foi possível remover da lista.");
+      toast.error("Não foi possível tirar da lista.");
       return;
     }
-    setSelected(new Set());
+    setSelected(null);
     invalidate(["contacts"]);
   };
 
@@ -237,24 +259,9 @@ function ContactsPage() {
     if (!orgId) return;
     setExporting(true);
     try {
-      const all = await fetchAllContacts(orgId, { stage, listId, webinarId, search });
+      const all = theme ? rows : await fetchAllContacts(orgId, { stage, listId, webinarId, search });
       const content = toCsv(
-        [
-          "Nome",
-          "Email",
-          "Telefone",
-          "Etapa",
-          "Temperatura",
-          "Motivo",
-          "Próxima acção",
-          "Eventos inscritos",
-          "Eventos assistidos",
-          "Tempo assistido",
-          "Compras",
-          "Última actividade",
-          "Origem",
-          "Campanha",
-        ],
+        ["Nome", "Email", "Telefone", "Etapa", "Temperatura", "Motivo", "Próxima acção", "Lançamentos", "Esteve presente", "Tempo a ver", "Compras", "Última actividade", "Origem", "Campanha"],
         all.map((c) => {
           const i = contactInsight(c);
           return [
@@ -283,389 +290,203 @@ function ContactsPage() {
     }
   };
 
-  const allOnPageSelected = rows.length > 0 && rows.every((r) => selected.has(r.id!));
+  const header = (
+    <div className="flex gap-2">
+      {!exemplo && (
+        <Button variant="outline" onClick={() => setExample(true)}>
+          <Eye /> Ver exemplo
+        </Button>
+      )}
+      <Button onClick={() => setImportOpen(true)} disabled={!orgId || Boolean(exemplo)}>
+        <Upload /> Importar
+      </Button>
+    </div>
+  );
+
+  const nobody = !exemplo && scope === ALL && serverCounts?.all === 0;
+  const testOrg = workspace?.organizations.find((o) => o.isTest && o.id !== orgId);
 
   return (
-    <AppShell
-      title="Contactos"
-      description="Cada pessoa que se inscreveu, importou ou comprou, e em que ponto da jornada está."
-      action={
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={exportCsv} disabled={exporting || total === 0}>
-            <Download /> {exporting ? "A exportar…" : "Exportar"}
-          </Button>
-          <Button onClick={() => setImportOpen(true)} disabled={!orgId}>
-            <Upload /> Importar
-          </Button>
-        </div>
-      }
-    >
-      <div className="grid gap-6 lg:grid-cols-[232px_minmax(0,1fr)]">
-        {/* Onde estão os contactos: todos, por evento, por lista. */}
-        <aside className="hidden lg:block">
-          <nav className="sticky top-24 space-y-5 text-sm" aria-label="Listas de contactos">
-            <ScopeButton active={scope.kind === "all"} onClick={() => setScope({ kind: "all" })}>
-              Todos os contactos
-            </ScopeButton>
-            <div>
-              <p className="mb-1.5 px-3 text-xs text-muted-foreground/70">
-                Por evento
-              </p>
-              {webinars.length === 0 && <p className="px-3 text-muted-foreground">Sem webinars.</p>}
-              {webinars.map((w) => (
-                <ScopeButton
-                  key={w.id}
-                  active={scope.kind === "event" && scope.id === w.id}
-                  onClick={() => setScope({ kind: "event", id: w.id })}
-                >
-                  {w.public_title}
-                </ScopeButton>
-              ))}
-            </div>
-            <div>
-              <div className="mb-1.5 flex items-center justify-between px-3">
-                <p className="text-xs text-muted-foreground/70">
-                  As minhas listas
-                </p>
-                <Button variant="ghost" size="icon" className="size-7" onClick={createList} aria-label="Nova lista">
-                  <Plus className="size-4" />
-                </Button>
-              </div>
-              {manualLists.length === 0 && (
-                <p className="px-3 text-muted-foreground">Crie listas ou importe uma folha.</p>
-              )}
-              {manualLists.map((l) => (
-                <ScopeButton
-                  key={l.id}
-                  active={scope.kind === "list" && scope.id === l.id}
-                  onClick={() => setScope({ kind: "list", id: l.id })}
-                >
-                  {l.name}
-                </ScopeButton>
-              ))}
-            </div>
-            <div>
-              <div className="mb-1.5 flex items-center justify-between px-3">
-                <p className="text-xs text-muted-foreground/70">Segmentos</p>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-7"
-                  onClick={() => setSegmentDialog({ segment: null })}
-                  aria-label="Novo segmento"
-                >
-                  <Plus className="size-4" />
-                </Button>
-              </div>
-              {segments.length === 0 && (
-                <p className="px-3 text-muted-foreground">Regras sobre o comportamento e a origem: quem as cumpre entra sozinho.</p>
-              )}
-              {segments.map((l) => (
-                <ScopeButton
-                  key={l.id}
-                  active={scope.kind === "list" && scope.id === l.id}
-                  onClick={() => setScope({ kind: "list", id: l.id })}
-                >
-                  <Sparkles className="mr-1.5 inline size-3.5 text-muted-foreground" aria-hidden />
-                  {l.name}
-                </ScopeButton>
-              ))}
-            </div>
-          </nav>
-        </aside>
-
-        <div className="min-w-0 space-y-4">
-          <div className="lg:hidden">
-            <Select
-              value={scope.kind === "all" ? "all" : `${scope.kind}:${scope.id}`}
-              onValueChange={(v) => {
-                if (v === "all") return setScope({ kind: "all" });
-                const [kind, id] = v.split(":") as ["list" | "event", string];
-                setScope({ kind, id });
-              }}
-            >
-              <SelectTrigger aria-label="Escolher lista">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os contactos</SelectItem>
-                {webinars.length > 0 && (
-                  <SelectGroup>
-                    <SelectLabel>Por evento</SelectLabel>
-                    {webinars.map((w) => (
-                      <SelectItem key={w.id} value={`event:${w.id}`}>
-                        {w.public_title}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                )}
-                {manualLists.length > 0 && (
-                  <SelectGroup>
-                    <SelectLabel>As minhas listas</SelectLabel>
-                    {manualLists.map((l) => (
-                      <SelectItem key={l.id} value={`list:${l.id}`}>
-                        {l.name}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                )}
-                {segments.length > 0 && (
-                  <SelectGroup>
-                    <SelectLabel>Segmentos</SelectLabel>
-                    {segments.map((l) => (
-                      <SelectItem key={l.id} value={`list:${l.id}`}>
-                        {l.name}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {currentList?.kind === "smart" && currentList.rules && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-card bg-card px-4 py-3 text-sm">
-              <p>
-                <Sparkles className="mr-1.5 inline size-4 text-muted-foreground" aria-hidden />
-                <span className="font-medium">Segmento:</span> {segmentSentence(currentList.rules, webinarTitle)}.
-                <span className="text-muted-foreground"> Calculado agora, a partir do comportamento e da origem.</span>
-              </p>
-              <Button variant="outline" size="sm" onClick={() => setSegmentDialog({ segment: currentList })}>
-                <Pencil /> Editar regras
+    <AppShell title="Contactos" action={header} compact>
+      {exemplo ? (
+        <ExampleContacts onExit={() => setExample(false)} />
+      ) : !orgId ? (
+        <Skeleton className="h-[32rem] w-full" />
+      ) : nobody ? (
+        <EmptyState
+          icon={Users}
+          title="Ainda sem contactos"
+          description="Quem se inscrever num webinar aparece aqui, arrumado por lançamento, com o que viu, o que comprou e as conversas. Também pode importar uma folha com os contactos que já tem."
+          action={
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button onClick={() => setImportOpen(true)}>
+                <Upload /> Importar contactos
               </Button>
+              <Button variant="outline" onClick={() => setExample(true)}>
+                <Eye /> Ver um exemplo
+              </Button>
+              {testOrg && (
+                <Button variant="outline" onClick={() => switchWorkspace(testOrg.id)}>
+                  Ver a conta de teste
+                </Button>
+              )}
             </div>
-          )}
-
-          <JourneyStrip counts={counts} stage={stage} onSelect={setStage} />
-
-          <SourcePanel rows={sources} />
-          {stage && ADVICE[stage] && (
-            <p role="status" className="rounded-card bg-card px-4 py-3 text-sm">
-              {ADVICE[stage]}
-            </p>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[220px] flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Procurar por nome, email ou telefone"
-                aria-label="Procurar contactos"
-                className="pl-9"
-              />
-            </div>
-            {selected.size > 0 && (
-              <>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline">
-                      <ListPlus /> Adicionar {selected.size} a lista
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {manualLists.length === 0 && (
-                      <DropdownMenuItem onSelect={createList}>Criar a primeira lista…</DropdownMenuItem>
-                    )}
-                    {manualLists.map((l) => (
-                      <DropdownMenuItem key={l.id} onSelect={() => addSelectedTo(l.id)}>
-                        {l.name}
+          }
+        />
+      ) : (
+        <ContactsFrame
+          step={step}
+          nav={<ScopeNav groups={groups} active={scope} onSelect={pickScope} />}
+          list={
+            <ContactList
+              title={scopeLabel}
+              total={total}
+              note={
+                currentList?.kind === "smart" && currentList.rules
+                  ? `entra quem ${segmentSentence(currentList.rules, titleOf)}`
+                  : null
+              }
+              picker={<ScopePicker groups={groups} active={scope} onSelect={pickScope} />}
+              tools={
+                <>
+                  <Button variant="outline" size="sm" className="@2xl:hidden" onClick={showSummary}>
+                    Resumo
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="size-9 shrink-0" aria-label="Mais acções">
+                        <Ellipsis />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onSelect={() => setSelected(new Set())}>
+                        <ListPlus /> Seleccionar pessoas
                       </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                {listId && currentList?.kind === "manual" && (
-                  <Button variant="ghost" onClick={removeSelectedFromList}>
-                    Remover da lista
-                  </Button>
-                )}
-              </>
-            )}
-            {listId && selected.size === 0 && (
-              <Button variant="ghost" onClick={() => deleteList(listId)}>
-                <Trash2 /> {currentList?.kind === "smart" ? "Apagar segmento" : "Apagar lista"}
-              </Button>
-            )}
-          </div>
-
-          <p className="text-sm text-muted-foreground" role="status">
-            {isLoading ? "A carregar…" : `${total} ${total === 1 ? "contacto" : "contactos"}`}
-            {scopeName ? ` em “${scopeName}”` : ""}
-            {stage ? ` · ${stage === "returning" ? "voltaram 2+ vezes" : stageLabel(stage).toLowerCase()}` : ""}
-          </p>
-
-          {isLoading ? (
-            <Skeleton className="h-72 w-full" />
-          ) : rows.length === 0 ? (
-            <div className="rounded-card bg-card px-6 py-14 text-center">
-              <h2 className="font-semibold">
-                {total === 0 && !stage && !search && scope.kind === "all"
-                  ? "Ainda sem contactos"
-                  : "Ninguém neste filtro"}
-              </h2>
-              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-                {total === 0 && !stage && !search && scope.kind === "all"
-                  ? "Quem se inscrever num webinar aparece aqui automaticamente. Também pode importar uma folha com os contactos que já tem."
-                  : "Experimente outra etapa da jornada ou outra lista."}
-              </p>
-              {scope.kind === "all" && !stage && !search && (
-                <div className="mt-5 flex flex-wrap justify-center gap-2">
-                  <Button onClick={() => setImportOpen(true)}>
-                    <Upload /> Importar contactos
-                  </Button>
-                  {testOrg && (
-                    <Button variant="outline" onClick={() => switchWorkspace(testOrg.id)}>
-                      Ver a conta de teste
+                      <DropdownMenuItem onSelect={() => void exportCsv()} disabled={exporting || !total}>
+                        {exporting ? "A exportar…" : "Exportar este grupo (CSV)"}
+                      </DropdownMenuItem>
+                      {currentList && (
+                        <>
+                          <DropdownMenuSeparator />
+                          {currentList.kind === "smart" && (
+                            <DropdownMenuItem onSelect={() => setSegmentDialog({ segment: currentList })}>
+                              Editar as regras
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onSelect={() => void deleteList(currentList.id)} className="text-destructive">
+                            {currentList.kind === "smart" ? "Apagar o segmento" : "Apagar a lista"}
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
+              }
+              search={searchInput}
+              onSearch={setSearchInput}
+              counts={counts}
+              stage={stage}
+              onStage={setStage}
+              rows={rows.map((c) => ({ contact: c, launch: launchLabel(c.webinar_ids, titleOf) }))}
+              activeId={openId}
+              onSelect={openContact}
+              loading={theme ? themeLoading : isLoading}
+              empty={search || stage ? "Ninguém com este filtro." : "Ninguém neste grupo ainda."}
+              selection={
+                selected
+                  ? {
+                      selected,
+                      onToggle: (id) => {
+                        const next = new Set(selected);
+                        if (!next.delete(id)) next.add(id);
+                        setSelected(next);
+                      },
+                    }
+                  : undefined
+              }
+              bulk={
+                selected && (
+                  <div className="flex flex-wrap items-center gap-2 border-b bg-gray-50 px-3 py-2 text-[13px]">
+                    <span className="mr-auto font-medium tabular-nums">
+                      {selected.size} {selected.size === 1 ? "seleccionada" : "seleccionadas"}
+                    </span>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" disabled={selected.size === 0}>
+                          Juntar a lista
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {manualLists.length === 0 && (
+                          <DropdownMenuItem onSelect={() => void createList()}>Criar a primeira lista…</DropdownMenuItem>
+                        )}
+                        {manualLists.map((l) => (
+                          <DropdownMenuItem key={l.id} onSelect={() => void addSelectedTo(l.id)}>
+                            {l.name}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    {currentList?.kind === "manual" && (
+                      <Button size="sm" variant="outline" disabled={selected.size === 0} onClick={() => void removeSelectedFromList()}>
+                        Tirar da lista
+                      </Button>
+                    )}
+                    <Button size="sm" variant="ghost" onClick={() => setSelected(null)}>
+                      Cancelar
                     </Button>
-                  )}
-                </div>
-              )}
-            </div>
-          ) : (
-            <>
-              <div className={`overflow-x-auto rounded-lg border bg-card ${isFetching ? "opacity-70" : ""}`}>
-                <table className="hidden w-full min-w-[960px] text-left text-sm md:table">
-                  <thead className="bg-muted">
-                    <tr>
-                      <th className="w-10 py-4 pl-4 pr-2">
-                        <Checkbox
-                          checked={allOnPageSelected}
-                          onCheckedChange={(v) =>
-                            setSelected(v === true ? new Set(rows.map((r) => r.id!)) : new Set())
-                          }
-                          aria-label="Seleccionar todos nesta página"
-                        />
-                      </th>
-                      {["Contacto", "Estado", "Webinar e origem", "Comportamento", "Pagamento", "Listas e segmentos", "Automações", "Actividade"].map((h) => (
-                        <th key={h} className="px-2 py-3 font-medium">
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((c) => {
-                      const i = contactInsight(c);
-                      return (
-                        <tr
-                          key={c.id}
-                          className="cursor-pointer border-t hover:bg-muted/40"
-                          onClick={() => setOpen(c)}
-                        >
-                          <td className="py-4 pl-4 pr-2" onClick={(e) => e.stopPropagation()}>
-                            <Checkbox
-                              checked={selected.has(c.id!)}
-                              onCheckedChange={(v) => {
-                                const next = new Set(selected);
-                                if (v === true) next.add(c.id!);
-                                else next.delete(c.id!);
-                                setSelected(next);
-                              }}
-                              aria-label={`Seleccionar ${c.name || c.email}`}
-                            />
-                          </td>
-                          <td className="max-w-[230px] px-2 py-3">
-                            <p className="truncate font-medium">{c.name || "Sem nome"}</p>
-                            <p className="truncate text-xs text-muted-foreground">{c.email ?? "—"}</p>
-                            {c.phone && (
-                              <p className="truncate text-xs tabular-nums text-muted-foreground" title="WhatsApp">
-                                WhatsApp {formatPhone(c.phone)}
-                              </p>
-                            )}
-                          </td>
-                          <td className="px-2 py-3">
-                            <p className="mb-1">{stageLabel(i.stage)}</p>
-                            <TemperatureBadge temperature={i.temperature} />
-                          </td>
-                          <td className="max-w-[140px] px-2 py-3">
-                            <p className="truncate" title={webinarName(c.webinar_ids) ?? undefined}>
-                              {webinarName(c.webinar_ids) ?? <span className="text-muted-foreground">—</span>}
-                            </p>
-                            <p
-                              className="truncate text-xs text-muted-foreground"
-                              title="Primeira origem da pessoa; a origem de cada inscrição está na ficha"
-                            >
-                              {sourceLabel(c.first_source)}
-                              {c.first_campaign ? ` · ${c.first_campaign}` : ""}
-                            </p>
-                          </td>
-                          <td className="px-2 py-3">
-                            <Behaviour contact={c} />
-                          </td>
-                          <td className="px-2 py-3">
-                            {(() => {
-                              const pay = paymentState(c);
-                              return pay ? <Badge variant={pay.variant}>{pay.label}</Badge> : <span className="text-muted-foreground">—</span>;
-                            })()}
-                          </td>
-                          <td className="max-w-[150px] px-2 py-3">
-                            <ListBadges names={listNames(c)} />
-                          </td>
-                          <td className="px-2 py-3">
-                            <RunsSummary runs={runsByContact?.get(c.id!) ?? []} />
-                          </td>
-                          <td className="whitespace-nowrap px-2 py-3 text-muted-foreground">{relativeDays(c.last_seen_at)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {/* Mobile: blocos verticais com o essencial. */}
-                <ul className="divide-y md:hidden">
-                  {rows.map((c) => {
-                    const i = contactInsight(c);
-                    return (
-                      <li key={c.id}>
-                        <button
-                          type="button"
-                          onClick={() => setOpen(c)}
-                          className="flex w-full items-center gap-3 p-4 text-left"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate font-medium">{c.name || c.email || c.phone}</p>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {stageLabel(i.stage)} · {c.events_attended}/{c.events_registered} eventos ·{" "}
-                              {relativeDays(c.last_seen_at)}
-                            </p>
-                            {paymentState(c) && (
-                              <p className="mt-1 text-xs">{paymentState(c)!.label}</p>
-                            )}
-                          </div>
-                          <TemperatureBadge temperature={i.temperature} />
-                          <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+                  </div>
+                )
+              }
+              footer={
+                pages > 1 && (
+                  <div className="flex items-center justify-between gap-2 border-t px-3 py-2 text-[12px] text-muted-foreground">
+                    <span className="tabular-nums">
+                      Página {page + 1} de {pages}
+                    </span>
+                    <span className="flex gap-1">
+                      <Button variant="ghost" size="icon" className="size-10" disabled={page === 0} onClick={() => setPage(page - 1)} aria-label="Página anterior">
+                        <ChevronLeft />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="size-10" disabled={page + 1 >= pages} onClick={() => setPage(page + 1)} aria-label="Página seguinte">
+                        <ChevronRight />
+                      </Button>
+                    </span>
+                  </div>
+                )
+              }
+            />
+          }
+          detail={
+            open ? (
+              <RealContactFile
+                key={open.id}
+                contact={open}
+                lists={manualLists}
+                segments={segments}
+                titleOf={titleOf}
+                onOpenConversation={(id) => void navigate({ to: "/support", search: { c: id } })}
+                onBack={() => openContact(null)}
+              />
+            ) : openId && !linked ? (
+              <div className="space-y-3 p-4">
+                <Skeleton className="h-14 w-full" />
+                <Skeleton className="h-40 w-full" />
               </div>
-              {pages > 1 && (
-                <div className="flex items-center justify-end gap-2 text-sm">
-                  <span className="text-muted-foreground">
-                    Página {page + 1} de {pages}
-                  </span>
-                  <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(page - 1)}>
-                    Anterior
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page + 1 >= pages}
-                    onClick={() => setPage(page + 1)}
-                  >
-                    Seguinte
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-
-      {open && (
-        <ContactSheet contact={open} lists={manualLists} segments={segments} onClose={() => setOpen(null)} />
+            ) : (
+              <GroupSummary
+                title={scopeLabel}
+                counts={counts}
+                sources={sources}
+                stage={stage}
+                onStage={setStage}
+                onBack={() => setStep("list")}
+              />
+            )
+          }
+        />
       )}
+
       {segmentDialog && orgId && (
         <SegmentDialog
           organizationId={orgId}
@@ -678,7 +499,7 @@ function ContactsPage() {
           onClose={() => setSegmentDialog(null)}
           onSaved={(id) => {
             setSegmentDialog(null);
-            setScope({ kind: "list", id });
+            pickScope(`segment:${id}`);
           }}
         />
       )}
@@ -695,81 +516,87 @@ function ContactsPage() {
   );
 }
 
-/** O que a pessoa fez nos webinars, numa linha. */
-function Behaviour({ contact: c }: { contact: ContactSummary }) {
-  if (!c.events_registered) return <span className="text-muted-foreground">Sem eventos</span>;
-  if (!c.events_attended) {
-    return (
-      <span className="text-muted-foreground">
-        {(c.watched_seconds ?? 0) > 0 ? `Viu só ${watchLabel(c.watched_seconds ?? 0)}` : "Não apareceu"}
-      </span>
-    );
-  }
-  const offer = c.clicked_offer ? "Clicou na oferta" : c.reached_offer ? "Viu a oferta" : "Sem oferta";
-  return (
-    <span>
-      <span className="whitespace-nowrap">Assistiu {watchLabel(c.watched_seconds ?? 0)}</span>
-      <span className="block text-xs text-muted-foreground">{offer}</span>
-      {(c.events_registered ?? 0) > 1 && (
-        <span className="block text-xs text-muted-foreground">
-          {c.events_attended}/{c.events_registered} eventos
-        </span>
-      )}
-    </span>
-  );
-}
+/** A ficha de uma pessoa real: junta as três leituras que o Atendimento também usa. */
+function RealContactFile({
+  contact,
+  lists,
+  segments,
+  titleOf,
+  onOpenConversation,
+  onBack,
+}: {
+  contact: ContactSummary;
+  lists: SavedList[];
+  segments: SavedList[];
+  titleOf: (id: string) => string | undefined;
+  onOpenConversation: (id: string) => void;
+  onBack: () => void;
+}) {
+  const id = contact.id ?? null;
+  const invalidate = useInvalidate();
+  const { data: detail, isLoading } = useContactDetail(id);
+  const { data: ctx, isLoading: ctxLoading } = useContactContext(id);
+  const { data: talks } = useContactConversations(id, detail?.origins.map((o) => o.id) ?? []);
 
-function ListBadges({ names }: { names: string[] }) {
-  if (names.length === 0) return <span className="text-muted-foreground">—</span>;
-  return (
-    <span className="flex flex-wrap gap-1" title={names.join(", ")}>
-      {names.slice(0, 2).map((n) => (
-        <Badge key={n} variant="outline" className="max-w-[140px] truncate">
-          {n}
-        </Badge>
-      ))}
-      {names.length > 2 && <Badge variant="outline">+{names.length - 2}</Badge>}
-    </span>
+  const file = useMemo(
+    () =>
+      contactFile({
+        contact,
+        context: ctx?.context ?? null,
+        steps: detail?.journey ?? [],
+        origins: detail?.origins ?? [],
+        timeline: detail?.timeline ?? [],
+        titles: detail?.webinarTitles ?? new Map(),
+        talks: (talks?.talks ?? []).map((t) => ({
+          id: t.id,
+          at: t.last_message_at,
+          title: t.webinars?.public_title ?? "Conversa",
+          preview: t.last_message_preview || null,
+          cases: talks!.cases
+            .filter((k) => k.conversation_id === t.id)
+            .map((k) => `Caso ${k.number} · ${intentLabel(k.intent)} · ${statusLabel(k.status)}`),
+        })),
+        place: detail?.place ?? "",
+        device: detail?.device ?? "",
+      }),
+    [contact, ctx, detail, talks],
   );
-}
 
-function RunsSummary({ runs }: { runs: { status: string }[] }) {
-  if (runs.length === 0) return <span className="text-muted-foreground">—</span>;
-  const n = (statuses: string[]) => runs.filter((r) => statuses.includes(r.status)).length;
-  const pending = n(["waiting", "ready", "running"]);
-  const failed = n(["failed"]);
-  const done = n(["done"]);
+  const setMembership = async (listId: string, add: boolean) => {
+    const { error } = add
+      ? await supabase
+          .from("contact_list_members")
+          .insert({ list_id: listId, contact_id: id!, organization_id: contact.organization_id! })
+      : await supabase.from("contact_list_members").delete().eq("list_id", listId).eq("contact_id", id!);
+    if (error) toast.error("Não foi possível actualizar a lista.");
+    invalidate(["contacts"]);
+  };
+
+  const inLists = lists.filter((l) => detail?.listIds.includes(l.id));
   return (
-    <span className="flex flex-wrap gap-1">
-      {done > 0 && <Badge variant="success">{done} {done === 1 ? "executada" : "executadas"}</Badge>}
-      {pending > 0 && <Badge variant="secondary">{pending} {RUN_STATUS["waiting" as RunStatus].label.toLowerCase()}</Badge>}
-      {failed > 0 && <Badge variant="destructive">{failed} {failed === 1 ? "falhou" : "falharam"}</Badge>}
-      {done + pending + failed === 0 && <Badge variant="outline">{runs.length} canceladas</Badge>}
-    </span>
+    <ContactFileView
+      file={file}
+      loading={isLoading || ctxLoading}
+      lists={
+        <ListChips
+          lists={inLists}
+          segments={segments
+            .filter((s) => detail?.segmentIds.includes(s.id))
+            .map((s) => ({ id: s.id, name: s.name, why: s.rules ? segmentSentence(s.rules, titleOf) : undefined }))}
+          addable={lists.filter((l) => !detail?.listIds.includes(l.id))}
+          onAdd={(listId) => void setMembership(listId, true)}
+          onRemove={(listId) => void setMembership(listId, false)}
+        />
+      }
+      automations={<ContactAutomations contactId={id} />}
+      onOpenConversation={onOpenConversation}
+      onBack={onBack}
+    />
   );
-}
-
-/** As execuções das automações dos contactos desta página (uma leitura para a página inteira). */
-function useContactRuns(contactIds: string[]) {
-  return useQuery({
-    queryKey: ["automation-runs", "by-contact", contactIds.join(",")],
-    enabled: contactIds.length > 0,
-    refetchInterval: 30_000,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("automation_runs")
-        .select("contact_id, status")
-        .in("contact_id", contactIds);
-      if (error) throw error;
-      const map = new Map<string, { status: string }[]>();
-      for (const row of data ?? []) map.set(row.contact_id, [...(map.get(row.contact_id) ?? []), row]);
-      return map;
-    },
-  });
 }
 
 /** O contacto de uma ligação directa, mesmo que não esteja na página visível da lista. */
-function useLinkedContact(contactId: string | undefined, organizationId: string | undefined) {
+function useLinkedContact(contactId: string | null | undefined, organizationId: string | undefined) {
   return useQuery({
     queryKey: ["contacts", "one", contactId, organizationId],
     enabled: Boolean(contactId && organizationId),
@@ -786,124 +613,65 @@ function useLinkedContact(contactId: string | undefined, organizationId: string 
   });
 }
 
-function ScopeButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-current={active ? "true" : undefined}
-      className={`block w-full truncate rounded-md border-l-2 px-3 py-2 text-left transition-colors ${
-        active
-          ? "border-primary bg-primary/6 font-medium text-foreground"
-          : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
-      }`}
-    >
-      {children}
-    </button>
-  );
+/** Quantas pessoas tem cada lançamento (a mesma conta que a lista faz ao abri-lo). */
+function useLaunchCounts(organizationId: string | undefined, webinarIds: string[]) {
+  // ponytail: uma contagem por webinar; passa a uma função na base se a conta tiver dezenas de lançamentos.
+  const ids = webinarIds.slice(0, 30);
+  return useQuery({
+    queryKey: ["contacts", "launch-counts", organizationId, ids.join(",")],
+    enabled: Boolean(organizationId) && ids.length > 0,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const rows = await Promise.all(
+        ids.map(async (id) => {
+          const { count } = await supabase
+            .from("contact_summaries")
+            .select("id", { count: "exact", head: true })
+            .eq("organization_id", organizationId!)
+            .contains("webinar_ids", [id]);
+          return [id, count ?? 0] as const;
+        }),
+      );
+      return Object.fromEntries(rows) as Record<string, number>;
+    },
+  });
 }
 
-/** De onde vêm os leads e quanto convertem, com uma conclusão só quando há amostra. */
-function SourcePanel({ rows }: { rows: SourceRow[] }) {
-  if (rows.length === 0) return null;
-  const pct = (n: number, of: number) => (of > 0 ? `${Math.round((n / of) * 100)}%` : "—");
-  return (
-    <details className="group rounded-card bg-card text-sm">
-      <summary className="flex cursor-pointer list-none items-start justify-between gap-3 px-4 py-3">
-        <span>
-          <span className="block font-medium">De onde vêm os leads</span>
-          <span className="block text-muted-foreground">{sourceVerdict(rows)}</span>
-        </span>
-        <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
-      </summary>
-      <div className="overflow-x-auto border-t">
-        <table className="w-full min-w-[640px] text-left">
-          <thead className="bg-muted/60 text-xs text-muted-foreground">
-            <tr>
-              {["Origem", "Contactos", "Assistiram", "Viram a oferta", "Clicaram", "Iniciaram o pagamento", "Compraram"].map((h) => (
-                <th key={h} className="px-4 py-2 font-medium">
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="tabular-nums">
-            {rows.map((r) => (
-              <tr key={r.source} className="border-t">
-                <td className="px-4 py-2 font-medium">{sourceLabel(r.source)}</td>
-                <td className="px-4 py-2">{r.contacts}</td>
-                <td className="px-4 py-2">{pct(r.attended, r.contacts)}</td>
-                <td className="px-4 py-2">{pct(r.reached_offer, r.contacts)}</td>
-                <td className="px-4 py-2">{pct(r.clicked, r.contacts)}</td>
-                <td className="px-4 py-2">{pct(r.checkout, r.contacts)}</td>
-                <td className="px-4 py-2">
-                  {r.customers} <span className="text-muted-foreground">({pct(r.customers, r.contacts)})</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </details>
-  );
+/** Os temas das conversas (os casos do Atendimento), com as pessoas de cada um. Sem acesso aos casos, não há temas. */
+function useContactThemes(organizationId: string | undefined) {
+  return useQuery({
+    queryKey: ["contacts", "themes", organizationId],
+    enabled: Boolean(organizationId),
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("support_cases")
+        .select("contact_id, intent")
+        .eq("organization_id", organizationId!)
+        .not("contact_id", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1000);
+      return error ? [] : themeGroups(data ?? []);
+    },
+  });
 }
 
-/** A jornada numa linha: quantas pessoas estão em cada etapa. Clicar filtra. */
-function JourneyStrip({
-  counts,
-  stage,
-  onSelect,
-}: {
-  counts: StageCounts | undefined;
-  stage: string | null;
-  onSelect: (stage: string | null) => void;
-}) {
-  const all = counts?.all ?? 0;
-  const cell = (id: string | null, label: string, value: number | undefined, hint?: string) => {
-    const active = stage === id;
-    return (
-      <button
-        key={id ?? "all"}
-        type="button"
-        onClick={() => onSelect(active && id !== null ? null : id)}
-        aria-pressed={active}
-        title={hint}
-        className={`min-w-[104px] flex-1 border-b-2 px-3 py-3 text-left transition-colors ${
-          active ? "border-primary bg-primary/5" : "border-transparent hover:bg-muted/60"
-        }`}
-      >
-        <span className="block text-xl font-semibold tabular-nums">{value ?? "—"}</span>
-        <span className="block text-xs font-medium">{label}</span>
-        {hint && <span className="block text-[11px] leading-tight text-muted-foreground">{hint}</span>}
-        {id !== null && all > 0 && (
-          <span className="mt-2 block h-1 rounded-full bg-muted">
-            <span
-              className="block h-1 rounded-full bg-foreground/60"
-              style={{ width: `${Math.round(((value ?? 0) / all) * 100)}%` }}
-            />
-          </span>
-        )}
-      </button>
-    );
-  };
-  return (
-    <div className="rounded-card bg-card" role="group" aria-label="Onde cada pessoa parou na jornada">
-      <p className="border-b px-3 py-2 text-xs text-muted-foreground">
-        Onde cada pessoa parou: cada contacto conta numa só etapa, a mais avançada.
-      </p>
-      <div className="flex overflow-x-auto">
-      {cell(null, "Todos", counts?.all)}
-      {STAGES.map((s) => cell(s.id, s.label, counts?.[s.id], s.hint))}
-      <div className="border-l">{cell("returning", "Voltaram 2+ vezes", counts?.returning)}</div>
-      </div>
-    </div>
-  );
+/** As pessoas de um tema: poucas, lidas de uma vez e filtradas no ecrã. */
+function useThemeContacts(organizationId: string | undefined, ids: string[]) {
+  // ponytail: até 200 pessoas por tema (o limite do endereço do pedido); paginar se um tema passar disso.
+  const some = ids.slice(0, 200);
+  return useQuery({
+    queryKey: ["contacts", "by-ids", organizationId, some.join(",")],
+    enabled: Boolean(organizationId) && some.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("contact_summaries")
+        .select("*")
+        .eq("organization_id", organizationId!)
+        .in("id", some)
+        .order("last_seen_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as ContactSummary[];
+    },
+  });
 }

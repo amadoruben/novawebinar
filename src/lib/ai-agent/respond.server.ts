@@ -33,6 +33,7 @@ import { s, schema } from "@/lib/ai/schema";
 import { publicAppUrl } from "@/lib/app-url.server";
 import { immediateContext, searchWebinarKnowledge, type WebinarPassage } from "./retrieval.server";
 import { PERMISSIONS, type AgentSource } from "./defaults";
+import { readSources } from "./knowledge-sources";
 
 const db = supabaseAdmin as never as {
   from: (table: string) => any;
@@ -71,6 +72,7 @@ export type AgentBundle = NonNullable<Awaited<ReturnType<typeof loadAgentBundle>
  * O agente que responde neste webinar: o próprio, com o âmbito «Só este webinar» (ligado ou não:
  * desligado, ninguém responde); o da conta (`webinar_id` nulo, migração 0073) com «Todos os
  * webinars» ou quando o webinar ainda não tem linha. Antes da migração fica tudo como estava.
+ * O conhecimento (fontes marcadas, perguntas, objeções, produto) é sempre o da linha do webinar.
  */
 export async function loadAgentBundle(webinarId: string, organizationId?: string) {
   const { data: own } = await db
@@ -95,16 +97,20 @@ export async function loadAgentBundle(webinarId: string, organizationId?: string
     }
   }
   if (!agent) return null;
+  const holder = (own as Row | null) ?? agent;
   const [{ data: knowledge }, { data: faqs }, { data: objections }] = await Promise.all([
-    db.from("ai_agent_knowledge").select("*").eq("agent_id", agent["id"]).order("position"),
-    db.from("ai_agent_faqs").select("*").eq("agent_id", agent["id"]).order("position"),
-    db.from("ai_agent_objections").select("*").eq("agent_id", agent["id"]).order("position"),
+    db.from("ai_agent_knowledge").select("*").eq("agent_id", holder["id"]).order("position"),
+    db.from("ai_agent_faqs").select("*").eq("agent_id", holder["id"]).order("position"),
+    db.from("ai_agent_objections").select("*").eq("agent_id", holder["id"]).order("position"),
   ]);
   return {
     agent,
     knowledge: (knowledge ?? []) as Row[],
     faqs: (faqs ?? []) as Row[],
     objections: (objections ?? []) as Row[],
+    sources: readSources(own as Row | null),
+    /** O conhecimento é de um vídeo: os tempos de revelação valem. */
+    perVideo: Boolean(holder["webinar_id"]),
   };
 }
 
@@ -178,14 +184,15 @@ export async function buildAgentContext(input: {
 }) {
   const bundle = input.bundle ?? (await loadAgentBundle(input.webinarId));
   if (!bundle) return null;
-  const { agent } = bundle;
+  const on = bundle.sources;
   const sessionMs = Math.max(0, input.sessionMs);
-  // O agente da conta serve vários vídeos: os tempos de revelação de um não valem nos outros.
-  const revealAt = agent["webinar_id"] ? sessionMs : Number.POSITIVE_INFINITY;
+  // Conhecimento sem vídeo (agente da conta, webinar sem linha): os tempos de revelação não valem.
+  const revealAt = bundle.perVideo ? sessionMs : Number.POSITIVE_INFINITY;
 
-  const knowledge = revealable(bundle.knowledge, revealAt).filter((row) => row["value"]);
-  const faqs = revealable(bundle.faqs, revealAt).filter((row) => row["answer"]);
-  const objections = bundle.objections.filter((row) => row["approved"]);
+  // Só entram as fontes marcadas em «Personalizar o agente».
+  const knowledge = on.notas ? revealable(bundle.knowledge, revealAt).filter((row) => row["value"]) : [];
+  const faqs = on.faqs ? revealable(bundle.faqs, revealAt).filter((row) => row["answer"]) : [];
+  const objections = on.objecoes ? bundle.objections.filter((row) => row["approved"]) : [];
   // A oferta vem da etapa Oferta do editor (a mesma da sala), já aberta neste instante da sessão.
   // O webinar, a agenda e a página vêm do webinar onde a pessoa escreve, seja qual for o âmbito do agente.
   const [{ data: offerRow }, { data: proof }] = await Promise.all([
@@ -197,16 +204,17 @@ export async function buildAgentContext(input: {
     db.from("social_proof_settings").select("product_name").eq("webinar_id", input.webinarId).maybeSingle(),
   ]);
   const productName = String(proof?.product_name ?? "");
-  const offers = offerRow ? offerKnowledge(offerRow as OfferColumns, productName, sessionMs) : [];
-  const platform = offerRow
-    ? platformKnowledge(offerRow as PlatformColumns, { productName, appUrl: publicAppUrl(), nowMs: Date.now() })
-    : [];
+  const offers = offerRow && on.oferta ? offerKnowledge(offerRow as OfferColumns, productName, sessionMs) : [];
+  const platform =
+    offerRow && on.pagina
+      ? platformKnowledge(offerRow as PlatformColumns, { productName, appUrl: publicAppUrl(), nowMs: Date.now() })
+      : [];
 
   let passages: WebinarPassage[] = [];
   let immediate: ReturnType<typeof immediateContext> | null = null;
   let transcriptAvailable = false;
 
-  if (agent["use_webinar_transcript"]) {
+  if (on.transcricao) {
     const version = await latestReadyVersion(input.webinarId);
     if (version && version.sentences.length > 0) {
       transcriptAvailable = true;

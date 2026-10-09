@@ -1,17 +1,16 @@
 /**
- * A caixa do Atendimento, só desenho: a lista de conversas, a faixa dos
- * webinars, o estado do agente e a moldura das três colunas. Os dados chegam
+ * A caixa do Atendimento, só desenho: a lista de conversas, o estado do agente
+ * e a moldura das colunas. Os dados chegam
  * por props, reais ou do exemplo; nada aqui lê a base de dados.
  */
 import { Link } from "@tanstack/react-router";
-import { Bot, CalendarClock, MonitorPlay, Radio, Search, Users } from "lucide-react";
+import { Bot, MonitorPlay, Search } from "lucide-react";
 import type { ReactNode } from "react";
 import { BrandLogo } from "@/components/ds/brand-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { INBOX_TABS, type InboxItem, type InboxTab, type StripState } from "@/lib/support/inbox";
-import { intentLabel } from "@/lib/support/model";
+import { INBOX_TABS, type InboxItem, type InboxTab } from "@/lib/support/inbox";
 import { cn } from "@/lib/utils";
 import { hourLabel, initials } from "./badges";
 
@@ -85,67 +84,6 @@ export function PersonPhoto({
 
 /* ---------- Etiquetas ---------- */
 
-const INTENT_VARIANT: Record<string, "success" | "warning" | "info" | "destructive" | "secondary"> =
-  {
-    purchase: "success",
-    checkout: "success",
-    negotiation: "success",
-    payment: "warning",
-    refund: "warning",
-    post_purchase: "info",
-    access: "info",
-    technical: "info",
-    complaint: "destructive",
-    human_request: "destructive",
-  };
-
-/** A intenção da conversa, com cor: verde é venda, laranja é dinheiro, azul é ajuda, vermelho é urgente. */
-export function IntentChip({ intent }: { intent: string | null }) {
-  if (!intent) return null;
-  return (
-    <Badge variant={INTENT_VARIANT[intent] ?? "secondary"} className="shrink-0">
-      {intentLabel(intent)}
-    </Badge>
-  );
-}
-
-/** Onde está a conversa agora: com o agente, à espera ou com alguém. */
-export function StateChip({
-  item,
-}: {
-  item: Pick<InboxItem, "state" | "sla" | "teamName" | "ownerName">;
-}) {
-  if (item.sla === "breached")
-    return (
-      <Badge variant="destructive" className="shrink-0">
-        Prazo ultrapassado
-      </Badge>
-    );
-  if (item.state === "ai")
-    return (
-      <Badge variant="secondary" className="shrink-0">
-        <Bot aria-hidden /> Agente
-      </Badge>
-    );
-  if (item.state === "new")
-    return (
-      <Badge variant="warning" className="shrink-0">
-        À espera{item.teamName ? ` · ${item.teamName}` : ""}
-      </Badge>
-    );
-  if (item.state === "paused")
-    return (
-      <Badge variant="outline" className="shrink-0">
-        <Bot aria-hidden /> Agente em pausa
-      </Badge>
-    );
-  return (
-    <Badge variant="secondary" className="shrink-0">
-      Com {item.ownerName?.split(" ")[0] ?? "a equipa"}
-    </Badge>
-  );
-}
-
 export function ExampleTag() {
   return (
     <span className="shrink-0 rounded-xs bg-warning-soft px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-warning">
@@ -178,7 +116,7 @@ export function InboxList({
   onTab: (tab: InboxTab) => void;
   search: string;
   onSearch: (value: string) => void;
-  webinars: { id: string; title: string; count: number }[];
+  webinars: { id: string; title: string }[];
   webinarId: string | null;
   onWebinar: (id: string | null) => void;
   onSelect: (id: string) => void;
@@ -206,14 +144,17 @@ export function InboxList({
               )}
             >
               {t.label}
-              <span
-                className={cn(
-                  "min-w-[1.125rem] rounded-pill px-1 text-center text-[11px] tabular-nums",
-                  tab === t.id ? "bg-foreground text-background" : "bg-gray-150 text-foreground",
-                )}
-              >
-                {counts[t.id]}
-              </span>
+              {/* Só as novas levam número: é o que pede uma pessoa. */}
+              {t.id === "new" && counts.new > 0 && (
+                <span
+                  className={cn(
+                    "min-w-[1.125rem] rounded-pill px-1 text-center text-[11px] tabular-nums",
+                    tab === t.id ? "bg-foreground text-background" : "bg-gray-150 text-foreground",
+                  )}
+                >
+                  {counts.new}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -241,7 +182,6 @@ export function InboxList({
             {webinars.map((w) => (
               <FilterChip key={w.id} active={webinarId === w.id} onClick={() => onWebinar(w.id)}>
                 <span className="max-w-[9rem] truncate">{w.title}</span>
-                <span className="tabular-nums opacity-70">{w.count}</span>
               </FilterChip>
             ))}
           </div>
@@ -261,8 +201,9 @@ export function InboxList({
               onClick={() => onSelect(item.id)}
               aria-current={activeId === item.id ? "true" : undefined}
               className={cn(
-                "flex w-full gap-3 rounded-lg px-2.5 py-3 text-left transition-colors",
-                activeId === item.id ? "bg-gray-150" : "hover:bg-gray-100",
+                "flex w-full items-center gap-3 rounded-lg px-2.5 py-3 text-left transition-colors",
+                // No telemóvel a lista está sozinha: nenhuma linha fica marcada, como no WhatsApp.
+                activeId === item.id ? "@2xl:bg-gray-150" : "hover:bg-gray-100",
               )}
             >
               <PersonPhoto name={item.name} photo={item.photo} channel={item.channel} />
@@ -276,7 +217,6 @@ export function InboxList({
                   >
                     {item.name}
                   </span>
-                  {item.example && <ExampleTag />}
                   <span
                     className={cn(
                       "ml-auto shrink-0 text-[12px] tabular-nums",
@@ -298,20 +238,20 @@ export function InboxList({
                     {PREFIX[item.lastFrom ?? ""] ?? ""}
                     {item.preview || "Sem mensagens"}
                   </span>
+                  {/* A única etiqueta: alguém à espera de uma pessoa (a vermelho se o prazo passou). */}
+                  {item.state === "new" && (
+                    <Badge
+                      variant={item.sla === "breached" ? "destructive" : "warning"}
+                      className="shrink-0"
+                    >
+                      À espera
+                    </Badge>
+                  )}
                   {item.lastFrom === "contact" && (
                     <span
                       className="size-2.5 shrink-0 rounded-full bg-success"
                       aria-label="Por responder"
                     />
-                  )}
-                </span>
-                <span className="mt-1.5 flex flex-wrap items-center gap-1">
-                  <IntentChip intent={item.intent} />
-                  <StateChip item={item} />
-                  {item.webinarTitle && (
-                    <span className="max-w-full truncate px-1 text-[11px] text-muted-foreground">
-                      {item.webinarTitle}
-                    </span>
                   )}
                 </span>
               </span>
@@ -347,129 +287,6 @@ function FilterChip({
   );
 }
 
-/* ---------- Webinars activos ---------- */
-
-export type WebinarCard = {
-  id: string;
-  title: string;
-  cover: string | null;
-  state: StripState;
-  startMs: number | null;
-  registered: number | null;
-  online: number;
-  waiting: number;
-};
-
-const STATE_LABEL: Record<StripState, string> = {
-  live: "Ao vivo",
-  started: "Iniciado",
-  soon: "Em breve",
-  running: "Em andamento",
-};
-
-const STATE_VARIANT = {
-  live: "destructive",
-  started: "info",
-  soon: "warning",
-  running: "secondary",
-} as const;
-
-/** Os webinars a decorrer ou para breve, em cartões baixos: a conversa precisa do espaço. */
-export function WebinarStrip({
-  cards,
-  selected,
-  onSelect,
-}: {
-  cards: WebinarCard[];
-  selected: string | null;
-  onSelect: (id: string | null) => void;
-}) {
-  if (cards.length === 0) return null;
-  return (
-    <section aria-label="Webinars activos">
-      <h2 className="mb-1.5 text-[13px] font-medium text-muted-foreground">
-        Webinars activos <span className="tabular-nums">({cards.length})</span>
-      </h2>
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0 [scrollbar-width:thin]">
-        {cards.map((w) => (
-          <button
-            key={w.id}
-            type="button"
-            onClick={() => onSelect(selected === w.id ? null : w.id)}
-            aria-pressed={selected === w.id}
-            className={cn(
-              "flex w-[20rem] shrink-0 items-center gap-2.5 rounded-xl border bg-card p-2 text-left transition-colors",
-              selected === w.id
-                ? "border-foreground ring-1 ring-foreground"
-                : "hover:border-gray-400",
-            )}
-          >
-            {w.cover ? (
-              <img src={w.cover} alt="" className="size-10 shrink-0 rounded-lg object-cover" />
-            ) : (
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-gray-200 to-gray-100 text-muted-foreground">
-                <Radio className="size-5" aria-hidden />
-              </span>
-            )}
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-1.5">
-                <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold">
-                  {w.title}
-                </span>
-                <Badge variant={STATE_VARIANT[w.state]} className="shrink-0">
-                  {w.state === "live" && (
-                    <span
-                      className="size-1.5 animate-pulse rounded-full bg-destructive"
-                      aria-hidden
-                    />
-                  )}
-                  {STATE_LABEL[w.state]}
-                </Badge>
-              </span>
-              <span className="mt-1 flex items-center gap-1.5 text-[12px] text-muted-foreground">
-                <span className="flex min-w-0 flex-1 items-center gap-1 truncate whitespace-nowrap">
-                  {w.startMs && w.state === "soon" ? (
-                    <>
-                      <CalendarClock className="size-3.5 shrink-0" aria-hidden />
-                      {new Date(w.startMs).toLocaleString("pt-PT", {
-                        day: "2-digit",
-                        month: "short",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                      {" · "}
-                    </>
-                  ) : (
-                    <Users className="size-3.5 shrink-0" aria-hidden />
-                  )}
-                  <strong className="font-medium text-foreground tabular-nums">
-                    {w.registered === null ? "…" : w.registered.toLocaleString("pt-PT")}
-                  </strong>
-                  inscritos
-                  {w.state !== "soon" && (
-                    <>
-                      {" · "}
-                      <strong className="font-medium text-foreground tabular-nums">
-                        {w.online}
-                      </strong>
-                      online
-                    </>
-                  )}
-                </span>
-                {w.waiting > 0 && (
-                  <Badge variant="destructive" className="shrink-0">
-                    {w.waiting} à espera
-                  </Badge>
-                )}
-              </span>
-            </span>
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 /* ---------- Agente ---------- */
 
 /** O agente da conta em poucas palavras: se está a trabalhar e o que fez hoje. */
@@ -495,8 +312,9 @@ export function AgentStatus({
         />
         {active === null ? "…" : active ? "Activo" : "Desligado"}
       </span>
-      <span className="hidden h-4 w-px bg-gray-300 sm:block" aria-hidden />
-      <span className="hidden text-muted-foreground sm:inline">
+      {/* Os números do dia só no computador; no telemóvel e no tablet, só o estado. */}
+      <span className="hidden h-4 w-px bg-gray-300 xl:block" aria-hidden />
+      <span className="hidden text-muted-foreground xl:inline">
         Hoje <strong className="font-medium text-foreground tabular-nums">{resolved ?? 0}</strong>{" "}
         resolvidas ·{" "}
         <strong className="font-medium text-foreground tabular-nums">{escalated ?? 0}</strong>{" "}
@@ -527,14 +345,13 @@ const PHONE_SCREEN =
 
 /**
  * Pela largura que sobra (não pela do ecrã, porque o menu da plataforma pode
- * estar aberto ou recolhido): com espaço, lista, conversa e contacto lado a lado;
- * a meio, lista e conversa (o contacto abre no lugar da conversa); estreito,
- * um passo de cada vez.
+ * estar aberto ou recolhido): com espaço, lista e conversa lado a lado; estreito,
+ * um passo de cada vez. O contacto fica escondido e abre ao tocar na foto ou no
+ * nome, como no WhatsApp: com muito espaço ao lado da conversa, senão no lugar dela.
  */
 export function InboxFrame({
   step,
   banner,
-  top,
   list,
   conversation,
   contact,
@@ -542,8 +359,6 @@ export function InboxFrame({
   step: InboxStep;
   /** Por cima de tudo (o aviso do modo exemplo). */
   banner?: ReactNode;
-  /** A faixa dos webinars: no telemóvel só aparece na lista. */
-  top?: ReactNode;
   list: ReactNode;
   conversation: ReactNode;
   contact: ReactNode;
@@ -553,8 +368,12 @@ export function InboxFrame({
       {/* Com espaço, a caixa ocupa a altura do ecrã e só as colunas rolam. */}
       <div className="flex flex-col gap-4 @2xl:h-[calc(100dvh-8rem)] @2xl:min-h-[38rem]">
         {banner}
-        {top && <div className={step === "list" ? undefined : "hidden @2xl:block"}>{top}</div>}
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] overflow-hidden rounded-card border bg-card @2xl:grid-cols-[20rem_minmax(0,1fr)] @5xl:grid-cols-[21rem_minmax(0,1fr)_21rem]">
+        <div
+          className={cn(
+            "grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] overflow-hidden rounded-card border bg-card @2xl:grid-cols-[20rem_minmax(0,1fr)] @5xl:grid-cols-[21rem_minmax(0,1fr)]",
+            step === "contact" && "@5xl:grid-cols-[21rem_minmax(0,1fr)_21rem]",
+          )}
+        >
           <aside
             className={cn(
               "min-w-0 @2xl:min-h-0 @2xl:border-r",
@@ -580,10 +399,10 @@ export function InboxFrame({
               "h-[calc(100dvh-11rem)] min-h-[28rem] min-w-0 @2xl:h-auto @2xl:min-h-0 @5xl:border-l",
               step === "contact"
                 ? cn(
-                    "flex flex-col @2xl:col-start-2 @2xl:row-start-1 @5xl:col-start-auto",
+                    "flex flex-col @2xl:col-start-2 @2xl:row-start-1 @5xl:col-start-3",
                     PHONE_SCREEN,
                   )
-                : "hidden @5xl:flex @5xl:flex-col",
+                : "hidden",
             )}
           >
             {contact}

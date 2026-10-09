@@ -9,6 +9,7 @@ import { assertWebinarAccess, requireSupabaseAuth } from "@/integrations/supabas
 import { runBilled } from "@/lib/ai/billing.server";
 import { s, schema } from "@/lib/ai/schema";
 import { defaultPermissions, KNOWLEDGE_FIELDS, type AgentSource } from "./defaults";
+import { KNOWLEDGE_SOURCES, readSources, sourcePatch, type SourceId, type SourceMap } from "./knowledge-sources";
 
 type Row = Record<string, any>;
 
@@ -68,9 +69,10 @@ async function ensureAgentRow(supabase: any, webinarId: string) {
   return created as Row;
 }
 
-const AGENT_TABLES = ["ai_agent_knowledge", "ai_agent_faqs", "ai_agent_objections"] as const;
-
-/** Cria o agente da conta como cópia do agente deste webinar: definições e conhecimento. */
+/**
+ * Cria o agente da conta com as definições do agente deste webinar (nome, autonomia, tom, regras).
+ * O conhecimento não se copia: fica sempre em cada webinar.
+ */
 async function ensureAccountAgent(supabase: any, own: Row) {
   const existing = await accountAgent(supabase, own["organization_id"]);
   if (existing) return existing;
@@ -81,23 +83,10 @@ async function ensureAccountAgent(supabase: any, own: Row) {
     .select("*")
     .single();
   if (error) throw new Error(error.message);
-  for (const table of AGENT_TABLES) {
-    const { data: rows, error: readError } = await supabase.from(table).select("*").eq("agent_id", id);
-    const copies = ((rows ?? []) as Row[]).map(({ id: _id, created_at: _c, updated_at: _u, ...row }) => ({
-      ...row,
-      agent_id: created.id,
-    }));
-    const failed = readError ?? (copies.length ? (await supabase.from(table).insert(copies)).error : null);
-    if (failed) {
-      // Cópia a meio: apaga o agente da conta (as cópias vão com ele) para a próxima vez copiar tudo.
-      await supabase.from("ai_agents").delete().eq("id", created.id);
-      throw new Error(failed.message);
-    }
-  }
   return created as Row;
 }
 
-/** O agente que o editor mostra e grava: o do webinar ou, com «Todos os webinars», o da conta. */
+/** As definições que o editor mostra e grava: as do webinar ou, com «Todos os webinars», as da conta. */
 async function resolveAgentRow(supabase: any, webinarId: string) {
   const own = await ensureAgentRow(supabase, webinarId);
   if (own["scope"] !== "account") return own;
@@ -107,10 +96,13 @@ async function resolveAgentRow(supabase: any, webinarId: string) {
 export type AgentScope = "webinar" | "account";
 
 export type AgentBundle = {
+  /** As definições: as do webinar ou, com «Todos os webinars», as da conta. */
   agent: Row;
+  /** O conhecimento é sempre deste webinar. */
   knowledge: Row[];
   faqs: Row[];
   objections: Row[];
+  sources: SourceMap;
   scope: AgentScope;
   /** Falso enquanto a migração 0073 não estiver aplicada: só há «Só este webinar». */
   accountReady: boolean;
@@ -125,15 +117,16 @@ export const getAgent = createServerFn({ method: "POST" })
     const scope: AgentScope = own["scope"] === "account" ? "account" : "webinar";
     const agent = scope === "account" ? await ensureAccountAgent(supabase, own) : own;
     const [{ data: knowledge }, { data: faqs }, { data: objections }] = await Promise.all([
-      supabase.from("ai_agent_knowledge").select("*").eq("agent_id", agent["id"]).order("position"),
-      supabase.from("ai_agent_faqs").select("*").eq("agent_id", agent["id"]).order("position"),
-      supabase.from("ai_agent_objections").select("*").eq("agent_id", agent["id"]).order("position"),
+      supabase.from("ai_agent_knowledge").select("*").eq("agent_id", own["id"]).order("position"),
+      supabase.from("ai_agent_faqs").select("*").eq("agent_id", own["id"]).order("position"),
+      supabase.from("ai_agent_objections").select("*").eq("agent_id", own["id"]).order("position"),
     ]);
     return {
       agent,
       knowledge: (knowledge ?? []) as Row[],
       faqs: (faqs ?? []) as Row[],
       objections: (objections ?? []) as Row[],
+      sources: readSources(own),
       scope,
       accountReady: "scope" in own,
     };
@@ -176,6 +169,29 @@ export const saveAgent = createServerFn({ method: "POST" })
       .from("ai_agents")
       .update({ ...data.patch, updated_at: new Date().toISOString() })
       .eq("id", agent["id"]);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+/** Marca ou desmarca uma fonte de conhecimento deste webinar (seja qual for o âmbito do agente). */
+export const saveAgentSource = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) =>
+    z
+      .object({
+        webinarId: uuid,
+        source: z.enum(KNOWLEDGE_SOURCES.map((s) => s.id) as [SourceId, ...SourceId[]]),
+        on: z.boolean(),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data, context }) => {
+    const supabase = context.supabase as never as any;
+    const own = await ensureAgentRow(supabase, data.webinarId);
+    const { error } = await supabase
+      .from("ai_agents")
+      .update({ ...sourcePatch(own, data.source, data.on), updated_at: new Date().toISOString() })
+      .eq("id", own["id"]);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -229,7 +245,7 @@ export const saveAgentFaq = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const supabase = context.supabase as never as any;
-    const agent = await resolveAgentRow(supabase, data.webinarId);
+    const agent = await ensureAgentRow(supabase, data.webinarId);
     const payload = {
       question: data.question,
       answer: data.answer,
@@ -266,7 +282,7 @@ export const saveAgentObjection = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const supabase = context.supabase as never as any;
-    const agent = await resolveAgentRow(supabase, data.webinarId);
+    const agent = await ensureAgentRow(supabase, data.webinarId);
     const payload = {
       objection: data.objection,
       response: data.response,
@@ -468,7 +484,7 @@ export const generateAgentContent = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }): Promise<GeneratedContent> => {
     const supabase = context.supabase as never as any;
-    const agent = await resolveAgentRow(supabase, data.webinarId);
+    const agent = await ensureAgentRow(supabase, data.webinarId);
 
     const [{ data: webinar }, { data: knowledge }, { latestReadyVersion }, { chatJson }] =
       await Promise.all([

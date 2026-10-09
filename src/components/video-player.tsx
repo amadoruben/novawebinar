@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { cn, isHttpUrl } from "@/lib/utils";
+import { posterFromUrl } from "@/components/video-thumb";
 
 type Props = {
   url: string | null;
@@ -15,6 +16,8 @@ type Props = {
   onPause?: () => void;
   /** Confirma que a reprodução começou de facto. */
   onPlaying?: () => void;
+  /** O navegador não deixou tocar com som sem um toque (um leitor novo no iPhone): o vídeo segue mudo. */
+  onSoundBlocked?: () => void;
   /** Dá ao ecrã da sala acesso ao leitor para autorizar o áudio no toque inicial. */
   mediaRef?: RefObject<HTMLVideoElement | null>;
   className?: string;
@@ -124,6 +127,7 @@ export function VideoPlayer({
   onEnded,
   onPause,
   onPlaying,
+  onSoundBlocked,
   mediaRef,
   className,
   autoPlay = true,
@@ -151,6 +155,8 @@ export function VideoPlayer({
   const isHls = valid && !embed && playbackUrl.toLowerCase().includes(".m3u8");
 
   targetRef.current = liveTargetSeconds;
+  const onSoundBlockedRef = useRef(onSoundBlocked);
+  onSoundBlockedRef.current = onSoundBlocked;
 
   useEffect(() => {
     setFailed(false);
@@ -204,6 +210,16 @@ export function VideoPlayer({
   }, [autoPlay, controls, syncToleranceSeconds, url]);
 
 
+  // O iPhone só deixa arrancar sozinho um vídeo mudo e dentro da página: o React não escreve o atributo
+  // `muted` (só a propriedade), por isso escreve-se aqui, com o `webkit-playsinline` dos iPhones antigos.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.defaultMuted = muted;
+    video.toggleAttribute("muted", muted);
+    video.setAttribute("webkit-playsinline", "");
+  }, [muted, url]);
+
   // Mantém o leitor carregado e garante a reprodução assim que a sala o arma.
   // Durante a passagem ele arranca mudo atrás do preto, evitando bloqueios de autoplay.
   useEffect(() => {
@@ -220,9 +236,10 @@ export function VideoPlayer({
       video.muted = muted;
       try {
         await video.play();
-      } catch {
+      } catch (error) {
         // Se o navegador bloquear o arranque com áudio, começa mudo em vez de
-        // deixar uma imagem parada. O som volta a ser tentado logo a seguir.
+        // deixar uma imagem parada, e avisa a sala para pedir o toque outra vez.
+        if (!muted && (error as Error | null)?.name === "NotAllowedError") onSoundBlockedRef.current?.();
         video.muted = true;
         await video.play().catch(() => undefined);
       }
@@ -472,8 +489,12 @@ export function VideoPlayer({
 
   if (controls) return videoElement;
 
+  // Até ao primeiro fotograma (rede lenta, ou o iPhone em poupança de energia, que só arranca com um
+  // toque), a capa do vídeo da plataforma fica no lugar, em vez de preto.
+  const poster = playbackVisible ? null : posterFromUrl(url);
   return (
     <div className={cn(cls, "relative overflow-hidden", theme === "light" ? "bg-room-surface" : "bg-black")}>
+      {poster ? <img src={poster} alt="" aria-hidden className={cn("absolute inset-0 size-full", fit === "contain" ? "object-contain" : "object-cover")} /> : null}
       {videoElement}
       <canvas
         ref={canvasRef}

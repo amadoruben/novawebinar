@@ -25,6 +25,34 @@ export const ACTION_LABEL: Record<BilledAction, string> = {
   transcription: "Transcrição do vídeo",
 };
 
+/** O que cada acção conta como uma vez, para a tabela de preços. */
+export const ACTION_UNIT: Record<BilledAction, string> = {
+  agent_reply: "por resposta",
+  chat_generation: "por geração",
+  webinar_analysis: "por análise",
+  agent_content: "por geração",
+  sale_notifications: "por geração",
+  image: "por imagem",
+  transcription: "por hora de vídeo",
+};
+
+/**
+ * Planos com créditos de IA incluídos todos os meses. Os valores são os de
+ * plan_monthly_allowance_micros (migração 0048): mudar um é mudar os dois.
+ * Qualquer outro plano (o «professional» por omissão) não inclui créditos.
+ */
+export const PLANS = [
+  { id: "creator", label: "Criador", allowanceMicros: 10 * MICROS_PER_USD },
+  { id: "business", label: "Negócio", allowanceMicros: 25 * MICROS_PER_USD },
+  { id: "agency", label: "Agência", allowanceMicros: 50 * MICROS_PER_USD },
+] as const;
+
+export function planLabel(plan: string) {
+  return (
+    PLANS.find((p) => p.id === plan)?.label ?? (plan === "professional" ? "Profissional" : plan)
+  );
+}
+
 /** Movimentos que não são gastos, para o histórico. */
 export const KIND_LABEL: Record<string, string> = {
   grant: "Créditos incluídos",
@@ -57,7 +85,9 @@ export type Pricing = {
 
 /** tokens × USD/milhão dá directamente micro-dólares; depois a margem. */
 export function tokenCostMicros(inputTokens: number, outputTokens: number, p: Pricing) {
-  return Math.ceil((inputTokens * p.inputPerMTok + outputTokens * p.outputPerMTok) * (1 + p.margin));
+  return Math.ceil(
+    (inputTokens * p.inputPerMTok + outputTokens * p.outputPerMTok) * (1 + p.margin),
+  );
 }
 
 export function usdCostMicros(usd: number, margin: number) {
@@ -74,6 +104,65 @@ export function formatUsd(micros: number) {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   }).format(usd);
+}
+
+/** Preços ao cliente (já com a margem); null = o fornecedor ainda não tem preço no .env. */
+export type PublicPrices = {
+  margin: number;
+  /** Há preço para o texto (respostas, gerações, análises). */
+  text: boolean;
+  imageMicros: number | null;
+  transcriptionHourMicros: number | null;
+};
+
+export function publicPrices(p: Pricing & { configured: boolean }): PublicPrices {
+  return {
+    margin: p.margin,
+    text: p.configured,
+    imageMicros: p.imageUsd > 0 ? usdCostMicros(p.imageUsd, p.margin) : null,
+    transcriptionHourMicros:
+      p.transcriptionPerHourUsd > 0 ? usdCostMicros(p.transcriptionPerHourUsd, p.margin) : null,
+  };
+}
+
+const DAY_MS = 86_400_000;
+
+export function monthStartUtc(now = Date.now()) {
+  const d = new Date(now);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+}
+
+/** Movimentos do livro que o painel lê de uma vez (os mais recentes). */
+export const LEDGER_LIMIT = 500;
+
+/** O livro lido não chega ao início do mês: as contas do mês por acção ficam incompletas. */
+export function ledgerCutInMonth(rows: { created_at: string }[], now = Date.now()) {
+  const oldest = rows.at(-1);
+  return rows.length >= LEDGER_LIMIT && !!oldest && Date.parse(oldest.created_at) > monthStartUtc(now);
+}
+
+type LedgerLike = { kind: string; action: string; amount_micros: number; created_at: string };
+export type ActionSpend = { action: string; runs: number; micros: number };
+
+/** Gastos por acção desde `sinceMs`, do maior para o menor. */
+export function spendByAction(rows: LedgerLike[], sinceMs = 0): ActionSpend[] {
+  const by = new Map<string, ActionSpend>();
+  for (const r of rows) {
+    if (r.kind !== "usage" || Date.parse(r.created_at) < sinceMs) continue;
+    const cur = by.get(r.action) ?? { action: r.action, runs: 0, micros: 0 };
+    cur.runs += 1;
+    cur.micros += -r.amount_micros;
+    by.set(r.action, cur);
+  }
+  return [...by.values()].sort((a, b) => b.micros - a.micros);
+}
+
+/** Dias que o saldo dura ao ritmo de gasto deste mês; null sem gasto ou sem saldo. */
+export function runwayDays(balanceMicros: number, monthSpentMicros: number, now = Date.now()) {
+  if (balanceMicros <= 0 || monthSpentMicros <= 0) return null;
+  // Conta pelo menos um dia: nas primeiras horas do mês o ritmo sairia exagerado.
+  const elapsed = Math.max(1, (now - monthStartUtc(now)) / DAY_MS);
+  return Math.floor(balanceMicros / (monthSpentMicros / elapsed));
 }
 
 export type CreditState = {

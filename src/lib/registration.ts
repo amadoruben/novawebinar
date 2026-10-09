@@ -12,9 +12,13 @@ export const registrationSchema = z.object({
   /** O formulário diz o webinar e a organização; sem formulário (API), o webinar diz a organização. */
   form_id: z.string().uuid("Formulário inválido.").optional().nullable(),
   webinar_id: z.string().uuid("Webinar inválido.").optional().nullable(),
-  name: z.string().trim().min(2, "Indique o nome.").max(80),
-  email: z.string().trim().email("Email inválido.").max(160),
-  phone: text(40),
+  /** Nome, e-mail e WhatsApp: quais são obrigatórios e as regras vêm dos campos do webinar (validateEntry), como na sala. */
+  // Limites largos: validateEntry corta o nome e as respostas e recusa um e-mail longo, com mensagens claras.
+  name: text(200),
+  email: text(200),
+  phone: text(60),
+  /** Os campos novos da página, pelo id de cada um. */
+  answers: z.record(z.string().max(40), z.string().max(1000)).optional().nullable(),
   consent: z.boolean().optional().nullable(),
   submission_id: z.string().trim().min(8).max(100).optional().nullable(),
   utm_source: text(120),
@@ -35,10 +39,6 @@ export type Utm = Partial<Record<(typeof UTM_KEYS)[number], string>>;
 
 export function normalizeName(name: string) {
   return name.replace(/\s+/g, " ").trim();
-}
-
-export function normalizeEmail(email: string) {
-  return email.trim().toLowerCase();
 }
 
 /** Telefone/WhatsApp: só dígitos, com o "+" inicial quando existe. null quando não serve. */
@@ -182,30 +182,18 @@ export function clientIp(socketIp: string | null | undefined, forwardedFor: stri
 
 export type RegistrationError = { status: 400 | 403 | 404 | 409 | 429 | 500; code: string; message: string; fields?: Record<string, string> };
 
-/** Valida e normaliza o que chega; os erros vêm por campo, para o formulário os mostrar. */
+/**
+ * Valida a forma do pedido e junta as UTM. Os campos da pessoa (nome, e-mail, WhatsApp, respostas)
+ * validam-se depois, com os campos do webinar (registerFromCapture).
+ */
 export function parseRegistration(body: unknown):
-  | { ok: true; value: RegistrationInput & { phone: string | null; utm: Utm } }
+  | { ok: true; value: RegistrationInput & { utm: Utm } }
   | { ok: false; error: RegistrationError } {
   const parsed = registrationSchema.safeParse(body);
-  // Todos os campos errados de uma vez, incluindo o telefone.
-  const rawPhone = (body as { phone?: unknown } | null)?.phone;
-  const badPhone = typeof rawPhone === "string" && rawPhone.trim() !== "" && !normalizePhone(rawPhone);
-  if (!parsed.success || badPhone) {
+  if (!parsed.success) {
     const fields: Record<string, string> = {};
-    for (const issue of parsed.success ? [] : parsed.error.issues) fields[String(issue.path[0] ?? "form")] ??= issue.message;
-    if (badPhone) fields["phone"] ??= "Número inválido.";
+    for (const issue of parsed.error.issues) fields[String(issue.path[0] ?? "form")] ??= issue.message;
     return { ok: false, error: { status: 400, code: "invalid", message: "Dados inválidos.", fields } };
   }
-  const v = parsed.data;
-  const phone = normalizePhone(v.phone);
-  return {
-    ok: true,
-    value: {
-      ...v,
-      name: normalizeName(v.name),
-      email: normalizeEmail(v.email),
-      phone,
-      utm: resolveUtm(v, v.page_url),
-    },
-  };
+  return { ok: true, value: { ...parsed.data, utm: resolveUtm(parsed.data, parsed.data.page_url) } };
 }

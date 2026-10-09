@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { Headset, MessagesSquare, Pin, Play, ShoppingCart, X } from "lucide-react";
 import { VideoPlayer } from "@/components/video-player";
 import { PreliveCountdown } from "@/components/prelive-countdown";
@@ -22,6 +22,7 @@ import {
 } from "@/lib/room-logic";
 import {
   FollowButton,
+  LIVE_FEED_LINES,
   LIVE_SCRIM,
   LiveBadge,
   LiveComposer,
@@ -41,6 +42,7 @@ import {
   type LiveOffer,
   type LiveSupportMessage,
 } from "@/components/room/live-parts";
+import { LessonTimer } from "@/components/room/lesson-timer";
 import { ROOM_FONT } from "@/components/room/entry-screen";
 import { SCREENS, TABLET_WIDE } from "./preview";
 import {
@@ -56,11 +58,13 @@ import {
   PulseDot,
   RoomPartsStyle,
   RoomTitle,
+  SALE_TOAST_SPOT,
   SaleLine,
-  saleColor,
+  SaleToast,
   SupportNotice,
   VideoSettings,
   type Appearance,
+  type CaptionSize,
   type Reaction,
 } from "@/components/room/room-parts";
 
@@ -232,8 +236,9 @@ function useFollow(props: RoomPreviewProps, offerOpen: boolean) {
 /** O que a sala mostra no segundo t: a oferta aberta, a compra a aparecer e a frase dita. */
 function roomMoment(props: RoomPreviewProps) {
   const open = activeOffer(props.offers, props.t);
-  // O vídeo acabou, mas a oferta fecha depois: a sala fica aberta para compras.
-  const afterVideo = props.duration > 0 && props.t >= props.duration - 0.5 && open !== null && (open.end ?? 0) > props.duration;
+  // O vídeo acabou: o fim da transmissão. Se a oferta fecha depois, a sala fica aberta para compras.
+  const videoEnded = props.duration > 0 && props.t >= props.duration - 0.5;
+  const afterVideo = videoEnded && open !== null && (open.end ?? 0) > props.duration;
   // No separador Oferta do editor, mostra-se a primeira oferta mesmo antes de abrir.
   const shown = open ?? (props.forceOffer ? props.offers[0] ?? null : null);
   const tab: RoomTab = props.tab === "offer" && !shown ? "chat" : props.tab;
@@ -244,7 +249,20 @@ function roomMoment(props: RoomPreviewProps) {
     if (line.at > props.t) break;
     said = props.t - line.at < 7 ? line.text : null;
   }
-  return { open, afterVideo, shown, tab, lastSale, said };
+  return { open, afterVideo, videoEnded, shown, tab, lastSale, said };
+}
+
+/** O fim da transmissão, como na sala pública: o vídeo acabou e a oferta não fica aberta depois. */
+function EndedNote({ compact, offer }: { compact: boolean; offer: string | null }) {
+  return (
+    <div className="absolute inset-0 z-[5] grid place-items-center bg-black/90 px-6 text-center text-white">
+      <div className={cn("grid justify-items-center", compact ? "gap-1.5" : "gap-3")}>
+        <p className={cn("font-bold uppercase tracking-[0.18em] text-[#F28E63]", compact ? "text-[10px]" : "text-[13px]")}>Transmissão terminou</p>
+        <p className={cn("font-extrabold leading-tight", compact ? "text-[17px]" : "text-[34px]")}>Obrigado por ter estado connosco</p>
+        <p className={cn("text-white/75", compact ? "text-[11px]" : "text-[16px]")}>A sessão ao vivo chegou ao fim. {offer ?? "Volte para a próxima sessão."}</p>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -273,6 +291,7 @@ function cardOffer(props: OfferProps, shown: OfferSlot | null): LiveOffer | null
     closed: now.closed,
     image: shown.id === "main" ? props.offerImageUrl : null,
     look: (props.liveSettings ?? LIVE_DEFAULTS).offerLook,
+    colors: props.liveSettings?.offerColors,
     group: isGroupLink(shown.url),
   };
 }
@@ -345,7 +364,7 @@ function WebinarPreview(props: RoomPreviewProps) {
   const tabletWide = props.device === "tablet-landscape";
   const hl = (key: string) =>
     props.highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
-  const { open, afterVideo, shown, tab, lastSale, said } = roomMoment(props);
+  const { open, afterVideo, videoEnded, shown, tab, lastSale, said } = roomMoment(props);
   const live = props.liveSettings ?? LIVE_DEFAULTS;
   const peek = useCountdownPeek() && Boolean(live.countdown?.on);
   const social = useFollow(props, Boolean(open));
@@ -355,6 +374,19 @@ function WebinarPreview(props: RoomPreviewProps) {
     if (props.tab !== "chat" || shown) setSide(true);
   }, [props.tab, shown?.id]);
   const followButton = (big: boolean) => (social.follow ? <FollowButton big={big} label={social.follow.label} onClick={social.follow.onClick} /> : null);
+  const [captionSize, setCaptionSize] = useState<CaptionSize>("md");
+  // Como na sala: num ecrã ao alto o aviso de compra entra por baixo do chat, logo acima da caixa de escrever.
+  const toastInChat = props.device === "phone" || tablet;
+  const saleToast = lastSale ? (
+    <SaleToast
+      key={lastSale.id}
+      name={lastSale.buyer}
+      text={`comprou ${lastSale.product}`}
+      color={props.saleColor}
+      compact={phone}
+      className={toastInChat ? SALE_TOAST_SPOT.chat : phone ? SALE_TOAST_SPOT.phone : SALE_TOAST_SPOT.desk}
+    />
+  ) : null;
 
   const videoCard = (
     <div
@@ -365,7 +397,14 @@ function WebinarPreview(props: RoomPreviewProps) {
       )}
     >
       {props.video.url ? (
-        <PreviewPlayer url={props.video.url} provider={props.video.provider} t={props.t} playing={props.playing} volume={props.volume} />
+        <PreviewPlayer
+          url={props.video.url}
+          provider={props.video.provider}
+          t={props.t}
+          playing={props.playing}
+          volume={props.volume}
+          ambient={showsEntry(props)}
+        />
       ) : (
         <div className="absolute inset-0 grid content-center gap-3 bg-[radial-gradient(120%_90%_at_85%_10%,rgba(232,68,12,.2),transparent_55%),linear-gradient(160deg,#22262e,#111316)] px-[8%] text-white">
           <p className={cn("font-bold uppercase tracking-[0.16em] text-[#F28E63]", phone ? "text-[10px]" : "text-[15px]")}>
@@ -377,33 +416,16 @@ function WebinarPreview(props: RoomPreviewProps) {
         </div>
       )}
       <div className={cn("absolute z-[1] flex items-center gap-[5px]", phone ? "left-2.5 top-2.5" : "left-[18px] top-[18px]")}>
-        <LiveBadge />
-        {props.viewers !== null ? (
+        {/* Como na sala: no fim, «Terminou» a cinzento e sem o número. */}
+        <LiveBadge {...(videoEnded ? { label: "Terminou", tone: "muted" as const } : {})} />
+        {props.viewers !== null && !videoEnded ? (
           <span className={hl("viewers")}>
             <LiveViewers count={props.viewers} />
           </span>
         ) : null}
       </div>
-      {lastSale ? (
-        <div
-          className={cn(
-            "absolute flex items-center rounded-[14px] text-white shadow-[0_12px_30px_rgba(0,0,0,.4)]",
-            phone ? "bottom-2 left-2 gap-2 py-1.5 pl-1.5 pr-2.5" : "bottom-4 left-4 gap-3 py-2.5 pl-2.5 pr-4",
-          )}
-          style={{ background: saleColor(props.saleColor).solid }}
-        >
-          <span className={cn("grid place-items-center rounded-full bg-white/25 text-white", phone ? "size-[26px]" : "size-9")}>
-            <ShoppingCart className={phone ? "size-3" : "size-4"} />
-          </span>
-          <span>
-            <b className={cn("block font-bold", phone ? "text-xs" : "text-[15px]")}>
-              {lastSale.buyer} comprou {lastSale.product}
-            </b>
-            <small className={cn("text-white/80", phone ? "text-[10.5px]" : "text-[12.5px]")}>agora mesmo</small>
-          </span>
-        </div>
-      ) : null}
-      {props.captionsOn ? <CaptionLine text={said} compact={phone} /> : null}
+      {toastInChat ? null : saleToast}
+      {props.captionsOn ? <CaptionLine text={said} compact={phone} size={captionSize} raised={Boolean(lastSale) && !toastInChat} /> : null}
       {afterVideo ? (
         <div className="absolute inset-0 z-[5] grid place-items-center bg-black/90 px-6 text-center text-white">
           <div className={cn("grid justify-items-center", phone ? "gap-1.5" : "gap-3")}>
@@ -414,6 +436,8 @@ function WebinarPreview(props: RoomPreviewProps) {
             </p>
           </div>
         </div>
+      ) : videoEnded ? (
+        <EndedNote compact={phone} offer={open && !props.offerClosed ? "A oferta continua disponível no separador Oferta." : null} />
       ) : null}
       <button
         type="button"
@@ -427,6 +451,16 @@ function WebinarPreview(props: RoomPreviewProps) {
           </span>
         ) : null}
       </button>
+      {/* O temporizador da aula (também em pausa, para se ver ao escolher). */}
+      {props.video.url && !videoEnded ? (
+        <LessonTimer
+          timer={live.timer}
+          seconds={props.t}
+          compact={phone}
+          bar="absolute inset-x-0 bottom-0"
+          chip={cn("absolute", phone ? "right-2.5 top-2.5" : "right-[18px] top-[18px]")}
+        />
+      ) : null}
       {peek ? <PeekCountdown live={live} /> : null}
       <div className={cn("absolute", phone ? "bottom-2 right-2" : "bottom-3 right-3")}>
         <VideoSettings
@@ -435,6 +469,8 @@ function WebinarPreview(props: RoomPreviewProps) {
           onVolume={props.onVolume}
           captions={props.captionsOn}
           onCaptions={props.onCaptions}
+          captionSize={captionSize}
+          onCaptionSize={setCaptionSize}
           hasCaptions={props.speech.length > 0}
           appearance={props.appearance}
           onAppearance={props.onAppearance}
@@ -503,23 +539,28 @@ function WebinarPreview(props: RoomPreviewProps) {
     <div className={roomClass} style={style}>
       <RoomPartsStyle />
       <LiveStyle />
+      {/* A zona da câmara no tema da sala; o título e quem apresenta só se estiverem ligados (Vídeo). */}
       {phone ? (
         <>
-          <div className="shrink-0 bg-black" style={{ height: tall.top }} />
+          <div className="shrink-0 bg-room-bg" style={{ height: tall.top }} />
           {videoCard}
-          <RoomTitle compact kicker="" title={props.title} host={props.host} highlight={props.highlight} follow={followButton(false)} onHost={social.onHost} />
+          {live.header !== false ? (
+            <RoomTitle compact kicker="" title={props.title} host={props.host} highlight={props.highlight} follow={followButton(false)} onHost={social.onHost} />
+          ) : null}
         </>
       ) : (
         <div className="min-w-0">
           {videoCard}
-          <div className="px-1">
-            <RoomTitle kicker="Sessão ao vivo" title={props.title} host={props.host} highlight={props.highlight} follow={followButton(true)} onHost={social.onHost} />
-          </div>
+          {live.header !== false ? (
+            <div className="px-1">
+              <RoomTitle kicker={videoEnded ? "Sessão terminada" : "Sessão ao vivo"} title={props.title} host={props.host} highlight={props.highlight} follow={followButton(true)} onHost={social.onHost} />
+            </div>
+          ) : null}
         </div>
       )}
       <div className={cn("relative flex min-h-0 flex-col", phone ? "flex-1" : tablet ? "mt-4 flex-1 overflow-hidden rounded-2xl" : "overflow-hidden rounded-2xl")}>
         {/* No tema claro, o painel e o vídeo ganham uma borda que se vê (como no YouTube): `room-panel`. */}
-        <Panel {...props} tab={tab} shown={shown} open={open} hl={hl} phone={phone} afterVideo={afterVideo} notice={live.notify && props.agent.on} />
+        <Panel {...props} tab={tab} shown={shown} open={open} hl={hl} phone={phone} afterVideo={afterVideo} notice={live.notify && props.agent.on} toast={toastInChat ? saleToast : null} />
         {social.sheet}
       </div>
     </div>
@@ -544,9 +585,14 @@ function LivePreview(props: RoomPreviewProps) {
   // No tablet ao alto, o topo encosta às margens e o chat fica numa coluna à esquerda, à escala de um
   // telemóvel; a linha de escrever vai de margem a margem (o coração no canto de baixo à direita).
   const column = tablet ? "inset-x-5" : "inset-x-3";
+  // Como na sala: o vídeo deitado num ecrã ao alto empilha-se (vídeo em cima, chat e caixa de escrever
+  // por baixo, no tema da sala); o vídeo ao alto continua a encher o ecrã.
+  const stack = portrait && props.videoShape !== "vertical";
+  const themed = !phone || stack;
+  const [captionSize, setCaptionSize] = useState<CaptionSize>("md");
   const hl = (key: string) =>
     props.highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
-  const { open, afterVideo, shown, lastSale, said } = roomMoment(props);
+  const { open, afterVideo, videoEnded, shown, lastSale, said } = roomMoment(props);
   const peek = useCountdownPeek() && Boolean(live.countdown?.on);
   const supportOpen = props.tab === "support";
   const { follow, onHost: openFollow, sheet: followSheet, host } = useFollow(props, Boolean(open));
@@ -560,7 +606,8 @@ function LivePreview(props: RoomPreviewProps) {
 
   const teamName = props.host.name ? `Equipa de ${props.host.name}` : "Equipa";
 
-  const feed: LiveFeedItem[] = chatItemsAt(props, 12).map((item) =>
+  // Empilhado, o chat enche o espaço por baixo do vídeo: mais mensagens.
+  const feed: LiveFeedItem[] = chatItemsAt(props, stack ? 20 : 12).map((item) =>
     item.kind === "sale"
       ? { key: item.key, kind: "sale", text: `${item.s.buyer} comprou ${item.s.product}`, color: props.saleColor }
       : item.kind === "mine"
@@ -573,28 +620,16 @@ function LivePreview(props: RoomPreviewProps) {
 
   const lower = (
     <>
-      <div className={cn("contents", tablet && "flex w-[460px] flex-col")}>
+      <div className={cn("contents", tablet && "flex w-[460px] flex-col", tablet && stack && "min-h-0 flex-1")}>
         <LiveFeed
           items={feed}
           onNotice={() => props.onTab("support")}
-          panel={!phone}
-          className={
-            !phone
-              ? "min-h-0 flex-1 pr-0"
-              : landscape
-                ? "min-h-0 flex-1"
-                : tablet
-                  ? cardOpen
-                    ? "max-h-[22cqh]"
-                    : "max-h-[28cqh]"
-                  : cardOpen
-                    ? "max-h-[150px]"
-                    : "max-h-[250px]"
-          }
+          panel={themed}
+          className={!phone ? "min-h-0 flex-1 pr-0" : landscape || stack ? "min-h-0 flex-1" : LIVE_FEED_LINES}
         />
         {offer && cardOpen ? (
           <div className={hl("pitch")}>
-            <LiveOfferCard offer={offer} onBuy={() => props.onBuy?.()} onMinimize={() => setOfferMin(true)} onExpand={() => setOfferOpen(true)} panel={!phone} />
+            <LiveOfferCard offer={offer} onBuy={() => props.onBuy?.()} onMinimize={() => setOfferMin(true)} onExpand={() => setOfferOpen(true)} panel={themed} />
           </div>
         ) : null}
         {offer && !cardOpen && !offerOpen ? <LiveOfferSlim offer={offer} onOpen={() => setOfferOpen(true)} /> : null}
@@ -610,7 +645,7 @@ function LivePreview(props: RoomPreviewProps) {
         support={{ unread: props.agent.on && !supportOpen ? 1 : 0, open: supportOpen, onClick: () => props.onTab(supportOpen ? "chat" : "support") }}
         onHeart={props.onHeart}
         reactions={props.reactions}
-        panel={!phone}
+        panel={themed}
       />
     </>
   );
@@ -641,6 +676,7 @@ function LivePreview(props: RoomPreviewProps) {
             group={isGroupLink(shown.url)}
             compact
             look="compact"
+            colors={props.liveSettings?.offerColors}
             stickyBuy
           />
         </LiveOfferSheet>
@@ -652,11 +688,13 @@ function LivePreview(props: RoomPreviewProps) {
   // A forma do vídeo e o aparelho, com regras fixas, sem cortar nem esticar; igual à sala (`liveFrame`).
   // Com o telemóvel deitado, o vídeo fica inteiro e ao centro.
   const frame = liveFrame(props.videoShape, phone ? "phone" : "desk");
-  const videoBox = landscape
-    ? frame.place === "fill"
-      ? LIVE_CONTAIN
-      : "absolute left-1/2 top-1/2 aspect-video w-[min(100cqw,177.78cqh)] -translate-x-1/2 -translate-y-1/2"
-    : frame.box;
+  const videoBox = stack
+    ? "absolute inset-0"
+    : landscape
+      ? frame.place === "fill"
+        ? LIVE_CONTAIN
+        : "absolute left-1/2 top-1/2 aspect-video w-[min(100cqw,177.78cqh)] -translate-x-1/2 -translate-y-1/2"
+      : frame.box;
   // A legenda fica no próprio vídeo; com o vídeo ao alto a encher o ecrã, sobe acima do chat.
   const inVideoCaption = !(frame.place === "fill" && !landscape);
   const video = (
@@ -664,8 +702,16 @@ function LivePreview(props: RoomPreviewProps) {
       {frame.place === "column" && props.video.url ? <div className={LIVE_COLUMN_BG} /> : null}
       {props.video.url ? (
         <div className={videoBox}>
-          <PreviewPlayer url={props.video.url} provider={props.video.provider} t={props.t} playing={props.playing} volume={props.volume} fit={frame.fit} />
-          {props.captionsOn && inVideoCaption ? <CaptionLine text={said} compact={phone} /> : null}
+          <PreviewPlayer
+            url={props.video.url}
+            provider={props.video.provider}
+            t={props.t}
+            playing={props.playing}
+            volume={props.volume}
+            fit={frame.fit}
+            ambient={showsEntry(props)}
+          />
+          {props.captionsOn && inVideoCaption ? <CaptionLine text={said} compact={phone} size={captionSize} raised={stack && Boolean(lastSale)} /> : null}
           {!props.playing ? (
             <span className={cn("absolute inset-0 grid place-items-center", showsEntry(props) && ENTRY_DIM)}>
               <PausedPlay props={props} compact={phone && !tablet} />
@@ -679,15 +725,20 @@ function LivePreview(props: RoomPreviewProps) {
         </div>
       )}
       <button type="button" onClick={props.onTogglePlay} aria-label={props.playing ? "Pausar" : "Tocar"} className="absolute inset-0" />
-      {peek ? <PeekCountdown live={live} fill /> : null}
+      {peek ? <PeekCountdown live={live} fill={!stack} /> : null}
       {props.captionsOn && !inVideoCaption ? (
         <div className="pointer-events-none absolute inset-x-0 top-0 h-[55%]">
-          <CaptionLine text={said} compact />
+          <CaptionLine text={said} compact size={captionSize} />
         </div>
       ) : null}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-[120px] bg-[linear-gradient(180deg,rgba(0,0,0,.24),rgba(0,0,0,.07)_55%,transparent)]" />
+      {stack ? (
+        // Empilhado: só um véu leve em cima do vídeo, para o nome se ler (sem faixa nem borda).
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-[linear-gradient(180deg,rgba(0,0,0,.22),transparent)]" />
+      ) : (
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[120px] bg-[linear-gradient(180deg,rgba(0,0,0,.24),rgba(0,0,0,.07)_55%,transparent)]" />
+      )}
       {/* O escurecido de baixo só quando o chat está por cima do vídeo. */}
-      {phone ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[42%]" style={{ background: LIVE_SCRIM }} /> : null}
+      {phone && !stack ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[42%]" style={{ background: LIVE_SCRIM }} /> : null}
       {/* Deitado, o chat fica à direita: uma sombra por trás dele, para se ler sobre qualquer vídeo. */}
       {landscape ? <div className="pointer-events-none absolute inset-y-0 right-0 w-[48%] bg-[linear-gradient(270deg,rgba(0,0,0,.62),rgba(0,0,0,.3)_60%,transparent)]" /> : null}
     </>
@@ -700,39 +751,39 @@ function LivePreview(props: RoomPreviewProps) {
       onVolume={props.onVolume}
       captions={props.captionsOn}
       onCaptions={props.onCaptions}
+      captionSize={captionSize}
+      onCaptionSize={setCaptionSize}
       hasCaptions={props.speech.length > 0}
       appearance={props.appearance}
       onAppearance={props.onAppearance}
     />
   );
+  // O temporizador da aula, nos mesmos sítios que na sala.
+  const lessonTimer = (spots: { bar?: string; chip?: string }) =>
+    props.video.url && !videoEnded ? <LessonTimer timer={live.timer} seconds={props.t} compact={phone && !tablet} {...spots} /> : null;
+  // Como na sala: no fim, «Terminou» a cinzento e sem o número de pessoas.
+  const badge = videoEnded ? { label: "Terminou", tone: "muted" as const } : { label: "Ao vivo", tone: "live" as const };
   const corners = (
     <>
       <div className={cn("absolute z-20 flex items-center gap-[5px]", props.video.url ? "left-3 top-3" : "left-5 top-5", hl("viewers"))}>
-        <LiveBadge />
-        {props.viewers !== null ? <LiveViewers count={props.viewers} /> : null}
+        <LiveBadge label={badge.label} tone={badge.tone} />
+        {props.viewers !== null && !videoEnded ? <LiveViewers count={props.viewers} /> : null}
       </div>
       <div className={cn("pointer-events-auto absolute z-30", props.video.url ? "right-3 top-3" : "right-5 top-5")}>{settings}</div>
+      {lessonTimer({ bar: "absolute inset-x-0 bottom-0 z-20", chip: "absolute right-3 top-14 z-20" })}
     </>
   );
+  // Como na sala: empilhado, em baixo à esquerda do vídeo (`SALE_TOAST_SPOT`); no palco, por baixo da barra de cima.
   const saleToast = lastSale ? (
-    <div
-      className={cn(
-        "absolute z-20 flex items-center gap-2 rounded-[14px] py-1.5 pl-1.5 pr-2.5 text-white shadow-[0_12px_30px_rgba(0,0,0,.4)]",
-        tablet ? "left-5" : "left-3",
-        portrait ? "" : "top-[56px]",
-      )}
-      style={{ background: saleColor(props.saleColor).solid, ...(portrait ? { top: tall.top + (tablet ? 64 : 58) } : null) }}
-    >
-      <span className="grid size-[26px] place-items-center rounded-full bg-white/25">
-        <ShoppingCart className="size-3" />
-      </span>
-      <span>
-        <b className="block text-xs font-bold">
-          {lastSale.buyer} comprou {lastSale.product}
-        </b>
-        <small className="text-[10.5px] text-white/80">agora mesmo</small>
-      </span>
-    </div>
+    <SaleToast
+      key={lastSale.id}
+      name={lastSale.buyer}
+      text={`comprou ${lastSale.product}`}
+      color={props.saleColor}
+      compact={!tablet && phone}
+      className={stack ? SALE_TOAST_SPOT.phone : cn(tablet ? "left-5" : "left-3", !portrait && "top-[56px]")}
+      style={portrait && !stack ? { top: tall.top + (tablet ? 64 : 58) } : undefined}
+    />
   ) : null;
   const ended = afterVideo ? (
     <div className="absolute inset-0 z-[5] grid place-items-center bg-black/90 px-6 text-center text-white">
@@ -742,10 +793,38 @@ function LivePreview(props: RoomPreviewProps) {
         <p className="text-[11.5px] text-white/75">Mais {Math.round(((open?.end ?? props.duration) - props.duration) / 60)} min. A oferta está aqui em baixo.</p>
       </div>
     </div>
+  ) : videoEnded ? (
+    <EndedNote compact offer={open && !props.offerClosed ? "A oferta continua disponível aqui em baixo." : null} />
   ) : null;
   // `--live-top`: o vídeo deitado encosta logo abaixo da barra de estado do aparelho.
   const style = { fontFamily: ROOM_FONT, ...liveOfferVars(live.offerColor), "--live-top": `${portrait ? tall.top : 0}px` } as CSSProperties;
   const light = props.theme === "light" && "room-light";
+
+  if (stack) {
+    // Como na sala (`liveStack`): a zona da câmara no tema; o vídeo a toda a largura, sem borda, com a barra do
+    // Live por dentro; por baixo, o chat (cinco linhas) e a caixa de escrever no fundo, no tema da sala.
+    return (
+      <div className={cn("room-ambient relative flex flex-col overflow-hidden text-room-text", light)} style={{ ...style, width: tall.w, height: tall.h }}>
+        <RoomPartsStyle />
+        <LiveStyle />
+        <div className="shrink-0 bg-room-bg" style={{ height: tall.top }} />
+        <div className="relative shrink-0">
+          <div className="prelive-dark relative aspect-video w-full overflow-hidden bg-black text-white">
+            {video}
+            {lessonTimer({ bar: "absolute inset-x-0 bottom-0 z-20" })}
+            {saleToast}
+            {ended}
+          </div>
+          <div className={cn("absolute z-40", tablet ? "inset-x-5 top-4" : "inset-x-3 top-2")}>
+            {lessonTimer({ chip: "absolute right-0 top-full mt-2" })}
+            <LiveTopBar host={host} follow={follow} onHost={openFollow} status={badge} viewers={videoEnded ? null : props.viewers} extra={settings} />
+          </div>
+        </div>
+        <div className={cn("flex min-h-0 flex-1 flex-col justify-end pt-3", tablet ? "px-5 pb-5" : "px-3.5 pb-8")}>{lower}</div>
+        {sheets}
+      </div>
+    );
+  }
 
   if (phone) {
     return (
@@ -755,12 +834,13 @@ function LivePreview(props: RoomPreviewProps) {
         <div className="relative size-full overflow-hidden bg-black [container-type:size]">
           {video}
           <div className={cn("absolute z-30", portrait ? (tablet ? "inset-x-5" : "inset-x-3") : "inset-x-3 top-3")} style={portrait ? { top: tall.top + (tablet ? 16 : 10) } : undefined}>
+            {lessonTimer({ chip: "absolute right-0 top-full mt-2", bar: "absolute inset-x-0 -top-1.5 rounded-full" })}
             <LiveTopBar
               host={host}
               follow={follow}
               onHost={openFollow}
-              status={{ label: "Ao vivo", tone: "live" }}
-              viewers={props.viewers}
+              status={badge}
+              viewers={videoEnded ? null : props.viewers}
               extra={settings}
             />
           </div>
@@ -816,6 +896,7 @@ function Panel({
   sheet,
   notice,
   onClose,
+  toast,
   ...props
 }: RoomPreviewProps & {
   phone: boolean;
@@ -830,6 +911,8 @@ function Panel({
   notice?: boolean | undefined;
   /** Deitado, o chat por cima do vídeo fecha-se no X. */
   onClose?: (() => void) | undefined;
+  /** O aviso de compra por baixo das últimas mensagens, logo acima da caixa de escrever (Webinar ao alto). */
+  toast?: ReactNode;
 }) {
   const [text, setText] = useState("");
   const tabs: [RoomTab, string, typeof MessagesSquare][] = [
@@ -893,6 +976,7 @@ function Panel({
             closed={now.closed}
             group={isGroupLink(shown.url)}
             look={(props.liveSettings ?? LIVE_DEFAULTS).offerLook}
+            colors={props.liveSettings?.offerColors}
             banner={
               afterVideo ? (
                 <>
@@ -945,6 +1029,7 @@ function Panel({
               </div>
             )}
           </div>
+          {toast}
           {card ? (
             <div className={cn("shrink-0 px-3 pb-2.5", hl("pitch"))}>
               {offerMin ? (
@@ -962,7 +1047,7 @@ function Panel({
               props.onSend(text.trim(), tab === "support" ? "support" : "chat");
               setText("");
             }}
-            placeholder={tab === "support" ? "Escreva à equipa..." : "Chat..."}
+            placeholder={tab === "support" ? "Escreva à equipa…" : "Escreva no chat…"}
             withReactions={tab === "chat"}
             onHeart={props.onHeart}
             reactions={props.reactions}
@@ -998,6 +1083,7 @@ function PreviewPlayer({
   playing,
   volume,
   fit = "cover",
+  ambient = false,
 }: {
   url: string;
   provider: string | null;
@@ -1005,8 +1091,11 @@ function PreviewPlayer({
   playing: boolean;
   volume: number;
   fit?: "cover" | "contain" | undefined;
+  /** Em pausa com o botão de entrar à frente: o vídeo corre sem som por trás, «fusco», como na sala. */
+  ambient?: boolean | undefined;
 }) {
   const media = useRef<HTMLVideoElement>(null);
+  const running = playing || ambient;
   const embed = /youtube|youtu\.be|vimeo|mediadelivery|pandavideo|\/embed\/|player\./i.test(url);
   useEffect(() => {
     const video = media.current;
@@ -1029,9 +1118,9 @@ function PreviewPlayer({
   useEffect(() => {
     const video = media.current;
     if (!video) return;
-    if (playing) void video.play().catch(() => {});
+    if (running) void video.play().catch(() => {});
     else video.pause();
-  }, [playing]);
+  }, [running]);
   useEffect(() => {
     const video = media.current;
     if (!video || video.readyState < 1) return;
@@ -1041,9 +1130,9 @@ function PreviewPlayer({
     const video = media.current;
     if (!video) return;
     video.volume = volume;
-    video.muted = volume === 0;
-  }, [volume]);
-  if (embed && !playing) {
+    video.muted = !playing || volume === 0;
+  }, [volume, playing]);
+  if (embed && !running) {
     return (
       <div className="absolute inset-0 grid place-items-center bg-[#111] text-xs text-white/60">
         <span className="rounded-full bg-black/60 px-3 py-1">{clock(t)}</span>
@@ -1059,8 +1148,8 @@ function PreviewPlayer({
         fit={fit}
         controls={false}
         mediaRef={media}
-        autoPlay={playing}
-        muted={volume === 0}
+        autoPlay={running}
+        muted={!playing || volume === 0}
         quiet
         startAtSeconds={embed ? startAt.current : Math.floor(t)}
         // O relógio do editor é que manda; o tempo do leitor não volta para trás.

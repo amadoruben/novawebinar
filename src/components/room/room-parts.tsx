@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Captions,
   Check,
@@ -11,6 +11,7 @@ import {
   Monitor,
   MonitorPlay,
   Moon,
+  Pause,
   Play,
   SendHorizontal,
   Settings,
@@ -27,7 +28,7 @@ import {
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { clock, discountPercent, liveVideoPlace, type EntryLook, type LiveVideoPlace, type OfferLook } from "@/lib/room-logic";
+import { clock, discountPercent, liveVideoPlace, offerColorVars, type EntryLook, type LiveVideoPlace, type OfferColors, type OfferLook } from "@/lib/room-logic";
 
 /**
  * Peças da sala que a sala pública e a pré-visualização do editor desenham iguais. As cores
@@ -42,6 +43,14 @@ export function RoomPartsStyle() {
 
 export type Reaction = { id: string | number; offset: number; size?: number };
 export type Appearance = "system" | "dark" | "light";
+
+/** O tamanho das legendas, que cada pessoa escolhe no ⚙ («Normal» por omissão). */
+export type CaptionSize = "sm" | "md" | "lg";
+export const CAPTION_SIZES: readonly { id: CaptionSize; name: string }[] = [
+  { id: "sm", name: "Menor" },
+  { id: "md", name: "Normal" },
+  { id: "lg", name: "Maior" },
+];
 
 /**
  * O selo de verificado, como o do YouTube: um círculo cinzento com o visto da cor do fundo.
@@ -159,15 +168,18 @@ export function RoomTitle({
 const GLASS = "rounded-xl bg-[rgba(20,20,20,.74)] p-1.5 text-white shadow-[0_12px_40px_rgba(0,0,0,.45)] ring-1 ring-white/10 backdrop-blur-xl backdrop-saturate-150";
 
 /**
- * O botão ⚙ do vídeo: volume, legendas, qualidade (automática, sempre a melhor) e aparência.
- * Sem velocidade nem avançar: a sessão parece sempre ao vivo. `inline` (Live): o menu abre para baixo
- * dentro da própria sala, para nunca sair do ecrã (nem da moldura do aparelho na pré-visualização).
+ * O botão ⚙ do vídeo: volume, legendas (e o tamanho delas), qualidade (automática, sempre a melhor) e
+ * aparência. Sem velocidade nem avançar: a sessão parece sempre ao vivo. `inline` (Live): só o ícone,
+ * sem fundo, e o menu abre para baixo dentro da própria sala, para nunca sair do ecrã (nem da moldura do
+ * aparelho na pré-visualização).
  */
 export function VideoSettings({
   volume,
   onVolume,
   captions,
   onCaptions,
+  captionSize = "md",
+  onCaptionSize,
   hasCaptions,
   appearance,
   onAppearance,
@@ -178,13 +190,15 @@ export function VideoSettings({
   onVolume: (volume: number) => void;
   captions: boolean;
   onCaptions: (on: boolean) => void;
+  captionSize?: CaptionSize | undefined;
+  onCaptionSize?: ((size: CaptionSize) => void) | undefined;
   hasCaptions: boolean;
   appearance: Appearance;
   onAppearance: (appearance: Appearance) => void;
   compact?: boolean | undefined;
   inline?: boolean | undefined;
 }) {
-  const [page, setPage] = useState<"main" | "appearance">("main");
+  const [page, setPage] = useState<"main" | "appearance" | "captions">("main");
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   // Fora do menu, um toque ou o Esc fecham-no (o Popover faz isto sozinho; o menu na sala não).
@@ -221,16 +235,51 @@ export function VideoSettings({
           : undefined
       }
       className={cn(
-        "grid place-items-center rounded-full bg-black/55 text-white backdrop-blur transition hover:bg-black/75",
+        "grid place-items-center rounded-full text-white transition",
         compact ? "size-9" : "size-10",
-        inline && open && "bg-black/75",
+        inline
+          ? "drop-shadow-[0_1px_3px_rgba(0,0,0,.6)] hover:opacity-80"
+          : "bg-black/55 backdrop-blur hover:bg-black/75",
       )}
     >
-      <Settings className={compact ? "size-[18px]" : "size-5"} />
+      <Settings className={cn(compact ? "size-[18px]" : "size-5", inline && "size-[22px] transition-transform", inline && open && "rotate-45")} />
+    </button>
+  );
+  const sizeName = CAPTION_SIZES.find((s) => s.id === captionSize)?.name ?? "Normal";
+  const back = (label: string) => (
+    <button type="button" onClick={() => setPage("main")} className={cn(row, "border-b border-white/10 pb-3")}>
+      <ChevronLeft className="size-4" />
+      <span className="flex-1 font-medium">{label}</span>
     </button>
   );
   const menu =
-    page === "main" ? (
+    page === "captions" ? (
+      // Legendas: desligadas ou num de três tamanhos (o tamanho só existe com quem o escolhe).
+      <div className="grid gap-0.5">
+        {back("Legendas")}
+        <button type="button" onClick={() => onCaptions(false)} className={row}>
+          <span className="flex-1">Desligadas</span>
+          {!captions ? <Check className="size-4" /> : null}
+        </button>
+        {CAPTION_SIZES.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => {
+              onCaptionSize?.(s.id);
+              onCaptions(true);
+            }}
+            className={row}
+          >
+            <span className="flex w-5 shrink-0 justify-center font-semibold" style={{ fontSize: { sm: 11, md: 14, lg: 17 }[s.id] }}>
+              A
+            </span>
+            <span className="flex-1">{s.name}</span>
+            {captions && captionSize === s.id ? <Check className="size-4" /> : null}
+          </button>
+        ))}
+      </div>
+    ) : page === "main" ? (
       <div className="grid gap-0.5">
         <div className="flex items-center gap-3 px-3 py-2.5">
           <button
@@ -253,10 +302,11 @@ export function VideoSettings({
           />
         </div>
         {hasCaptions ? (
-          <button type="button" onClick={() => onCaptions(!captions)} className={row}>
+          <button type="button" onClick={() => setPage("captions")} className={row}>
             <Captions className="size-[18px] shrink-0" />
             <span className="flex-1">Legendas</span>
-            <span className="text-[13px] text-white/65">{captions ? "Ligadas" : "Desligadas"}</span>
+            <span className="text-[13px] text-white/65">{captions ? sizeName : "Desligadas"}</span>
+            <ChevronRight className="size-4 text-white/65" />
           </button>
         ) : null}
         <div className={cn(row, "cursor-default hover:bg-transparent")}>
@@ -273,10 +323,7 @@ export function VideoSettings({
       </div>
     ) : (
       <div className="grid gap-0.5">
-        <button type="button" onClick={() => setPage("main")} className={cn(row, "border-b border-white/10 pb-3")}>
-          <ChevronLeft className="size-4" />
-          <span className="flex-1 font-medium">Aparência</span>
-        </button>
+        {back("Aparência")}
         {(
           [
             ["system", "Do sistema", Monitor],
@@ -315,15 +362,37 @@ export function VideoSettings({
   );
 }
 
+/** A letra das legendas: no telemóvel (`compact`) e no ecrã grande, em cada tamanho. */
+const CAPTION_TEXT: Record<"compact" | "full", Record<CaptionSize, string>> = {
+  compact: { sm: "text-[10px]", md: "text-[11px]", lg: "text-[13.5px]" },
+  full: { sm: "text-[12px]", md: "text-[14px]", lg: "text-[18px]" },
+};
+
 /** A legenda da fala, um pouco acima do fundo do vídeo, como no cinema: curta, no máximo duas linhas. */
-export function CaptionLine({ text, compact }: { text: string | null; compact?: boolean | undefined }) {
+export function CaptionLine({
+  text,
+  compact,
+  size = "md",
+  raised,
+}: {
+  text: string | null;
+  compact?: boolean | undefined;
+  size?: CaptionSize | undefined;
+  /** Um aviso de compra está em baixo, no vídeo: a legenda sobe por cima dele. */
+  raised?: boolean | undefined;
+}) {
   if (!text) return null;
   return (
-    <div className={cn("pointer-events-none absolute inset-x-0 z-[1] flex justify-center px-6", compact ? "bottom-[6%]" : "bottom-[7%]")}>
+    <div
+      className={cn(
+        "pointer-events-none absolute inset-x-0 z-[1] flex justify-center px-6",
+        raised ? (compact ? "bottom-[42px]" : "bottom-[76px]") : compact ? "bottom-[6%]" : "bottom-[7%]",
+      )}
+    >
       <span
         className={cn(
           "line-clamp-2 max-w-[78%] rounded bg-black/60 px-2 py-0.5 text-center font-medium leading-snug text-white [box-decoration-break:clone]",
-          compact ? "text-[12px]" : "text-[16px]",
+          CAPTION_TEXT[compact ? "compact" : "full"][size],
         )}
       >
         {text}
@@ -337,8 +406,9 @@ export function CaptionLine({ text, compact }: { text: string | null; compact?: 
 export const EMOJIS = ["😀", "😂", "😍", "🥰", "😮", "🤔", "👏", "🙌", "👍", "💪", "🔥", "💯", "❤️", "🎉", "🙏", "✅", "😅", "🤩", "😢", "👀", "💡", "🚀", "⭐", "🇦🇴", "🇧🇷", "🇵🇹"];
 
 /**
- * A caixa de escrever do formato Webinar, com o mesmo desenho do Live (como no Instagram e no
- * YouTube): o campo com os emojis e, ao lado, o enviar e o coração só em ícone, sem círculos.
+ * A caixa de escrever do formato Webinar, como no WhatsApp: o campo com os emojis e, ao lado, um só
+ * botão redondo. Vazio, é o coração das reacções; ao escrever, passa a enviar, cheio na cor do botão.
+ * No Suporte (sem reacções) o enviar fica sempre lá.
  */
 export function ChatComposer({
   value,
@@ -363,15 +433,21 @@ export function ChatComposer({
 }) {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const ready = Boolean(value.trim());
+  const heart = withReactions && onHeart && !ready;
   return (
     <form
-      className="flex items-center gap-1 border-t border-room-line px-3 py-3"
+      className="flex items-center gap-2 border-t border-room-line px-3 py-2.5"
       onSubmit={(event) => {
         event.preventDefault();
         if (ready) onSubmit();
       }}
     >
-      <div className={cn("flex min-w-0 flex-1 items-center gap-0.5 rounded-full bg-room-raised pl-4 pr-[5px]", compact ? "h-10" : "h-11")}>
+      <div
+        className={cn(
+          "flex min-w-0 flex-1 items-center gap-0.5 rounded-full bg-room-raised pl-4 pr-1 ring-1 ring-inset ring-transparent transition focus-within:ring-room-line",
+          compact ? "h-11" : "h-12",
+        )}
+      >
         <input
           {...inputProps}
           value={value}
@@ -379,7 +455,7 @@ export function ChatComposer({
           placeholder={placeholder}
           enterKeyHint="send"
           maxLength={200}
-          className={cn("min-w-0 flex-1 bg-transparent text-room-text outline-none placeholder:text-room-subtle", compact ? "text-[14px]" : "text-[15px]")}
+          className={cn("min-w-0 flex-1 bg-transparent text-room-text outline-none placeholder:text-room-subtle", compact ? "text-[15px]" : "text-[15.5px]")}
         />
         <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
           <PopoverTrigger asChild>
@@ -387,9 +463,9 @@ export function ChatComposer({
               type="button"
               aria-label="Emojis"
               title="Emojis"
-              className={cn("grid size-8 shrink-0 place-items-center rounded-full text-room-text transition", emojiOpen && "bg-room-line")}
+              className={cn("grid size-9 shrink-0 place-items-center rounded-full text-room-subtle transition hover:text-room-text", emojiOpen && "bg-room-line text-room-text")}
             >
-              <Smile className="size-5" />
+              <Smile className="size-[21px]" />
             </button>
           </PopoverTrigger>
           <PopoverContent side="top" align="end" className="w-[264px] p-2">
@@ -408,33 +484,57 @@ export function ChatComposer({
           </PopoverContent>
         </Popover>
       </div>
-      <button
-        type="submit"
-        aria-label="Comentar"
-        title="Comentar"
-        disabled={!ready}
-        className={cn("grid size-[38px] shrink-0 place-items-center rounded-full transition", ready ? "text-primary" : "text-room-text")}
-      >
-        <SendHorizontal className="size-[22px]" strokeWidth={1.8} />
-      </button>
-      {withReactions && onHeart ? (
+      {heart ? (
         <HeartButton
           onHeart={onHeart}
           reactions={reactions ?? []}
-          className="grid size-[38px] shrink-0 place-items-center rounded-full text-room-text transition active:scale-90"
-          iconClassName="size-6 [stroke-width:1.8]"
+          className={cn("grid shrink-0 place-items-center rounded-full text-room-text transition active:scale-90", compact ? "size-11" : "size-12")}
+          iconClassName="size-[26px] [stroke-width:1.8]"
         />
-      ) : null}
+      ) : (
+        <button
+          type="submit"
+          aria-label="Comentar"
+          title="Comentar"
+          disabled={!ready}
+          className={cn(
+            "grid shrink-0 place-items-center rounded-full transition active:scale-95",
+            compact ? "size-11" : "size-12",
+            ready ? "bg-[var(--of,#E8440C)] text-[var(--of-on,#fff)]" : "bg-room-raised text-room-subtle",
+          )}
+        >
+          <SendHorizontal className="size-5 translate-x-px" strokeWidth={2.1} />
+        </button>
+      )}
     </form>
   );
 }
 
-/** O vermelho das reações (só delas). */
-const HEART = "#FF3B5C";
+const HEART_PATH =
+  "M12 21.2 10.6 19.9C5.5 15.3 2.2 12.3 2.2 8.6 2.2 5.6 4.6 3.2 7.6 3.2c1.7 0 3.3.8 4.4 2.1 1.1-1.3 2.7-2.1 4.4-2.1 3 0 5.4 2.4 5.4 5.4 0 3.7-3.3 6.7-8.4 11.3Z";
 
 /**
- * O coração das reações: um contorno; enquanto a pessoa toca enche-se de vermelho (sabe que reagiu)
- * e sobem corações planos, como no YouTube, a direito e com um leve balanço, por cima do botão
+ * O coração das reacções, na cor do ❤️ do iPhone: um vermelho com um degradê suave de cima para
+ * baixo, sem brilho nem relevo (não fica 3D).
+ */
+export function ReactionHeart({ size, className, style }: { size: number; className?: string | undefined; style?: CSSProperties | undefined }) {
+  const id = `rh${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden className={className} style={style}>
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#FF4D3D" />
+          <stop offset="1" stopColor="#D9160C" />
+        </linearGradient>
+      </defs>
+      <path d={HEART_PATH} fill={`url(#${id})`} />
+    </svg>
+  );
+}
+
+/**
+ * O coração das reacções: um contorno; enquanto a pessoa toca enche-se de vermelho (sabe que reagiu)
+ * e sobem corações na cor do ❤️ do iPhone, a direito e com um leve balanço, por cima do botão
  * (no canto de baixo à direita).
  */
 export function HeartButton({
@@ -460,15 +560,14 @@ export function HeartButton({
       {reactions.length > 0 ? (
         <span aria-hidden className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 h-[230px] w-12 -translate-x-1/2 [--h:210px]">
           {reactions.map((r) => {
-            const size = Math.max(24, Math.min(30, (r.size ?? 28) * 0.9));
+            const size = Math.max(26, Math.min(32, r.size ?? 29));
             const sway = Math.max(-7, Math.min(7, Math.round(r.offset / 5))) || 4;
             return (
-              <Heart
+              <ReactionHeart
                 key={r.id}
-                fill="currentColor"
-                strokeWidth={0}
-                className="cw-rx absolute bottom-0 opacity-0"
-                style={{ left: `calc(50% - ${size / 2}px)`, width: size, height: size, color: HEART, "--sway": `${sway}px` } as CSSProperties}
+                size={size}
+                className="cw-rx absolute bottom-0 opacity-0 drop-shadow-[0_1px_2px_rgba(0,0,0,.25)]"
+                style={{ left: `calc(50% - ${size / 2}px)`, "--sway": `${sway}px` } as CSSProperties}
               />
             );
           })}
@@ -485,7 +584,9 @@ export function HeartButton({
         className={className}
       >
         {pressed ? (
-          <Heart key="on" fill="currentColor" strokeWidth={0} className={cn("cw-pop size-5", iconClassName)} style={{ color: HEART }} />
+          <span key="on" className={cn("cw-pop grid size-5 place-items-center", iconClassName)}>
+            <ReactionHeart size={26} className="size-full" />
+          </span>
         ) : (
           <Heart key="off" className={cn("size-5", iconClassName)} />
         )}
@@ -688,8 +789,9 @@ function OfferBadge({ discount, closed, className }: { discount: number | null; 
 }
 
 /**
- * O separador Oferta (e a folha da oferta no Live): produto, preços, botão e cronómetro. Duas formas,
- * escolhidas no editor: «Quadrada», com o produto num quadrado grande, e «Compacta», numa linha.
+ * O separador Oferta (e a folha da oferta no Live): produto, preços, botão e cronómetro. Três formas,
+ * escolhidas no editor: «Quadrada», com o produto num quadrado grande, «Compacta», numa linha, e
+ * «Clássica», com a faixa na cor da oferta e o fundo meio transparente.
  */
 export function OfferCard({
   productName,
@@ -706,6 +808,7 @@ export function OfferCard({
   group,
   compact,
   look = "square",
+  colors,
   highlight,
   stickyBuy,
 }: {
@@ -727,10 +830,16 @@ export function OfferCard({
   group?: boolean | undefined;
   compact?: boolean | undefined;
   look?: OfferLook | undefined;
+  /** As cores próprias da oferta (botão, fundo, texto); vazias, as da sala. */
+  colors?: OfferColors | undefined;
   highlight?: string | null | undefined;
   /** Numa folha que rola: o botão fica preso ao fundo, sempre à vista. */
   stickyBuy?: boolean | undefined;
 }) {
+  // As cores próprias: as variáveis no elemento de cima; com um fundo escolhido, ele vira um cartão
+  // nessa cor (numa folha, enche-a).
+  const paint = (offerColorVars(colors) ?? undefined) as CSSProperties | undefined;
+  const painted = colors?.card ? cn("bg-room-surface text-room-text", !stickyBuy && "m-3 rounded-2xl") : "";
   const hl = (key: string) =>
     highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
   const discount = discountPercent(priceFrom ?? "", priceNow ?? "");
@@ -774,9 +883,39 @@ export function OfferCard({
     </>
   );
 
+  if (look === "classic") {
+    // «Clássica»: a faixa na cor da oferta com o nome; por baixo, num fundo meio transparente, os
+    // preços e o botão. O cronómetro fica por baixo do cartão, em blocos.
+    return (
+      <div style={paint} className={cn("grid content-start gap-4 p-4", painted)}>
+        {top}
+        <div className="overflow-hidden rounded-2xl bg-[color-mix(in_srgb,var(--room-surface)_78%,transparent)] ring-1 ring-room-line">
+          <div className={cn("flex items-center gap-3 bg-[linear-gradient(110deg,var(--of-dark)_0%,var(--of-mid)_52%,var(--of)_100%)] px-4 pb-4 pt-3.5 text-white", hl("product"))}>
+            <div className="grid min-w-0 flex-1 gap-1">
+              <span className="text-[10.5px] font-extrabold uppercase tracking-[0.2em] text-white/85">{closed ? "Inscrições encerradas" : "Inscrições abertas"}</span>
+              {productName ? <span className="line-clamp-3 break-words text-[22px] font-extrabold leading-tight tracking-[-0.01em]">{productName}</span> : name}
+            </div>
+            {imageUrl ? <OfferThumb imageUrl={imageUrl} className="size-16 rounded-xl ring-1 ring-white/20" /> : null}
+          </div>
+          <div className="grid gap-3.5 px-4 pb-4 pt-3.5">
+            {priceFrom || priceNow ? (
+              <div className={cn("flex flex-wrap items-baseline gap-x-2.5 gap-y-1", hl("price"))}>
+                {priceFrom ? <s className="text-[14px] font-bold text-room-subtle">De {priceFrom}</s> : null}
+                {priceNow ? <b className="text-[24px] font-black leading-tight tracking-tight">Por {priceNow}</b> : null}
+                <OfferBadge discount={discount} closed={closed} className="ml-auto self-center" />
+              </div>
+            ) : null}
+            {buy}
+          </div>
+        </div>
+        {showCountdown ? <CountdownBlocks seconds={countdownSeconds} compact={compact} /> : null}
+      </div>
+    );
+  }
+
   if (look === "compact") {
     return (
-      <div className="grid content-start gap-3.5 p-4">
+      <div style={paint} className={cn("grid content-start gap-3.5 p-4", painted)}>
         {top}
         <div className={cn("flex items-center gap-3", hl("product"))}>
           <OfferThumb imageUrl={imageUrl} className="size-[68px]" />
@@ -805,7 +944,7 @@ export function OfferCard({
   // «Quadrada»: o produto num quadrado grande (a imagem, ou o saco na cor da oferta), com o nome e os
   // preços ao lado; o botão e o cronómetro cabem por baixo, à vista, mesmo no telemóvel.
   return (
-    <div className="grid content-start gap-4 p-4">
+    <div style={paint} className={cn("grid content-start gap-4 p-4", painted)}>
       {top}
       <div className={cn("flex items-start gap-3.5", hl("product"))}>
         <span className={cn("relative aspect-square shrink-0", compact ? "w-[38%] max-w-[132px]" : "w-[42%] max-w-[168px]")}>
@@ -857,6 +996,97 @@ export function SaleLine({
   );
 }
 
+/**
+ * Onde o aviso de compra aparece no Webinar. Num ecrã ao alto (telemóvel, tablet) sai do vídeo e entra
+ * por baixo das últimas mensagens, logo acima da caixa de escrever (`chat`, no fluxo: o chat sobe e nada
+ * fica tapado); deitado e no computador, no canto de baixo do vídeo (`phone`, `desk`). Para o mover (na
+ * sala e na pré-visualização ao mesmo tempo), muda-se só aqui.
+ */
+export const SALE_TOAST_SPOT = {
+  phone: "bottom-2 left-2",
+  desk: "bottom-3 left-3",
+  chat: "relative mx-3 mb-2 max-w-[calc(100%-24px)] shrink-0 self-start",
+} as const;
+
+/** O aviso de compra por cima do vídeo: uma pílula na cor escolhida nas Vendas, numa só linha. */
+export function SaleToast({
+  name,
+  text,
+  color,
+  compact,
+  className,
+  style,
+}: {
+  name: string;
+  text: string;
+  color?: string | null | undefined;
+  compact?: boolean | undefined;
+  className?: string | undefined;
+  style?: CSSProperties | undefined;
+}) {
+  return (
+    <div
+      className={cn(
+        "pointer-events-none absolute z-20 flex max-w-[calc(100%-16px)] items-center rounded-full text-white shadow-[0_8px_24px_rgba(0,0,0,.3)] animate-in fade-in slide-in-from-bottom-2 duration-300",
+        compact ? "gap-2 py-1 pl-1 pr-3" : "gap-2.5 py-1.5 pl-1.5 pr-4",
+        className,
+      )}
+      style={{ ...style, background: saleColor(color).solid }}
+    >
+      <span className={cn("grid shrink-0 place-items-center rounded-full bg-white/25", compact ? "size-6" : "size-8")}>
+        <ShoppingCart className={compact ? "size-3" : "size-4"} />
+      </span>
+      <p className={cn("min-w-0 truncate", compact ? "text-[12.5px]" : "text-[14.5px]")}>
+        <b className="font-bold">{name}</b> {text}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Sala de teste: quem testa recua, avança e põe em pausa o vídeo (só no vídeo próprio; as plataformas
+ * embebidas não deixam). Nunca aparece a quem vê a sala a sério.
+ */
+export function TestControls({
+  seconds,
+  paused,
+  onSeek,
+  onToggle,
+  className,
+}: {
+  seconds: number;
+  paused: boolean;
+  onSeek: (delta: number) => void;
+  onToggle: () => void;
+  className?: string | undefined;
+}) {
+  const jump = "h-8 rounded-full px-2 text-[12px] font-bold tabular-nums transition hover:bg-white/15 active:scale-95";
+  return (
+    <div
+      role="group"
+      aria-label="Controlos da sala de teste"
+      className={cn("z-30 flex items-center gap-0.5 rounded-full bg-black/70 p-1 text-white ring-1 ring-white/15 backdrop-blur", className)}
+    >
+      <button type="button" onClick={() => onSeek(-60)} aria-label="Recuar 1 minuto" className={jump}>
+        −1m
+      </button>
+      <button type="button" onClick={() => onSeek(-10)} aria-label="Recuar 10 segundos" className={jump}>
+        −10s
+      </button>
+      <button type="button" onClick={onToggle} aria-label={paused ? "Continuar" : "Pausar"} className="grid size-8 place-items-center rounded-full bg-white text-black transition active:scale-95">
+        {paused ? <Play className="size-3.5 translate-x-px" fill="currentColor" /> : <Pause className="size-3.5" fill="currentColor" />}
+      </button>
+      <button type="button" onClick={() => onSeek(10)} aria-label="Avançar 10 segundos" className={jump}>
+        +10s
+      </button>
+      <button type="button" onClick={() => onSeek(60)} aria-label="Avançar 1 minuto" className={jump}>
+        +1m
+      </button>
+      <span className="pl-1 pr-2 font-mono text-[12px] tabular-nums text-white/80">{clock(seconds)}</span>
+    </div>
+  );
+}
+
 /** O ponto que pulsa no separador Oferta enquanto não está aberto. */
 export function PulseDot() {
   return <span aria-hidden className="cw-dot size-[7px] rounded-full bg-[#E8440C]" />;
@@ -874,13 +1104,12 @@ export const LIVE_COVER =
 export const LIVE_WIDE =
   "absolute left-1/2 top-1/2 aspect-video w-[min(calc(100cqw-64px),calc((100cqh-112px)*16/9))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl";
 /**
- * O vídeo deitado no telemóvel ao alto (Live): à largura do ecrã, centrado na parte de cima do palco
- * (o centro a 37% da altura), logo abaixo da barra de cima e longe do chat, como no Instagram. Por cima
- * e por baixo fica o preto do palco, com uma passagem curta de 10 px nas bordas; o vídeo nunca fica
- * desfocado nem escurecido. As unidades cq medem o palco; `--live-top` é a zona da câmara.
+ * O vídeo deitado no telemóvel (Live). Ao alto, a sala empilha-se como no YouTube (ver `LiveStack` na
+ * sala): o vídeo em cima, logo abaixo da zona da câmara, com a barra do Live por cima dele. Esta moldura
+ * serve o telemóvel deitado, onde as classes landscape a põem inteira e ao centro. Sem bordas
+ * esbatidas: o vídeo acaba a direito.
  */
-export const LIVE_TOP =
-  "absolute inset-x-0 top-[max(calc(var(--live-top,0px)_+_58px),calc(37cqh_-_28.125cqw))] aspect-video w-full [mask-image:linear-gradient(180deg,transparent,#000_10px,#000_calc(100%_-_10px),transparent)]";
+export const LIVE_TOP = "absolute inset-x-0 top-[var(--live-top,0px)] aspect-video w-full";
 /** O vídeo ao alto no computador (Live): uma coluna 9:16 ao centro, quase da altura do palco. */
 export const LIVE_COLUMN =
   "absolute left-1/2 top-1/2 aspect-[9/16] h-[calc(100cqh-48px)] max-w-[calc(100cqw-48px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl shadow-[0_0_0_1px_rgba(255,255,255,.06),0_30px_80px_rgba(0,0,0,.6)]";
@@ -912,28 +1141,31 @@ export function EntryPlay({ look, kicker, compact }: { look: EntryLook; kicker: 
     <span
       className={cn(
         "pointer-events-none flex items-center text-white",
-        !big && "gap-3.5 rounded-full bg-black/60 py-2 pl-2 pr-6 text-left shadow-[0_12px_32px_rgba(0,0,0,.35)] ring-1 ring-white/15 backdrop-blur-md",
-        !big && compact && "gap-2.5 py-1.5 pl-1.5 pr-4",
+        !big && "gap-4 rounded-full bg-black/60 py-2.5 pl-2.5 pr-7 text-left shadow-[0_12px_32px_rgba(0,0,0,.35)] ring-1 ring-white/15 backdrop-blur-md",
+        !big && compact && "gap-3 py-2 pl-2 pr-5",
       )}
     >
       <span
         className={cn(
           "relative grid shrink-0 place-items-center rounded-full bg-[var(--of,#E8440C)] text-[var(--of-on,#fff)] shadow-[0_8px_28px_color-mix(in_srgb,var(--of,#E8440C)_45%,transparent)]",
-          big ? (compact ? "size-16" : "size-[86px]") : compact ? "size-10" : "size-[52px]",
+          big ? (compact ? "size-[72px]" : "size-24") : compact ? "size-12" : "size-[58px]",
         )}
       >
         <span className="absolute inset-0 animate-ping rounded-full bg-[var(--of,#E8440C)] opacity-50 motion-reduce:animate-none" />
-        <Play className={cn("relative translate-x-px", big ? (compact ? "size-7" : "size-9") : compact ? "size-[18px]" : "size-[22px]")} fill="currentColor" />
+        <Play className={cn("relative translate-x-px", big ? (compact ? "size-8" : "size-10") : compact ? "size-5" : "size-6")} fill="currentColor" />
       </span>
       {big ? null : (
         <span className="leading-tight">
-          <small className={cn("block font-bold uppercase tracking-[0.16em] text-white/75", compact ? "text-[10px]" : "text-[11.5px]")}>{kicker}</small>
-          <b className={cn("block font-semibold", compact ? "text-[14.5px]" : "text-[17px]")}>Assistir agora</b>
+          <small className={cn("block font-bold uppercase tracking-[0.16em] text-white/75", compact ? "text-[10.5px]" : "text-[12px]")}>{kicker}</small>
+          <b className={cn("block font-semibold", compact ? "text-[16px]" : "text-[18.5px]")}>Assistir agora</b>
         </span>
       )}
     </span>
   );
 }
 
-/** O escurecido do vídeo por trás do botão de entrar: o vídeo continua à vista, como num Live em pausa. */
-export const ENTRY_DIM = "bg-black/45";
+/**
+ * O vídeo por trás do botão de entrar, «fusco»: já a correr (sem som), escurecido e desfocado, para se
+ * ver que há vídeo sem se perceber bem. Ao tocar sai, e fica o vídeo claro e com som.
+ */
+export const ENTRY_DIM = "bg-black/45 backdrop-blur-[10px]";

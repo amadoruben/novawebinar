@@ -595,7 +595,7 @@ function WebinarMetricsPage() {
         <Empty>Não foi possível carregar as métricas. Recarregue a página para tentar outra vez.</Empty>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <Card label="Inscritos" value={String(registered)} hint="pessoas únicas neste período" icon={Users} />
         <Card
           label="Assistiram"

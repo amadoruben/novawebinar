@@ -2,16 +2,27 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { BookOpen, Check, Layers, Lock, MonitorPlay, SlidersHorizontal, X } from "lucide-react";
+import { BookOpen, Check, ChevronRight, Layers, Lock, MonitorPlay, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AgentPanel } from "@/components/ai-agent/agent-panel";
-import { getAgent, saveAgent, saveAgentScope, type AgentBundle, type AgentScope } from "@/lib/ai-agent/agent.functions";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { AgentPanel, type AgentPanelTab } from "@/components/ai-agent/agent-panel";
+import {
+  getAgent,
+  saveAgent,
+  saveAgentScope,
+  saveAgentSource,
+  type AgentBundle,
+  type AgentScope,
+} from "@/lib/ai-agent/agent.functions";
+import { KNOWLEDGE_SOURCES, type SourceId } from "@/lib/ai-agent/knowledge-sources";
 import { friendlyError } from "@/lib/friendly-error";
 import { cn } from "@/lib/utils";
-import { Field, Note, RadioCard, Section, SwitchRow } from "../ui";
+import { Field, Note, RadioCard, Section, SwitchRow, Tag } from "../ui";
 
 type Mode = "copiloto" | "hibrido" | "automatico";
 /** Os níveis de autonomia: o que o agente faz, o que não faz e, no Automático, o aviso. */
@@ -39,7 +50,19 @@ const LEVELS: { mode: Mode; name: string; does: string; doesNot: string; warn?: 
 const UNKNOWN = "Pergunta não coberta pela base de conhecimento";
 const PERSON = "Participante pediu uma pessoa da equipa";
 
-/** Agente IA: o agente da plataforma a responder no Suporte da sala. Âmbito → conhecimento → autonomia → ligar. */
+/** Onde se escreve o conteúdo de cada fonte (o resto vem do editor). */
+const EDIT_TAB: Partial<Record<SourceId, AgentPanelTab>> = { faqs: "faqs", objecoes: "objecoes", notas: "conhecimento" };
+/** O que é do agente (da conta, com «Todos os webinars»), no mesmo diálogo. */
+const AGENT_ROWS: { tab: AgentPanelTab; label: string }[] = [
+  { tab: "personalidade", label: "Tom e personalidade" },
+  { tab: "regras", label: "Regras" },
+  { tab: "testar", label: "Testar o agente" },
+];
+
+/**
+ * Agente IA: o agente da plataforma a responder no Suporte da sala. Âmbito → conhecimento deste
+ * webinar → autonomia → ligar. O agente pode ser o da conta; o conhecimento é sempre do webinar.
+ */
 export function StepAgente({
   webinarId,
   onState,
@@ -53,17 +76,19 @@ export function StepAgente({
   const fetchAgent = useServerFn(getAgent);
   const save = useServerFn(saveAgent);
   const saveScope = useServerFn(saveAgentScope);
+  const saveSource = useServerFn(saveAgentSource);
   const qc = useQueryClient();
   const key = ["ai-agent", webinarId];
   const { data, isLoading, isError } = useQuery({ queryKey: key, queryFn: () => fetchAgent({ data: { webinarId } }) });
-  const [more, setMore] = useState(false);
+  const mobile = useIsMobile();
+  const [custom, setCustom] = useState(false);
+  const [panel, setPanel] = useState<AgentPanelTab | null>(null);
   const [name, setName] = useState("");
   const agent = data?.agent as
     | {
         enabled?: boolean;
         mode?: string;
         agent_name?: string;
-        use_webinar_transcript?: boolean;
         permissions?: Record<string, boolean>;
         escalation?: { reasons?: string[]; message?: string };
       }
@@ -98,6 +123,15 @@ export function StepAgente({
     }
     void qc.invalidateQueries({ queryKey: key });
   };
+  const toggleSource = async (source: SourceId, on: boolean) => {
+    qc.setQueryData(key, (old: AgentBundle | undefined) => (old ? { ...old, sources: { ...old.sources, [source]: on } } : old));
+    try {
+      await saveSource({ data: { webinarId, source, on } });
+    } catch (error) {
+      toast.error(friendlyError(error, "Não foi possível guardar a fonte."));
+      void qc.invalidateQueries({ queryKey: key });
+    }
+  };
   // O nome grava quando se pára de escrever.
   const nameTimer = useRef<number | null>(null);
   const onName = (value: string) => {
@@ -106,7 +140,8 @@ export function StepAgente({
     nameTimer.current = window.setTimeout(() => void patch({ agent_name: value.trim() || "Assistente" }), 600);
   };
 
-  if (isError) return <Note>Não foi possível abrir o agente. Volte a tentar.</Note>;
+  // Uma releitura falhada não apaga o que já se mostra.
+  if (isError && !data) return <Note>Não foi possível abrir o agente. Volte a tentar.</Note>;
   if (isLoading || !agent || !data) return <Skeleton className="h-40 w-full" />;
   const mode: Mode = agent.mode === "copiloto" || agent.mode === "automatico" ? agent.mode : "hibrido";
   const level = LEVELS.find((l) => l.mode === mode)!;
@@ -116,6 +151,18 @@ export function StepAgente({
     const next = reasons.includes(reason) ? reasons.filter((r) => r !== reason) : [...reasons, reason];
     void patch({ escalation: { ...(agent.escalation ?? {}), reasons: next } });
   };
+  const sources = data.sources;
+  const marked = KNOWLEDGE_SOURCES.filter((s) => sources[s.id]);
+  const filled = data.knowledge.filter((k) => String(k["value"] ?? "").trim()).length;
+  const count = (n: number, one: string, many: string, none: string) => (n === 0 ? none : `${n} ${n === 1 ? one : many}`);
+  const hint: Record<SourceId, string> = {
+    transcricao: "Do passo Vídeo",
+    oferta: "Do passo Oferta, depois de abrir",
+    pagina: "Do editor",
+    faqs: count(data.faqs.length, "escrita", "escritas", "Nenhuma ainda"),
+    objecoes: count(data.objections.length, "escrita", "escritas", "Nenhuma ainda"),
+    notas: count(filled, "campo preenchido", "campos preenchidos", "Por preencher"),
+  };
 
   return (
     <>
@@ -124,7 +171,7 @@ export function StepAgente({
           <RadioCard
             icon={MonitorPlay}
             title="Só este webinar"
-            description="Conhecimento e regras só daqui."
+            description="Um agente só para este webinar."
             selected={scope === "webinar"}
             onSelect={() => void pickScope("webinar")}
           />
@@ -133,36 +180,29 @@ export function StepAgente({
               icon={Layers}
               title="Todos os webinars"
               tag={data.accountReady ? undefined : "Em breve"}
-              description="Um agente da conta, igual em todos."
+              description="O mesmo agente em todos."
               selected={scope === "account"}
               onSelect={() => void pickScope("account")}
             />
           </div>
         </div>
-        {scope === "account" ? (
-          <p className="text-[12.5px] leading-snug text-muted-foreground">O que mudar aqui muda em todos os webinars da conta.</p>
-        ) : null}
+        <p className="text-[12.5px] leading-snug text-muted-foreground">
+          {scope === "account"
+            ? "Nome, autonomia e regras mudam em todos. O conhecimento é de cada webinar."
+            : "O conhecimento é sempre de cada webinar."}
+        </p>
       </Section>
 
-      <Section title={<Numbered n={2}>Conhecimento</Numbered>} help="agenteFontes">
-        <div className="flex flex-wrap gap-2">
-          <Chip on={agent.use_webinar_transcript !== false} onClick={() => void patch({ use_webinar_transcript: agent.use_webinar_transcript === false })}>
-            Transcrição do vídeo
-          </Chip>
-          <Chip on={data.faqs.length > 0} onClick={() => setMore(true)}>
-            Perguntas frequentes{data.faqs.length ? ` (${data.faqs.length})` : ""}
-          </Chip>
-          <Chip on={data.knowledge.some((k) => String(k["value"] ?? "").trim())} onClick={() => setMore(true)}>
-            Produto e negócio
-          </Chip>
-        </div>
+      <Section title={<Numbered n={2}>Conhecimento deste webinar</Numbered>} help="agenteFontes">
         <p className="text-[12.5px] leading-snug text-muted-foreground">
-          Sabe sempre o webinar, a agenda, a página de inscrição e cada oferta depois de abrir na sala.
+          {marked.length
+            ? `${marked.length} de ${KNOWLEDGE_SOURCES.length} fontes: ${marked.map((s) => s.short).join(", ")}.`
+            : "Nenhuma fonte marcada: passa tudo à equipa."}
         </p>
         <div>
-          <Button variant="outline" size="sm" onClick={() => setMore(true)}>
+          <Button variant="outline" size="sm" onClick={() => setCustom(true)}>
             <SlidersHorizontal />
-            Conhecimento e simulador
+            Personalizar o agente
           </Button>
         </div>
       </Section>
@@ -246,7 +286,69 @@ export function StepAgente({
         />
       </Section>
 
-      <Dialog open={more} onOpenChange={setMore}>
+      {/* Telemóvel: folha de baixo. Computador e tablet: painel à direita. */}
+      <Sheet open={custom} onOpenChange={setCustom}>
+        <SheetContent
+          side={mobile ? "bottom" : "right"}
+          className={cn(
+            "flex flex-col gap-0 p-0",
+            mobile ? "max-h-[88dvh] rounded-t-2xl" : "w-full sm:max-w-[420px]",
+          )}
+        >
+          <SheetHeader className="border-b px-5 py-4 text-left">
+            <SheetTitle className="text-base font-semibold">Personalizar o agente</SheetTitle>
+            <SheetDescription>Marque o que o agente usa neste webinar.</SheetDescription>
+          </SheetHeader>
+          <div className="grid min-h-0 flex-1 content-start gap-5 overflow-y-auto px-5 py-4">
+            <div className="grid gap-1">
+              <h4 className="text-[13px] font-semibold">Conhecimento deste webinar</h4>
+              <ul className="divide-y">
+                {KNOWLEDGE_SOURCES.map((s) => {
+                  const tab = EDIT_TAB[s.id];
+                  return (
+                    <li key={s.id} className="flex items-center gap-3 py-2.5">
+                      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                        <Checkbox checked={sources[s.id]} onCheckedChange={(v) => void toggleSource(s.id, v === true)} />
+                        <span className="min-w-0">
+                          <b className="block text-sm font-medium">{s.label}</b>
+                          <span className="block text-[12.5px] leading-snug text-muted-foreground">{hint[s.id]}</span>
+                        </span>
+                      </label>
+                      {tab ? (
+                        <Button variant="ghost" size="sm" onClick={() => setPanel(tab)}>
+                          Editar
+                        </Button>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+            <div className="grid gap-1">
+              <h4 className="flex items-center gap-1.5 text-[13px] font-semibold">
+                Agente
+                {scope === "account" ? <Tag tone="gray">Todos os webinars</Tag> : null}
+              </h4>
+              <ul className="divide-y">
+                {AGENT_ROWS.map((row) => (
+                  <li key={row.tab}>
+                    <button
+                      type="button"
+                      onClick={() => setPanel(row.tab)}
+                      className="flex w-full items-center justify-between gap-3 py-3 text-left text-sm font-medium"
+                    >
+                      {row.label}
+                      <ChevronRight className="size-4 text-muted-foreground" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Dialog open={panel !== null} onOpenChange={(open) => !open && setPanel(null)}>
         <DialogContent className="max-h-[88vh] max-w-5xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-semibold">
@@ -255,7 +357,7 @@ export function StepAgente({
             </DialogTitle>
             <DialogDescription>Base de conhecimento, perguntas frequentes, objeções e o simulador.</DialogDescription>
           </DialogHeader>
-          <AgentPanel webinarId={webinarId} onSeek={onSeek} />
+          {panel ? <AgentPanel key={panel} webinarId={webinarId} onSeek={onSeek} initialTab={panel} /> : null}
         </DialogContent>
       </Dialog>
     </>

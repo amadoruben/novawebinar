@@ -10,14 +10,7 @@ import { PresenceDot } from "@/components/support/badges";
 import { ContactPanel } from "@/components/support/contact-panel";
 import { ConversationView } from "@/components/support/conversation-view";
 import { EXAMPLE_AGENT, ExampleInbox } from "@/components/support/example";
-import {
-  AgentStatus,
-  InboxFrame,
-  InboxList,
-  WebinarStrip,
-  type InboxStep,
-  type WebinarCard,
-} from "@/components/support/inbox";
+import { AgentStatus, InboxFrame, InboxList, type InboxStep } from "@/components/support/inbox";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -30,8 +23,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { useWebinars, useWorkspace } from "@/lib/data";
 import { friendlyError } from "@/lib/friendly-error";
-import { useLiveViewers } from "@/lib/live-presence";
-import { webinarLifecycle } from "@/lib/schedule";
 import {
   setMyStatus,
   useCases,
@@ -49,7 +40,6 @@ import {
   inTab,
   matchesSearch,
   sortInbox,
-  stripState,
   toInboxItem,
   webinarFilters,
   type InboxTab,
@@ -129,26 +119,6 @@ function useAgentOn(organizationId: string | undefined) {
   });
 }
 
-function useRegistrations(webinarIds: string[]) {
-  return useQuery({
-    queryKey: ["support", "registrations", webinarIds],
-    enabled: webinarIds.length > 0,
-    staleTime: 60_000,
-    queryFn: async () => {
-      const rows = await Promise.all(
-        webinarIds.map(async (id) => {
-          const { count } = await supabase
-            .from("participants")
-            .select("id", { count: "exact", head: true })
-            .eq("webinar_id", id);
-          return [id, count ?? 0] as const;
-        }),
-      );
-      return Object.fromEntries(rows) as Record<string, number>;
-    },
-  });
-}
-
 function SupportPage() {
   const { c: requested, exemplo } = Route.useSearch();
   const navigate = useNavigate();
@@ -168,7 +138,6 @@ function SupportPage() {
   const { data: skills = [] } = useSkills(scope);
   const { data: aiToday } = useAiToday(scope);
   const { data: agentOn } = useAgentOn(scope);
-  const viewers = useLiveViewers(scope);
 
   const [tab, setTab] = useState<InboxTab>("all");
   const [webinarId, setWebinarId] = useState<string | null>(null);
@@ -222,43 +191,6 @@ function SupportPage() {
   };
   const setExample = (on: boolean) =>
     void navigate({ to: "/support", search: on ? { exemplo: 1 } : {}, replace: true });
-
-  const strip = useMemo((): WebinarCard[] => {
-    void tick;
-    const now = Date.now();
-    return webinars
-      .flatMap((w) => {
-        // O mesmo ciclo de vida das outras páginas: terminado e rascunho não estão activos.
-        const duration = w.video_sources?.duration_seconds || w.duration_seconds || 0;
-        const lifecycle = webinarLifecycle({ ...w, duration_seconds: duration }, now);
-        const state = stripState(lifecycle);
-        if (!state) return [];
-        const talks = items.filter((i) => i.webinarId === w.id);
-        return [
-          {
-            id: w.id,
-            title: w.public_title,
-            cover: w.cover_url ?? w.registration_cover_url ?? null,
-            state,
-            startMs: lifecycle.kind === "session" ? lifecycle.startMs : null,
-            registered: null,
-            online: viewers.filter((v) => v.webinarId === w.id).length,
-            waiting: talks.filter((i) => i.state === "new").length,
-            talks: talks.length,
-          },
-        ];
-      })
-      // Sem hora (just in time, sob demanda) ou sem fim conhecido: só com gente ou conversas.
-      .filter((w) => w.state === "live" || w.state === "soon" || w.talks > 0 || w.online > 0)
-      .sort(
-        (a, b) =>
-          Number(b.state === "live") - Number(a.state === "live") ||
-          b.waiting - a.waiting ||
-          (a.startMs ?? Infinity) - (b.startMs ?? Infinity),
-      )
-      .slice(0, 8);
-  }, [webinars, items, viewers, tick]);
-  const { data: registrations = {} } = useRegistrations(strip.map((w) => w.id));
 
   if (workspace && !allowed) {
     return (
@@ -339,13 +271,6 @@ function SupportPage() {
       ) : (
         <InboxFrame
           step={step}
-          top={
-            <WebinarStrip
-              cards={strip.map((w) => ({ ...w, registered: registrations[w.id] ?? null }))}
-              selected={webinarId}
-              onSelect={setWebinarId}
-            />
-          }
           list={
             <InboxList
               items={visible}
@@ -370,8 +295,6 @@ function SupportPage() {
                 staff={staff}
                 departments={departments}
                 myStaffId={myStaffId}
-                intent={active.intent}
-                hot={active.hot}
                 onBack={() => setStep("list")}
                 onShowContact={() => setStep("contact")}
               />

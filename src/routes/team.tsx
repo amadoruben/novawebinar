@@ -1,12 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Check, Copy, MessageCircle, Pencil, Plus, Trash2, UserPlus, UserX } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Check, Copy, MessageCircle, Plus, Trash2 } from "lucide-react";
 import { TeamBoard } from "@/components/support/team-board";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
-import { EmptySection } from "@/components/page-primitives";
-import { Avatar } from "@/components/support/badges";
+import { summarizeAgents } from "@/components/team/model";
+import { TeamPeople } from "@/components/team/team-people";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -45,25 +46,69 @@ import {
   INTENTS,
   isOpenStatus,
   PRIORITIES,
-  staffStatusLabel,
   type DepartmentRow,
   type RuleRow,
   type SkillRow,
 } from "@/lib/support/model";
+import { agentToday } from "@/lib/support/inbox";
 import { deleteSkill, inviteStaff, removeStaffAccess } from "@/lib/support/support.functions";
-import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/team")({
   head: () => ({
     meta: [
       { title: "Equipas | Convertewebinar" },
-      { name: "description", content: "As equipas, quem está em cada uma e que temas recebe." },
+      { name: "description", content: "Quem atende: o agente, as pessoas e as equipas que recebem cada tema." },
     ],
   }),
   component: TeamPage,
 });
 
 const NONE = "none";
+
+/** O agente da conta e de cada webinar, resumido para o cartão de «Quem atende». */
+function useAgentSummary(organizationId: string | undefined) {
+  return useQuery({
+    queryKey: ["support", "agents", organizationId],
+    enabled: Boolean(organizationId),
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("ai_agents")
+        .select("*, webinars(public_title, internal_name)")
+        .eq("organization_id", organizationId!);
+      if (error) throw error;
+      return summarizeAgents(
+        (data ?? []).map((row) => ({
+          ...row,
+          webinar_name: row.webinars ? row.webinars.public_title || row.webinars.internal_name : null,
+        })),
+      );
+    },
+  });
+}
+
+/** O mesmo número do Atendimento (a mesma chave de cache): conversas, não respostas. */
+function useAgentToday(organizationId: string | undefined) {
+  return useQuery({
+    queryKey: ["support", "events", "ai-today", organizationId],
+    enabled: Boolean(organizationId),
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      // ponytail: até 1000 eventos por dia (limite do PostgREST); com mais, uma função na base que conte.
+      const { data, error } = await supabase
+        .from("activity_events")
+        .select("name, conversation_id, occurred_at")
+        .eq("organization_id", organizationId!)
+        .in("name", ["ai_resolution", "ai_escalation"])
+        .gte("occurred_at", start.toISOString())
+        .limit(1000);
+      if (error) throw error;
+      return agentToday(data ?? []);
+    },
+  });
+}
 
 function TeamPage() {
   const { data: workspace } = useWorkspace();
@@ -82,7 +127,7 @@ function TeamPage() {
   return (
     <AppShell
       title="Equipas"
-      description="As equipas que quiser, com os nomes que quiser. É por aqui que cada conversa chega à pessoa certa."
+      description="Quem atende: o agente responde primeiro e passa a cada equipa o que precisa de uma pessoa."
       action={false}
     >
       {!manager && workspace && (
@@ -93,19 +138,20 @@ function TeamPage() {
       {isLoading || !organizationId ? (
         <Skeleton className="h-64 w-full" />
       ) : (
-        <Tabs defaultValue="teams">
-          <TabsList className="mb-5 flex h-auto flex-wrap justify-start">
-            <TabsTrigger value="teams">Equipas · {departments.length}</TabsTrigger>
-            <TabsTrigger value="staff">Pessoas · {staff.filter((s) => s.active).length}</TabsTrigger>
-            <TabsTrigger value="skills">Competências · {skills.length}</TabsTrigger>
-            <TabsTrigger value="rules">Regras de encaminhamento</TabsTrigger>
+        <Tabs defaultValue="people">
+          <TabsList className="mb-5 flex h-auto w-full justify-start overflow-x-auto sm:w-auto max-sm:[&>button]:h-10">
+            <TabsTrigger value="people">Quem atende</TabsTrigger>
+            <TabsTrigger value="teams">Equipas<span className="max-sm:hidden"> · {departments.length}</span></TabsTrigger>
+            <TabsTrigger value="skills">Competências<span className="max-sm:hidden"> · {skills.length}</span></TabsTrigger>
+            <TabsTrigger value="rules">Regras</TabsTrigger>
           </TabsList>
-          <TabsContent value="staff">
+          <TabsContent value="people">
             <StaffTab
               organizationId={organizationId}
               staff={staff}
               departments={departments}
               skills={skills}
+              rules={rules}
               manager={manager}
               myUserId={workspace?.userId ?? ""}
             />
@@ -144,7 +190,7 @@ function countBy<T>(rows: T[], key: (row: T) => string | null) {
   return map;
 }
 
-/* ---------- Pessoas ---------- */
+/* ---------- Quem atende: o agente e as pessoas por equipa ---------- */
 
 type StaffForm = {
   id: string | null;
@@ -177,6 +223,7 @@ function StaffTab({
   staff,
   departments,
   skills,
+  rules,
   manager,
   myUserId,
 }: {
@@ -184,15 +231,19 @@ function StaffTab({
   staff: StaffMember[];
   departments: DepartmentRow[];
   skills: SkillRow[];
+  rules: RuleRow[];
   manager: boolean;
   myUserId: string;
 }) {
   const invalidate = useSupportInvalidate();
   const invite = useServerFn(inviteStaff);
   const remove = useServerFn(removeStaffAccess);
+  const { data: agent } = useAgentSummary(organizationId);
+  const { data: today } = useAgentToday(organizationId);
   const [form, setForm] = useState<StaffForm | null>(null);
   const [link, setLink] = useState<{ person: StaffMember; url: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const byId = (id: string) => staff.find((s) => s.id === id);
 
   const sendInvite = async (person: StaffMember) => {
     setBusy(person.id);
@@ -228,138 +279,60 @@ function StaffTab({
   const skillName = (slug: string) => skills.find((s) => s.slug === slug)?.name ?? slug;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-2xl text-sm text-muted-foreground">
-          Registe quem atende e convide cada pessoa a entrar. Só recebe casos quem está com o painel aberto e
-          marcou “Disponível” ou “Online”.
-        </p>
-        {manager && (
-          <Button onClick={() => setForm(EMPTY_STAFF)}>
-            <Plus /> Nova pessoa
-          </Button>
-        )}
-      </div>
-
-      {staff.length === 0 ? (
-        <EmptySection
-          title="Ainda não há pessoas"
-          description="Registe a primeira pessoa da equipa. Enquanto não houver ninguém, os casos ficam na fila da equipa."
-        />
-      ) : (
-        <div className="overflow-x-auto rounded-card bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Pessoa</TableHead>
-                <TableHead>Equipa</TableHead>
-                <TableHead>Competências</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Casos</TableHead>
-                <TableHead>Acesso</TableHead>
-                {manager && <TableHead className="w-28 text-right">Acções</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {staff.map((person) => (
-                <TableRow key={person.id} className={cn(!person.active && "opacity-60")}>
-                  <TableCell>
-                    <span className="flex items-center gap-3">
-                      <Avatar name={person.name} presence={person.presence} />
-                      <span className="min-w-0">
-                        <span className="flex items-center gap-1.5 font-medium">
-                          <span className="truncate">{person.name}</span>
-                          {person.is_supervisor && <Badge variant="info">Supervisor</Badge>}
-                        </span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {[person.job_title, person.email].filter(Boolean).join(" · ")}
-                        </span>
-                      </span>
-                    </span>
-                  </TableCell>
-                  <TableCell>{departments.find((d) => d.id === person.department_id)?.name ?? "—"}</TableCell>
-                  <TableCell>
-                    <span className="flex max-w-xs flex-wrap gap-1">
-                      {person.skills.length === 0 && <span className="text-muted-foreground">—</span>}
-                      {person.skills.map((slug) => (
-                        <Badge key={slug} variant="outline">
-                          {skillName(slug)}
-                        </Badge>
-                      ))}
-                    </span>
-                  </TableCell>
-                  <TableCell>{person.active ? staffStatusLabel(person.presence) : "Inactivo"}</TableCell>
-                  <TableCell className="tabular-nums">
-                    {person.openCases}/{person.capacity}
-                  </TableCell>
-                  <TableCell>
-                    {person.user_id ? (
-                      <Badge variant="success">Com acesso</Badge>
-                    ) : (
-                      <Badge variant="warning">Por convidar</Badge>
-                    )}
-                  </TableCell>
-                  {manager && (
-                    <TableCell>
-                      <span className="flex justify-end gap-1">
-                        {!person.user_id && person.active && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-8"
-                            disabled={busy === person.id}
-                            onClick={() => void sendInvite(person)}
-                            aria-label={`Convidar ${person.name}`}
-                            title="Convidar"
-                          >
-                            <UserPlus />
-                          </Button>
-                        )}
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="size-8"
-                          onClick={() =>
-                            setForm({
-                              id: person.id,
-                              name: person.name,
-                              email: person.email,
-                              phone: person.phone ?? "",
-                              job_title: person.job_title,
-                              department_id: person.department_id,
-                              skills: person.skills,
-                              capacity: person.capacity,
-                              is_supervisor: person.is_supervisor,
-                              active: person.active,
-                            })
-                          }
-                          aria-label={`Editar ${person.name}`}
-                          title="Editar"
-                        >
-                          <Pencil />
-                        </Button>
-                        {person.active && person.user_id !== myUserId && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-8 text-destructive"
-                            disabled={busy === person.id}
-                            onClick={() => void revoke(person)}
-                            aria-label={`Tirar o acesso a ${person.name}`}
-                            title="Tirar o acesso"
-                          >
-                            <UserX />
-                          </Button>
-                        )}
-                      </span>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+    <>
+      <TeamPeople
+        agent={agent ?? null}
+        today={today ?? null}
+        teams={departments.map((d) => ({ id: d.id, name: d.name, isFallback: d.is_fallback }))}
+        rules={rules.map((r) => ({
+          intent: r.intent,
+          teamId: r.department_id,
+          slaMinutes: r.sla_minutes,
+          alwaysHuman: r.always_human,
+        }))}
+        people={staff.map((s) => ({
+          id: s.id,
+          name: s.name,
+          jobTitle: s.job_title,
+          email: s.email,
+          teamId: s.department_id,
+          presence: s.presence,
+          active: s.active,
+          supervisor: s.is_supervisor,
+          skills: s.skills.map(skillName),
+          openCases: s.openCases,
+          capacity: s.capacity,
+          hasAccess: Boolean(s.user_id),
+          isMe: Boolean(myUserId) && s.user_id === myUserId,
+        }))}
+        manager={manager}
+        busyId={busy}
+        onAdd={() => setForm(EMPTY_STAFF)}
+        onInvite={(id) => {
+          const person = byId(id);
+          if (person) void sendInvite(person);
+        }}
+        onRevoke={(id) => {
+          const person = byId(id);
+          if (person) void revoke(person);
+        }}
+        onEdit={(id) => {
+          const person = byId(id);
+          if (!person) return;
+          setForm({
+            id: person.id,
+            name: person.name,
+            email: person.email,
+            phone: person.phone ?? "",
+            job_title: person.job_title,
+            department_id: person.department_id,
+            skills: person.skills,
+            capacity: person.capacity,
+            is_supervisor: person.is_supervisor,
+            active: person.active,
+          });
+        }}
+      />
 
       <StaffDialog
         form={form}
@@ -369,7 +342,7 @@ function StaffTab({
         onClose={() => setForm(null)}
       />
       <InviteDialog link={link} onClose={() => setLink(null)} />
-    </div>
+    </>
   );
 }
 

@@ -6,6 +6,7 @@ import {
   roomFormat,
   liveSettings,
   liveVideoPlace,
+  purchaseOnScreen,
   followMomentAt,
   profileHandle,
   followWebLink,
@@ -19,9 +20,12 @@ import {
   discountPercent,
   entryPalette,
   inferAudienceFormat,
+  offerColorVars,
   offerCountdownLeft,
   offerTimer,
   roomCountdown,
+  lessonTimerAt,
+  timerProgress,
 } from "@/lib/room-logic";
 
 const ctx = { durationSeconds: 329, pitchSeconds: 311 };
@@ -144,6 +148,26 @@ describe("oferta", () => {
     expect(liveSettings(null).offerLook).toBe("square");
     expect(liveSettings({ live: { offerLook: "compact" } }).offerLook).toBe("compact");
     expect(liveSettings({ live: { offerLook: "redondo" } }).offerLook).toBe("square");
+    expect(liveSettings({ live: { offerLook: "classic" } }).offerLook).toBe("classic");
+  });
+
+  it("as cores da oferta ficam vazias por omissão e só aceitam códigos hex", () => {
+    expect(liveSettings(null).offerColors).toEqual({});
+    expect(liveSettings({ live: {} }).offerColors).toEqual({});
+    expect(liveSettings({ live: { offerColors: { button: "#16a34a", card: "azul", text: 3 } } }).offerColors).toEqual({ button: "#16A34A" });
+    expect(liveSettings({ live: { offerColors: { card: "#0F172A", text: "#FACC15" } } }).offerColors).toEqual({ card: "#0F172A", text: "#FACC15" });
+  });
+
+  it("as cores da oferta só mudam o cartão quando escolhidas; o texto ajusta-se ao fundo", () => {
+    expect(offerColorVars({})).toBeNull();
+    expect(offerColorVars(undefined)).toBeNull();
+    const button = offerColorVars({ button: "#FACC15" })!;
+    expect(button["--of"]).toBe("#FACC15");
+    expect(button["--of-on"]).toBe("#171717");
+    expect(button["--room-surface"]).toBeUndefined();
+    expect(offerColorVars({ card: "#FFFFFF" })!["--room-ink"]).toBe("#171717");
+    expect(offerColorVars({ card: "#0F172A" })!["--room-ink"]).toBe("#FFFFFF");
+    expect(offerColorVars({ card: "#0F172A", text: "#FACC15" })!["--room-ink"]).toBe("#FACC15");
   });
 
   it("o link leva a origem, onde clicou, o minuto e quem é", () => {
@@ -230,6 +254,13 @@ describe("opções da sala", () => {
     expect(liveSettings({ live: { offerColor: "rosa" } }).offerColor).toBe("#E8440C");
     expect(liveSettings({ live: { offerColor: "#ff00aa" } }).offerColor).toBe("#FF00AA");
     expect(liveSettings({ live: { offerColor: "#ff00a" } }).offerColor).toBe("#E8440C");
+  });
+
+  it("o título e quem apresenta aparecem por omissão; só desligados à mão saem", () => {
+    expect(liveSettings(null).header).toBe(true);
+    expect(liveSettings({ live: {} }).header).toBe(true);
+    expect(liveSettings({ live: { header: false } }).header).toBe(false);
+    expect(liveSettings({ live: { header: "não" } }).header).toBe(true);
   });
 
   it("o lugar do vídeo depende só da forma do ficheiro e do aparelho", () => {
@@ -324,5 +355,70 @@ describe("contagem antes de começar", () => {
     expect(liveSettings(null, { prelive_enabled: true, prelive_seconds: 0 }).countdown).toBeNull();
     expect(liveSettings(null).countdown).toBeNull();
     expect(roomCountdown(liveSettings(null, legacy).countdown, legacy).seconds).toBe(roomCountdown(null, legacy).seconds);
+  });
+});
+
+describe("aviso de compra no ecrã", () => {
+  const schedule = [
+    { purchase: { id: "a" }, from: 10, to: 16 },
+    { purchase: { id: "b" }, from: 20, to: 26 },
+  ];
+  it("fica à vista o tempo todo e não volta depois de sair", () => {
+    const shown = new Set<string>();
+    let showing: string | null = null;
+    const at = (t: number) => {
+      const slot = purchaseOnScreen(schedule, t, shown, showing);
+      showing = slot?.purchase.id ?? null;
+      if (slot) shown.add(slot.purchase.id);
+      return showing;
+    };
+    expect(at(9)).toBeNull();
+    expect(at(10)).toBe("a");
+    expect(at(13)).toBe("a");
+    expect(at(15)).toBe("a");
+    expect(at(16)).toBeNull();
+    // Recuar no vídeo não repete o aviso.
+    expect(at(11)).toBeNull();
+    expect(at(21)).toBe("b");
+  });
+});
+
+describe("temporizador da aula", () => {
+  it("a % entre «de» e «a», presa entre 0 e 100", () => {
+    expect(timerProgress(30, 60, 160)).toBe(0);
+    expect(timerProgress(110, 60, 160)).toBe(50);
+    expect(timerProgress(500, 60, 160)).toBe(100);
+    expect(timerProgress(110, 160, 60)).toBe(0);
+    expect(timerProgress(110, 60, 60)).toBe(0);
+  });
+  it("só aparece ligado e dentro dos minutos escolhidos", () => {
+    const timer = { on: true, start: 60, end: 160, model: "ring" as const, color: null };
+    expect(lessonTimerAt(timer, 59)).toBeNull();
+    expect(lessonTimerAt(timer, 60)).toBe(0);
+    expect(lessonTimerAt(timer, 110)).toBe(50);
+    expect(lessonTimerAt(timer, 160)).toBe(100);
+    expect(lessonTimerAt(timer, 161)).toBeNull();
+    expect(lessonTimerAt({ ...timer, on: false }, 110)).toBeNull();
+    expect(lessonTimerAt({ ...timer, end: 60 }, 60)).toBeNull();
+    expect(lessonTimerAt(undefined, 110)).toBeNull();
+  });
+  it("lê a escolha gravada; o que vier estragado desliga", () => {
+    expect(liveSettings(null).timer).toEqual({ on: false, start: 0, end: 0, model: "bar", color: null });
+    expect(liveSettings({ live: { timer: { on: true, start: 60, end: 600, model: "pill", color: "#16a34a" } } }).timer).toEqual({
+      on: true,
+      start: 60,
+      end: 600,
+      model: "pill",
+      color: "#16A34A",
+    });
+    expect(liveSettings({ live: { timer: { on: true, start: 600, end: 60, model: "x", color: "verde" } } }).timer).toEqual({
+      on: false,
+      start: 0,
+      end: 0,
+      model: "bar",
+      color: null,
+    });
+    expect(liveSettings({ live: { timer: { on: true, start: "a", end: 60 } } }).timer.on).toBe(false);
+    expect(liveSettings({ live: { timer: { on: true, start: -5, end: 60 } } }).timer.on).toBe(false);
   });
 });

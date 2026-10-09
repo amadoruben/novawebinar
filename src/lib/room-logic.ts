@@ -286,21 +286,81 @@ export type LiveSettings = {
   hideFollowed: boolean;
   /** Avisa no chat, só para a pessoa, quando o Suporte respondeu e ela ainda não viu. */
   notify: boolean;
-  /** A cor do botão e do cartão da oferta, em código hex. */
+  /** A cor do botão de entrar e, por omissão, da oferta, em código hex. */
   offerColor: string;
-  /** O cartão da oferta: quadrado (grande, com a imagem) ou compacto (uma linha). */
+  /** O cartão da oferta: quadrado (grande, com a imagem), compacto (uma linha) ou clássico (faixa na cor, fundo meio transparente). */
   offerLook: OfferLook;
+  /** As cores próprias da oferta; o que ficar vazio segue a cor do botão (o botão) e o tema da sala (o cartão). */
+  offerColors: OfferColors;
   /** A contagem antes de começar; null nos webinars gravados antes dela (valem as colunas prelive_*). */
   countdown: RoomCountdown | null;
+  /** Webinar: o título e quem apresenta por cima do chat. Desligado, ficam o vídeo, o chat, o Suporte e a oferta. */
+  header: boolean;
+  /** O temporizador da aula: a percentagem por cima do vídeo, só nos minutos escolhidos. */
+  timer: RoomTimer;
 };
+
+/**
+ * O temporizador da aula: entre «de» e «a» (segundos do vídeo), a sala mostra quanto da aula já
+ * passou, em %, num dos quatro modelos. Sem cor escolhida (null), usa a cor do botão.
+ */
+export type TimerModel = "bar" | "ring" | "pill" | "clock";
+export type RoomTimer = { on: boolean; start: number; end: number; model: TimerModel; color: string | null };
+export const TIMER_MODELS: readonly { id: TimerModel; name: string }[] = [
+  { id: "bar", name: "Barra" },
+  { id: "ring", name: "Anel" },
+  { id: "pill", name: "Pílula" },
+  { id: "clock", name: "Contador" },
+];
+export const TIMER_OFF: RoomTimer = { on: false, start: 0, end: 0, model: "bar", color: null };
+
+/** Quanto da aula já passou, de 0 a 100; sem intervalo válido (fim antes do início), 0. */
+export function timerProgress(seconds: number, start: number, end: number) {
+  if (!(end > start)) return 0;
+  return Math.min(100, Math.max(0, ((seconds - start) / (end - start)) * 100));
+}
+
+/** A % a mostrar neste segundo, arredondada; null com o temporizador desligado ou fora de «de… a…». */
+export function lessonTimerAt(timer: RoomTimer | null | undefined, seconds: number) {
+  if (!timer?.on || !(timer.end > timer.start) || seconds < timer.start || seconds > timer.end) return null;
+  return Math.round(timerProgress(seconds, timer.start, timer.end));
+}
+
+function parseTimer(raw: unknown): RoomTimer {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return { ...TIMER_OFF };
+  const r = raw as Record<string, unknown>;
+  const start = Math.round(Number(r["start"]));
+  const end = Math.round(Number(r["end"]));
+  const valid = Number.isFinite(start) && Number.isFinite(end) && start >= 0 && end > start;
+  return {
+    on: r["on"] === true && valid,
+    start: valid ? start : 0,
+    end: valid ? end : 0,
+    model: TIMER_MODELS.some((m) => m.id === r["model"]) ? (r["model"] as TimerModel) : "bar",
+    color: typeof r["color"] === "string" && HEX.test(r["color"]) ? r["color"].toUpperCase() : null,
+  };
+}
 
 export type EntryLook = "pulse" | "info";
 
-export type OfferLook = "square" | "compact";
+export type OfferLook = "square" | "compact" | "classic";
 export const OFFER_LOOKS: readonly { id: OfferLook; name: string }[] = [
   { id: "square", name: "Quadrada" },
   { id: "compact", name: "Compacta" },
+  { id: "classic", name: "Clássica" },
 ];
+/** O botão da oferta, o fundo e o texto do cartão, em código hex; sem um deles, vale o de omissão. */
+export type OfferColors = { button?: string; card?: string; text?: string };
+
+function parseOfferColors(raw: unknown): OfferColors {
+  const r = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  const out: OfferColors = {};
+  for (const key of ["button", "card", "text"] as const) {
+    const v = r[key];
+    if (typeof v === "string" && HEX.test(v)) out[key] = v.toUpperCase();
+  }
+  return out;
+}
 
 /**
  * A contagem antes de a sessão começar: a sala abre uns minutos antes, o chat já funciona e o lugar
@@ -378,7 +438,10 @@ export const LIVE_DEFAULTS: LiveSettings = {
   notify: true,
   offerColor: OFFER_COLOR_DEFAULT,
   offerLook: "square",
+  offerColors: {},
   countdown: null,
+  header: true,
+  timer: TIMER_OFF,
 };
 
 export const FOLLOW_NETWORKS: readonly { id: FollowNetwork; name: string; example: string; android: string }[] = [
@@ -406,7 +469,7 @@ export function liveVideoPlace(shape: "horizontal" | "vertical" | null | undefin
 export function liveSettings(chatSettings: unknown, legacy?: LegacyCountdown): LiveSettings {
   const raw = (chatSettings as { live?: unknown } | null)?.live;
   if (typeof raw !== "object" || raw === null || Array.isArray(raw))
-    return { ...LIVE_DEFAULTS, links: {}, moments: [], countdown: countdownFromLegacy(legacy) };
+    return { ...LIVE_DEFAULTS, links: {}, moments: [], offerColors: {}, countdown: countdownFromLegacy(legacy) };
   const r = raw as Record<string, unknown>;
   const linksRaw = typeof r["links"] === "object" && r["links"] !== null ? (r["links"] as Record<string, unknown>) : {};
   const links: LiveSettings["links"] = {};
@@ -429,8 +492,11 @@ export function liveSettings(chatSettings: unknown, legacy?: LegacyCountdown): L
     hideFollowed: r["hideFollowed"] !== false,
     notify: r["notify"] !== false,
     offerColor: offerColor(r["offerColor"]),
-    offerLook: r["offerLook"] === "compact" ? "compact" : "square",
+    offerLook: OFFER_LOOKS.some((l) => l.id === r["offerLook"]) ? (r["offerLook"] as OfferLook) : "square",
+    offerColors: parseOfferColors(r["offerColors"]),
     countdown: parseCountdown(r["countdown"]) ?? countdownFromLegacy(legacy),
+    header: r["header"] !== false,
+    timer: parseTimer(r["timer"]),
   };
 }
 
@@ -439,6 +505,36 @@ export function offerColor(value: unknown) {
   if (typeof value !== "string") return OFFER_COLOR_DEFAULT;
   if (HEX.test(value)) return value.toUpperCase();
   return OFFER_COLOR_NAMES[value] ?? OFFER_COLOR_DEFAULT;
+}
+
+/**
+ * As variáveis CSS das cores da oferta, para pôr no elemento do cartão: o botão (--of*), o fundo e o
+ * texto (os tokens da sala, só ali dentro; o texto ajusta-se ao fundo se não for escolhido). Sem
+ * nenhuma cor, null: o cartão segue a cor do botão de entrar e o tema da sala.
+ */
+export function offerColorVars(colors: OfferColors | null | undefined): Record<string, string> | null {
+  const { button, card, text } = colors ?? {};
+  if (!button && !card && !text) return null;
+  const vars: Record<string, string> = {};
+  if (button) {
+    vars["--of"] = button;
+    vars["--of-mid"] = `color-mix(in srgb, ${button} 52%, #000)`;
+    vars["--of-dark"] = `color-mix(in srgb, ${button} 20%, #000)`;
+    vars["--of-on"] = entryPalette(null, button).buttonText;
+  }
+  const ink = text ?? (card ? entryPalette(card).text : null);
+  if (card && ink) {
+    vars["--room-surface"] = card;
+    vars["--room-raised"] = `color-mix(in srgb, ${card} 90%, ${ink})`;
+    vars["--room-line"] = `color-mix(in srgb, ${card} 80%, ${ink})`;
+  }
+  if (ink) {
+    vars["--room-ink"] = ink;
+    vars["--room-ink-2"] = `color-mix(in srgb, ${ink} 62%, transparent)`;
+  }
+  // O tempo e o «Inscrições abertas»: a cor do botão, puxada para o texto, para se ler no fundo.
+  vars["--of-ink"] = `color-mix(in srgb, var(--of) 78%, ${ink ?? "var(--room-ink)"})`;
+  return vars;
 }
 
 /** O + Seguir aparece só dentro de um dos momentos escolhidos. */
@@ -543,6 +639,19 @@ export function offerDeadlinePassed(deadline: string | null | undefined, timezon
   if (!deadline || !/^\d{4}-\d{2}-\d{2}$/.test(deadline)) return false;
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: timezone || "UTC" }).format(new Date(nowMs));
   return today > deadline;
+}
+
+/**
+ * O aviso de compra no ecrã no segundo `t`: entra no seu momento e fica até ao fim do seu tempo
+ * (`showing` é o que já está à vista). Um aviso que já saiu não volta, mesmo que se recue no vídeo.
+ */
+export function purchaseOnScreen<T extends { purchase: { id: string }; from: number; to: number }>(
+  schedule: readonly T[],
+  t: number,
+  shown: ReadonlySet<string>,
+  showing: string | null,
+): T | null {
+  return schedule.find((s) => (s.purchase.id === showing || !shown.has(s.purchase.id)) && t >= s.from && t < s.to) ?? null;
 }
 
 /** Onde a pessoa clicou para ir ao checkout. */

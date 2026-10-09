@@ -10,12 +10,11 @@ describe("normalização", () => {
     expect(normalizePhone("12")).toBeNull();
   });
 
-  it("nome e email limpos; erros por campo", () => {
-    const ok = parseRegistration({ form_id: crypto.randomUUID(), name: "  Ana   Paula ", email: " ANA@Exemplo.COM " });
-    expect(ok.ok && [ok.value.name, ok.value.email]).toEqual(["Ana Paula", "ana@exemplo.com"]);
-    const bad = parseRegistration({ form_id: crypto.randomUUID(), name: "A", email: "x", phone: "12" });
+  it("a forma do pedido: sem formulário nem webinar, ou com um id inválido, é recusado por campo", () => {
+    expect(parseRegistration({ form_id: crypto.randomUUID(), name: "Ana", email: "ana@exemplo.com" }).ok).toBe(true);
+    const bad = parseRegistration({ form_id: "x", name: "Ana" });
     expect(bad.ok).toBe(false);
-    if (!bad.ok) expect(Object.keys(bad.error.fields ?? {})).toEqual(expect.arrayContaining(["name", "email"]));
+    if (!bad.ok) expect(Object.keys(bad.error.fields ?? {})).toEqual(["form_id"]);
   });
 });
 
@@ -224,6 +223,44 @@ describe("inscrição pela captura externa", () => {
       statuses.push((await registerFromCapture(body(), same)).status);
     }
     expect(statuses.slice(-2)).toEqual([429, 429]);
+  });
+});
+
+describe("captura: os campos da etapa Página (as regras da sala)", () => {
+  const NAME_WHATSAPP = [
+    { kind: "name", label: "Nome completo", required: true },
+    { kind: "whatsapp", label: "WhatsApp", required: true },
+    { id: "f_ig", kind: "text", label: "Instagram", required: false, icon: "instagram" },
+  ];
+
+  it("Nome + WhatsApp, sem e-mail: inscreve, com as respostas, e procura a mesma pessoa pelo WhatsApp", async () => {
+    answers["webinars"] = { data: { ...WEBINAR, entry_fields: NAME_WHATSAPP }, error: null };
+    const res = await registerFromCapture(
+      body({ email: undefined, name: "  Edna   Kiala ", phone: "+244 923 000 222", answers: { f_ig: "@edna" } }),
+      req(),
+    );
+    expect(res.status).toBe(201);
+    expect(inserts.find((i) => i.table === "participants")!.row).toMatchObject({
+      name: "Edna Kiala",
+      email: null,
+      phone: "+244923000222",
+      answers: { f_ig: "@edna" },
+    });
+    expect(filters.some((f) => f.table === "participants" && f.method === "eq" && f.args[0] === "phone")).toBe(true);
+  });
+
+  it("falta um campo obrigatório: 400, com o nome do campo da API", async () => {
+    answers["webinars"] = { data: { ...WEBINAR, entry_fields: NAME_WHATSAPP }, error: null };
+    const res = await registerFromCapture(body({ phone: undefined }), req());
+    expect(res).toMatchObject({ status: 400, body: { fields: { phone: "Preencha: WhatsApp." } } });
+    expect(inserts).toEqual([]);
+  });
+
+  it("sem campos gravados: os de sempre (nome e e-mail obrigatórios)", async () => {
+    const res = await registerFromCapture(body({ name: "A", email: "x" }), req());
+    expect(res).toMatchObject({ status: 400, body: { fields: { name: expect.any(String) } } });
+    const noEmail = await registerFromCapture(body({ email: "x", submission_id: "sub-sem-email" }), req());
+    expect(noEmail).toMatchObject({ status: 400, body: { fields: { email: "Indique um e-mail válido." } } });
   });
 });
 

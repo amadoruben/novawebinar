@@ -33,17 +33,21 @@ import {
   lifecycleOf,
   statusFromLifecycle,
   type Webinar,
-  type WebinarStatus,
 } from "@/lib/data";
 import { lifecycleDetail, lifecycleLabel } from "@/lib/schedule";
 
 export { CalendarDays, Clock3, MoreHorizontal, Play, Radio, Users };
 
+/**
+ * Um número com o seu nome. O ícone só aparece quando diz alguma coisa (não há ícone
+ * por omissão). No telemóvel é uma linha (nome à esquerda, número à direita), para
+ * uma coluna de números não encher o ecrã.
+ */
 export function Metric({
   label,
   value,
   change,
-  icon: Icon = Users,
+  icon: Icon,
 }: {
   label: string;
   value: string;
@@ -51,17 +55,19 @@ export function Metric({
   icon?: typeof Users;
 }) {
   return (
-    <article className="min-w-0 rounded-card bg-card p-5 sm:p-6">
-      <div className="flex items-start justify-between gap-3">
+    <article className="min-w-0 rounded-card bg-card p-4 max-sm:grid max-sm:grid-cols-[1fr_auto] max-sm:items-center max-sm:gap-x-4 sm:p-5 lg:p-6">
+      <div className="flex min-w-0 items-start justify-between gap-3 max-sm:items-center">
         <span className="block text-sm leading-tight text-muted-foreground">{label}</span>
-        <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm bg-chip text-muted-foreground">
-          <Icon className="size-4" strokeWidth={1.5} />
-        </span>
+        {Icon && (
+          <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm bg-chip text-muted-foreground max-sm:hidden">
+            <Icon className="size-4" strokeWidth={1.5} />
+          </span>
+        )}
       </div>
-      <strong className="mt-4 block break-words text-[28px] leading-none font-semibold tracking-[var(--tracking-display)] tabular-nums sm:text-[32px]">
+      <strong className="block break-words text-[22px] leading-none font-semibold tracking-[var(--tracking-display)] tabular-nums max-sm:col-start-2 max-sm:row-start-1 sm:mt-4 sm:text-[28px] lg:text-[32px]">
         {value}
       </strong>
-      {change && <p className="mt-2 text-xs text-muted-foreground">{change}</p>}
+      {change && <p className="mt-1 text-xs text-muted-foreground sm:mt-2">{change}</p>}
     </article>
   );
 }
@@ -78,7 +84,7 @@ export function EmptySection({
   actionTo?: "/webinars/new" | "/library" | "/webinars";
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-card bg-card px-6 py-14 text-center">
+    <div className="flex flex-col items-center justify-center rounded-card bg-card px-5 py-10 text-center sm:px-6 sm:py-14">
       <h2 className="text-base font-semibold tracking-[var(--tracking-title)]">{title}</h2>
       <p className="mt-2 max-w-md text-sm text-muted-foreground">{description}</p>
       {actionLabel && actionTo && (
@@ -115,16 +121,6 @@ export function LifecycleBadge({ webinar }: { webinar: WebinarRow }) {
   );
 }
 
-export function ActivityBadge({ status }: { status: WebinarStatus }) {
-  const active = status !== "draft";
-  return (
-    <Badge variant={active ? "success" : "outline"}>
-      {active && <span className="size-1.5 rounded-full bg-current" aria-hidden />}
-      {active ? "Ativo" : "Inativo"}
-    </Badge>
-  );
-}
-
 function ActiveSwitch({ webinar }: { webinar: WebinarRow }) {
   const queryClient = useQueryClient();
   const active = webinar.status !== "draft";
@@ -145,16 +141,14 @@ function ActiveSwitch({ webinar }: { webinar: WebinarRow }) {
     },
     onError: () => toast.error("Não foi possível alterar o estado"),
   });
+  // O interruptor já diz se está activo; o distintivo ao lado diz o momento (Agendado, Inativo…).
   return (
-    <div className="flex items-center gap-2">
-      <Switch
-        checked={active}
-        disabled={toggle.isPending}
-        onCheckedChange={(next) => toggle.mutate(next)}
-        aria-label={active ? "Inativar webinar" : "Ativar webinar"}
-      />
-      <ActivityBadge status={webinar.status} />
-    </div>
+    <Switch
+      checked={active}
+      disabled={toggle.isPending}
+      onCheckedChange={(next) => toggle.mutate(next)}
+      aria-label={active ? "Inativar webinar" : "Ativar webinar"}
+    />
   );
 }
 
@@ -174,6 +168,7 @@ function LinkField({ label, value }: { label: string; value: string }) {
           variant="outline"
           size="sm"
           className="h-9"
+          aria-label={`Copiar: ${label}`}
           onClick={() => {
             void navigator.clipboard.writeText(value);
             toast.success("Endereço copiado");
@@ -211,7 +206,6 @@ function WebinarDetailsDialog({
         </SheetHeader>
         <div className="space-y-4">
           <LinkField label="Sala principal" value={roomLink} />
-          <LinkField label="Sala com login" value={roomLink} />
           {webinar.replay_enabled ? (
             <LinkField label="Replay" value={`${roomLink}?replay=1`} />
           ) : (
@@ -317,8 +311,8 @@ export function WebinarTable({
       ) : rows.length === 0 ? (
         <p className="p-6 text-sm text-muted-foreground">Ainda não existem webinars nesta lista.</p>
       ) : (
-        <div className="hidden overflow-x-auto md:block">
-          <table className="w-full min-w-[760px] text-left text-sm">
+        <div className="hidden overflow-x-auto lg:block">
+          <table className="w-full min-w-[680px] text-left text-sm">
             <thead className="text-xs text-muted-foreground">
               <tr>
                 <th className="px-6 py-3 font-normal">Webinar</th>
@@ -329,7 +323,7 @@ export function WebinarTable({
             </thead>
             <tbody>
               {rows.map((w) => (
-                <tr key={w.id} className="border-t border-[var(--border-subtle)] transition-colors hover:bg-white">
+                <tr key={w.id} className="border-t border-[var(--border-subtle)] transition-colors hover:bg-gray-50">
                   <td className="px-6 py-3.5">
                     <div className="flex items-center gap-3">
                       {w.registration_cover_url ? (
@@ -340,20 +334,20 @@ export function WebinarTable({
                           loading="lazy"
                         />
                       ) : (
-                        <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-white text-gray-700">
+                        <span className="flex size-11 shrink-0 items-center justify-center rounded-sm bg-gray-100 text-gray-700">
                           <Play className="size-4" strokeWidth={1.5} />
                         </span>
                       )}
-                      <span className="min-w-0 truncate">{w.public_title || w.internal_name}</span>
+                      <span className="min-w-0 line-clamp-2">{w.public_title || w.internal_name}</span>
                     </div>
                   </td>
                   <td className="px-5 py-4">
-                    <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-3 whitespace-nowrap">
                       <ActiveSwitch webinar={w} />
                       <LifecycleBadge webinar={w} />
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-muted-foreground">
+                  <td className="max-w-[180px] truncate px-5 py-4 text-muted-foreground">
                     {w.video_sources?.name ?? "Por definir"}
                   </td>
                   <td className="px-5 py-4">
@@ -410,7 +404,7 @@ export function WebinarTable({
         </div>
       )}
       {!loading && rows.length > 0 && (
-        <div className="divide-y divide-[var(--border-subtle)] md:hidden">
+        <div className="divide-y divide-[var(--border-subtle)] lg:hidden">
           {rows.map((w) => (
             <article key={w.id} className="p-4">
               <div className="flex items-start gap-3">
@@ -421,7 +415,7 @@ export function WebinarTable({
                     className="size-12 shrink-0 rounded-sm object-cover"
                   />
                 ) : (
-                  <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-white text-gray-700">
+                  <span className="flex size-12 shrink-0 items-center justify-center rounded-sm bg-gray-100 text-gray-700">
                     <Play className="size-4" strokeWidth={1.5} />
                   </span>
                 )}

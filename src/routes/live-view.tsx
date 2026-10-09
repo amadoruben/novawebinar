@@ -1,53 +1,43 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Activity,
-  Clapperboard,
-  Copy,
-  Eye,
-  MapPin,
-  Monitor,
-  Moon,
-  MousePointerClick,
-  Radio,
-  Smartphone,
-  Sun,
-  UserRoundCog,
-  Users,
-} from "lucide-react";
+import { Copy, UserRoundCog } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import worldMapDark from "@/assets/world-map.jpg";
-import worldMapLight from "@/assets/world-map-light.jpg";
 import { AppShell } from "@/components/app-shell";
+import { LiveBoard, type LiveSessionItem, type MomentItem } from "@/components/audience-insights";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
-import { lifecycleOf, useWebinars, useWorkspace } from "@/lib/data";
-import { lifecycleDetail, lifecycleLabel } from "@/lib/schedule";
+import { useAnalytics } from "@/lib/analytics";
 import { fetchAll } from "@/lib/fetch-all";
-import { FACT_COLUMNS, funnelSummary } from "@/lib/participant-facts";
-import { useLiveViewers, type LiveViewer } from "@/lib/live-presence";
-import { cn } from "@/lib/utils";
+import {
+  ACTIVITY,
+  ACTIVITY_NAMES,
+  activityByMinute,
+  liveNow,
+  sessionsOf,
+  spotsOf,
+  useSystemDark,
+} from "@/lib/analytics-live";
+import { lifecycleOf, useWebinars, useWorkspace } from "@/lib/data";
+import { resolveRange } from "@/lib/date-range";
+import { formatSessionStart, lifecycleDetail, lifecycleLabel } from "@/lib/schedule";
+import { useLiveViewers } from "@/lib/live-presence";
 import { getTeamRoomToken } from "@/lib/room-team.functions";
 
 export const Route = createFileRoute("/live-view")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    webinar: typeof search["webinar"] === "string" ? (search["webinar"] as string) : undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>): { webinar?: string | undefined } =>
+    typeof search["webinar"] === "string" ? { webinar: search["webinar"] } : {},
   head: () => ({
     meta: [
       { title: "Vista ao vivo | Convertewebinar" },
       {
         name: "description",
-        content:
-          "Veja em tempo real quem está nas suas salas, de onde assiste e quem clica na oferta.",
+        content: "Veja em tempo real quem está nas suas salas, de onde assiste e quem clica na oferta.",
       },
       { property: "og:title", content: "Vista ao vivo | Convertewebinar" },
-      {
-        property: "og:description",
-        content: "Audiência ao minuto, mapa de origem, cliques na oferta e compras.",
-      },
+      { property: "og:description", content: "Quem está na sala agora, de onde vê, a actividade ao minuto e as sessões a decorrer." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -55,59 +45,24 @@ export const Route = createFileRoute("/live-view")({
   component: LiveViewPage,
 });
 
-type FeedItem = { id: string; name: string; place: string; kind: "join" | "checkout"; at: number };
+const WINDOW_MS = 30 * 60_000;
 
-function place(viewer: LiveViewer) {
-  return [viewer.city, viewer.country].filter(Boolean).join(", ") || "Origem desconhecida";
-}
-
-function clockLabel(at: number) {
-  const diff = Math.max(0, Math.round((Date.now() - at) / 1000));
-  if (diff < 60) return `há ${diff}s`;
-  return `há ${Math.round(diff / 60)}min`;
-}
-
-/** Constrói um registo vivo de entradas e cliques na oferta. */
-function useActivityFeed(viewers: LiveViewer[]) {
-  const [feed, setFeed] = useState<FeedItem[]>([]);
-  const seen = useRef(new Map<string, boolean>());
-
-  useEffect(() => {
-    const additions: FeedItem[] = [];
-    for (const viewer of viewers) {
-      const known = seen.current.get(viewer.key);
-      if (known === undefined) {
-        additions.push({
-          id: `${viewer.key}-join`,
-          name: viewer.name,
-          place: place(viewer),
-          kind: "join",
-          at: Date.now(),
-        });
-      }
-      if (viewer.checkout && known !== true) {
-        additions.push({
-          id: `${viewer.key}-checkout-${Date.now()}`,
-          name: viewer.name,
-          place: place(viewer),
-          kind: "checkout",
-          at: Date.now(),
-        });
-      }
-      seen.current.set(viewer.key, viewer.checkout);
-    }
-    const alive = new Set(viewers.map((v) => v.key));
-    for (const key of [...seen.current.keys()]) if (!alive.has(key)) seen.current.delete(key);
-    if (additions.length > 0) setFeed((prev) => [...additions.reverse(), ...prev].slice(0, 40));
-  }, [viewers]);
-
-  return feed;
+/** O nome (ou o e-mail) de quem aparece na lista de acontecimentos. */
+async function namesOf(rows: { contact_id: string | null }[]) {
+  const ids = [...new Set(rows.flatMap((r) => (r.contact_id ? [r.contact_id] : [])))];
+  const names = new Map<string, string>();
+  if (!ids.length) return names;
+  const { data: people } = await supabase.from("contacts").select("id, name, email").in("id", ids);
+  for (const p of people ?? []) names.set(p.id, p.name?.trim() || p.email || "");
+  return names;
 }
 
 function LiveViewPage() {
   const { data: workspace } = useWorkspace();
   const organizationId = workspace?.organizationId;
   const { webinar } = Route.useSearch();
+  const navigate = useNavigate();
+  const dark = useSystemDark();
   const allViewers = useLiveViewers(organizationId);
   const viewers = useMemo(
     () => (webinar ? allViewers.filter((v) => v.webinarId === webinar) : allViewers),
@@ -115,416 +70,194 @@ function LiveViewPage() {
   );
   const { data: webinars = [] } = useWebinars(organizationId);
   const selected = webinar ? webinars.find((w) => w.id === webinar) : undefined;
-  const webinarTitle = webinar
-    ? (selected?.public_title ?? allViewers.find((v) => v.webinarId === webinar)?.webinarTitle ?? null)
-    : null;
   // O estado da sessão vem do ciclo de vida canónico, não de quem está na sala.
   const lifecycle = selected ? lifecycleOf(selected) : null;
-  const feed = useActivityFeed(viewers);
-  const [, setTick] = useState(0);
-  const [theme, setTheme] = useState<"dark" | "light">(() => {
-    if (typeof window === "undefined") return "dark";
-    return (window.localStorage.getItem("novawebinar-live-theme") as "dark" | "light") || "dark";
-  });
 
+  const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
-    const timer = window.setInterval(() => setTick((n) => n + 1), 15000);
+    const timer = window.setInterval(() => setNowMs(Date.now()), 15_000);
     return () => window.clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    window.localStorage.setItem("novawebinar-live-theme", theme);
-  }, [theme]);
-
-  const { data: totals } = useQuery({
-    queryKey: ["live-view-totals", organizationId, webinar ?? "todos"],
+  // A actividade vem do registo de acontecimentos: sobrevive a recarregar a página.
+  const activityQuery = useQuery({
+    queryKey: ["live-view", "activity", organizationId, webinar ?? "todos"],
     enabled: Boolean(organizationId),
-    refetchInterval: 20000,
+    refetchInterval: 15_000,
     queryFn: async () => {
-      const scope = <T extends { eq: (col: string, val: string) => T }>(q: T) =>
-        webinar ? q.eq("webinar_id", webinar) : q;
-      // Os mesmos números do Painel e das Métricas: pessoas, uma vez por webinar.
-      const facts = await fetchAll((from, to) =>
-        scope(
-          supabase
-            .from("participant_facts")
-            .select(FACT_COLUMNS, { count: "exact" })
-            .eq("organization_id", organizationId!),
-        )
-          .order("participant_id")
-          .range(from, to),
-      );
-      return funnelSummary(facts);
+      const until = new Date().toISOString();
+      const since = new Date(Date.parse(until) - WINDOW_MS).toISOString();
+      // As barras: tudo o que aconteceu na janela, página a página (sem corte nas sessões cheias).
+      const rows = await fetchAll((from, to) => {
+        let q = supabase
+          .from("event_log")
+          .select("name, occurred_at, contact_id", { count: "exact" })
+          .eq("organization_id", organizationId!)
+          .in("name", ACTIVITY_NAMES)
+          .gte("occurred_at", since)
+          .lte("occurred_at", until);
+        if (webinar) q = q.eq("webinar_id", webinar);
+        return q.order("occurred_at", { ascending: false }).order("source_id").order("name").range(from, to);
+      });
+      const latest = rows.slice(0, 6);
+      return { rows, latest, names: await namesOf(latest) };
     },
   });
 
-  const checkout = viewers.filter((v) => v.checkout);
-  const live = viewers.filter((v) => v.mode === "live");
-  const replay = viewers.filter((v) => v.mode === "replay");
-  const onMobile = viewers.filter((v) => v.device === "mobile");
-  const onDesktop = viewers.filter((v) => v.device === "desktop");
-  const located = viewers.filter((v) => v.lat !== null && v.lon !== null);
+  // Janela vazia: a última actividade, para a frase «Última actividade». Uma linha, mas sem limite de data
+  // (a vista junta o histórico todo): pede-se de 5 em 5 minutos, não a cada 15 segundos.
+  const windowEmpty = activityQuery.data?.rows.length === 0;
+  const lastQuery = useQuery({
+    queryKey: ["live-view", "last-activity", organizationId, webinar ?? "todos"],
+    enabled: Boolean(organizationId) && windowEmpty,
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+    queryFn: async () => {
+      let q = supabase
+        .from("event_log")
+        .select("name, occurred_at, contact_id")
+        .eq("organization_id", organizationId!)
+        .in("name", ACTIVITY_NAMES)
+        .lte("occurred_at", new Date().toISOString());
+      if (webinar) q = q.eq("webinar_id", webinar);
+      const { data, error } = await q.order("occurred_at", { ascending: false }).limit(1);
+      if (error) throw error;
+      const latest = data ?? [];
+      return { latest, names: await namesOf(latest) };
+    },
+  });
 
-  const spots = useMemo(() => {
-    const byPlace = new Map<
-      string,
-      { label: string; count: number; lat: number; lon: number; checkout: number }
-    >();
-    for (const viewer of located) {
-      const label = place(viewer);
-      const current = byPlace.get(label);
-      if (current) {
-        current.count += 1;
-        if (viewer.checkout) current.checkout += 1;
-      } else {
-        byPlace.set(label, {
-          label,
-          count: 1,
-          lat: viewer.lat!,
-          lon: viewer.lon!,
-          checkout: viewer.checkout ? 1 : 0,
-        });
-      }
-    }
-    return [...byPlace.values()].sort((a, b) => b.count - a.count);
-  }, [located]);
+  const activity = useMemo(() => {
+    const rows = activityQuery.data?.rows ?? [];
+    const source = rows.length ? activityQuery.data : lastQuery.data;
+    const latest = source?.latest ?? [];
+    const names = source?.names ?? new Map<string, string>();
+    const moment = (row: (typeof latest)[number], i: number): MomentItem => {
+      const what = ACTIVITY[row.name ?? ""] ?? { text: row.name ?? "", kind: "other" as const };
+      return {
+        id: `${row.occurred_at}-${i}`,
+        who: (row.contact_id && names.get(row.contact_id)) || "Alguém",
+        text: what.text,
+        at: row.occurred_at ?? new Date(nowMs).toISOString(),
+        kind: what.kind,
+      };
+    };
+    const buckets = activityByMinute(rows, nowMs);
+    // A lista usa o mesmo início que as barras: nada aparece por baixo de «Sem movimento».
+    const from = buckets[0]?.at ?? nowMs - WINDOW_MS;
+    return {
+      buckets,
+      moments: latest.filter((r) => r.occurred_at && Date.parse(r.occurred_at) >= from).map(moment),
+      last: latest[0] ? moment(latest[0], 0) : null,
+      loading: activityQuery.isLoading || !organizationId,
+      failed: activityQuery.isError && !activityQuery.data,
+    };
+  }, [activityQuery.data, lastQuery.data, activityQuery.isLoading, activityQuery.isError, nowMs, organizationId]);
 
   const sessions = useMemo(() => {
-    const bySession = new Map<string, { title: string; count: number; checkout: number }>();
-    for (const viewer of viewers) {
-      const current = bySession.get(viewer.webinarId);
-      if (current) {
-        current.count += 1;
-        if (viewer.checkout) current.checkout += 1;
-      } else {
-        bySession.set(viewer.webinarId, {
-          title: viewer.webinarTitle,
-          count: 1,
-          checkout: viewer.checkout ? 1 : 0,
+    const scoped = webinars.filter((w) => !webinar || w.id === webinar);
+    const byId = new Map(scoped.map((w) => [w.id, w]));
+    const items = new Map<string, LiveSessionItem>();
+    const describe = (id: string) => {
+      const w = byId.get(id);
+      if (!w) return { badge: "Sala aberta", detail: null };
+      const lc = lifecycleOf(w, nowMs);
+      const since =
+        lc.kind === "session" && lc.state === "live"
+          ? `desde as ${new Date(lc.startMs).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })}`
+          : null;
+      return { badge: lifecycleLabel(lc), detail: since };
+    };
+    // Sessões marcadas que estão a decorrer, mesmo sem ninguém na sala.
+    for (const w of scoped) {
+      const lc = lifecycleOf(w, nowMs);
+      if (lc.kind === "session" && lc.state === "live") {
+        items.set(w.id, {
+          webinarId: w.id,
+          title: w.public_title || w.internal_name,
+          count: 0,
+          live: 0,
+          replay: 0,
+          clicked: 0,
+          ...describe(w.id),
         });
       }
     }
-    return [...bySession.values()].sort((a, b) => b.count - a.count);
-  }, [viewers]);
+    for (const s of sessionsOf(viewers)) items.set(s.webinarId, { ...s, ...describe(s.webinarId) });
+    return [...items.values()].sort((a, b) => b.count - a.count);
+  }, [webinars, webinar, viewers, nowMs]);
 
-  const maxSpot = spots[0]?.count ?? 1;
-  const funnel = [
-    { label: "Na sala", value: viewers.length, tone: "bg-sky-400" },
-    { label: "Clicaram na oferta", value: checkout.length, tone: "bg-amber-400" },
-  ];
+  const nextSession = useMemo(() => {
+    let next: { title: string; when: string; at: number } | null = null;
+    for (const w of webinars) {
+      if (webinar && w.id !== webinar) continue;
+      const lc = lifecycleOf(w, nowMs);
+      if (lc.kind !== "session" || lc.state !== "scheduled") continue;
+      if (!next || lc.startMs < next.at)
+        next = { title: w.public_title || w.internal_name, when: formatSessionStart(lc.startMs, w.timezone), at: lc.startMs };
+    }
+    return next;
+  }, [webinars, webinar, nowMs]);
+
+  // O mesmo resumo das Análises: hoje, ou o webinar escolhido desde o início.
+  const today = new Date(nowMs).toDateString();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- muda à meia-noite
+  const range = useMemo(() => (webinar ? undefined : resolveRange("hoje")), [webinar, today]);
+  // Um webinar é lido desde sempre (todas as inscrições): de 2 em 2 minutos chega; o dia, de 30 em 30 s.
+  const summaryQuery = useAnalytics(organizationId, webinar, range, webinar ? 120_000 : 30_000);
 
   return (
     <AppShell
-      title={webinarTitle ? `Vista ao vivo — ${webinarTitle}` : "Vista ao vivo"}
+      title="Vista ao vivo"
       description={
-        lifecycle
-          ? `${lifecycleLabel(lifecycle)} · ${lifecycleDetail(lifecycle, selected?.timezone)}`
-          : webinar
-            ? "Métricas em tempo real deste webinar: quem está na sala, de onde assiste e quem clicou na oferta."
-            : "Quem está nas suas salas neste momento, de onde assiste e quem clicou na oferta."
+        lifecycle && selected
+          ? `${lifecycleLabel(lifecycle)} · ${lifecycleDetail(lifecycle, selected.timezone)}`
+          : "Quem está nas suas salas neste momento, de onde vê e o que faz."
       }
       action={
         <div className="flex flex-wrap items-center gap-2">
-          {selected ? <TeamLink webinarId={selected.id} slug={selected.slug} /> : null}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-            className="gap-2"
+          <Select
+            value={webinar ?? "todos"}
+            onValueChange={(value) =>
+              void navigate({ to: "/live-view", search: value === "todos" ? {} : { webinar: value } })
+            }
           >
-            {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
-            {theme === "dark" ? "Modo claro" : "Modo escuro"}
-          </Button>
+            <SelectTrigger className="w-[min(240px,70vw)]" aria-label="Webinar">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os webinars</SelectItem>
+              {webinars.map((w) => (
+                <SelectItem key={w.id} value={w.id}>
+                  {w.public_title || w.internal_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selected ? <TeamLink webinarId={selected.id} slug={selected.slug} /> : null}
         </div>
       }
     >
-      <div
-        className={cn(
-          "overflow-hidden rounded-3xl border shadow-xl transition-colors",
-          theme === "dark"
-            ? "border-white/10 bg-slate-950 text-white"
-            : "border-border bg-background text-foreground",
-        )}
-      >
-        <div className="grid gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] lg:p-8">
-          <div className="flex flex-col justify-between gap-6">
-            <div className="flex items-start justify-between gap-3">
-              <span
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide",
-                  theme === "dark"
-                    ? "bg-emerald-500/15 text-emerald-300"
-                    : "bg-emerald-500/10 text-emerald-700",
-                )}
-              >
-                <span className="relative flex size-2">
-                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
-                </span>
-                Em direto
-              </span>
-            </div>
-            <div>
-              <p className="mt-2 text-7xl font-bold leading-none tabular-nums">{viewers.length}</p>
-              <p
-                className={cn(
-                  "mt-2 text-sm",
-                  theme === "dark" ? "text-white/60" : "text-muted-foreground",
-                )}
-              >
-                pessoas nas suas salas agora mesmo
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              {funnel.map((step) => (
-                <div key={step.label}>
-                  <div
-                    className={cn(
-                      "flex items-center justify-between text-xs",
-                      theme === "dark" ? "text-white/60" : "text-muted-foreground",
-                    )}
-                  >
-                    <span>{step.label}</span>
-                    <span
-                      className={cn(
-                        "font-semibold tabular-nums",
-                        theme === "dark" ? "text-white" : "text-foreground",
-                      )}
-                    >
-                      {step.value}
-                    </span>
-                  </div>
-                  <div
-                    className={cn(
-                      "mt-1.5 h-2 overflow-hidden rounded-full",
-                      theme === "dark" ? "bg-white/10" : "bg-muted",
-                    )}
-                  >
-                    <div
-                      className={`h-full rounded-full ${step.tone} transition-all duration-700`}
-                      style={{
-                        width: `${viewers.length ? Math.max(4, (step.value / viewers.length) * 100) : 0}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">
-              <Tile icon={Radio} label="Ao vivo" value={live.length} theme={theme} />
-              <Tile icon={Clapperboard} label="Replay" value={replay.length} theme={theme} />
-              <Tile icon={Smartphone} label="Telemóvel" value={onMobile.length} theme={theme} />
-              <Tile icon={Monitor} label="Computador" value={onDesktop.length} theme={theme} />
-              <Tile icon={Users} label="Inscritos" value={totals?.registered ?? 0} theme={theme} />
-              <Tile
-                icon={MousePointerClick}
-                label="Clicaram na oferta"
-                value={totals?.clicked ?? 0}
-                theme={theme}
-              />
-              <Tile icon={Users} label="Compraram" value={totals?.buyers ?? 0} theme={theme} />
-              <Tile
-                icon={MousePointerClick}
-                label="Conversão"
-                value={`${(totals?.conversion ?? 0).toFixed(1)}%`}
-                theme={theme}
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-semibold">De onde estão a ver</span>
-              <span
-                className={cn(
-                  "text-xs",
-                  theme === "dark" ? "text-white/50" : "text-muted-foreground",
-                )}
-              >
-                {located.length} com origem detetada
-              </span>
-            </div>
-            <div
-              className={cn(
-                "relative mt-3 overflow-hidden rounded-2xl ring-1",
-                theme === "dark" ? "bg-slate-900 ring-white/10" : "bg-muted ring-border",
-              )}
-            >
-              <img
-                src={theme === "dark" ? worldMapDark : worldMapLight}
-                alt="Mapa do mundo com a origem de quem está a assistir"
-                width={1920}
-                height={960}
-                loading="lazy"
-                className={cn(
-                  "w-full",
-                  theme === "dark" ? "opacity-60 mix-blend-screen" : "opacity-100",
-                )}
-              />
-              {spots.map((spot) => {
-                const left = ((spot.lon + 180) / 360) * 100;
-                const top = ((90 - spot.lat) / 180) * 100;
-                const size = 8 + Math.min(16, (spot.count / maxSpot) * 16);
-                return (
-                  <span
-                    key={spot.label}
-                    title={`${spot.label} — ${spot.count} a assistir`}
-                    className="absolute -translate-x-1/2 -translate-y-1/2"
-                    style={{ left: `${left}%`, top: `${top}%` }}
-                  >
-                    <span className="relative flex" style={{ width: size, height: size }}>
-                      <span
-                        className={`absolute inline-flex size-full animate-ping rounded-full opacity-60 ${
-                          spot.checkout > 0 ? "bg-emerald-400" : "bg-sky-400"
-                        }`}
-                      />
-                      <span
-                        className={`relative inline-flex rounded-full ring-2 ${
-                          spot.checkout > 0 ? "bg-emerald-400" : "bg-sky-400"
-                        } ${theme === "dark" ? "ring-white/60" : "ring-white"}`}
-                        style={{ width: size, height: size }}
-                      />
-                    </span>
-                  </span>
-                );
-              })}
-              {spots.length === 0 && (
-                <p
-                  className={cn(
-                    "absolute inset-0 flex items-center justify-center text-sm font-medium",
-                    theme === "dark" ? "text-white/80" : "text-foreground",
-                  )}
-                >
-                  Ninguém nas salas neste momento.
-                </p>
-              )}
-            </div>
-
-            <ul className="mt-4 space-y-2">
-              {spots.slice(0, 5).map((spot) => (
-                <li key={spot.label} className="flex items-center gap-3 text-sm">
-                  <MapPin
-                    className={cn(
-                      "size-4 shrink-0",
-                      theme === "dark" ? "text-white/40" : "text-muted-foreground",
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      "w-40 shrink-0 truncate",
-                      theme === "dark" ? "text-white/80" : "text-foreground",
-                    )}
-                  >
-                    {spot.label}
-                  </span>
-                  <span
-                    className={cn(
-                      "h-1.5 flex-1 overflow-hidden rounded-full",
-                      theme === "dark" ? "bg-white/10" : "bg-muted",
-                    )}
-                  >
-                    <span
-                      className="block h-full rounded-full bg-sky-400"
-                      style={{ width: `${(spot.count / maxSpot) * 100}%` }}
-                    />
-                  </span>
-                  <span className="w-8 shrink-0 text-right font-semibold tabular-nums">
-                    {spot.count}
-                  </span>
-                </li>
-              ))}
-              {spots.length === 0 && (
-                <li
-                  className={cn(
-                    "text-sm",
-                    theme === "dark" ? "text-white/50" : "text-muted-foreground",
-                  )}
-                >
-                  Sem origens detetadas.
-                </li>
-              )}
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-6 grid gap-6 xl:grid-cols-3">
-        <Panel title="Atividade ao minuto" icon={Activity}>
-          <ul className="max-h-80 space-y-3 overflow-y-auto pr-1">
-            {feed.length === 0 && (
-              <li className="text-sm text-muted-foreground">Ainda sem movimento.</li>
-            )}
-            {feed.map((item) => (
-              <li key={item.id} className="flex items-start gap-3">
-                <span
-                  className={`mt-1 size-2 shrink-0 rounded-full ${
-                    item.kind === "checkout" ? "bg-emerald-500" : "bg-sky-500"
-                  }`}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm">
-                    <strong className="font-semibold">{item.name}</strong>{" "}
-                    {item.kind === "checkout" ? "clicou na oferta" : "entrou na sala"}
-                  </span>
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {item.place} · {clockLabel(item.at)}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-
-        <Panel title="Sessões a decorrer" icon={Eye}>
-          <ul className="space-y-3">
-            {sessions.length === 0 && (
-              <li className="text-sm text-muted-foreground">Sem público neste momento.</li>
-            )}
-            {sessions.map((session) => (
-              <li key={session.title} className="rounded-xl border bg-muted/30 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="truncate text-sm font-medium">{session.title}</span>
-                  <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary tabular-nums">
-                    {session.count}
-                  </span>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">{session.checkout} clicaram na oferta</p>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-
-        <Panel title="Pessoas na sala" icon={Users}>
-          <ul className="max-h-80 space-y-3 overflow-y-auto pr-1">
-            {viewers.length === 0 && <li className="text-sm text-muted-foreground">Sala vazia.</li>}
-            {viewers.map((viewer) => (
-              <li key={viewer.key} className="flex items-center justify-between gap-3 text-sm">
-                <span className="flex min-w-0 items-center gap-3">
-                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                    {viewer.name.slice(0, 1).toUpperCase()}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{viewer.name}</span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {place(viewer)} · {viewer.mode === "replay" ? "Replay" : "Ao vivo"} ·{" "}
-                      {viewer.device === "mobile" ? "Telemóvel" : "Computador"}
-                    </span>
-                  </span>
-                </span>
-                {viewer.checkout ? (
-                  <span className="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-bold text-emerald-600">
-                    Clicou na oferta
-                  </span>
-                ) : (
-                  <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
-                )}
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      </div>
+      <LiveBoard
+        dark={dark}
+        nowMs={nowMs}
+        scoped={Boolean(webinar)}
+        now={liveNow(viewers)}
+        viewers={viewers}
+        spots={spotsOf(viewers)}
+        sessions={sessions}
+        nextSession={nextSession}
+        activity={activity}
+        summary={{
+          title: webinar ? "Este webinar, até agora" : "Hoje, até agora",
+          note: webinar
+            ? "Todas as inscrições deste webinar e o que essas pessoas fizeram."
+            : "Quem se inscreveu hoje e o que fez; facturação aprovada hoje.",
+          data: summaryQuery.data,
+          loading: summaryQuery.isLoading || !organizationId,
+          search: webinar ? { webinar } : { periodo: "hoje" },
+        }}
+      />
     </AppShell>
   );
 }
@@ -563,56 +296,5 @@ function TeamLink({ webinarId, slug }: { webinarId: string; slug: string }) {
         Copiar link de equipa
       </Button>
     </>
-  );
-}
-
-function Tile({
-  icon: Icon,
-  label,
-  value,
-  theme,
-}: {
-  icon: typeof Eye;
-  label: string;
-  value: number | string;
-  theme: "dark" | "light";
-}) {
-  return (
-    <div
-      className={cn(
-        "rounded-2xl p-3 ring-1",
-        theme === "dark" ? "bg-white/5 ring-white/10" : "bg-muted ring-border",
-      )}
-    >
-      <Icon
-        className={cn("size-4", theme === "dark" ? "text-white/50" : "text-muted-foreground")}
-      />
-      <p className="mt-2 text-xl font-semibold tabular-nums">{value}</p>
-      <p className={cn("text-xs", theme === "dark" ? "text-white/50" : "text-muted-foreground")}>
-        {label}
-      </p>
-    </div>
-  );
-}
-
-function Panel({
-  title,
-  icon: Icon,
-  children,
-}: {
-  title: string;
-  icon: typeof Eye;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-card bg-card p-5">
-      <h2 className="flex items-center gap-2 font-semibold">
-        <span className="grid size-8 place-items-center rounded-xl bg-primary/10 text-primary">
-          <Icon className="size-4" />
-        </span>
-        {title}
-      </h2>
-      <div className="mt-4">{children}</div>
-    </section>
   );
 }

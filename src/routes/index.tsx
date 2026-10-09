@@ -1,7 +1,16 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowRight, Check, Pause, Play } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  ArrowRight,
+  Bell,
+  ChartLine,
+  ChevronDown,
+  CircleCheck,
+  MousePointerClick,
+  RotateCcw,
+  ShoppingBag,
+  Users,
+} from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import {
@@ -11,15 +20,22 @@ import {
   RoomVisual,
   ScheduleVisual,
 } from "@/components/landing/product-visuals";
-import { PUBLIC_PRESENTATION_VIDEO_URL } from "@/lib/public-site-config";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Convertewebinar — grave uma vez, apresente todos os dias" },
-      { name: "description", content: "Crie webinars automatizados com sessões recorrentes, chat programado, oferta e análise de retenção." },
+      {
+        name: "description",
+        content:
+          "Crie webinars automatizados com sessões recorrentes, chat programado, oferta e análise de retenção.",
+      },
       { property: "og:title", content: "Convertewebinar — grave uma vez, apresente todos os dias" },
-      { property: "og:description", content: "Crie webinars automatizados com sessões recorrentes, chat programado, oferta e análise de retenção." },
+      {
+        property: "og:description",
+        content:
+          "Crie webinars automatizados com sessões recorrentes, chat programado, oferta e análise de retenção.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -27,245 +43,375 @@ export const Route = createFileRoute("/")({
   component: LandingPage,
 });
 
-const headlinePhrases = [
-  "pronto todos os dias.",
-  "com tudo preparado.",
-  "a trabalhar por si.",
-];
-
-const capabilities = [
-  ["01", "Sessões", "Única, diária, semanal ou just in time"],
-  ["02", "Chat", "Mensagens ligadas ao tempo do vídeo"],
-  ["03", "Oferta", "Chamada à ação no momento definido"],
-  ["04", "Análise", "Presença, retenção e pontos de saída"],
-];
-
-function useInViewport<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [visible, setVisible] = useState(true);
-
-  useEffect(() => {
-    const element = ref.current;
-    if (!element || !("IntersectionObserver" in window)) return;
-    const observer = new IntersectionObserver(([entry]) => setVisible(entry?.isIntersecting ?? true), {
-      rootMargin: "120px 0px",
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
-  return { ref, visible };
-}
-
-function useRevealOnce<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [observed, setObserved] = useState(false);
-  const [revealed, setRevealed] = useState(false);
-
-  useEffect(() => {
-    const element = ref.current;
-    if (!element || !("IntersectionObserver" in window)) return;
-    setObserved(true);
-    const observer = new IntersectionObserver(([entry]) => {
-      if (!entry?.isIntersecting) return;
-      setRevealed(true);
-      observer.disconnect();
-    }, { rootMargin: "0px 0px -8%" });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
-  return { ref, observed, revealed };
-}
-
-function useReducedMotion() {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-  return reduced;
-}
-
-function usePageVisible() {
-  const [visible, setVisible] = useState(true);
-  useEffect(() => {
-    const update = () => setVisible(!document.hidden);
-    update();
-    document.addEventListener("visibilitychange", update);
-    return () => document.removeEventListener("visibilitychange", update);
-  }, []);
-  return visible;
-}
-
-function AnimatedHeadline({ paused, reduced }: { paused: boolean; reduced: boolean }) {
-  const [active, setActive] = useState(0);
-  const { ref, visible } = useInViewport<HTMLHeadingElement>();
-  const pageVisible = usePageVisible();
-
-  useEffect(() => {
-    if (paused || reduced || !visible || !pageVisible) return;
-    const timer = window.setInterval(() => {
-      setActive((current) => (current + 1) % headlinePhrases.length);
-    }, 3600);
-    return () => window.clearInterval(timer);
-  }, [pageVisible, paused, reduced, visible]);
-
+/** Um só campo, como o «CPF → Continuar» do Nubank: o email segue para o registo. Sem JS também funciona (GET). */
+function EmailStart({ id }: { id: string }) {
+  const navigate = useNavigate();
   return (
-    <h1 ref={ref} className="lp-animated-title lp-enter">
-      <span className="sr-only">O seu webinar, pronto todos os dias, com tudo preparado e a trabalhar por si.</span>
-      <span aria-hidden="true" className="lp-title-visual">
-        <span className="lp-title-fixed">O seu webinar,</span>
-        <span className="lp-title-rotator">
-          {headlinePhrases.map((phrase, index) => (
-            <span key={phrase} className={index === (reduced ? 0 : active) ? "is-active" : ""}>{phrase}</span>
-          ))}
-        </span>
-      </span>
-    </h1>
+    <form
+      action="/auth/register"
+      method="get"
+      className="flex flex-col gap-3 sm:flex-row"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const email = String(new FormData(event.currentTarget).get("email") ?? "").trim();
+        void navigate({ to: "/auth/register", search: { email } });
+      }}
+    >
+      <label htmlFor={id} className="sr-only">
+        O seu email
+      </label>
+      <input
+        id={id}
+        name="email"
+        type="email"
+        required
+        autoComplete="email"
+        placeholder="O seu email"
+        className="site-field sm:flex-1"
+      />
+      <button type="submit" className="site-btn site-btn-primary">
+        Começar <ArrowRight aria-hidden="true" />
+      </button>
+    </form>
   );
 }
 
-
-const showcaseTabs = [
-  { label: "Programar", render: () => <ScheduleVisual /> },
-  { label: "Apresentar", render: () => <RoomVisual /> },
-  { label: "Oferta", render: () => <OfferVisual /> },
-  { label: "Vendas", render: () => <RoomVisual sales /> },
-  { label: "Acompanhar", render: () => <DashboardVisual /> },
-];
-
-function PresentationStage({ paused, reduced }: { paused: boolean; reduced: boolean }) {
-  const hasVideo = PUBLIC_PRESENTATION_VIDEO_URL.trim().length > 0;
-  const [active, setActive] = useState(0);
-  const [interacting, setInteracting] = useState(false);
-  const { ref, visible } = useInViewport<HTMLDivElement>();
-  const pageVisible = usePageVisible();
-  const shouldPause = paused || reduced || !visible || !pageVisible || interacting;
-
-  useEffect(() => {
-    if (hasVideo || shouldPause) return;
-    const timer = window.setTimeout(() => setActive((current) => (current + 1) % showcaseTabs.length), 5000);
-    return () => window.clearTimeout(timer);
-  }, [active, hasVideo, shouldPause]);
-
-  const activeTab = showcaseTabs[reduced ? 0 : active];
-  if (!activeTab) return null;
-  const ActivePreview = activeTab.render;
-
+function SectionHead({
+  title,
+  children,
+  center = false,
+}: {
+  title: string;
+  children?: ReactNode;
+  center?: boolean;
+}) {
   return (
-    <div ref={ref} className="lp-presentation" id="apresentacao">
-      {hasVideo ? (
-        <video src={PUBLIC_PRESENTATION_VIDEO_URL} controls preload="metadata" className="h-full w-full object-contain">
-          O seu navegador não suporta a reprodução deste vídeo.
-        </video>
-      ) : (
-        <div
-          className="lp-showcase"
-          onMouseEnter={() => setInteracting(true)}
-          onMouseLeave={() => setInteracting(false)}
-          onFocusCapture={() => setInteracting(true)}
-          onBlurCapture={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget)) setInteracting(false);
-          }}
-        >
-          <div className="lp-showcase-bar">
-            <div role="tablist" aria-label="Pré-visualizações da plataforma" className="lp-showcase-tabs">
-              {showcaseTabs.map((tab, index) => (
-                <Button
-                  key={tab.label}
-                  type="button"
-                  variant="ghost"
-                  role="tab"
-                  aria-selected={index === active}
-                  tabIndex={index === active ? 0 : -1}
-                  className={index === active ? "is-active" : ""}
-                  onClick={() => setActive(index)}
-                  onKeyDown={(event) => {
-                    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
-                    event.preventDefault();
-                    const direction = event.key === "ArrowRight" ? 1 : -1;
-                    const next = (active + direction + showcaseTabs.length) % showcaseTabs.length;
-                    setActive(next);
-                    const tabs = event.currentTarget.parentElement?.querySelectorAll<HTMLElement>("[role='tab']");
-                    tabs?.[next]?.focus();
-                  }}
-                >
-                  {tab.label}
-                </Button>
-              ))}
-            </div>
-            <span>Pré-visualização ilustrativa</span>
-          </div>
-          <div className="lp-showcase-progress" aria-hidden="true">
-            <span key={`${active}-${shouldPause}`} className={shouldPause ? "is-paused" : ""} />
-          </div>
-          <div key={active} className="lp-showcase-canvas" role="tabpanel" aria-label={activeTab.label}>
-            <ActivePreview />
-          </div>
-        </div>
+    <div className={center ? "mx-auto text-center" : ""}>
+      <h2 className={`max-w-[20ch] text-site-h2 ${center ? "mx-auto" : ""}`}>{title}</h2>
+      {children && (
+        <p className={`mt-4 max-w-[60ch] text-site-lead text-s-text-2 ${center ? "mx-auto" : ""}`}>
+          {children}
+        </p>
       )}
     </div>
   );
 }
 
-function RevealSection({ children, className, id }: { children: ReactNode; className: string; id?: string }) {
-  const { ref, observed, revealed } = useRevealOnce<HTMLElement>();
-  return <section ref={ref} id={id} className={`${className} ${observed ? "is-observed" : ""} ${revealed ? "is-revealed" : ""}`} data-reveal>{children}</section>;
+function MoreLink({ slug, children }: { slug: string; children: ReactNode }) {
+  return (
+    <Link to="/funcionalidades/$slug" params={{ slug }} className="site-link mt-8">
+      {children} <ArrowRight aria-hidden="true" />
+    </Link>
+  );
 }
 
-function LandingPage() {
-  const [animationsPaused, setAnimationsPaused] = useState(false);
-  const reduced = useReducedMotion();
+const steps = [
+  ["Carregue o vídeo", "Use uma gravação que já tem."],
+  ["Escolha quando a sala abre", "Uma vez, todos os dias ou à hora que a pessoa escolher."],
+  ["Acompanhe e venda", "Veja quem ficou, quem clicou e quem comprou."],
+] as const;
 
+const tabs = [
+  {
+    label: "Programar",
+    slug: "sessoes",
+    title: "Sessão única, diária ou à hora de cada pessoa.",
+    copy: "Escolha uma data, a repetição diária ou semanal, ou o just in time.",
+    visual: () => <ScheduleVisual />,
+  },
+  {
+    label: "Apresentar",
+    slug: "chat",
+    title: "O chat acompanha o vídeo.",
+    copy: "As mensagens que preparou entram no minuto certo, e quem está na sala conversa a sério.",
+    visual: () => <RoomVisual />,
+  },
+  {
+    label: "Oferta",
+    slug: "oferta",
+    title: "A oferta entra no momento certo.",
+    copy: "Produto, preço e contagem aparecem na sala no segundo que definiu.",
+    visual: () => <OfferVisual />,
+  },
+  {
+    label: "Vendas",
+    slug: "vendas",
+    title: "As compras aparecem na sala.",
+    copy: "Os avisos de venda surgem no vídeo e no chat, um de cada vez.",
+    visual: () => <RoomVisual sales />,
+  },
+  {
+    label: "Acompanhar",
+    slug: "analise",
+    title: "Veja o que aconteceu em cada minuto.",
+    copy: "Presenças, replay, cliques na oferta e o momento em que cada pessoa saiu.",
+    visual: () => <DashboardVisual />,
+  },
+];
+
+/** Separadores manuais (sem rotação automática nem botão de pausa): só o painel activo é desenhado. */
+function FeatureTabs() {
+  const [active, setActive] = useState(0);
+  const tab = tabs[active]!;
+  return (
+    <div className="mt-12">
+      <div className="-mx-[var(--gutter)] overflow-x-auto px-[var(--gutter)] [scrollbar-width:none]">
+        <div
+          role="tablist"
+          aria-label="Funcionalidades"
+          className="mx-auto flex w-max gap-1 rounded-full bg-s-card p-1"
+        >
+          {tabs.map((item, index) => (
+            <button
+              key={item.label}
+              type="button"
+              role="tab"
+              id={`tab-${item.slug}`}
+              aria-selected={index === active}
+              aria-controls="tab-painel"
+              tabIndex={index === active ? 0 : -1}
+              className={`h-12 rounded-full px-5 text-site-small font-medium transition-colors duration-[var(--duration-fast)] ${index === active ? "bg-s-action text-white" : "text-s-text-2 hover:text-s-text"}`}
+              onClick={() => setActive(index)}
+              onKeyDown={(event) => {
+                if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+                event.preventDefault();
+                const next =
+                  (active + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+                setActive(next);
+                (
+                  event.currentTarget.parentElement?.children[next] as HTMLElement | undefined
+                )?.focus();
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div
+        id="tab-painel"
+        role="tabpanel"
+        aria-labelledby={`tab-${tab.slug}`}
+        className="mt-10 grid items-center gap-8 lg:grid-cols-[7fr_5fr] lg:gap-16"
+      >
+        <div className="rounded-[var(--radius-panel)] bg-warm-100 p-4 sm:p-8">{tab.visual()}</div>
+        <div>
+          <h3 className="text-site-h3">{tab.title}</h3>
+          <p className="mt-4 text-site-body text-s-text-2">{tab.copy}</p>
+          <MoreLink slug={tab.slug}>Saber mais</MoreLink>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const automations = [
+  {
+    icon: Bell,
+    title: "Lembrete antes de começar",
+    copy: "Por email e WhatsApp, para a pessoa não faltar.",
+  },
+  {
+    icon: RotateCcw,
+    title: "Replay para quem faltou",
+    copy: "Quem não entrou recebe o link para ver depois.",
+  },
+  {
+    icon: ShoppingBag,
+    title: "Oferta para quem não comprou",
+    copy: "Uma sequência curta com a oferta, no tempo certo.",
+  },
+  {
+    icon: CircleCheck,
+    title: "Pára quando a pessoa compra",
+    copy: "A compra aprovada cancela as mensagens de venda dessa oferta.",
+  },
+];
+
+const insights = [
+  { icon: Users, title: "Presença e replay", copy: "Quem entrou ao vivo e quem viu depois." },
+  {
+    icon: MousePointerClick,
+    title: "Cliques na oferta",
+    copy: "Quantas pessoas abriram a oferta e quando.",
+  },
+  { icon: ChartLine, title: "Retenção minuto a minuto", copy: "Onde a atenção sobe e onde cai." },
+];
+
+const questions = [
+  [
+    "Preciso de estar presente na sessão?",
+    "Não. A sala abre à hora marcada com o vídeo gravado, e o chat e a oferta entram nos momentos que definiu.",
+  ],
+  [
+    "Posso usar um vídeo que já gravei?",
+    "Sim. Carregue a gravação que já tem; a sala mostra-a na forma original, horizontal ou vertical.",
+  ],
+  [
+    "Como funciona o replay?",
+    "Quando o ativa, a gravação fica na sala depois da sessão. Quem entra em replay pode pausar, avançar e recuar.",
+  ],
+  [
+    "Funciona no telemóvel?",
+    "Sim. A sala, o chat e a oferta foram pensados primeiro para o telemóvel, ao alto ou deitado.",
+  ],
+  [
+    "Quem responde às mensagens privadas?",
+    "A sua equipa, no Atendimento. O Agente ajuda com base no conteúdo e passa a conversa à equipa quando é preciso.",
+  ],
+] as const;
+
+function LandingPage() {
   useEffect(() => {
-    if (window.location.hostname === "admin.novawebinar.com") window.location.replace(`/dashboard${window.location.search}`);
+    if (window.location.hostname === "admin.novawebinar.com")
+      window.location.replace(`/dashboard${window.location.search}`);
   }, []);
 
   return (
-    <div className={`nova-landing ${animationsPaused ? "lp-motion-paused" : ""}`}>
+    <div data-site className="min-h-screen bg-white text-[var(--ds-gray-1000)]">
       <SiteHeader />
-
-
-
       <main>
-        <section className="lp-hero">
-          <p className="lp-eyebrow lp-enter">GRAVE UMA VEZ. APRESENTE TODOS OS DIAS.</p>
-          <AnimatedHeadline paused={animationsPaused} reduced={reduced} />
-          <p className="lp-hero-copy lp-enter-delayed">Transforme o seu conteúdo num webinar automatizado. Agende sessões diárias ou semanais, prepare as mensagens do chat e apresente a oferta no momento certo.</p>
-          <div className="lp-hero-actions lp-enter-delayed"><Button variant="dark" size="lg" asChild><Link to="/auth/register">Criar o meu webinar <ArrowRight /></Link></Button><Button variant="secondary" size="lg" asChild><a href="#plataforma">Ver como funciona</a></Button></div>
+        <section data-surface="base" className="pb-[var(--section-y)] pt-[var(--section-y-tight)]">
+          <div className="site-wrap grid items-center gap-12 lg:grid-cols-[7fr_5fr] lg:gap-16">
+            <div>
+              <h1 className="max-w-[16ch] text-site-display">
+                Grave uma vez. Apresente todos os dias.
+              </h1>
+              <p className="mt-6 max-w-[48ch] text-site-lead text-s-text-2">
+                A sala abre sozinha, o chat e a oferta entram no momento certo, e as mensagens
+                seguem para quem não comprou.
+              </p>
+              <div className="mt-8 max-w-[34rem] rounded-[var(--radius-panel)] bg-s-card p-5 sm:p-6">
+                <EmailStart id="email-hero" />
+              </div>
+              <a href="#como-funciona" className="site-link mt-6">
+                Ver como funciona
+              </a>
+            </div>
+            <div className="rounded-[var(--radius-panel)] bg-warm-100 p-4 sm:p-6">
+              <RoomVisual />
+            </div>
+          </div>
         </section>
 
-        <section className="lp-media-wrap" id="plataforma"><PresentationStage paused={animationsPaused} reduced={reduced} /></section>
-
-        {!reduced && (
-          <Button type="button" variant="ghost" className="lp-motion-control" aria-pressed={animationsPaused} onClick={() => setAnimationsPaused((value) => !value)}>
-            {animationsPaused ? <Play /> : <Pause />}{animationsPaused ? "Retomar animações" : "Pausar animações"}
-          </Button>
-        )}
-
-        <RevealSection className="lp-capabilities"><div className="lp-wide" aria-label="Capacidades da plataforma">{capabilities.map(([number, title, copy], index) => <div key={number} data-reveal-item style={{ "--lp-stagger": `${index * 75}ms` } as CSSProperties}><span>{number}</span><div><strong>{title}</strong><p>{copy}</p></div></div>)}</div></RevealSection>
-
-        <RevealSection className="lp-features" id="funcionalidades">
-          <div className="lp-wide lp-section-heading" data-reveal-item><p className="lp-eyebrow">UMA SESSÃO GRAVADA, BEM ORQUESTRADA</p><h2>Prepare o webinar antes de a sala abrir.</h2></div>
-          <div className="lp-wide lp-feature-pair">
-            <article className="lp-feature-block" data-reveal-item style={{ "--lp-stagger": "75ms" } as CSSProperties}><div className="lp-feature-copy"><span>01 / AGENDAR</span><h3>Da gravação à próxima sessão.</h3><p>Use um vídeo pré-gravado numa experiência de transmissão organizada. Escolha uma data, repetição diária ou semanal, just in time e, quando fizer sentido, disponibilize replay.</p><Link className="lp-inline-link" to="/funcionalidades/$slug" params={{ slug: "sessoes" }}>Saber mais sobre sessões <ArrowRight /></Link></div><div className="lp-visual-stage"><ScheduleVisual /></div></article>
-            <article className="lp-feature-block is-lower" data-reveal-item style={{ "--lp-stagger": "150ms" } as CSSProperties}><div className="lp-feature-copy"><span>02 / SINCRONIZAR</span><h3>A conversa acompanha o conteúdo.</h3><p>Prepare mensagens e perguntas para momentos concretos do vídeo. As mensagens entram no momento certo da sessão e as notificações de venda aparecem no vídeo e no chat.</p><Link className="lp-inline-link" to="/funcionalidades/$slug" params={{ slug: "chat" }}>Saber mais sobre o chat <ArrowRight /></Link></div><div className="lp-visual-stage is-pink"><RoomVisual /></div></article>
+        <section id="como-funciona" data-surface="warm" className="site-section scroll-mt-16">
+          <div className="site-wrap">
+            <SectionHead title="Três passos. Depois é automático." />
+            <ol className="mt-12 grid gap-4 md:grid-cols-3">
+              {steps.map(([title, copy], index) => (
+                <li key={title} className="rounded-[var(--radius-card-site)] bg-s-card p-6 sm:p-8">
+                  <span className="site-icon size-10 text-site-small font-semibold tabular-nums">
+                    {index + 1}
+                  </span>
+                  <h3 className="mt-6 text-site-h3">{title}</h3>
+                  <p className="mt-2 text-site-body text-s-text-2">{copy}</p>
+                </li>
+              ))}
+            </ol>
           </div>
-        </RevealSection>
+        </section>
 
-        <RevealSection className="lp-assistance-section">
-          <div className="lp-wide lp-assistance-grid"><div className="lp-feature-copy" data-reveal-item><span>03 / ASSISTIR</span><h2>Suporte com contexto, sem perder o controlo.</h2><p>O Agente IA apoia conversas privadas de suporte com base nas FAQs, objeções e conteúdo já apresentado. É identificado como assistente, pode ser pausado e encaminha situações para a equipa.</p><ul><li><Check /> Conhecimento limitado ao momento atual da sessão</li><li><Check /> Respostas orientadas pelas fontes configuradas</li><li><Check /> Escalação para atendimento humano</li></ul><Link className="lp-inline-link" to="/funcionalidades/$slug" params={{ slug: "assistente-ia" }}>Saber mais sobre o assistente <ArrowRight /></Link></div><div data-reveal-item style={{ "--lp-stagger": "90ms" } as CSSProperties}><AssistanceVisual /></div></div>
-        </RevealSection>
+        <section id="funcionalidades" data-surface="base" className="site-section scroll-mt-16">
+          <div className="site-wrap">
+            <SectionHead title="Tudo o que acontece na sala, preparado por si." center />
+            <FeatureTabs />
+          </div>
+        </section>
 
-        <RevealSection className="lp-insights" id="acompanhamento"><div className="lp-wide lp-insights-grid"><div className="lp-insights-copy" data-reveal-item><p className="lp-eyebrow">OFERTA E ANÁLISE</p><h2>Saiba o que aconteceu em cada momento.</h2><div className="lp-benefits"><div><span>01</span><p><strong>Oferta programada</strong> apresente a chamada à ação no ponto definido do vídeo.</p></div><div><span>02</span><p><strong>Participação real</strong> acompanhe inscritos, presenças, replay e cliques na oferta.</p></div><div><span>03</span><p><strong>Retenção</strong> identifique picos e o momento em que cada participante saiu.</p></div></div><Link className="lp-inline-link" to="/funcionalidades/$slug" params={{ slug: "analise" }}>Saber mais sobre a análise <ArrowRight /></Link></div><div data-reveal-item style={{ "--lp-stagger": "90ms" } as CSSProperties}><DashboardVisual /></div></div></RevealSection>
+        <section id="automacoes" data-surface="inverse" className="site-section scroll-mt-16">
+          <div className="site-wrap">
+            <SectionHead title="A conversa continua depois da sessão.">
+              Lembretes, replay e oferta por email e WhatsApp, a cada pessoa no momento certo.
+            </SectionHead>
+            <ul className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {automations.map(({ icon: Icon, title, copy }) => (
+                <li key={title} className="rounded-[var(--radius-card-site)] bg-s-card p-6">
+                  <span className="site-icon size-12">
+                    <Icon className="size-6" aria-hidden="true" />
+                  </span>
+                  <h3 className="mt-6 text-site-h4">{title}</h3>
+                  <p className="mt-2 text-site-small text-s-text-2">{copy}</p>
+                </li>
+              ))}
+            </ul>
+            <Link to="/auth/register" className="site-btn site-btn-primary mt-10">
+              Criar conta
+            </Link>
+          </div>
+        </section>
 
-        <RevealSection className="lp-final-cta"><div className="lp-wide" data-reveal-item><p className="lp-eyebrow">O SEU CONTEÚDO, NUMA AGENDA CONSISTENTE</p><h2>Prepare uma vez. Defina quando volta a acontecer.</h2><Button variant="dark" size="lg" asChild><Link to="/auth/register">Criar o meu webinar <ArrowRight /></Link></Button></div></RevealSection>
+        <section data-surface="base" className="site-section">
+          <div className="site-wrap grid items-center gap-12 lg:grid-cols-[5fr_7fr] lg:gap-16">
+            <div>
+              <SectionHead title="Saiba em que minuto as pessoas saem." />
+              <ul className="mt-8 grid gap-5">
+                {insights.map(({ icon: Icon, title, copy }) => (
+                  <li key={title} className="flex gap-4">
+                    <span className="site-icon size-8">
+                      <Icon className="size-4" strokeWidth={1.75} aria-hidden="true" />
+                    </span>
+                    <p className="text-site-body text-s-text-2">
+                      <strong className="font-semibold text-s-text">{title}.</strong> {copy}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+              <MoreLink slug="analise">Saber mais sobre a análise</MoreLink>
+            </div>
+            <DashboardVisual />
+          </div>
+        </section>
+
+        <section data-surface="warm" className="site-section">
+          <div className="site-wrap grid items-center gap-12 lg:grid-cols-[5fr_7fr] lg:gap-16">
+            <div>
+              <SectionHead title="Responda a todos, mesmo sem estar lá.">
+                As mensagens privadas da sala num só sítio, com o Agente a ajudar e a passar à
+                equipa quando é preciso.
+              </SectionHead>
+              <MoreLink slug="assistente-ia">Saber mais sobre o atendimento</MoreLink>
+            </div>
+            <AssistanceVisual />
+          </div>
+        </section>
+
+        <section id="perguntas" data-surface="base" className="site-section scroll-mt-16">
+          <div className="site-wrap grid gap-10 lg:grid-cols-[5fr_7fr] lg:gap-16">
+            <div>
+              <SectionHead title="Ficou com dúvidas?">
+                As respostas curtas ao que mais nos perguntam.
+              </SectionHead>
+              <Link to="/funcionalidades" className="site-btn site-btn-outline mt-8">
+                Ver funcionalidades
+              </Link>
+            </div>
+            <div className="border-t border-s-line">
+              {questions.map(([question, answer]) => (
+                <details key={question} className="site-faq border-b border-s-line">
+                  <summary className="flex min-h-16 items-center justify-between gap-4 py-4 text-site-body font-medium">
+                    {question}
+                    <ChevronDown
+                      className="site-faq-chevron size-5 flex-none transition-transform duration-[var(--duration-base)]"
+                      strokeWidth={1.5}
+                      aria-hidden="true"
+                    />
+                  </summary>
+                  <p className="max-w-[60ch] pb-5 text-site-body text-s-text-2">{answer}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section data-surface="tint" className="site-section">
+          <div className="site-wrap">
+            <SectionHead title="Comece hoje. A primeira sala fica pronta em minutos." />
+            <div className="mt-8 max-w-[34rem]">
+              <EmailStart id="email-fim" />
+            </div>
+          </div>
+        </section>
       </main>
-
       <SiteFooter />
     </div>
   );

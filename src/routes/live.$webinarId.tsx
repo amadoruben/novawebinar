@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { InternalWebinarRoom } from "@/components/webinar-room-internal";
-import { ROOM_VIEWPORT } from "@/components/webinar-room";
+import { ROOM_VIEWPORT } from "@/lib/room-viewport";
 
 export const Route = createFileRoute("/live/$webinarId")({
   head: () => ({

@@ -11,7 +11,6 @@ import {
   ChevronDown,
   Link2,
   MoreHorizontal,
-  PanelRight,
   PhoneCall,
   Send,
   Smile,
@@ -21,7 +20,6 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { SourceList } from "@/components/ai-agent/agent-panel";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -49,7 +47,6 @@ import {
   type CaseRow,
   type DepartmentRow,
 } from "@/lib/support/model";
-import { customerLabel } from "@/lib/support/context";
 import {
   assumeConversation,
   replyToConversation,
@@ -58,7 +55,7 @@ import {
 } from "@/lib/support/support.functions";
 import { cn } from "@/lib/utils";
 import { clockLabel } from "@/lib/webinar-metrics";
-import { AiAvatar, CaseStatusBadge, hourLabel, PriorityBadge, SlaBadge } from "./badges";
+import { AiAvatar, hourLabel } from "./badges";
 import { CaseActions, TransferMenu, useRunCase } from "./case-tools";
 import { channelName, ExampleTag, PersonPhoto } from "./inbox";
 
@@ -134,7 +131,6 @@ export function ConversationPane({
   photo,
   channel,
   example,
-  chips,
   contactLine,
   status,
   actions,
@@ -156,9 +152,9 @@ export function ConversationPane({
   photo?: string | null | undefined;
   channel: string;
   example?: boolean | undefined;
-  chips?: ReactNode;
+  /** Uma linha por baixo do nome: o webinar e o local. O resto está no contacto. */
   contactLine: string[];
-  status: { tone: "ai" | "wait" | "person"; text: string; extra?: ReactNode };
+  status: { tone: "ai" | "wait" | "person"; text: string };
   actions: ReactNode;
   messages: PaneMessage[];
   notes?: PaneNote[];
@@ -214,10 +210,12 @@ export function ConversationPane({
           >
             <ArrowLeft />
           </Button>
+          {/* A foto e o nome abrem o contacto, como no WhatsApp. */}
           <button
             type="button"
             onClick={onShowContact}
-            className="flex min-w-[10.5rem] flex-1 items-center gap-3 text-left @5xl:pointer-events-none"
+            title="Ver o contacto"
+            className="flex min-w-[10.5rem] flex-1 cursor-pointer items-center gap-3 rounded-lg text-left"
           >
             <PersonPhoto name={name} photo={photo} channel={channel} size={44} />
             <span className="min-w-0">
@@ -230,28 +228,13 @@ export function ConversationPane({
                   </span>
                 )}
               </span>
-              {/* Uma etiqueta mais comprida do que o espaço corta com reticências, não passa por cima dos botões. */}
-              {chips && (
-                <span className="mt-0.5 flex flex-wrap items-center gap-1 [&>*]:block [&>*]:max-w-full [&>*]:truncate">
-                  {chips}
-                </span>
-              )}
               {contactLine.length > 0 && (
-                <span className="mt-0.5 block truncate text-xs text-muted-foreground @5xl:hidden">
+                <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                   {contactLine.join(" · ")}
                 </span>
               )}
             </span>
           </button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="shrink-0 @5xl:hidden"
-            onClick={onShowContact}
-            aria-label="Ver o contacto"
-          >
-            <PanelRight />
-          </Button>
           {/* Com rato, botões de 32px para caberem ao lado do nome; no toque ficam com 36px. */}
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2 pointer-fine:@2xl:[&_button]:h-8 pointer-fine:@2xl:[&_button]:px-3 pointer-fine:@2xl:[&_button]:text-[13px]">
             {actions}
@@ -275,7 +258,6 @@ export function ConversationPane({
             aria-hidden
           />
           <span className="font-medium">{status.text}</span>
-          {status.extra}
         </div>
       </header>
 
@@ -657,8 +639,6 @@ export function ConversationView({
   staff,
   departments,
   myStaffId,
-  intent,
-  hot,
   onBack,
   onShowContact,
 }: {
@@ -668,8 +648,6 @@ export function ConversationView({
   staff: StaffMember[];
   departments: DepartmentRow[];
   myStaffId: string | null;
-  intent: string | null;
-  hot: boolean;
   onBack: () => void;
   onShowContact: () => void;
 }) {
@@ -787,9 +765,6 @@ export function ConversationView({
       ]
     : [];
 
-  const context = detail?.context;
-  const email =
-    participant?.email && !participant.email.endsWith("@sala.local") ? participant.email : null;
   const roomLink = webinar ? `${publicOrigin()}/w/${webinar.slug}` : null;
 
   // Sem caso, transferir é assumir e passar: o caso nasce com quem o passou.
@@ -869,20 +844,13 @@ export function ConversationView({
     </>
   );
 
+  // Só o texto; o caso, o estado, a prioridade e o prazo estão no contacto (foto ou nome).
   const status = currentCase
     ? {
         tone: owner ? ("person" as const) : ("wait" as const),
         text: owner
           ? `Com ${owner.name}`
           : `À espera de uma pessoa${team ? ` · ${team.name}` : ""}`,
-        extra: (
-          <span className="ml-auto flex flex-wrap items-center gap-1.5">
-            <span className="text-muted-foreground">Caso {currentCase.number}</span>
-            <CaseStatusBadge status={currentCase.status} />
-            <PriorityBadge priority={currentCase.priority} />
-            <SlaBadge c={currentCase} />
-          </span>
-        ),
       }
     : conversation.ai_paused || conversation.needs_human
       ? {
@@ -896,23 +864,9 @@ export function ConversationView({
       key={conversation.id}
       name={name}
       channel={conversation.channel}
-      chips={
-        <>
-          {context && (
-            <Badge variant={context.isCustomer ? "success" : "secondary"}>
-              {customerLabel(context)}
-            </Badge>
-          )}
-          {(hot || currentCase?.purchase_intent) && <Badge variant="soft">Alta intenção</Badge>}
-          {intent && !hot && <Badge variant="outline">{intentLabel(intent)}</Badge>}
-        </>
-      }
-      contactLine={[
-        conversation.webinars?.public_title ?? "",
-        detail?.place ?? "",
-        email ?? "",
-        participant?.phone ?? "",
-      ].filter(Boolean)}
+      contactLine={[conversation.webinars?.public_title ?? "", detail?.place ?? ""].filter(
+        Boolean,
+      )}
       status={status}
       actions={actions}
       messages={messages}

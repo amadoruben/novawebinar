@@ -253,7 +253,8 @@ export function BottomNav({
       >
         <Icon className="size-5" strokeWidth={active ? 1.8 : 1.5} />
       </span>
-      {label}
+      {/* Em ecrãs de 320–360px, «Automações» não pode empurrar as vizinhas. */}
+      <span className="max-w-full truncate px-0.5">{label}</span>
     </>
   );
   const itemClass = (active: boolean) =>

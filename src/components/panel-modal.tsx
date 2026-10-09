@@ -24,7 +24,7 @@ export function PanelDialog({
   onClose: () => void;
   /** Menu da esquerda (computador). */
   sidebar: ReactNode;
-  /** As mesmas entradas, em botões que quebram de linha (telemóvel). */
+  /** As mesmas entradas, numa só linha que desliza para o lado (telemóvel). */
   mobileNav: ReactNode;
   /** O nome em cima no telemóvel (por omissão, o título). */
   mobileTitle?: ReactNode;
@@ -33,7 +33,7 @@ export function PanelDialog({
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       {/* O X da base, um pouco maior e com área de toque redonda. */}
-      <DialogContent className="flex h-[calc(100dvh-2rem)] w-[min(1092px,calc(100vw-2rem))] lg:h-[min(590px,calc(100dvh-4rem))] max-w-none gap-0 overflow-hidden bg-background p-0 sm:p-0 [&>button]:top-3 [&>button]:right-3 [&>button]:rounded-full [&>button]:p-1.5 [&>button]:opacity-80 [&>button]:hover:bg-[var(--hover-ghost)] [&>button>svg]:size-5">
+      <DialogContent className="flex h-[calc(100dvh-2rem)] w-[min(1092px,calc(100vw-2rem))] lg:h-[min(590px,calc(100dvh-4rem))] max-w-none gap-0 overflow-hidden bg-background p-0 sm:p-0 [&>button]:top-1.5 [&>button]:right-1.5 [&>button]:z-20 [&>button]:rounded-full [&>button]:p-3 md:[&>button]:top-3 md:[&>button]:right-3 md:[&>button]:p-1.5 [&>button]:opacity-80 [&>button]:hover:bg-[var(--hover-ghost)] [&>button>svg]:size-5">
         <DialogTitle className="sr-only">{title}</DialogTitle>
         <DialogDescription className="sr-only">{description}</DialogDescription>
 
@@ -41,14 +41,14 @@ export function PanelDialog({
           {sidebar}
         </aside>
 
-        <main className="scrollbar-thin min-w-0 flex-1 overflow-y-auto px-5 pt-2 pb-10 md:px-[52px] md:pt-12">
-          {/* Telemóvel: o nome ao lado do X e todas as secções à vista, nada cortado. */}
-          <p className="mb-3 flex min-h-10 items-center pr-10 text-[17px] font-semibold tracking-[-0.02em] text-foreground md:hidden">
+        <main className="scrollbar-thin min-w-0 flex-1 overflow-y-auto px-5 pb-10 md:px-[52px] md:pt-12">
+          {/* Telemóvel: o nome ao lado do X, preso em cima; o resto desliza por baixo dele e não do X. */}
+          <p className="sticky top-0 z-10 -mx-5 mb-3 flex min-h-14 items-center bg-background pt-2 pr-14 pl-5 text-[17px] font-semibold tracking-[-0.02em] text-foreground md:hidden">
             {mobileTitle ?? title}
           </p>
           <nav
             aria-label={title}
-            className="mb-6 flex flex-wrap gap-1.5 md:hidden [&>button]:border [&>button]:border-hairline"
+            className="-mx-5 mb-6 flex gap-1.5 overflow-x-auto px-5 [scrollbar-width:none] md:hidden [&>button]:shrink-0 [&>button]:border [&>button]:border-hairline"
           >
             {mobileNav}
           </nav>

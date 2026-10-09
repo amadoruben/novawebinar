@@ -3,7 +3,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRight, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
-import { Button } from "@/components/ui/button";
 import { landingFeatures } from "@/lib/landing-features";
 
 export const Route = createFileRoute("/funcionalidades/")({
@@ -31,7 +30,7 @@ function FeaturesIndex() {
   };
 
   return (
-    <div className="nova-landing">
+    <div data-site data-surface="base" className="nova-landing">
       <SiteHeader />
       <main className="lp-feature-page">
         <section className="lp-feature-hero">
@@ -40,7 +39,7 @@ function FeaturesIndex() {
             <h1>Tudo o que acontece antes, durante e depois da sessão.</h1>
             <p className="lp-feature-intro">Cada funcionalidade tem uma página própria com a explicação e uma demonstração da interface real do Convertewebinar.</p>
             <div className="lp-hero-actions">
-              <Button variant="dark" size="lg" asChild><Link to="/auth/register">Criar o meu webinar <ArrowRight /></Link></Button>
+              <Link to="/auth/register" className="site-btn site-btn-primary">Criar conta <ArrowRight aria-hidden="true" /></Link>
             </div>
           </div>
         </section>

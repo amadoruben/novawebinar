@@ -192,6 +192,10 @@ export const SOURCE_LABEL: Record<string, string> = {
   import: "Importação",
   integration: "Chegou por uma compra",
   manual: "Adicionado à mão",
+  youtube: "YouTube",
+  whatsapp: "WhatsApp",
+  tiktok: "TikTok",
+  linkedin: "LinkedIn",
 };
 
 export function sourceLabel(source: string | null | undefined) {

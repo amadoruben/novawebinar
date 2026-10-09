@@ -266,7 +266,7 @@ function useNotices() {
         id: `created-${newest.id}`,
         icon: "party",
         title: "Criou o seu primeiro webinar 🎉",
-        body: "Veja as dicas: defina a capa do login, programe o chat e teste a sala antes de partilhar.",
+        body: "Próximos passos: arranje a página de entrada, programe o chat e teste a sala antes de partilhar.",
         to: `/webinars/${newest.id}/edit`,
       });
     }
@@ -361,11 +361,13 @@ export function NotificationsBell({
   quiet = false,
   side = "bottom",
   align = "end",
+  className,
 }: {
-  /** Na barra lateral: botão discreto (sem fundo), menu a abrir para cima. */
+  /** Na barra lateral e na barra de cima do telemóvel: botão discreto, sem fundo. */
   quiet?: boolean;
   side?: "top" | "bottom" | "right";
   align?: "start" | "end";
+  className?: string;
 } = {}) {
   const navigate = useNavigate();
   const notices = useNotices();
@@ -403,6 +405,7 @@ export function NotificationsBell({
           className={cn(
             "relative data-[state=open]:bg-navy data-[state=open]:text-white",
             quiet ? "size-9 text-gray-700 hover:bg-[var(--hover-ghost)]" : "bg-white hover:bg-gray-100",
+            className,
           )}
         >
           <Bell strokeWidth={1.5} />
@@ -425,7 +428,7 @@ export function NotificationsBell({
             </button>
           )}
         </div>
-        <div className="max-h-[420px] overflow-y-auto">
+        <div className="max-h-[min(420px,60dvh)] overflow-y-auto">
           {visible.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
               <Bell className="size-8 text-muted-foreground/50" />
@@ -460,7 +463,7 @@ export function NotificationsBell({
                       role="button"
                       tabIndex={0}
                       aria-label="Dispensar notificação"
-                      className="mt-1 shrink-0 cursor-pointer text-muted-foreground/60 transition-colors hover:text-foreground"
+                      className="relative mt-1 shrink-0 cursor-pointer text-muted-foreground/60 transition-colors after:absolute after:-inset-[15px] after:content-[''] hover:text-foreground"
                       onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();

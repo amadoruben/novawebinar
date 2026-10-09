@@ -1,7 +1,7 @@
 /**
  * Modo exemplo do Atendimento: quatro contactos fictícios para ver como fica.
  * Tudo vive neste ecrã, no browser: nada é lido nem gravado na base de dados,
- * e cada nome leva a etiqueta «Exemplo».
+ * e a faixa «Exemplo» por cima di-lo (no telemóvel, também ao lado do nome na conversa).
  */
 import { Bot, Link2, PhoneCall, UserCheck } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -30,9 +30,7 @@ import {
   ExampleBanner,
   InboxFrame,
   InboxList,
-  WebinarStrip,
   type InboxStep,
-  type WebinarCard,
 } from "./inbox";
 
 /* ---------- Desenhos ---------- */
@@ -57,15 +55,6 @@ function face(bg: string, skin: string, hair: string, style: keyof typeof HAIR, 
       `<path d="${HAIR[style]}" fill="${hair}"/>` +
       `<circle cx="27.5" cy="29" r="1.3" fill="#2a1d17"/><circle cx="36.5" cy="29" r="1.3" fill="#2a1d17"/>` +
       `<path d="M28.5 35c2 1.6 5 1.6 7 0" stroke="#7a3e2c" stroke-width="1.4" fill="none" stroke-linecap="round"/>`,
-  );
-}
-
-/** Capa de um webinar de exemplo: um degradê com um ícone de emissão. */
-function cover(from: string, to: string) {
-  return svg(
-    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient></defs>` +
-      `<rect width="64" height="64" fill="url(#g)"/>` +
-      `<circle cx="32" cy="32" r="5" fill="#fff"/><path d="M22 22a14 14 0 0 0 0 20M42 22a14 14 0 0 1 0 20" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>`,
   );
 }
 
@@ -722,43 +711,6 @@ function buildLeads(now: number): Lead[] {
 
 export const EXAMPLE_AGENT = { active: true, resolved: 18, escalated: 4 };
 
-function exampleStrip(now: number, items: InboxItem[]): WebinarCard[] {
-  const waiting = (id: string) =>
-    items.filter((i) => i.webinarId === id && i.state === "new").length;
-  return [
-    {
-      id: "ex-fd",
-      title: "Fórmula Digital",
-      cover: cover("#FF7A1A", "#C2410C"),
-      state: "live",
-      startMs: now - 55 * 60_000,
-      registered: 1248,
-      online: 312,
-      waiting: waiting("ex-fd"),
-    },
-    {
-      id: "ex-tf",
-      title: "Tráfego Físico",
-      cover: cover("#2563EB", "#1E3A8A"),
-      state: "soon",
-      startMs: now + 2 * 86_400_000,
-      registered: 486,
-      online: 0,
-      waiting: waiting("ex-tf"),
-    },
-    {
-      id: "ex-ma",
-      title: "Mentoria Acelera",
-      cover: cover("#16A34A", "#14532D"),
-      state: "running",
-      startMs: null,
-      registered: 2115,
-      online: 41,
-      waiting: waiting("ex-ma"),
-    },
-  ];
-}
-
 /* ---------- Ecrã ---------- */
 
 export function ExampleInbox({
@@ -835,13 +787,6 @@ export function ExampleInbox({
     <InboxFrame
       step={step}
       banner={<ExampleBanner onExit={onExit} />}
-      top={
-        <WebinarStrip
-          cards={exampleStrip(now, items)}
-          selected={webinarId}
-          onSelect={setWebinarId}
-        />
-      }
       list={
         <InboxList
           items={visible}
@@ -923,11 +868,6 @@ function ExampleConversation({
   onShowContact: () => void;
 }) {
   const { item } = lead;
-  const chips = lead.profile.badges.slice(0, 2).map((b) => (
-    <Badge key={b.label} variant={b.variant}>
-      {b.label}
-    </Badge>
-  ));
   return (
     <ConversationPane
       key={item.id}
@@ -935,30 +875,12 @@ function ExampleConversation({
       photo={item.photo}
       channel={item.channel}
       example
-      chips={chips}
-      contactLine={[
-        item.webinarTitle ?? "",
-        lead.profile.place ?? "",
-        lead.profile.email ?? "",
-      ].filter(Boolean)}
+      contactLine={[item.webinarTitle ?? "", lead.profile.place ?? ""].filter(Boolean)}
       status={
         item.state === "ai"
           ? { tone: "ai", text: "O agente está a responder. Assuma para falar você." }
           : item.state === "new"
-            ? {
-                tone: "wait",
-                text: `À espera de uma pessoa · ${item.teamName ?? "equipa"}`,
-                extra:
-                  item.sla === "breached" ? (
-                    <Badge variant="destructive" className="ml-auto">
-                      Prazo ultrapassado
-                    </Badge>
-                  ) : item.sla === "risk" ? (
-                    <Badge variant="warning" className="ml-auto">
-                      Faltam 4 min
-                    </Badge>
-                  ) : undefined,
-              }
+            ? { tone: "wait", text: `À espera de uma pessoa · ${item.teamName ?? "equipa"}` }
             : { tone: "person", text: `Com ${item.ownerName ?? "a equipa"}` }
       }
       actions={

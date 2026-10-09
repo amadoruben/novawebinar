@@ -14,6 +14,7 @@ import {
 import { useHearts, useLivePresence } from "@/lib/live-presence";
 import { Input } from "@/components/ui/input";
 import { useVideoShape, VideoPlayer } from "@/components/video-player";
+import { LessonTimer } from "@/components/room/lesson-timer";
 import {
   activeOffer,
   checkoutLink,
@@ -28,6 +29,7 @@ import {
   offerDeadlinePassed,
   offerTimer,
   profileHandle,
+  purchaseOnScreen,
   type FollowNetwork,
   type LiveSettings,
   type OfferSlot,
@@ -47,14 +49,19 @@ import {
   PulseDot,
   RoomPartsStyle,
   RoomTitle,
+  SALE_TOAST_SPOT,
   SaleLine,
+  SaleToast,
   SupportNotice,
+  TestControls,
   VideoSettings,
   type Appearance,
+  type CaptionSize,
 } from "@/components/room/room-parts";
 import { useAudienceCount } from "@/components/audience-counter";
 import {
   FollowButton,
+  LIVE_FEED_LINES,
   LIVE_SCRIM,
   LiveBadge,
   LiveComposer,
@@ -78,17 +85,6 @@ import { PreliveCountdown, unlockPreliveAudio } from "@/components/prelive-count
 import { watchedStep } from "@/lib/participant-facts";
 import { chatEcho, placeOf, type ChatPerson } from "@/lib/chat-reactions";
 import type { RoomTeamMessage, TeamRole } from "@/lib/room-team";
-
-/**
- * O viewport das páginas da sala: ocupa o ecrã todo do iPhone (as zonas seguras tratam-se com
- * env(safe-area-inset-*)). O teclado trata-se pela área visível (visualViewport), igual no iPhone
- * e no Android: sem `interactive-widget=resizes-content`, que num telemóvel pequeno com o teclado
- * aberto deixava o ecrã mais largo do que alto e trocava a sala para o desenho deitado.
- */
-export const ROOM_VIEWPORT = {
-  name: "viewport",
-  content: "width=device-width, initial-scale=1, viewport-fit=cover",
-};
 
 /** O que a sala envia com cada sinal de progresso. */
 export type RoomProgressOptions = {
@@ -164,60 +160,6 @@ export type RoomComment = {
   created_at?: string | null;
 };
 
-function purchaseColorClasses(value?: string | null) {
-  switch (value) {
-    case "amber":
-      return {
-        bg: "bg-amber-500/20",
-        text: "text-amber-600",
-        panel: "bg-amber-500/90",
-        ring: "ring-amber-400/60",
-      };
-    case "blue":
-      return {
-        bg: "bg-blue-500/20",
-        text: "text-blue-600",
-        panel: "bg-blue-500/90",
-        ring: "ring-blue-400/60",
-      };
-    case "rose":
-      return {
-        bg: "bg-rose-500/20",
-        text: "text-rose-600",
-        panel: "bg-rose-500/90",
-        ring: "ring-rose-400/60",
-      };
-    case "violet":
-      return {
-        bg: "bg-violet-500/20",
-        text: "text-violet-600",
-        panel: "bg-violet-500/90",
-        ring: "ring-violet-400/60",
-      };
-    case "orange":
-      return {
-        bg: "bg-orange-500/20",
-        text: "text-orange-600",
-        panel: "bg-[#E8440C]/90",
-        ring: "ring-orange-400/60",
-      };
-    case "slate":
-      return {
-        bg: "bg-slate-500/20",
-        text: "text-slate-700",
-        panel: "bg-slate-500/90",
-        ring: "ring-slate-400/60",
-      };
-    default:
-      return {
-        bg: "bg-emerald-500/20",
-        text: "text-emerald-700",
-        panel: "bg-emerald-500/90",
-        ring: "ring-emerald-400/60",
-      };
-  }
-}
-
 /** Se o ecrã responde à media query; acompanha as mudanças (rodar o aparelho, redimensionar). */
 function useMedia(query: string) {
   const [matches, setMatches] = useState(() => typeof window !== "undefined" && window.matchMedia(query).matches);
@@ -271,8 +213,11 @@ export function WebinarRoom({
   live = LIVE_DEFAULTS,
   team = null,
   teamMessages = [],
+  test = false,
 }: {
   webinar: RoomWebinar;
+  /** Sala de teste: quem testa recua, avança e põe em pausa o vídeo. */
+  test?: boolean | undefined;
   /** «live»: vídeo em ecrã inteiro no telemóvel, com o chat por cima; no computador, o vídeo e o chat ao lado. */
   format?: RoomFormat | undefined;
   /** Quem entrou como equipa: os comentários chegam a todos com o selo e não há Suporte. */
@@ -369,6 +314,9 @@ export function WebinarRoom({
   const [volume, setVolume] = useState(1);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [captionsOn, setCaptionsOn] = useState(false);
+  const [captionSize, setCaptionSize] = useState<CaptionSize>("md");
+  // Sala de teste: o vídeo pára só quando quem testa carrega na pausa.
+  const [testPaused, setTestPaused] = useState(false);
   const liveVideoRef = useRef<HTMLVideoElement>(null);
   const joinOffsetRef = useRef<number | null>(null);
   const [preliveEnding, setPreliveEnding] = useState(false);
@@ -395,6 +343,11 @@ export function WebinarRoom({
   const phoneTall = useMedia("(max-width: 767px) and (orientation: portrait)");
   // O botão de entrar pequeno só no telemóvel (ao alto ou deitado); o tablet usa o do computador, como na pré-visualização.
   const phoneSize = useMedia("(max-width: 767px), (max-height: 500px)");
+  // Live com o vídeo deitado num ecrã ao alto (telemóvel, tablet): a sala empilha-se como no YouTube.
+  // Em cima, logo abaixo da zona da câmara, o vídeo a toda a largura com a barra do Live por dentro; por
+  // baixo, o chat e a caixa de escrever, no tema da sala. O vídeo ao alto continua a encher o ecrã.
+  const portrait = useMedia("(orientation: portrait)");
+  const liveStack = liveLayout && !wide && portrait && videoShape !== "vertical";
   // No Live o Suporte, a oferta inteira e as redes abrem numa folha por cima da sala.
   const [sheet, setSheet] = useState<null | "support" | "offer" | "follow">(null);
   const [offerMin, setOfferMin] = useState(false);
@@ -480,15 +433,15 @@ export function WebinarRoom({
     };
   }, []);
 
-  // As barras do navegador ficam com a cor do que está por baixo delas: preto no Live (o palco) e no
-  // telemóvel (em cima está sempre o vídeo, como no YouTube); no computador, o fundo da sala.
+  // A barra de estado (o relógio) e as do navegador seguem o tema da sala: brancas no claro, pretas no
+  // escuro. Só o palco do Live (o vídeo ao alto, ou o computador) as deixa a preto, como o vídeo por baixo.
   useEffect(() => {
     const meta = document.createElement("meta");
     meta.name = "theme-color";
-    meta.content = liveLayout || !wide ? "#000000" : theme === "light" ? "#ffffff" : "#0f0f0f";
+    meta.content = liveLayout && !liveStack ? "#000000" : theme === "light" ? "#ffffff" : "#0f0f0f";
     document.head.appendChild(meta);
     return () => meta.remove();
-  }, [theme, liveLayout, wide]);
+  }, [theme, liveLayout, liveStack]);
 
   const scheduled = mode === "live" && startMs !== null;
   const elapsed = startMs === null ? 0 : (now - startMs) / 1000;
@@ -798,14 +751,12 @@ export function WebinarRoom({
   // única vez — recuar no vídeo não as repete.
   const shownPurchasesRef = useRef<Set<string>>(new Set());
   const purchaseArrivalRef = useRef<Record<string, Date>>({});
+  // A que está no ecrã fica até ao fim do seu tempo (antes saía ao segundo seguinte).
+  const showingPurchaseRef = useRef<string | null>(null);
   const activePurchase = useMemo(() => {
     if (waiting) return null;
-    const slot = proofSchedule.find(
-      (s) =>
-        !shownPurchasesRef.current.has(s.purchase.id) &&
-        contentSeconds >= s.from &&
-        contentSeconds < s.to,
-    );
+    const slot = purchaseOnScreen(proofSchedule, contentSeconds, shownPurchasesRef.current, showingPurchaseRef.current);
+    showingPurchaseRef.current = slot?.purchase.id ?? null;
     if (slot) shownPurchasesRef.current.add(slot.purchase.id);
     return slot?.purchase ?? null;
   }, [proofSchedule, contentSeconds, waiting]);
@@ -824,28 +775,6 @@ export function WebinarRoom({
       );
     }
   }, [proofSchedule, waiting]);
-
-  const proofPosition = (() => {
-    switch (socialProof?.position) {
-      case "bottom-right":
-        return "bottom-4 right-4";
-      case "top-left":
-        return "top-16 left-4";
-      case "top-right":
-        return "top-16 right-4";
-      default:
-        return "bottom-4 left-4";
-    }
-  })();
-
-  const proofAnimation =
-    socialProof?.animation === "fade"
-      ? "animate-in fade-in duration-500"
-      : socialProof?.animation === "pop"
-        ? "animate-in zoom-in-95 fade-in duration-300"
-        : "animate-in slide-in-from-left-4 fade-in duration-400";
-
-  const proofColor = purchaseColorClasses(socialProof?.notification_color);
 
   // Compras reais da Kambafy: chegam no momento em que acontecem (de 20 em 20 segundos).
   const fetchRealPurchases = useServerFn(getPublicRoomPurchases);
@@ -887,22 +816,27 @@ export function WebinarRoom({
     : realActive
       ? { name: realActive.buyer, text: `comprou ${realActive.product || "a vaga"}` }
       : null;
+  // O aviso de compra: no Webinar num ecrã ao alto, por cima do chat, logo acima da caixa de escrever; deitado e
+  // no computador (e no Live empilhado), no canto de baixo do vídeo (`SALE_TOAST_SPOT`, igual na
+  // pré-visualização); no palco do Live, por baixo da barra de cima. A posição antiga gravada
+  // (`socialProof.position`) já não se escolhe no editor e deixou de contar.
+  const toastInChat = !liveLayout && !wide && portrait;
   const purchaseToast = showToasts && toastPurchase ? (
-    <div
-      className={`pointer-events-none absolute z-20 max-w-[min(20rem,80%)] rounded-2xl p-3 shadow-lg ring-1 backdrop-blur ${proofColor.panel} ${proofColor.ring} ${liveLayout ? "left-[max(12px,env(safe-area-inset-left))] top-[calc(env(safe-area-inset-top)+60px)] md:portrait:left-5 md:portrait:top-[calc(env(safe-area-inset-top)+68px)] lg:left-5 lg:top-16" : proofPosition} ${proofAnimation}`}
-    >
-      <div className="flex items-center gap-2.5">
-        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-white/25 text-white">
-          <ShoppingCart className="size-4" />
-        </span>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-white">
-            {toastPurchase.name}{" "}
-            <span className="font-normal text-white/85">{toastPurchase.text}</span>
-          </p>
-        </div>
-      </div>
-    </div>
+    <SaleToast
+      name={toastPurchase.name}
+      text={toastPurchase.text}
+      color={socialProof?.notification_color}
+      compact={phoneSize}
+      className={
+        liveLayout && !liveStack
+          ? "left-[max(12px,env(safe-area-inset-left))] top-[calc(env(safe-area-inset-top)+60px)] md:portrait:left-5 md:portrait:top-[calc(env(safe-area-inset-top)+68px)] lg:left-5 lg:top-16"
+          : toastInChat
+            ? SALE_TOAST_SPOT.chat
+            : phoneSize
+              ? SALE_TOAST_SPOT.phone
+              : SALE_TOAST_SPOT.desk
+      }
+    />
   ) : null;
 
   // O histórico de comentários segue o ponto mais avançado do vídeo: recuar
@@ -1066,15 +1000,18 @@ export function WebinarRoom({
       // Nem ao vivo nem em replay se pode avançar ou recuar a sessão.
       controls={false}
       mediaRef={liveVideoRef}
-      autoPlay={videoArmed}
+      autoPlay={videoArmed && !testPaused}
       muted={!videoArmed || (preliveEnding && !preliveReveal) || !soundOn}
-      startAtSeconds={startAtSeconds}
+      // Um leitor novo (rodar o tablet para o computador) retoma onde a pessoa ia, não no ponto de entrada.
+      startAtSeconds={videoSeconds > 0 ? videoSeconds : startAtSeconds}
       // Numa sessão com hora marcada, o vídeo segue o relógio da sessão: quem
       // sai e volta apanha o momento real em vez de ficar com a imagem presa.
       liveTargetSeconds={scheduled && syncWithStart && !waiting && !finished ? timeline : null}
       theme={theme}
-      className={liveLayout ? "size-full rounded-none" : ""}
-
+      // De ponta a ponta, sem cantos (no tablet e no computador quem corta os cantos é a moldura à volta).
+      className={liveLayout ? "size-full rounded-none" : "rounded-none"}
+      // O iPhone não deixou o som arrancar sozinho: volta o botão de entrar, e o som nasce no toque.
+      onSoundBlocked={() => setSoundOn(false)}
       onEnded={() => {
         setVideoEnded(true);
         flushProgress({ final: true });
@@ -1125,6 +1062,8 @@ export function WebinarRoom({
           onVolume={changeVolume}
           captions={captionsOn}
           onCaptions={setCaptionsOn}
+          captionSize={captionSize}
+          onCaptionSize={setCaptionSize}
           hasCaptions={captions.length > 0}
           appearance={appearance}
           onAppearance={(next) => onAppearance?.(next)}
@@ -1156,6 +1095,22 @@ export function WebinarRoom({
           ? { label: "Ao vivo", tone: "live" as const }
           : { label: "Replay", tone: "replay" as const };
   const viewerCount = !finished && audienceFormat !== "off" ? (prelive ? preliveViewers : viewers) : null;
+
+  // Sala de teste: recuar, avançar e pausar o vídeo próprio (as plataformas embebidas não deixam).
+  const testSeek = (delta: number) => {
+    const video = liveVideoRef.current;
+    if (!video) return;
+    const end = Number.isFinite(video.duration) ? video.duration - 0.5 : Number.POSITIVE_INFINITY;
+    video.currentTime = Math.max(0, Math.min(end, video.currentTime + delta));
+  };
+  const testBar = (className: string) =>
+    test && ownVideo && !needsAudioUnlock && !showPrelive && !waiting && !finished ? (
+      <TestControls seconds={videoSeconds} paused={testPaused} onSeek={testSeek} onToggle={() => setTestPaused((p) => !p)} className={className} />
+    ) : null;
+  // O temporizador da aula, por cima do vídeo, só com a aula a correr (não na entrada nem na contagem).
+  const timerOn = Boolean(videoNode) && !showPrelive && !needsAudioUnlock && !waiting && !finished;
+  const lessonTimer = (spots: { bar?: string; chip?: string }) =>
+    timerOn ? <LessonTimer timer={live.timer} seconds={contentSeconds} compact={phoneSize} {...spots} /> : null;
   const settings =
     videoNode && !showPrelive && !needsAudioUnlock ? (
       <VideoSettings
@@ -1165,6 +1120,8 @@ export function WebinarRoom({
         onVolume={changeVolume}
         captions={captionsOn}
         onCaptions={setCaptionsOn}
+        captionSize={captionSize}
+        onCaptionSize={setCaptionSize}
         hasCaptions={captions.length > 0}
         appearance={appearance}
         onAppearance={(next) => onAppearance?.(next)}
@@ -1179,6 +1136,7 @@ export function WebinarRoom({
         {viewerCount !== null ? <LiveViewers count={viewerCount} /> : null}
       </div>
       {settings ? <div className={cn("pointer-events-auto absolute z-30", cornersInVideo ? "right-3 top-3" : "right-5 top-5")}>{settings}</div> : null}
+      {cornersInVideo ? lessonTimer({ bar: "absolute inset-x-0 bottom-0 z-20", chip: "absolute right-3 top-14 z-20" }) : null}
     </>
   );
 
@@ -1203,8 +1161,10 @@ export function WebinarRoom({
             // Com o telemóvel deitado, o vídeo fica inteiro e ao centro.
             <div
               className={cn(
-                liveBox.box,
+                // Empilhado, a moldura já é o 16:9 do vídeo, no topo da sala.
+                liveStack ? "absolute inset-0" : liveBox.box,
                 !wide &&
+                  !liveStack &&
                   (liveBox.place === "fill"
                     ? "max-lg:landscape:h-full max-lg:landscape:w-[56.25cqh]"
                     : "max-lg:landscape:left-1/2 max-lg:landscape:top-1/2 max-lg:landscape:w-[min(100cqw,177.78cqh)] max-lg:landscape:-translate-x-1/2 max-lg:landscape:-translate-y-1/2"),
@@ -1212,7 +1172,7 @@ export function WebinarRoom({
             >
               {videoNode}
               {/* A legenda e o botão de entrar ficam no próprio vídeo (com o vídeo ao alto, a legenda sobe acima do chat). */}
-              {liveBox.place !== "fill" && !showPrelive && !needsAudioUnlock ? <CaptionLine text={caption} compact={!wide} /> : null}
+              {liveBox.place !== "fill" && !showPrelive && !needsAudioUnlock ? <CaptionLine text={caption} compact={!wide} size={captionSize} raised={liveStack && Boolean(purchaseToast)} /> : null}
               {needsAudioUnlock ? (
                 <div className={cn("absolute inset-0 grid place-items-center", ENTRY_DIM)}>
                   <EntryPlay look={live.entry} kicker={entryKicker} compact={phoneSize} />
@@ -1248,7 +1208,7 @@ export function WebinarRoom({
               template={preliveTemplate}
               appearance={preliveAppearance}
               color={preliveColor}
-              fill={liveLayout}
+              fill={liveLayout && !liveStack}
             />
           </div>
         )}
@@ -1262,11 +1222,11 @@ export function WebinarRoom({
         )}
         {!showPrelive && !needsAudioUnlock ? (
           !liveLayout ? (
-            <CaptionLine text={caption} />
+            <CaptionLine text={caption} compact={phoneSize} size={captionSize} raised={Boolean(purchaseToast) && !toastInChat} />
           ) : liveBox.place === "fill" ? (
             // O vídeo ao alto enche o ecrã e o chat ocupa o fundo: a legenda sobe para o meio.
             <div className="pointer-events-none absolute inset-x-0 top-0 h-[55%]">
-              <CaptionLine text={caption} compact />
+              <CaptionLine text={caption} compact size={captionSize} />
             </div>
           ) : null
         ) : null}
@@ -1288,60 +1248,69 @@ export function WebinarRoom({
     </div>
   );
 
+  // Live empilhado: os ecrãs de estado cabem na faixa 16:9 do vídeo, por baixo da barra do Live (letra e
+  // espaços menores no telemóvel; a oferta já está no cartão por baixo).
+  const strip = liveStack;
   const player = showPrelive ? (
     liveArea
 
   ) : waiting ? (
-    <div className={cn("flex flex-col items-center justify-center gap-5 px-6 text-center", frame)}>
-      <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">
+    <div className={cn("flex flex-col items-center justify-center text-center", frame, strip ? "gap-2 px-4 pb-2 pt-12 md:gap-4 md:pt-16" : "gap-5 px-6")}>
+      <p className={cn("font-bold uppercase tracking-[0.22em] text-primary", strip ? "text-[10px] md:text-[11px]" : "text-[11px]")}>
         A transmissão começa em
       </p>
-      <div className="flex gap-3">
+      <div className={cn("flex", strip ? "gap-2 md:gap-3" : "gap-3")}>
         {countdown.map(([value, label]) => (
           <div
             key={label}
-            className="min-w-20 rounded-2xl bg-room-raised px-4 py-3 ring-1 ring-room-line"
+            className={cn("rounded-2xl bg-room-raised ring-1 ring-room-line", strip ? "min-w-14 px-2.5 py-1.5 md:min-w-20 md:px-4 md:py-3" : "min-w-20 px-4 py-3")}
           >
-            <p className="text-2xl font-black tabular-nums text-room-text">
+            <p className={cn("font-black tabular-nums text-room-text", strip ? "text-lg md:text-2xl" : "text-2xl")}>
               {String(value).padStart(2, "0")}
             </p>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-room-subtle">
+            <p className={cn("font-bold uppercase tracking-widest text-room-subtle", strip ? "text-[9px] md:text-[10px]" : "text-[10px]")}>
               {label}
             </p>
           </div>
         ))}
       </div>
-      <p className="text-sm text-room-subtle">Fique por aqui. Entramos no ar à hora marcada.</p>
+      <p className={cn("text-room-subtle", strip ? "text-[12px] md:text-sm" : "text-sm")}>Fique por aqui. Entramos no ar à hora marcada.</p>
     </div>
   ) : finished && openAfter !== null && !offerClosed ? (
-    <div className={cn("flex flex-col items-center justify-center gap-3 px-6 text-center text-white", frame)}>
-      <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">A aula terminou</p>
-      <h2 className="text-2xl font-extrabold text-white sm:text-3xl">As inscrições continuam abertas</h2>
-      <p className="font-mono text-3xl font-bold tabular-nums text-white sm:text-4xl">
+    <div className={cn("flex flex-col items-center justify-center text-center text-white", frame, strip ? "gap-1 px-4 pb-2 pt-12 md:gap-3 md:pt-16" : "gap-3 px-6")}>
+      <p className={cn("font-bold uppercase tracking-[0.22em] text-primary", strip ? "text-[10px] md:text-[11px]" : "text-[11px]")}>A aula terminou</p>
+      <h2 className={cn("font-extrabold text-white", strip ? "text-[17px] leading-tight md:text-3xl" : "text-2xl sm:text-3xl")}>As inscrições continuam abertas</h2>
+      <p className={cn("font-mono font-bold tabular-nums text-white", strip ? "text-[22px] md:text-4xl" : "text-3xl sm:text-4xl")}>
         {String(Math.floor(openAfter / 3600)).padStart(2, "0")}:{String(Math.floor((openAfter % 3600) / 60)).padStart(2, "0")}:
         {String(openAfter % 60).padStart(2, "0")}
       </p>
-      <p className="max-w-md text-sm text-white/80">Garanta a sua vaga no separador Oferta. Dúvidas? A equipa responde no Suporte.</p>
-      <button
-        type="button"
-        onClick={() => {
-          setTab("offer");
-          setSheet("offer");
-        }}
-        className="mt-1 h-11 rounded-xl bg-primary px-5 text-[15px] font-bold text-primary-foreground transition hover:brightness-110"
-      >
-        Ver a oferta
-      </button>
+      {strip ? (
+        <p className="text-[11.5px] text-white/80 md:text-sm">A oferta está aqui em baixo.</p>
+      ) : (
+        <>
+          <p className="max-w-md text-sm text-white/80">Garanta a sua vaga no separador Oferta. Dúvidas? A equipa responde no Suporte.</p>
+          <button
+            type="button"
+            onClick={() => {
+              setTab("offer");
+              setSheet("offer");
+            }}
+            className="mt-1 h-11 rounded-xl bg-primary px-5 text-[15px] font-bold text-primary-foreground transition hover:brightness-110"
+          >
+            Ver a oferta
+          </button>
+        </>
+      )}
     </div>
   ) : finished ? (
-    <div className={cn("flex flex-col items-center justify-center gap-4 px-6 text-center text-white", frame)}>
-      <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">
+    <div className={cn("flex flex-col items-center justify-center text-center text-white", frame, strip ? "gap-1.5 px-4 pb-2 pt-12 md:gap-4 md:pt-16" : "gap-4 px-6")}>
+      <p className={cn("font-bold uppercase tracking-[0.22em] text-primary", strip ? "text-[10px] md:text-[11px]" : "text-[11px]")}>
         Transmissão terminou
       </p>
-      <h2 className="text-2xl font-extrabold text-white sm:text-3xl">
+      <h2 className={cn("font-extrabold text-white", strip ? "text-[17px] leading-tight md:text-3xl" : "text-2xl sm:text-3xl")}>
         Obrigado por ter estado connosco
       </h2>
-      <p className="max-w-md text-sm text-white/80">
+      <p className={cn("max-w-md text-white/80", strip ? "text-[11.5px] md:text-sm" : "text-sm")}>
         A sessão ao vivo chegou ao fim.{" "}
         {ctaVisible && !offerClosed
           ? liveLayout
@@ -1512,7 +1481,8 @@ export function WebinarRoom({
   // As compras também entram no chat: a última fica à vista (também no chat por cima do vídeo).
   useEffect(() => {
     for (const node of [feedRef.current, liveFeedRef.current]) if (node) node.scrollTop = node.scrollHeight;
-  }, [chatThread.length]);
+    // O aviso de compra no fluxo do chat (Webinar ao alto) encolhe-o: a última mensagem continua à vista.
+  }, [chatThread.length, liveStack, toastInChat && Boolean(toastPurchase)]);
 
 
   // Quem responde no Suporte (nos dois formatos): a equipa de quem apresenta.
@@ -1586,6 +1556,7 @@ export function WebinarRoom({
         compact={inSheet}
         // Na folha (um pop-up), a forma compacta: cabe inteira, com o botão sempre à vista.
         look={inSheet ? "compact" : live.offerLook}
+        colors={live.offerColors}
         stickyBuy={inSheet}
         closed={offerClosed}
         group={isGroupLink(currentOffer.url)}
@@ -1605,8 +1576,8 @@ export function WebinarRoom({
   // som precisa de um toque para ser desbloqueado.
   // No Live do telemóvel fica por baixo da barra de cima (em baixo está o chat); no Webinar do telemóvel,
   // pequeno e encostado ao fundo do vídeo, para não tapar o relógio.
-  const promptAtTop = liveLayout && !wide;
-  const promptSmall = !liveLayout && !wide;
+  const promptAtTop = liveLayout && !wide && !liveStack;
+  const promptSmall = (!liveLayout || liveStack) && !wide;
   const soundPrompt =
     !soundOn && prelive ? (
       <button
@@ -1730,6 +1701,7 @@ export function WebinarRoom({
         closed: offerClosed,
         image: currentOffer.id === "main" ? webinar.cta_image_url : null,
         look: live.offerLook,
+        colors: live.offerColors,
         group: isGroupLink(currentOffer.url),
       }
     : null;
@@ -1791,6 +1763,7 @@ export function WebinarRoom({
       </div>
       {chatPin}
       {tab === "offer" ? offerPanel() : feed}
+      {toastInChat ? purchaseToast : null}
       {phoneOffer}
       {mode === "replay" && tab !== "offer" ? (
         <p className="border-t border-room-line p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-center text-xs text-room-subtle">
@@ -1803,7 +1776,8 @@ export function WebinarRoom({
             value={text}
             onChange={setText}
             onSubmit={() => void sendMessage()}
-            placeholder={tab === "support" ? "Escreva à equipa..." : "Chat..."}
+            placeholder={tab === "support" ? "Escreva à equipa…" : "Escreva no chat…"}
+            compact={phoneSize}
             withReactions={tab === "chat"}
             onHeart={sendHeart}
             reactions={hearts}
@@ -1903,10 +1877,12 @@ export function WebinarRoom({
     const answered = supportThread.filter((m, i) => m.fromTeam || supportThread.slice(i + 1).some((n) => n.fromTeam));
     const liveOffer = cardOffer;
     const offerCardOpen = Boolean(liveOffer) && !offerMin && sheet !== "offer";
+    // O chat no tema da sala (painel do computador, ou por baixo do vídeo empilhado); senão, branco por cima do vídeo.
+    const themed = wide || liveStack;
 
     const pin =
       !currentOffer && webinar.chat_pin_message && !pinDismissed ? (
-        <div className={cn("mt-2 flex items-start gap-2 rounded-xl px-3 py-2", wide ? "bg-room-raised text-room-text" : "bg-black/40 text-white backdrop-blur-md")}>
+        <div className={cn("mt-2 flex items-start gap-2 rounded-xl px-3 py-2", themed ? "bg-room-raised text-room-text" : "bg-black/40 text-white backdrop-blur-md")}>
           <Pin className="mt-0.5 size-3.5 shrink-0" />
           <p className="min-w-0 flex-1 text-[13px] leading-snug">
             <b className="font-[600]">{webinar.chat_pin_title || "Participe no chat!"}</b> {webinar.chat_pin_message}
@@ -1922,28 +1898,31 @@ export function WebinarRoom({
     // vai de margem a margem, com o coração no canto de baixo à direita.
     const lower = (
       <>
-        <div className={cn("contents", !wide && "md:portrait:flex md:portrait:w-[460px] md:portrait:flex-col")}>
+        <div className={cn("contents", !wide && "md:portrait:flex md:portrait:w-[460px] md:portrait:flex-col", liveStack && "md:portrait:min-h-0 md:portrait:flex-1")}>
           <LiveFeed
             feedRef={liveFeedRef}
             items={feedItems}
             onNotice={() => setSheet("support")}
-            panel={wide}
+            panel={themed}
             className={
               wide
                 ? "min-h-0 flex-1 pr-0"
-                : offerCardOpen
-                  ? "max-h-[18cqh] md:portrait:max-h-[22cqh] max-lg:landscape:max-h-none max-lg:landscape:min-h-0 max-lg:landscape:flex-1"
-                  : "max-h-[30cqh] md:portrait:max-h-[28cqh] max-lg:landscape:max-h-none max-lg:landscape:min-h-0 max-lg:landscape:flex-1"
+                : liveStack
+                  ? // Empilhado: o chat enche o espaço entre o vídeo e a caixa de escrever (as novas junto à caixa).
+                    // Só cinco linhas deixavam meio ecrã em branco no telemóvel (visto a 9/10).
+                    "min-h-0 flex-1"
+                  : // Por cima do vídeo, cinco linhas; deitado, a coluna da direita de cima a baixo.
+                    cn(LIVE_FEED_LINES, "max-lg:landscape:max-h-none max-lg:landscape:min-h-0 max-lg:landscape:flex-1")
             }
           />
           {pin}
           {liveOffer && offerCardOpen ? (
-            <LiveOfferCard offer={liveOffer} onBuy={clickCta} onMinimize={() => setOfferMin(true)} onExpand={() => setSheet("offer")} panel={wide} />
+            <LiveOfferCard offer={liveOffer} onBuy={clickCta} onMinimize={() => setOfferMin(true)} onExpand={() => setSheet("offer")} panel={themed} />
           ) : null}
           {liveOffer && !offerCardOpen && sheet !== "offer" ? <LiveOfferSlim offer={liveOffer} onOpen={() => setSheet("offer")} /> : null}
         </div>
         {mode === "replay" ? (
-          <p className="mt-3 text-center text-xs text-white/75">Esta é uma gravação. O chat está fechado.</p>
+          <p className={cn("mt-3 text-center text-xs", themed ? "text-room-subtle" : "text-white/75")}>Esta é uma gravação. O chat está fechado.</p>
         ) : (
           <LiveComposer
             value={text}
@@ -1954,7 +1933,7 @@ export function WebinarRoom({
             support={team ? null : { unread: supportUnread, open: sheet === "support", onClick: () => setSheet(sheet === "support" ? null : "support") }}
             onHeart={sendHeart}
             reactions={hearts}
-            panel={wide}
+            panel={themed}
           />
         )}
       </>
@@ -1999,6 +1978,7 @@ export function WebinarRoom({
               {cornersInVideo ? <div className={cn(liveBox.box, "pointer-events-none z-30 shadow-none")}>{deskCorners}</div> : deskCorners}
               {soundPrompt}
               {purchaseToast}
+              {testBar("absolute bottom-5 left-1/2 -translate-x-1/2")}
             </section>
             <aside className="relative flex h-full w-[400px] shrink-0 flex-col border-l border-room-line bg-room-surface">
               <LivePanelHead title={webinar.public_title} host={host} follow={follow} onHost={openFollow} />
@@ -2011,30 +1991,79 @@ export function WebinarRoom({
       );
     }
 
+    // Telemóvel e tablet: uma só árvore para os dois desenhos, para o leitor nunca mudar de sítio ao rodar o
+    // aparelho (um <video> novo voltava ao ponto de entrada e, no iPhone, ficava sem som).
+    // Empilhado (`liveStack`, vídeo deitado num ecrã ao alto, como no YouTube): a zona da câmara no tema da
+    // sala; o vídeo a toda a largura, sem borda, com a barra do Live por dentro; por baixo, o chat (ocupa o
+    // espaço todo) e a caixa de escrever no fundo, no tema da sala. O vídeo fica escuro nos dois temas
+    // (`prelive-dark`). Palco (vídeo ao alto, ou o telemóvel deitado): o vídeo enche o ecrã e o chat fica
+    // por cima; o vídeo deitado encosta logo abaixo da zona da câmara (`--live-top`).
     return (
       <main
         ref={roomRef}
-        className={cn("live-room-shell live-room-shell--stage room-ambient relative flex h-dvh flex-col overflow-hidden bg-black text-white", theme === "light" && "room-light")}
+        className={cn(
+          "live-room-shell room-ambient relative flex h-dvh flex-col overflow-hidden",
+          liveStack ? "text-room-text" : "live-room-shell--stage bg-black text-white",
+          theme === "light" && "room-light",
+        )}
         style={liveOfferVars(live.offerColor)}
       >
         <RoomPartsStyle />
         <LiveStyle />
-        {/* O vídeo deitado encosta logo abaixo da zona da câmara (`--live-top`); por cima dela, só preto. */}
-        <div className="relative min-h-0 flex-1 overflow-hidden bg-black [--live-top:env(safe-area-inset-top)] [container-type:size]">
-          {player}
-          {shades}
-          {/* O topo fica por dentro do vídeo, encostado às margens (como no Instagram), e por cima do resto: o menu do ⚙ abre aqui. */}
-          <div className="absolute inset-x-3 top-[calc(env(safe-area-inset-top)+10px)] z-30 md:portrait:inset-x-5 md:portrait:top-[calc(env(safe-area-inset-top)+16px)] max-lg:landscape:left-[max(12px,env(safe-area-inset-left))] max-lg:landscape:right-[max(12px,env(safe-area-inset-right))]">
+        {liveStack ? <div className="h-[env(safe-area-inset-top)] shrink-0 bg-room-bg" /> : null}
+        <div
+          className={
+            liveStack
+              ? "relative shrink-0"
+              : "relative min-h-0 flex-1 overflow-hidden bg-black [--live-top:env(safe-area-inset-top)] [container-type:size]"
+          }
+        >
+          <div className={liveStack ? "prelive-dark relative aspect-video w-full overflow-hidden bg-black text-white" : "absolute inset-0"}>
+            {player}
+            {liveStack ? (
+              // Só um véu leve em cima, para o nome se ler sobre qualquer vídeo (sem faixa nem borda).
+              <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-16 bg-[linear-gradient(180deg,rgba(0,0,0,.22),transparent)]" />
+            ) : (
+              shades
+            )}
+            {soundPrompt}
+            {purchaseToast}
+            {liveStack ? lessonTimer({ bar: "absolute inset-x-0 bottom-0 z-20" }) : null}
+          </div>
+          {/* A barra do Live dentro do vídeo, encostada às margens (como no Instagram), por cima de tudo: o menu do ⚙ abre por baixo dela, dentro do ecrã. */}
+          <div
+            className={
+              liveStack
+                ? "absolute inset-x-3 top-2 z-40 md:inset-x-5 md:top-4"
+                : "absolute inset-x-3 top-[calc(env(safe-area-inset-top)+10px)] z-40 md:portrait:inset-x-5 md:portrait:top-[calc(env(safe-area-inset-top)+16px)] max-lg:landscape:left-[max(12px,env(safe-area-inset-left))] max-lg:landscape:right-[max(12px,env(safe-area-inset-right))]"
+            }
+          >
+            {/* O temporizador por baixo da barra, à direita (antes dela, para o menu do ⚙ ficar por cima); sem o
+                vídeo deitado em cima, a barra fina vai ao topo, como nas histórias do Instagram. */}
+            {lessonTimer({ chip: "absolute right-0 top-full mt-2", ...(liveStack ? {} : { bar: "absolute inset-x-0 -top-1.5 rounded-full" }) })}
             <LiveTopBar host={host} follow={follow} onHost={openFollow} status={status} viewers={viewerCount} extra={settings} />
           </div>
-          {soundPrompt}
-          {purchaseToast}
-          {/* Em baixo, o chat. No tablet ao alto, numa coluna à esquerda com a largura de um telemóvel (ver `lower`); deitado, à direita, de cima a baixo (como no YouTube). */}
-          <div className="absolute inset-x-3.5 bottom-[max(10px,env(safe-area-inset-bottom))] z-20 flex flex-col md:portrait:inset-x-5 md:portrait:bottom-[max(20px,env(safe-area-inset-bottom))] max-lg:landscape:left-auto max-lg:landscape:right-[max(14px,env(safe-area-inset-right))] max-lg:landscape:top-16 max-lg:landscape:w-[min(340px,42vw)] max-lg:landscape:justify-end">
-            {lower}
-          </div>
-          {sheets}
+          {liveStack ? null : (
+            <>
+              {/* Sala de teste: à esquerda, por baixo do aviso de compra, longe do ⚙ e da coluna do chat (deitado). */}
+              {testBar("absolute left-3 top-[calc(env(safe-area-inset-top)+124px)] md:portrait:left-5 max-lg:landscape:left-[max(12px,env(safe-area-inset-left))]")}
+              {/* Em baixo, o chat. No tablet ao alto, numa coluna à esquerda com a largura de um telemóvel (ver `lower`); deitado, à direita, de cima a baixo (como no YouTube). */}
+              <div className="absolute inset-x-3.5 bottom-[max(10px,env(safe-area-inset-bottom))] z-20 flex flex-col md:portrait:inset-x-5 md:portrait:bottom-[max(20px,env(safe-area-inset-bottom))] max-lg:landscape:left-auto max-lg:landscape:right-[max(14px,env(safe-area-inset-right))] max-lg:landscape:top-16 max-lg:landscape:w-[min(340px,42vw)] max-lg:landscape:justify-end">
+                {lower}
+              </div>
+              {sheets}
+            </>
+          )}
         </div>
+        {liveStack ? (
+          <>
+            <div className="flex min-h-0 flex-1 flex-col justify-end px-3.5 pb-[max(10px,env(safe-area-inset-bottom))] pt-3 md:px-5 md:pb-[max(20px,env(safe-area-inset-bottom))]">
+              {testBar("mb-2 self-center")}
+              {lower}
+            </div>
+            {sheets}
+          </>
+        ) : null}
         {groupDialog}
       </main>
     );
@@ -2047,8 +2076,8 @@ export function WebinarRoom({
     >
       <RoomPartsStyle />
       <LiveStyle />
-      {/* A zona da câmara do iPhone fica a preto, como no YouTube. */}
-      <div className="h-[env(safe-area-inset-top)] shrink-0 bg-black lg:hidden" />
+      {/* A zona da câmara do iPhone segue o tema da sala: branca no claro, preta no escuro (como no YouTube). */}
+      <div className="h-[env(safe-area-inset-top)] shrink-0 bg-room-bg lg:hidden" />
       <div className="relative mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col md:portrait:gap-4 md:portrait:p-6 max-lg:landscape:flex-row lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-6 lg:p-6">
         {/* Telemóvel deitado (ecrã baixo, `phone-land`): o vídeo inteiro com a altura toda, entre as zonas
             seguras; o chat não o aperta, fica num botão e abre por cima, à direita. Num ecrã deitado mais
@@ -2056,18 +2085,27 @@ export function WebinarRoom({
         <section className="flex min-w-0 shrink-0 flex-col max-lg:landscape:flex-1 max-lg:landscape:justify-center max-lg:landscape:bg-black max-lg:landscape:pl-[env(safe-area-inset-left)] phone-land:items-center phone-land:pr-[env(safe-area-inset-right)] phone-land:[container-type:size]">
           <div
             className={cn(
-              "room-panel relative ring-1 ring-room-line md:portrait:overflow-hidden md:portrait:rounded-2xl phone-land:w-[min(100cqw,177.78cqh)] max-lg:landscape:ring-0 lg:overflow-hidden lg:rounded-2xl",
+              // No telemóvel ao alto o vídeo vai de ponta a ponta, sem borda, como no YouTube.
+              "room-panel relative md:ring-1 md:ring-room-line md:portrait:overflow-hidden md:portrait:rounded-2xl phone-land:w-[min(100cqw,177.78cqh)] max-lg:landscape:ring-0 lg:overflow-hidden lg:rounded-2xl",
               // Teclado aberto num ecrã baixo: o vídeo encolhe (inteiro, ao centro) para a caixa de escrever caber.
               "group-[.live-room-shell--keyboard]/room:mx-auto group-[.live-room-shell--keyboard]/room:w-[min(100%,calc((var(--room-visible-height,100dvh)_-_150px)_*_16_/_9))]",
-              theme === "light" ? "bg-room-surface" : "bg-black shadow-[0_30px_80px_-20px_rgb(0_0_0/0.8)]",
+              theme === "light" ? "bg-room-surface" : "bg-black md:shadow-[0_30px_80px_-20px_rgb(0_0_0/0.8)]",
             )}
           >
             {overlay}
             {player}
+            {lessonTimer({
+              bar: "absolute inset-x-0 bottom-0 z-10",
+              // No canto de cima à direita (deitado, à esquerda do botão do chat; na sala de teste, por baixo dos controlos).
+              chip: cn("absolute right-3 top-3 z-10 phone-land:right-16", test && ownVideo && !phoneSize && "top-14"),
+            })}
             {soundPrompt}
-            {purchaseToast}
+            {toastInChat ? null : purchaseToast}
+            {testBar(phoneSize ? "absolute left-2.5 top-12" : "absolute right-3 top-3")}
           </div>
-          {/* Com o teclado aberto, o título sai: ficam o vídeo, as últimas mensagens e a caixa de escrever. */}
+          {/* Com o teclado aberto, o título sai: ficam o vídeo, as últimas mensagens e a caixa de escrever.
+              O título e quem apresenta podem desligar-se no editor: fica o vídeo e, logo a seguir, o chat. */}
+          {live.header !== false ? (
           <div className="md:portrait:hidden max-lg:landscape:hidden lg:hidden group-[.live-room-shell--keyboard]/room:hidden">
             <RoomTitle
               compact
@@ -2078,7 +2116,8 @@ export function WebinarRoom({
               onHost={openFollow}
             />
           </div>
-          <div className="hidden px-1 md:portrait:block lg:block">
+          ) : null}
+          <div className={cn("hidden px-1", live.header !== false && "md:portrait:block lg:block")}>
             <RoomTitle
               kicker={
                 waiting ? "Sessão agendada" : finished ? "Sessão terminada" : mode === "live" ? "Sessão ao vivo" : "Sessão em replay"

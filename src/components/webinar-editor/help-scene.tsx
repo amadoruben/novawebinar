@@ -55,6 +55,7 @@ const SCENES: Record<HelpTopic, Spot> = {
   aparencia: "theme",
   corBotao: "color",
   contagem: "waiting",
+  temporizador: "video",
   seguir: "follow",
   seguirMomentos: "follow",
   chat: "chat",
@@ -95,7 +96,7 @@ const SCENES: Record<HelpTopic, Spot> = {
 const WHERE: Record<Spot, [LucideIcon, string, string]> = {
   title: [LayoutTemplate, "Página de entrada", "No topo da página de entrada e da sala."],
   form: [LayoutTemplate, "Página de entrada", "Os campos que a pessoa preenche para entrar."],
-  button: [LayoutTemplate, "Página de entrada", "O botão e a barra de vagas."],
+  button: [LayoutTemplate, "Página de entrada", "O botão e o aviso no topo."],
   card: [LayoutTemplate, "Página de entrada", "O cartão e o botão da página."],
   video: [MonitorPlay, "Sala", "O vídeo, igual para todos."],
   format: [MonitorPlay, "Sala", "Webinar: chat ao lado · Live: chat por cima."],
@@ -157,11 +158,11 @@ function Entry({ spot }: { spot: Spot }) {
     <Hi on={spot === "card"} className="w-[248px] rounded-[14px]">
       <div className="grid gap-2.5 rounded-[14px] bg-[#141414] p-4 text-white shadow-[0_18px_40px_-18px_rgba(0,0,0,.6)]">
         {spot === "button" ? (
-          <Hi on className="rounded-full">
-            <span className="relative block h-5 overflow-hidden rounded-full bg-white/10">
+          <Hi on className="mb-1 grid gap-1 rounded-md p-0.5">
+            <span className="relative block h-1 overflow-hidden rounded-full bg-white/15">
               <span className="absolute inset-y-0 left-0 w-[87%] rounded-full" style={{ background: ORANGE }} />
-              <span className="absolute inset-0 grid place-items-center text-[9.5px] font-bold">87% das vagas preenchidas</span>
             </span>
+            <span className="text-[9.5px] font-semibold text-white/70">87% das vagas preenchidas</span>
           </Hi>
         ) : null}
         <Hi on={spot === "title"} className="p-0.5">

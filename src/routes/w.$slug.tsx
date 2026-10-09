@@ -8,11 +8,12 @@ import { leadSource } from "@/lib/contacts";
 import { loadPixels, trackPixels } from "@/lib/pixels";
 import { retry } from "@/lib/utils";
 import { DEFAULT_PHONE_COUNTRY, phoneCountryForIso, type PhoneCountry } from "@/lib/phone-countries";
-import { ROOM_VIEWPORT, WebinarRoom, type RoomProgressOptions } from "@/components/webinar-room";
+import { WebinarRoom, type RoomProgressOptions } from "@/components/webinar-room";
+import { ROOM_VIEWPORT } from "@/lib/room-viewport";
 import { RoomSkeleton, getCachedRoomTheme, cacheRoomTheme } from "@/components/room-skeleton";
 import { EntryScreen, entryLiveLabel, isDirectVideo, resolveTheme } from "@/components/room/entry-screen";
 import type { Appearance } from "@/components/room/room-parts";
-import { parseEntryFields, validateEntry } from "@/lib/entry-fields";
+import { entryNotice, parseEntryFields, validateEntry } from "@/lib/entry-fields";
 import { offerDeadlinePassed, parseExtraOffers, roomCountdown } from "@/lib/room-logic";
 import { useRoomTeam, type TeamRole } from "@/lib/room-team";
 import { checkTeamRoomToken, getTeamRoomToken } from "@/lib/room-team.functions";
@@ -668,7 +669,7 @@ export function PublicRoom({
             : null
         }
         buttonText={webinar.registration_button_text || "Entrar na sala"}
-        progress={webinar.registration_progress_enabled ? webinar.registration_progress_value : null}
+        notice={entryNotice(webinar)}
         fields={fields}
         values={values}
         onChange={setValues}
@@ -726,6 +727,7 @@ export function PublicRoom({
       organizationId={asTeam ? null : webinar.organization_id}
       team={asTeam}
       teamMessages={teamChat.messages}
+      test={testMode}
       comments={comments}
       audienceMode={audience.mode}
       curve={audience.curve}

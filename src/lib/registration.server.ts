@@ -6,7 +6,8 @@
  */
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { leadSource } from "@/lib/contacts";
-import { originAllowed, parseRegistration, RateLimiter, type RegistrationError } from "@/lib/registration";
+import { fieldApiKey, parseEntryFields, validateEntry } from "@/lib/entry-fields";
+import { normalizeName, normalizePhone, originAllowed, parseRegistration, RateLimiter, type RegistrationError } from "@/lib/registration";
 
 export const WEBINAR_REGISTRATION_COLUMNS =
   "id, organization_id, status, slug, public_title, internal_name, webhook_url, webhook_enabled, schedule_mode, scheduled_at, session_end_time, recurrence_enabled, recurrence_pattern, recurrence_weekday, recurrence_start_time, recurrence_end_time, recurrence_days, recurrence_times, jit_interval_minutes, jit_skip_night, timezone, duration_seconds, entry_fields, registration_collect_phone, registration_require_phone, video_sources(duration_seconds)";
@@ -202,7 +203,8 @@ const IDS = "id, contact_id, webinar_session_id";
  * Inscrição vinda de fora. A organização sai do formulário (form_id) ou do webinar
  * (webinar_id, para quem integra pela API sem formulário), nunca do pedido.
  * Ordem: validar → formulário activo e origem → ritmo por visitante → armadilha →
- * consentimento → webinar publicado → ritmo por alvo → mesma submissão (idempotência) ou mesma pessoa na mesma sessão
+ * consentimento → webinar publicado → campos do webinar (as regras da sala) → ritmo por alvo →
+ * mesma submissão (idempotência) ou mesma pessoa na mesma sessão
  * (devolve a inscrição que já existe) → inscrição (contacto e evento canónico
  * webinar_registered nascem na base de dados).
  *
@@ -256,12 +258,26 @@ export async function registerFromCapture(
   if (v.website?.trim()) return { status: 200, body: { ok: true, status: "registered" }, allowOrigin };
   if (form?.consent_text && !v.consent)
     return fail({ status: 400, code: "invalid", message: "Dados inválidos.", fields: { consent: "É preciso aceitar para se inscrever." } }, allowOrigin);
-  if (form?.require_phone && !v.phone)
-    return fail({ status: 400, code: "invalid", message: "Dados inválidos.", fields: { phone: "Indique o WhatsApp." } }, allowOrigin);
 
   const webinar = await loadRegistrationWebinar(webinarId).catch(() => null);
   if (!webinar || (form && webinar.organization_id !== form.organization_id) || webinar.status === "draft")
     return fail({ status: 404, code: "webinar_unavailable", message: "Este webinar não está disponível." }, allowOrigin);
+
+  // Os campos da página (etapa Página do editor), com as regras da sala: uma só fonte para a sala, o formulário embed e a API.
+  const fields = parseEntryFields(webinar.entry_fields, {
+    collectPhone: webinar.registration_collect_phone,
+    requirePhone: webinar.registration_require_phone,
+  });
+  const entry = validateEntry(fields, { ...(v.answers ?? {}), name: v.name ?? "", email: v.email ?? "", whatsapp: v.phone ?? "" });
+  const invalid = (key: string, message: string) =>
+    fail({ status: 400, code: "invalid", message, fields: { [key]: message } }, allowOrigin);
+  if (!entry.ok) {
+    const field = fields.find((f) => f.id === entry.field);
+    return invalid(field ? fieldApiKey(field) : entry.field, entry.message);
+  }
+  const phone = normalizePhone(entry.phone);
+  if (entry.phone && !phone) return invalid("phone", "Indique um número de WhatsApp válido.");
+  const person = { name: normalizeName(entry.name), email: entry.email, phone, answers: entry.answers };
   // Por alvo, só depois de o formulário ou o webinar existirem: ids inventados não ocupam o limitador.
   if (!perTarget.allow(form?.id ?? webinar.id)) return rateLimited();
 
@@ -310,14 +326,12 @@ export async function registerFromCapture(
 
   const sessionId = await openRegistrationSession(webinar, "live");
   // A mesma pessoa na mesma sessão: uma inscrição (e o mesmo contacto, pela base de dados).
-  // A origem da primeira inscrição fica: nada é sobrescrito. Só o email coincide e qualquer
-  // pessoa o pode escrever: a resposta confirma sem devolver os ids da inscrição que já existe.
-  let existing = supabaseAdmin
-    .from("participants")
-    .select(IDS)
-    .eq("webinar_id", webinar.id)
-    .ilike("email", v.email.replace(/[\\%_]/g, (c) => `\\${c}`))
-    .limit(1);
+  // A origem da primeira inscrição fica: nada é sobrescrito. Só o email (ou, sem ele, o WhatsApp)
+  // coincide e qualquer pessoa o pode escrever: a resposta confirma sem devolver os ids da inscrição que já existe.
+  let existing = supabaseAdmin.from("participants").select(IDS).eq("webinar_id", webinar.id).limit(1);
+  existing = person.email
+    ? existing.ilike("email", person.email.replace(/[\\%_]/g, (c) => `\\${c}`))
+    : existing.eq("phone", person.phone!);
   existing = sessionId ? existing.eq("webinar_session_id", sessionId) : existing.is("webinar_session_id", null);
   const { data: already } = await existing;
   if (already?.[0]) return done("already_registered", already[0], false);
@@ -353,9 +367,7 @@ export async function registerFromCapture(
   const { participant, error } = await createRegistration(
     webinar,
     {
-      name: v.name,
-      email: v.email,
-      phone: v.phone,
+      ...person,
       mode: "live",
       device: v.device ?? meta.device,
       city: meta.city,

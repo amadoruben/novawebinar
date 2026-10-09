@@ -26,7 +26,7 @@ import { formatBytes, type VideoUploadProgress } from "@/lib/video-upload";
 import type { Appearance } from "@/components/room/room-parts";
 import { ROOM_FORMATS, type LiveSettings, type RoomFormat } from "@/lib/room-logic";
 import { RoomOptions } from "../room-options";
-import { CountPill, Note, Section, TimeChip } from "../ui";
+import { CountPill, Note, Section, SwitchRow, TimeChip } from "../ui";
 
 export type VideoSourceLite = {
   id: string;
@@ -192,6 +192,18 @@ export function StepVideo({
             );
           })}
         </div>
+        {/* Webinar: o bloco de cima (título, «Sessão ao vivo», quem apresenta) é opcional. No Live, o nome
+            de quem apresenta já está na barra por cima do vídeo. */}
+        {format === "webinar" ? (
+          <div className="rounded-xl border bg-white p-3">
+            <SwitchRow
+              title="Título e apresentador"
+              description={live.header ? "Por baixo do vídeo, antes do chat." : "Só o vídeo, o chat, o Suporte e a oferta."}
+              checked={live.header}
+              onChange={(header) => onLive({ header })}
+            />
+          </div>
+        ) : null}
       </Section>
       <RoomOptions live={live} onLive={onLive} appearance={appearance} onAppearance={onAppearance} clock={c} transcript={transcript} />
 
@@ -303,7 +315,7 @@ export const FORMAT_THUMB: Record<RoomFormat, () => ReactNode> = {
           <ThumbLine w={45} tone="bg-white/75" />
           <span className="flex items-center gap-[2px]">
             <i className="block h-[6px] flex-1 rounded-full ring-1 ring-white/60" />
-            <Heart className="size-[7px] shrink-0 fill-[#FF3B5C] text-[#FF3B5C]" />
+            <Heart className="size-[7px] shrink-0 fill-[#FF4233] text-[#FF4233]" />
           </span>
         </span>
       </span>

@@ -15,6 +15,7 @@ export function WaitingScreen({
   style,
   color,
   onZero,
+  highlight,
 }: {
   title: string;
   /** A hora da sessão. */
@@ -26,6 +27,8 @@ export function WaitingScreen({
   style: string;
   color: string;
   onZero: () => void;
+  /** No editor: realça a data enquanto se escolhe na Agenda. */
+  highlight?: boolean | undefined;
 }) {
   const [now, setNow] = useState(() => Date.now());
   // O anel e a barra enchem desde que a pessoa chegou.
@@ -46,7 +49,17 @@ export function WaitingScreen({
     <main className={`room-ambient flex min-h-dvh items-center justify-center px-4 py-10 ${themeClass ?? ""}`}>
       <div className="w-full max-w-2xl text-center text-room-text">
         <h1 className="text-2xl font-black leading-tight sm:text-3xl">{title}</h1>
-        <p className="mt-2 text-sm text-room-subtle">Começa {formatSessionStart(startMs, timezone)}</p>
+        <p className="mt-2 text-sm text-room-subtle">
+          <span
+            className={
+              highlight
+                ? "rounded-sm outline outline-2 outline-offset-4 outline-[#E8440C]"
+                : undefined
+            }
+          >
+            Começa {formatSessionStart(startMs, timezone)}
+          </span>
+        </p>
         <div className="mt-6 overflow-hidden rounded-2xl shadow-2xl ring-1 ring-room-line">
           <PreliveCountdown
             remaining={remaining}

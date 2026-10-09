@@ -1,9 +1,41 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, ChevronDown, Menu, X } from "lucide-react";
-import wordmarkAsset from "@/assets/brand/convertewebinar-logo.svg";
-import { Button } from "@/components/ui/button";
+import { ChevronDown, Menu, X } from "lucide-react";
 import { landingFeatures } from "@/lib/landing-features";
+
+/** O símbolo no contentor laranja com o nome, sem pedidos (SVG em linha). */
+export function BrandMark({
+  className = "",
+  compact = false,
+}: {
+  className?: string;
+  compact?: boolean;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-2.5 text-[1.125rem] font-semibold tracking-[-0.02em] ${className}`}
+    >
+      <svg viewBox="0 0 100 100" width="32" height="32" aria-hidden="true" className="flex-none">
+        <rect width="100" height="100" rx="24" fill="#E8440C" />
+        <path
+          d="M68.4 31.6a26 26 0 1 0 0 36.8"
+          fill="none"
+          stroke="#fff"
+          strokeWidth="11"
+          strokeLinecap="round"
+        />
+        <path d="M46 40.5v19l15-9.5z" fill="#fff" />
+      </svg>
+      {/* No telemóvel o cabeçalho mostra só o símbolo (o link tem o nome no aria-label). */}
+      <span className={compact ? "max-sm:sr-only" : ""}>Convertewebinar</span>
+    </span>
+  );
+}
+
+const sectionLinks = [
+  { href: "/#automacoes", label: "Automações" },
+  { href: "/#perguntas", label: "Perguntas" },
+];
 
 export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -11,12 +43,14 @@ export function SiteHeader() {
   const featuresRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!featuresOpen) return;
+    if (!featuresOpen && !menuOpen) return;
     const onPointer = (event: MouseEvent) => {
       if (!featuresRef.current?.contains(event.target as Node)) setFeaturesOpen(false);
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFeaturesOpen(false);
+      if (event.key !== "Escape") return;
+      setFeaturesOpen(false);
+      setMenuOpen(false);
     };
     document.addEventListener("mousedown", onPointer);
     document.addEventListener("keydown", onKey);
@@ -24,80 +58,126 @@ export function SiteHeader() {
       document.removeEventListener("mousedown", onPointer);
       document.removeEventListener("keydown", onKey);
     };
-  }, [featuresOpen]);
+  }, [featuresOpen, menuOpen]);
+
+  const close = () => setMenuOpen(false);
 
   return (
-    <header className="lp-header">
-      <div className="lp-nav-wrap">
-        <Link to="/" aria-label="Convertewebinar" className="lp-logo-link"><img src={wordmarkAsset} alt="Convertewebinar" /></Link>
+    <header data-site data-surface="base" className="site-header sticky top-0 z-50">
+      <div className="site-wrap flex h-16 items-center gap-4 lg:gap-8">
+        <Link to="/" aria-label="Convertewebinar, início" className="rounded-md">
+          <BrandMark compact />
+        </Link>
 
-        <nav className="lp-desktop-nav" aria-label="Navegação principal">
-          <div className="lp-nav-menu" ref={featuresRef} onMouseLeave={() => setFeaturesOpen(false)}>
+        <nav
+          aria-label="Navegação principal"
+          className="hidden items-center gap-7 text-[15px] font-medium lg:flex"
+        >
+          <div className="relative" ref={featuresRef} onMouseLeave={() => setFeaturesOpen(false)}>
             <button
               type="button"
-              className="lp-nav-trigger"
+              className="inline-flex h-10 items-center gap-1 rounded-md hover:text-s-text-2"
               aria-expanded={featuresOpen}
-              onClick={() => setFeaturesOpen(true)}
+              onClick={() => setFeaturesOpen((open) => !open)}
               onMouseEnter={() => setFeaturesOpen(true)}
             >
-              Funcionalidades <ChevronDown />
+              Funcionalidades{" "}
+              <ChevronDown className="size-4" strokeWidth={1.75} aria-hidden="true" />
             </button>
             {featuresOpen && (
-              <div className="lp-nav-panel" role="menu">
+              <div className="absolute left-0 top-full grid w-[34rem] grid-cols-2 gap-1 rounded-[var(--radius-card-site)] bg-white p-3 shadow-[var(--shadow-pop)]">
                 {landingFeatures.map((feature) => (
                   <Link
                     key={feature.slug}
                     to="/funcionalidades/$slug"
                     params={{ slug: feature.slug }}
-                    role="menuitem"
+                    className="grid gap-0.5 rounded-lg p-3 hover:bg-s-card"
                     onClick={() => setFeaturesOpen(false)}
                   >
-                    <strong>{feature.menuTitle}</strong>
-                    <span>{feature.menuCopy}</span>
+                    <strong className="text-[15px] font-medium">{feature.menuTitle}</strong>
+                    <span className="text-site-meta font-normal text-s-text-2">
+                      {feature.menuCopy}
+                    </span>
                   </Link>
                 ))}
-                <Link to="/funcionalidades" className="lp-nav-panel-all" onClick={() => setFeaturesOpen(false)}>
+                <Link
+                  to="/funcionalidades"
+                  className="col-span-2 mt-1 rounded-lg border-t border-s-line p-3 text-site-small"
+                  onClick={() => setFeaturesOpen(false)}
+                >
                   Ver todas as funcionalidades
                 </Link>
               </div>
             )}
           </div>
-          <Link to="/funcionalidades">Plataforma</Link>
-          <Link to="/funcionalidades/$slug" params={{ slug: "analise" }}>Análise</Link>
+          {sectionLinks.map((link) => (
+            <a key={link.href} href={link.href} className="rounded-md hover:text-s-text-2">
+              {link.label}
+            </a>
+          ))}
         </nav>
 
-        <div className="lp-desktop-actions">
-          <Link to="/auth/login">Entrar</Link>
-          <Button variant="dark" asChild><Link to="/auth/register">Começar agora</Link></Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Link to="/auth/login" className="site-btn site-btn-sm site-btn-outline max-sm:hidden">
+            Entrar
+          </Link>
+          <Link to="/auth/register" className="site-btn site-btn-sm site-btn-primary">
+            Criar conta
+          </Link>
+          <button
+            type="button"
+            className="grid size-11 place-items-center rounded-full lg:hidden"
+            aria-label={menuOpen ? "Fechar menu" : "Abrir menu"}
+            aria-expanded={menuOpen}
+            aria-controls="site-menu"
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            {menuOpen ? (
+              <X className="size-5" strokeWidth={1.5} />
+            ) : (
+              <Menu className="size-5" strokeWidth={1.5} />
+            )}
+          </button>
         </div>
-
-        <Button variant="ghost" size="icon" className="lp-menu-button" aria-label={menuOpen ? "Fechar menu" : "Abrir menu"} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
-          {menuOpen ? <X /> : <Menu />}
-        </Button>
       </div>
 
       {menuOpen && (
-        <nav className="lp-mobile-nav" aria-label="Navegação móvel">
-          <div className="lp-mobile-nav-links">
-            <Link to="/funcionalidades" className="lp-mobile-nav-all" style={{ animationDelay: "40ms" }} onClick={() => setMenuOpen(false)}>
-              Todas as funcionalidades <ArrowRight />
-            </Link>
-            {landingFeatures.map((feature, index) => (
+        <nav
+          id="site-menu"
+          aria-label="Menu"
+          className="fixed inset-x-0 bottom-0 top-16 overflow-y-auto bg-white lg:hidden"
+        >
+          <div className="site-wrap flex min-h-full flex-col py-4">
+            {landingFeatures.map((feature) => (
               <Link
                 key={feature.slug}
                 to="/funcionalidades/$slug"
                 params={{ slug: feature.slug }}
-                style={{ animationDelay: `${90 + index * 55}ms` }}
-                onClick={() => setMenuOpen(false)}
+                className="grid gap-0.5 border-b border-s-line py-3.5"
+                onClick={close}
               >
-                <strong>{feature.menuTitle}</strong>
-                <span>{feature.menuCopy}</span>
+                <strong className="text-site-body font-medium">{feature.menuTitle}</strong>
+                <span className="text-site-meta text-s-text-2">{feature.menuCopy}</span>
               </Link>
             ))}
-          </div>
-          <div className="lp-mobile-nav-actions" style={{ animationDelay: `${140 + landingFeatures.length * 55}ms` }}>
-            <Link to="/auth/login" onClick={() => setMenuOpen(false)}>Entrar</Link>
-            <Button variant="dark" asChild><Link to="/auth/register" onClick={() => setMenuOpen(false)}>Começar agora <ArrowRight /></Link></Button>
+            {sectionLinks.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                className="border-b border-s-line py-3.5 text-site-body font-medium"
+                onClick={close}
+              >
+                {link.label}
+              </a>
+            ))}
+            <div className="mt-auto grid gap-2 pt-6">
+              <Link to="/auth/login" className="site-btn site-btn-outline" onClick={close}>
+                Entrar
+              </Link>
+              <Link to="/auth/register" className="site-btn site-btn-primary" onClick={close}>
+                Criar conta
+              </Link>
+            </div>
           </div>
         </nav>
       )}

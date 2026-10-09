@@ -1,34 +1,43 @@
 /**
  * Créditos num pop-up, na mesma moldura das Integrações (#creditos/secção): quanto há,
- * carregar, histórico e como se calcula. Abre-se pelo menu em qualquer página.
+ * onde se gasta e quanto custa, o plano, carregar e histórico. Abre-se pelo menu em
+ * qualquer página. As colunas seguem a largura do conteúdo (@container), não a do ecrã.
  */
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
-  ArrowDownRight,
+  ArrowDownLeft,
   ArrowUpRight,
-  CalendarSync,
+  AudioLines,
+  BellRing,
   Check,
-  CircleHelp,
   CirclePlus,
   Clock,
   CreditCard,
   ExternalLink,
   Gauge,
+  Gift,
   History,
+  Hourglass,
+  Image as ImageIcon,
   Landmark,
+  Layers,
+  ListChecks,
   Mail,
   MessageCircle,
+  MessageSquareText,
+  MessagesSquare,
+  Receipt,
+  ScanSearch,
   ShieldCheck,
   Smartphone,
-  Sparkles,
-  TrendingUp,
   WalletMinimal,
   type LucideIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
+import { NavTabs } from "@/components/ds/navigation";
 import {
   PaneHeader,
   PanelDialog,
@@ -47,12 +56,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import {
   ACTION_LABEL,
+  ACTION_UNIT,
   ALWAYS_FREE,
   formatUsd,
   KIND_LABEL,
+  LEDGER_LIMIT,
+  ledgerCutInMonth,
   MICROS_PER_USD,
+  monthStartUtc,
+  PLANS,
+  planLabel,
+  runwayDays,
+  spendByAction,
   type BilledAction,
   type CreditState,
+  type PublicPrices,
 } from "@/lib/credits";
 import { getAiPricing } from "@/lib/credits.functions";
 import { whatsappLink } from "@/lib/contacts";
@@ -74,11 +92,25 @@ const SECTIONS = [
     id: "resumo",
     label: "Resumo",
     icon: WalletMinimal,
-    subtitle: "Paga só o que a IA gasta, em dólares.",
+    subtitle: "Quanto tem, quanto gastou e o que rendeu este mês.",
+  },
+  {
+    id: "consumo",
+    label: "Consumo",
+    title: "Consumo e preços",
+    icon: Receipt,
+    subtitle: "Onde se gasta cada crédito e quanto custa.",
+  },
+  {
+    id: "plano",
+    label: "Plano",
+    icon: Layers,
+    subtitle: "Os créditos que o plano inclui todos os meses.",
   },
   {
     id: "carregar",
-    label: "Carregar créditos",
+    label: "Carregar",
+    title: "Carregar créditos",
     icon: CirclePlus,
     subtitle: "Pague na Kambafy. Os créditos carregados nunca expiram.",
   },
@@ -86,13 +118,7 @@ const SECTIONS = [
     id: "historico",
     label: "Histórico",
     icon: History,
-    subtitle: "Cada carregamento e cada gasto.",
-  },
-  {
-    id: "como",
-    label: "Como funciona",
-    icon: CircleHelp,
-    subtitle: "O que gasta créditos e o que é grátis.",
+    subtitle: "Cada entrada e cada gasto, do mais recente.",
   },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
@@ -109,14 +135,29 @@ type Meta = {
 };
 
 /**
- * Para onde vai o pedido de créditos enquanto não há pacotes à venda. Sem nenhum dos
- * dois, o carregamento aparece como «em breve» em vez de um botão sem saída.
+ * Para onde vai o pedido de créditos (ou de outro plano) enquanto não há pagamento
+ * ligado. Sem nenhum, aparece «por ligar» em vez de um botão sem saída.
+ * `plansUrl` é a ligação de pagamento dos planos, para ligar depois (VITE_PLANS_URL).
  */
 const SUPPORT = {
   whatsapp: (import.meta.env["VITE_SUPPORT_WHATSAPP"] as string | undefined)?.trim() ?? "",
   email: (import.meta.env["VITE_SUPPORT_EMAIL"] as string | undefined)?.trim() ?? "",
+  plansUrl: (import.meta.env["VITE_PLANS_URL"] as string | undefined)?.trim() ?? "",
 };
-type Support = typeof SUPPORT;
+type Support = { whatsapp: string; email: string; plansUrl?: string };
+
+/** Ícones de traço fino, sem «cara de IA»: o que a acção faz. */
+const ACTION_ICON: Record<BilledAction, LucideIcon> = {
+  agent_reply: MessagesSquare,
+  chat_generation: MessageSquareText,
+  webinar_analysis: ScanSearch,
+  agent_content: ListChecks,
+  sale_notifications: BellRing,
+  image: ImageIcon,
+  transcription: AudioLines,
+};
+const actionIcon = (action: string) => ACTION_ICON[action as BilledAction] ?? Receipt;
+const actionLabel = (action: string) => ACTION_LABEL[action as BilledAction] ?? action;
 
 /** Aberto pelo endereço (#creditos/secção): o X fecha-o. */
 export default function CreditsRouteModal() {
@@ -147,6 +188,7 @@ export default function CreditsRouteModal() {
         revenue={revenue}
         products={products.isLoading ? undefined : (products.data ?? [])}
         margin={pricing?.margin}
+        prices={pricing}
         onProfile={() => setSettings("perfil")}
       />
       {settings && (
@@ -171,8 +213,10 @@ export function CreditsDialog({
   revenue,
   products,
   margin,
+  prices,
   onProfile,
   support = SUPPORT,
+  now = Date.now(),
 }: {
   section: string | undefined;
   onSection: (id: SectionId) => void;
@@ -184,13 +228,15 @@ export function CreditsDialog({
   /** undefined enquanto carrega. */
   products: Product[] | undefined;
   margin: number | undefined;
+  /** Preços ao cliente; undefined enquanto carrega. */
+  prices?: PublicPrices | undefined;
   onProfile: () => void;
-  /** Contacto para pedir créditos sem pacotes (a página de verificação passa um). */
+  /** Contactos e ligação de pagamento (a página de verificação passa os seus). */
   support?: Support;
+  now?: number;
 }) {
   // Pagar na Kambafy, pedir à equipa (sem pacotes) ou ainda nada; a carregar conta como pagar.
-  const topUp =
-    products?.length !== 0 ? "pay" : support.whatsapp || support.email ? "ask" : "soon";
+  const topUp = products?.length !== 0 ? "pay" : support.whatsapp || support.email ? "ask" : "soon";
   const current = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
   const nav = (s: (typeof SECTIONS)[number]) => (
     <PanelNavButton
@@ -201,34 +247,59 @@ export function CreditsDialog({
       onClick={() => onSection(s.id)}
     />
   );
+  const loading = <Skeleton className="h-64 w-full" />;
 
   let content: ReactNode;
   if (current.id === "resumo") {
     content =
       !state || !workspace ? (
-        <Skeleton className="h-64 w-full" />
+        loading
       ) : (
         <Summary
           state={state}
           ledger={ledger}
           revenue={revenue}
-          organizationId={workspace.organizationId}
           topUp={topUp}
-          onTopUp={() => onSection("carregar")}
+          now={now}
+          onSection={onSection}
         />
       );
+  } else if (current.id === "consumo") {
+    content =
+      !state || !workspace ? (
+        loading
+      ) : (
+        <Usage
+          ledger={ledger}
+          prices={prices}
+          margin={margin ?? prices?.margin}
+          state={state}
+          organizationId={workspace.organizationId}
+          now={now}
+        />
+      );
+  } else if (current.id === "plano") {
+    content = !state ? (
+      loading
+    ) : (
+      <Plan
+        state={state}
+        margin={margin ?? prices?.margin}
+        workspace={workspace}
+        support={support}
+        now={now}
+      />
+    );
   } else if (current.id === "carregar") {
     content = <TopUp products={products} workspace={workspace} support={support} />;
-  } else if (current.id === "historico") {
-    content = <Ledger rows={ledger} />;
   } else {
-    content = <HowItWorks margin={margin} />;
+    content = <Ledger rows={ledger} />;
   }
 
   return (
     <PanelDialog
       title="Créditos"
-      description="Créditos de IA: quanto há, carregar, histórico e como se calcula."
+      description="Créditos de IA: quanto há, onde se gasta, plano, carregar e histórico."
       onClose={onClose}
       sidebar={
         <>
@@ -264,7 +335,7 @@ export function CreditsDialog({
       }
     >
       <PaneHeader
-        title={current.label}
+        title={"title" in current ? current.title : current.label}
         subtitle={
           // Sem pacotes não se paga na Kambafy: fica só o que vale sempre.
           current.id === "carregar" && topUp !== "pay"
@@ -272,7 +343,7 @@ export function CreditsDialog({
             : current.subtitle
         }
       />
-      {content}
+      <div className="@container">{content}</div>
     </PanelDialog>
   );
 }
@@ -314,10 +385,47 @@ function money(value: number, currency: string) {
   }
 }
 
-function nextRenewal() {
-  const d = new Date();
+function nextRenewal(now: number) {
+  const d = new Date(now);
   return new Intl.DateTimeFormat("pt-PT", { day: "numeric", month: "long" }).format(
     new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)),
+  );
+}
+
+/**
+ * Um indicador. Estreito: uma linha (rótulo e nota à esquerda, valor à direita);
+ * a partir de ~670 px de conteúdo, cartões lado a lado.
+ */
+function Stat({
+  label,
+  value,
+  note,
+  bar,
+}: {
+  label: string;
+  value: ReactNode;
+  note: ReactNode;
+  bar?: number | null | undefined;
+}) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-hairline bg-white p-4 @2xl:flex-col @2xl:flex-nowrap @2xl:items-stretch @2xl:gap-1">
+      <div className="min-w-0 flex-1 @2xl:flex-none">
+        <p className="text-[13px] text-muted-foreground">{label}</p>
+        <div className="text-[12px] text-muted-foreground @2xl:hidden">{note}</div>
+      </div>
+      <div className="shrink-0 text-right text-lg font-semibold tracking-[-0.02em] tabular-nums @2xl:text-left @2xl:text-xl">
+        {value}
+      </div>
+      <div className="hidden text-[12px] text-muted-foreground @2xl:block">{note}</div>
+      {bar != null && (
+        <div className="h-1.5 w-full rounded-full bg-gray-150 @2xl:mt-1" aria-hidden>
+          <div
+            className={cn("h-full rounded-full", bar >= 80 ? "bg-warning" : "bg-foreground")}
+            style={{ width: `${Math.max(bar, 2)}%` }}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -325,19 +433,22 @@ function Summary({
   state,
   ledger,
   revenue,
-  organizationId,
   topUp,
-  onTopUp,
+  now,
+  onSection,
 }: {
   state: CreditState;
   ledger: LedgerRow[];
   revenue: Sale[];
-  organizationId: string;
   topUp: "pay" | "ask" | "soon";
-  onTopUp: () => void;
+  now: number;
+  onSection: (id: SectionId) => void;
 }) {
   const balance = state.balance_micros;
-  const planLeft = state.plan_remaining_micros;
+  // Em cêntimos, para as duas partes somarem o saldo que se vê (7,97 + 11,10 = 19,07).
+  const cents = (m: number) => Math.round(m / 10_000) * 10_000;
+  const planLeft = cents(Math.min(state.plan_remaining_micros, Math.max(0, balance)));
+  const kept = Math.max(0, cents(balance) - planLeft);
   const spent = state.month_spent_micros;
   const capPct = state.cap_micros
     ? Math.min(100, Math.round((spent / state.cap_micros) * 100))
@@ -350,17 +461,11 @@ function Summary({
         : balance < MICROS_PER_USD
           ? "Menos de 1 US$ em créditos: carregue para a IA não parar a meio de um webinar."
           : null;
+  const runway = runwayDays(balance, spent, now);
+  const runs = spendByAction(ledger, monthStartUtc(now)).reduce((n, a) => n + a.runs, 0);
+  // Só se lêem os últimos movimentos: se não chegam ao dia 1, a contagem é um mínimo.
+  const cut = ledgerCutInMonth(ledger, now);
 
-  const d = new Date();
-  const since = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
-  const byAction = new Map<string, { runs: number; micros: number }>();
-  for (const r of ledger) {
-    if (r.kind !== "usage" || Date.parse(r.created_at) < since) continue;
-    const cur = byAction.get(r.action) ?? { runs: 0, micros: 0 };
-    cur.runs += 1;
-    cur.micros += -r.amount_micros;
-    byAction.set(r.action, cur);
-  }
   const sales = new Map<string, { total: number; count: number }>();
   for (const s of revenue) {
     const cur = s.currency ?? "—";
@@ -369,66 +474,90 @@ function Summary({
     acc.count += 1;
     sales.set(cur, acc);
   }
+  const salesCount = [...sales.values()].reduce((n, s) => n + s.count, 0);
   const usdSales = sales.get("USD")?.total ?? 0;
-
-  const parts: {
-    icon: LucideIcon;
-    tone: keyof typeof TONES;
-    label: string;
-    value: number;
-    note: string;
-    bar?: number | null;
-  }[] = [
-    {
-      icon: CalendarSync,
-      tone: "info",
-      label: "Do plano",
-      value: planLeft,
-      note:
-        state.plan_allowance_micros > 0
-          ? `Renova a ${nextRenewal()}`
-          : "O plano não inclui créditos",
-    },
-    {
-      icon: CirclePlus,
-      tone: "success",
-      label: "Carregados",
-      value: Math.max(0, balance - planLeft),
-      note: "Não expiram",
-    },
-    {
-      icon: TrendingUp,
-      tone: "brand",
-      label: "Gasto este mês",
-      value: spent,
-      note: state.cap_micros
-        ? `${capPct}% do limite de ${formatUsd(state.cap_micros)}`
-        : "Sem limite mensal",
-      bar: capPct,
-    },
-  ];
 
   return (
     <div className="space-y-7">
       <div className="overflow-hidden rounded-xl border border-hairline bg-white">
-        <div className="flex flex-wrap items-center gap-4 p-5">
-          <Tile icon={WalletMinimal} tone="brand" className="size-12" />
-          {/* Sem min-w-0: quando o valor e o botão não cabem lado a lado, o botão desce. */}
-          <div className="flex-1">
-            <p className="text-[13px] text-muted-foreground">Créditos disponíveis</p>
-            <p className="text-[32px] leading-tight font-semibold tracking-[-0.03em] tabular-nums">
-              {formatUsd(balance)}
-            </p>
+        <div className="space-y-4 p-5">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-[13px] text-muted-foreground">Créditos disponíveis</p>
+              <p className="text-[34px] leading-tight font-semibold tracking-[-0.03em] tabular-nums">
+                {formatUsd(balance)}
+              </p>
+            </div>
+            {topUp === "soon" ? (
+              // Ainda não há como carregar: um aviso, não um botão sem saída.
+              <p className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-4 text-[14px] font-medium text-gray-800 @md:w-auto">
+                <Clock className="size-4 text-gray-700" aria-hidden /> Carregamento em breve
+              </p>
+            ) : (
+              <Button
+                variant="dark"
+                size="lg"
+                onClick={() => onSection("carregar")}
+                className="w-full @md:w-auto"
+              >
+                <CirclePlus /> {topUp === "ask" ? "Pedir créditos" : "Carregar créditos"}
+              </Button>
+            )}
           </div>
-          {topUp === "soon" ? (
-            // Ainda não há como carregar: um aviso, não um botão sem saída.
-            <p className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gray-100 px-4 text-[14px] font-medium text-gray-800 sm:w-auto">
-              <Clock className="size-4 text-gray-700" aria-hidden /> Carregamento em breve
-            </p>
+
+          {state.plan_allowance_micros > 0 ? (
+            // De que é feito o saldo: o do plano gasta-se primeiro e acaba no fim do mês.
+            balance > 0 && (
+              <div className="space-y-2">
+                <div className="flex h-2 overflow-hidden rounded-full bg-gray-150" aria-hidden>
+                  <div className="bg-info" style={{ width: `${(planLeft / balance) * 100}%` }} />
+                  <div className="bg-success" style={{ width: `${(kept / balance) * 100}%` }} />
+                </div>
+                <ul className="flex flex-col gap-1 text-[13px] text-muted-foreground @xl:flex-row @xl:gap-6">
+                  <li className="flex items-start gap-2">
+                    <span className="mt-[5px] size-2 shrink-0 rounded-full bg-info" aria-hidden />
+                    <span>
+                      <strong className="font-medium text-foreground tabular-nums">
+                        {formatUsd(planLeft)}
+                      </strong>{" "}
+                      do plano · renova a {nextRenewal(now)}
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span
+                      className="mt-[5px] size-2 shrink-0 rounded-full bg-success"
+                      aria-hidden
+                    />
+                    <span>
+                      <strong className="font-medium text-foreground tabular-nums">
+                        {formatUsd(kept)}
+                      </strong>{" "}
+                      carregados · não expiram
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            )
           ) : (
-            <Button variant="dark" size="lg" onClick={onTopUp} className="w-full sm:w-auto">
-              <CirclePlus /> {topUp === "ask" ? "Pedir créditos" : "Carregar créditos"}
-            </Button>
+            <p className="text-[13px] text-muted-foreground">
+              Não expiram.{" "}
+              <button
+                type="button"
+                onClick={() => onSection("plano")}
+                className="cursor-pointer font-medium text-foreground underline-offset-2 hover:underline"
+              >
+                O seu plano não inclui créditos mensais.
+              </button>
+            </p>
+          )}
+
+          {runway !== null && (
+            <p className="flex items-center gap-2 text-[13px] text-gray-800">
+              <Hourglass className="size-4 shrink-0 text-gray-600" aria-hidden />
+              {runway > 365
+                ? "Ao ritmo deste mês, o saldo dá para mais de um ano."
+                : `Ao ritmo deste mês, o saldo dá para cerca de ${runway} ${runway === 1 ? "dia" : "dias"}.`}
+            </p>
           )}
         </div>
         {warning && (
@@ -442,89 +571,209 @@ function Summary({
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3">
-        {/* Telemóvel: uma linha por parte (valor à direita); a partir do tablet, três cartões. */}
-        {parts.map((p) => (
-          <div
-            key={p.label}
-            className="flex items-center gap-3 rounded-xl border border-hairline bg-white p-4 sm:flex-col sm:items-stretch"
-          >
-            <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:flex-none">
-              <Tile icon={p.icon} tone={p.tone} className="size-8" />
-              <span className="min-w-0">
-                <span className="block text-[13px] font-medium">{p.label}</span>
-                <span className="block truncate text-[12px] text-muted-foreground sm:hidden">
-                  {p.note}
+      <section>
+        <h3 className="mb-3 text-[15px] font-medium text-foreground">Este mês</h3>
+        <div className="grid grid-cols-1 gap-2 @2xl:grid-cols-3 @2xl:gap-3">
+          <Stat
+            label="Gasto com IA"
+            value={formatUsd(spent)}
+            note={
+              state.cap_micros
+                ? `${capPct}% do limite de ${formatUsd(state.cap_micros)}`
+                : "Sem limite mensal"
+            }
+            bar={capPct}
+          />
+          <Stat
+            label="Acções de IA cobradas"
+            value={cut ? `${runs}+` : runs}
+            note={
+              runs ? (
+                <button
+                  type="button"
+                  onClick={() => onSection("consumo")}
+                  className="cursor-pointer underline-offset-2 hover:text-foreground hover:underline"
+                >
+                  Ver onde se gastou
+                </button>
+              ) : (
+                "Ainda nenhuma"
+              )
+            }
+          />
+          <Stat
+            label="Vendas aprovadas"
+            value={
+              sales.size === 0 ? (
+                "—"
+              ) : (
+                <span className="flex flex-col">
+                  {[...sales].map(([currency, s]) => (
+                    <span key={currency} className="truncate">
+                      {money(s.total, currency)}
+                    </span>
+                  ))}
                 </span>
-              </span>
-            </div>
-            <p className="shrink-0 text-lg font-semibold tracking-[-0.02em] tabular-nums sm:text-xl">
-              {formatUsd(p.value)}
-            </p>
-            <p className="-mt-2 hidden text-[12px] text-muted-foreground sm:block">{p.note}</p>
-            {p.bar != null && (
-              <div className="-mt-1 hidden h-1.5 rounded-full bg-gray-150 sm:block" aria-hidden>
-                <div
-                  className={cn("h-full rounded-full", p.bar >= 80 ? "bg-warning" : "bg-brand")}
-                  style={{ width: `${Math.max(p.bar, 2)}%` }}
-                />
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <PanelSection title="Em que foi gasto este mês">
-        {byAction.size === 0 ? (
-          <p className="text-muted-foreground">Ainda nenhum gasto este mês.</p>
-        ) : (
-          <ul className="-my-1 divide-y divide-hairline">
-            {[...byAction]
-              .sort((a, b) => b[1].micros - a[1].micros)
-              .map(([action, a]) => (
-                <li key={action} className="flex items-center gap-3 py-2.5">
-                  <Tile icon={Sparkles} tone="brand" className="size-8" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium text-foreground">
-                      {ACTION_LABEL[action as BilledAction] ?? action}
-                    </span>
-                    <span className="text-[12px] text-muted-foreground">
-                      {a.runs} {a.runs === 1 ? "vez" : "vezes"} · média{" "}
-                      {formatUsd(Math.round(a.micros / a.runs))}
-                    </span>
-                  </span>
-                  <span className="shrink-0 font-semibold tabular-nums text-foreground">
-                    {formatUsd(a.micros)}
-                  </span>
-                </li>
-              ))}
-          </ul>
-        )}
-      </PanelSection>
-
-      <PanelSection title="Retorno este mês">
-        <p>
-          A IA custou <strong className="tabular-nums text-foreground">{formatUsd(spent)}</strong>.
-        </p>
-        {sales.size === 0 ? (
-          <p className="text-muted-foreground">Sem vendas registadas este mês.</p>
-        ) : (
-          <ul className="space-y-1">
-            {[...sales].map(([currency, s]) => (
-              <li key={currency}>
-                Vendas:{" "}
-                <strong className="tabular-nums text-foreground">{money(s.total, currency)}</strong>{" "}
-                <span className="text-muted-foreground">({s.count})</span>
-              </li>
-            ))}
-          </ul>
-        )}
+              )
+            }
+            note={
+              sales.size === 0
+                ? "Sem vendas registadas"
+                : `${salesCount} ${salesCount === 1 ? "venda" : "vendas"}`
+            }
+          />
+        </div>
         {usdSales > 0 && spent > 0 && (
-          <p className="font-medium text-foreground">
-            Cada dólar de IA acompanhou {money(usdSales / (spent / MICROS_PER_USD), "USD")} em
-            vendas.
+          <p className="mt-3 text-[13px] text-gray-800">
+            Cada dólar de IA acompanhou{" "}
+            <strong className="tabular-nums text-foreground">
+              {money(usdSales / (spent / MICROS_PER_USD), "USD")}
+            </strong>{" "}
+            em vendas.
           </p>
         )}
+      </section>
+    </div>
+  );
+}
+
+/** O preço de uma acção, por baixo do nome: unitário, média real, ou o que falta. */
+function priceOf(
+  action: BilledAction,
+  prices: PublicPrices | undefined,
+  average: number | undefined,
+): { text: string; muted?: boolean } {
+  if (!prices) return { text: "A carregar o preço…", muted: true };
+  const unset = { text: "Preço a definir", muted: true };
+  if (action === "image") {
+    return prices.imageMicros === null
+      ? unset
+      : { text: `${formatUsd(prices.imageMicros)} ${ACTION_UNIT.image}` };
+  }
+  if (action === "transcription") {
+    return prices.transcriptionHourMicros === null
+      ? unset
+      : { text: `${formatUsd(prices.transcriptionHourMicros)} ${ACTION_UNIT.transcription}` };
+  }
+  if (!prices.text) return unset;
+  return average === undefined
+    ? { text: "Custo real de cada vez", muted: true }
+    : { text: `≈ ${formatUsd(average)} ${ACTION_UNIT[action]}` };
+}
+
+function Usage({
+  ledger,
+  prices,
+  margin,
+  state,
+  organizationId,
+  now,
+}: {
+  ledger: LedgerRow[];
+  prices: PublicPrices | undefined;
+  margin: number | undefined;
+  state: CreditState;
+  organizationId: string;
+  now: number;
+}) {
+  const month = new Map(spendByAction(ledger, monthStartUtc(now)).map((a) => [a.action, a]));
+  const monthTotal = [...month.values()].reduce((n, a) => n + a.micros, 0);
+  const allTime = new Map(spendByAction(ledger).map((a) => [a.action, a]));
+  // As que gastaram este mês primeiro, da maior para a menor; depois as outras.
+  const actions = (Object.keys(ACTION_LABEL) as BilledAction[]).sort(
+    (x, y) => (month.get(y)?.micros ?? 0) - (month.get(x)?.micros ?? 0),
+  );
+
+  return (
+    <div className="space-y-7">
+      <PanelSection title="Preço e gasto deste mês, por acção">
+        <ul className="-my-1 divide-y divide-hairline">
+          {actions.map((action) => {
+            const used = allTime.get(action);
+            const spent = month.get(action);
+            const price = priceOf(
+              action,
+              prices,
+              used ? Math.round(used.micros / used.runs) : undefined,
+            );
+            const share = spent && monthTotal ? (spent.micros / monthTotal) * 100 : 0;
+            return (
+              <li key={action} className="flex gap-3 py-3">
+                <Tile icon={ACTION_ICON[action]} tone="muted" className="size-9" />
+                <span className="min-w-0 flex-1 space-y-1.5">
+                  <span className="flex items-start justify-between gap-3">
+                    <span className="min-w-0">
+                      <span className="block font-medium text-foreground">
+                        {ACTION_LABEL[action]}
+                      </span>
+                      <span
+                        className={cn(
+                          "block text-[12px]",
+                          price.muted ? "text-gray-600" : "text-gray-800",
+                        )}
+                      >
+                        {price.text}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span
+                        className={cn(
+                          "block font-semibold tabular-nums",
+                          spent ? "text-foreground" : "text-gray-500",
+                        )}
+                      >
+                        {spent ? (
+                          formatUsd(spent.micros)
+                        ) : (
+                          <span aria-label="Sem uso este mês">—</span>
+                        )}
+                      </span>
+                      {spent && (
+                        <span className="block text-[12px] text-muted-foreground tabular-nums">
+                          {share < 1 ? "<1" : Math.round(share)}% · {spent.runs}{" "}
+                          {spent.runs === 1 ? "vez" : "vezes"}
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                  {spent && (
+                    <span className="block h-1.5 rounded-full bg-gray-150" aria-hidden>
+                      <span
+                        className="block h-full rounded-full bg-foreground"
+                        style={{ width: `${Math.max(share, 2)}%` }}
+                      />
+                    </span>
+                  )}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+        {ledgerCutInMonth(ledger, now) && (
+          <p className="text-[12px] text-muted-foreground">
+            Por acção, contam os últimos {LEDGER_LIMIT} movimentos; o gasto total do mês, {formatUsd(state.month_spent_micros)}, está no Resumo.
+          </p>
+        )}
+        <p className="flex gap-2.5 rounded-lg bg-gray-100 px-3 py-2.5 text-[13px] text-gray-800">
+          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
+          <span>
+            Paga o custo real do fornecedor de IA
+            {margin !== undefined ? ` mais ${Math.round(margin * 100)}%` : " mais uma margem fixa"}.
+            Respostas e gerações variam com o tamanho do texto: o «≈» é a média das suas. Se a IA
+            falhar, não paga.
+          </span>
+        </p>
+      </PanelSection>
+
+      <PanelSection title="Nunca gasta créditos">
+        <ul className="grid grid-cols-1 gap-2.5 @xl:grid-cols-2">
+          {ALWAYS_FREE.map((f) => (
+            <li key={f} className="flex gap-2.5">
+              <Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
+              {f}
+            </li>
+          ))}
+        </ul>
       </PanelSection>
 
       <PanelSection title="Limite mensal">
@@ -583,6 +832,133 @@ function CapForm({
           Guardar
         </Button>
       </div>
+      <p className="text-[12px] text-muted-foreground">
+        Ao chegar ao limite, a IA pára até ao dia 1 e o agente passa as conversas para a equipa.
+      </p>
+    </div>
+  );
+}
+
+/** Como se cobra, em quatro frases: o modelo inteiro. */
+const howLines = (margin: number | undefined) => [
+  "Os créditos do plano gastam-se primeiro, renovam no dia 1 e o que sobra no fim do mês expira.",
+  "Os créditos carregados nunca expiram.",
+  `Cada acção paga o custo real da IA${margin !== undefined ? ` mais ${Math.round(margin * 100)}%` : " mais uma margem fixa"}; se falhar, não paga.`,
+  "O limite mensal trava o gasto quando quiser.",
+];
+
+function Plan({
+  state,
+  margin,
+  workspace,
+  support,
+  now,
+}: {
+  state: CreditState;
+  margin: number | undefined;
+  workspace: Workspace | null | undefined;
+  support: Support;
+  now: number;
+}) {
+  const name = planLabel(state.plan);
+  const message = [
+    `Olá! Quero mudar de plano na Convertewebinar (tenho o plano ${name}).`,
+    workspace && `Conta: ${workspace.email}`,
+    workspace && `Organização: ${workspace.organizationName}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const whatsapp = whatsappLink(support.whatsapp, message);
+  const email = support.email
+    ? `mailto:${support.email}?subject=${encodeURIComponent("Mudar de plano")}&body=${encodeURIComponent(message)}`
+    : null;
+
+  return (
+    <div className="space-y-7">
+      <div className="flex flex-wrap items-center gap-4 rounded-xl border border-hairline bg-white p-5">
+        <Tile icon={Layers} tone="info" className="size-12" />
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] text-muted-foreground">O seu plano</p>
+          <p className="text-xl font-semibold tracking-[-0.02em]">{name}</p>
+          <p className="text-[13px] text-muted-foreground">
+            {state.plan_allowance_micros > 0
+              ? `Inclui ${formatUsd(state.plan_allowance_micros)} de créditos de IA por mês; renova a ${nextRenewal(now)}.`
+              : "Não inclui créditos mensais: a IA gasta só o que carregar."}
+          </p>
+        </div>
+      </div>
+
+      <PanelSection title="Planos com créditos incluídos">
+        <ul className="-my-1 divide-y divide-hairline">
+          {PLANS.map((p) => {
+            const mine = p.id === state.plan;
+            return (
+              <li key={p.id} className="flex items-center gap-3 py-2.5">
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2 font-medium text-foreground">
+                    {p.label}
+                    {mine && (
+                      <span className="rounded-sm bg-gray-150 px-1.5 py-0.5 text-[11px] font-medium text-gray-800">
+                        Actual
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-[12px] text-muted-foreground">Créditos de IA por mês</span>
+                </span>
+                <span className="shrink-0 text-[15px] font-semibold tabular-nums text-foreground">
+                  {formatUsd(p.allowanceMicros)}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+        {support.plansUrl ? (
+          <Button asChild size="lg" variant="dark" className="w-full @md:w-auto">
+            <a href={support.plansUrl} target="_blank" rel="noopener noreferrer">
+              Mudar de plano <ExternalLink />
+            </a>
+          </Button>
+        ) : whatsapp || email ? (
+          <div className="flex flex-col gap-2 @md:flex-row">
+            {whatsapp && (
+              <Button asChild size="lg" variant="dark" className="w-full @md:w-auto">
+                <a href={whatsapp} target="_blank" rel="noopener noreferrer">
+                  <MessageCircle /> Mudar de plano por WhatsApp
+                </a>
+              </Button>
+            )}
+            {email && (
+              <Button
+                asChild
+                size="lg"
+                variant={whatsapp ? "outline" : "dark"}
+                className="w-full @md:w-auto"
+              >
+                <a href={email}>
+                  <Mail /> Pedir por email
+                </a>
+              </Button>
+            )}
+          </div>
+        ) : (
+          // A ligação de pagamento dos planos ainda não existe: diz-se, sem botão morto.
+          <p className="flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-2.5 text-[13px] text-gray-800">
+            <Clock className="size-4 shrink-0 text-gray-700" aria-hidden />
+            Pagamento dos planos por ligar. Quando estiver ligado, muda de plano aqui.
+          </p>
+        )}
+      </PanelSection>
+
+      <PanelSection title="Como se cobra">
+        <ul className="space-y-2.5">
+          {howLines(margin).map((line) => (
+            <li key={line} className="flex gap-2.5">
+              <Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
+              {line}
+            </li>
+          ))}
+        </ul>
+      </PanelSection>
     </div>
   );
 }
@@ -612,12 +988,12 @@ function TopUp({
       <p className="flex items-start gap-3 rounded-xl border border-info/25 bg-info-soft px-4 py-3 text-[13px] text-foreground">
         <Mail className="mt-0.5 size-4 shrink-0 text-info" aria-hidden />
         <span>
-          Pague com o email <strong>{email || "da sua conta"}</strong>: é por ele que os créditos
-          entram nesta conta.
+          Pague com o email <strong className="break-all">{email || "da sua conta"}</strong>: é por
+          ele que os créditos entram nesta conta.
         </span>
       </p>
 
-      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <ul className="grid grid-cols-1 gap-3 @lg:grid-cols-2">
         {products.map((p, i) => (
           <li key={p.id}>
             <a
@@ -631,7 +1007,7 @@ function TopUp({
                 <span className="block text-xl font-semibold tracking-[-0.02em] tabular-nums">
                   {money(Number(p.usd_amount), "USD")}
                 </span>
-                <span className="block truncate text-[13px] text-muted-foreground">
+                <span className="block text-[13px] leading-snug text-muted-foreground">
                   {p.label}
                 </span>
               </span>
@@ -644,7 +1020,7 @@ function TopUp({
       </ul>
 
       <PanelSection title="Formas de pagamento">
-        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <ul className="grid grid-cols-1 gap-2 @lg:grid-cols-3">
           {PAY_WITH.map((p) => (
             <li key={p.label} className="flex items-center gap-2.5">
               <Tile icon={p.icon} tone="muted" className="size-9" />
@@ -687,8 +1063,8 @@ function AskTopUp({
         <Tile icon={WalletMinimal} tone="brand" className="size-14" />
         <p className="text-[15px] font-semibold">Pacotes a caminho</p>
         <p className="max-w-sm text-[13px] text-muted-foreground">
-          Ainda não há pacotes de créditos à venda. Quando houver, aparecem aqui com o preço e o
-          botão para pagar.
+          Ainda não há pacotes de créditos à venda. Quando o pagamento estiver ligado, aparecem aqui
+          com o preço e o botão para pagar.
         </p>
       </div>
     );
@@ -704,7 +1080,7 @@ function AskTopUp({
           </p>
         </div>
       </div>
-      <div role="radiogroup" aria-label="Valor" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div role="radiogroup" aria-label="Valor" className="grid grid-cols-2 gap-2 @md:grid-cols-4">
         {AMOUNTS.map((value) => (
           <button
             key={value}
@@ -723,16 +1099,21 @@ function AskTopUp({
           </button>
         ))}
       </div>
-      <div className="flex flex-col gap-2 sm:flex-row">
+      <div className="flex flex-col gap-2 @md:flex-row">
         {whatsapp && (
-          <Button asChild size="lg" variant="dark" className="w-full sm:w-auto">
+          <Button asChild size="lg" variant="dark" className="w-full @md:w-auto">
             <a href={whatsapp} target="_blank" rel="noopener noreferrer">
               <MessageCircle /> Pedir por WhatsApp
             </a>
           </Button>
         )}
         {email && (
-          <Button asChild size="lg" variant={whatsapp ? "outline" : "dark"} className="w-full sm:w-auto">
+          <Button
+            asChild
+            size="lg"
+            variant={whatsapp ? "outline" : "dark"}
+            className="w-full @md:w-auto"
+          >
             <a href={email}>
               <Mail /> Pedir por email
             </a>
@@ -754,7 +1135,32 @@ function detail(row: LedgerRow) {
   return parts.join(" · ");
 }
 
+/** O livro guarda «Saldo do plano (2026-10)»; a data já está por baixo. */
+function rowTitle(r: LedgerRow) {
+  if (r.kind === "grant" && r.action === "plan") return "Créditos do plano";
+  if (r.kind === "expire") return "Créditos do plano que expiraram";
+  return r.description || KIND_LABEL[r.kind] || r.kind;
+}
+
+function rowIcon(r: LedgerRow): { icon: LucideIcon; tone: keyof typeof TONES } {
+  if (r.kind === "usage") return { icon: actionIcon(r.action), tone: "muted" };
+  if (r.kind === "grant") return { icon: Gift, tone: "info" };
+  if (r.kind === "purchase") return { icon: CirclePlus, tone: "success" };
+  if (r.kind === "expire") return { icon: Hourglass, tone: "muted" };
+  return r.amount_micros > 0
+    ? { icon: ArrowDownLeft, tone: "success" }
+    : { icon: ArrowUpRight, tone: "muted" };
+}
+
+const FILTERS = [
+  { id: "all", label: "Tudo" },
+  { id: "out", label: "Gastos" },
+  { id: "in", label: "Entradas" },
+] as const;
+type Filter = (typeof FILTERS)[number]["id"];
+
 function Ledger({ rows }: { rows: LedgerRow[] }) {
+  const [filter, setFilter] = useState<Filter>("all");
   if (rows.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-xl border border-hairline bg-white px-6 py-10 text-center">
@@ -763,85 +1169,106 @@ function Ledger({ rows }: { rows: LedgerRow[] }) {
       </div>
     );
   }
+  const pick = (f: Filter) =>
+    rows.filter((r) =>
+      f === "all" ? true : f === "in" ? r.amount_micros > 0 : r.amount_micros <= 0,
+    );
+  const shown = pick(filter);
+
+  // Um bloco por mês, com o que entrou e o que saiu (o livro já vem do mais recente).
+  const months: {
+    key: string;
+    label: string;
+    inMicros: number;
+    outMicros: number;
+    rows: LedgerRow[];
+  }[] = [];
+  const monthFmt = new Intl.DateTimeFormat("pt-PT", { month: "long", year: "numeric" });
+  for (const r of shown) {
+    const key = r.created_at.slice(0, 7);
+    let m = months.at(-1);
+    if (m?.key !== key) {
+      m = {
+        key,
+        label: monthFmt.format(new Date(r.created_at)),
+        inMicros: 0,
+        outMicros: 0,
+        rows: [],
+      };
+      months.push(m);
+    }
+    m.rows.push(r);
+    if (r.amount_micros > 0) m.inMicros += r.amount_micros;
+    else m.outMicros += -r.amount_micros;
+  }
+
   return (
-    <ul className="divide-y divide-hairline overflow-hidden rounded-xl border border-hairline bg-white">
-      {rows.map((r) => {
-        const credit = r.amount_micros > 0;
-        return (
-          <li key={r.id} className="flex items-center gap-3 px-4 py-3">
-            <Tile
-              icon={credit ? ArrowUpRight : ArrowDownRight}
-              tone={credit ? "success" : "muted"}
-              className="size-9"
-            />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[14px] font-medium">
-                {r.description || KIND_LABEL[r.kind] || r.kind}
-              </span>
-              {/* Sem descrição, o título já é o tipo: não se repete por baixo. */}
-              <span className="line-clamp-2 text-[12px] text-muted-foreground">
-                {[formatDateTime(r.created_at), r.description && KIND_LABEL[r.kind], detail(r)]
+    <div className="space-y-5">
+      <NavTabs
+        aria-label="Filtrar movimentos"
+        items={FILTERS.map((f) => ({ ...f, count: pick(f.id).length }))}
+        value={filter}
+        onChange={setFilter}
+      />
+      {months.length === 0 ? (
+        <p className="rounded-xl border border-hairline bg-white px-5 py-8 text-center text-[14px] text-muted-foreground">
+          {filter === "in" ? "Ainda sem entradas." : "Ainda sem gastos."}
+        </p>
+      ) : (
+        months.map((m) => (
+          <section key={m.key}>
+            <h3 className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 px-1 text-[13px]">
+              <span className="font-medium text-foreground first-letter:uppercase">{m.label}</span>
+              <span className="text-muted-foreground tabular-nums">
+                {[
+                  m.inMicros > 0 && `+${formatUsd(m.inMicros)}`,
+                  m.outMicros > 0 && formatUsd(-m.outMicros),
+                ]
                   .filter(Boolean)
                   .join(" · ")}
               </span>
-            </span>
-            <span
-              className={cn(
-                "shrink-0 text-[14px] font-semibold tabular-nums",
-                credit ? "text-success" : "text-foreground",
-              )}
-            >
-              {credit ? "+" : ""}
-              {formatUsd(r.amount_micros)}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-function HowItWorks({ margin }: { margin: number | undefined }) {
-  const paid = Object.keys(ACTION_LABEL) as BilledAction[];
-  return (
-    <div className="space-y-7">
-      <PanelSection title="Paga o custo real">
-        <p>
-          Cada vez que a IA trabalha, medimos o que gastou de facto (texto, imagens, minutos de
-          áudio) e cobramos esse custo
-          {margin !== undefined ? ` mais ${Math.round(margin * 100)}%` : " mais uma margem fixa"}.
-          Se a IA falhar, não paga nada.
+            </h3>
+            <ul className="divide-y divide-hairline overflow-hidden rounded-xl border border-hairline bg-white">
+              {m.rows.map((r) => {
+                const credit = r.amount_micros > 0;
+                const { icon, tone } = rowIcon(r);
+                return (
+                  <li key={r.id} className="flex items-center gap-3 px-4 py-3">
+                    <Tile icon={icon} tone={tone} className="size-9" />
+                    <span className="min-w-0 flex-1">
+                      <span className="line-clamp-2 text-[14px] font-medium">{rowTitle(r)}</span>
+                      {/* O ícone e o sinal já dizem se é gasto ou entrada; só os acertos o dizem. */}
+                      <span className="line-clamp-2 text-[12px] text-muted-foreground">
+                        {[
+                          formatDateTime(r.created_at),
+                          (r.kind === "refund" || r.kind === "adjustment") && KIND_LABEL[r.kind],
+                          detail(r),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    </span>
+                    <span
+                      className={cn(
+                        "shrink-0 text-[14px] font-semibold tabular-nums",
+                        credit ? "text-success" : "text-foreground",
+                      )}
+                    >
+                      {credit ? "+" : ""}
+                      {formatUsd(r.amount_micros)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))
+      )}
+      {rows.length >= LEDGER_LIMIT && (
+        <p className="text-center text-[12px] text-muted-foreground">
+          Mostram-se os últimos {LEDGER_LIMIT} movimentos; o mês mais antigo pode estar incompleto.
         </p>
-        <p className="text-muted-foreground">
-          Os créditos do plano renovam no dia 1 e gastam-se primeiro; os carregados nunca expiram.
-        </p>
-        <p className="flex gap-2.5 rounded-lg bg-success-soft px-3 py-2.5 text-foreground">
-          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
-          Sem créditos a meio de um webinar, o agente passa a conversa para a sua equipa.
-        </p>
-      </PanelSection>
-      <div className="grid grid-cols-1 gap-x-5 sm:grid-cols-2">
-        <PanelSection title="Sempre grátis" className="mt-0">
-          <ul className="space-y-2.5">
-            {ALWAYS_FREE.map((f) => (
-              <li key={f} className="flex gap-2.5">
-                <Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
-                {f}
-              </li>
-            ))}
-          </ul>
-        </PanelSection>
-        <PanelSection title="Gasta créditos" className="mt-7 sm:mt-0">
-          <ul className="space-y-2.5">
-            {paid.map((a) => (
-              <li key={a} className="flex gap-2.5">
-                <Sparkles className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden />
-                {ACTION_LABEL[a]}
-              </li>
-            ))}
-          </ul>
-        </PanelSection>
-      </div>
+      )}
     </div>
   );
 }

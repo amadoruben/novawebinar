@@ -14,6 +14,7 @@ import {
   MessageCircle,
   MonitorSmartphone,
   Radio,
+  X,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { ContactAutomations } from "@/components/automation-runs";
@@ -148,17 +149,20 @@ export function ContactProfile({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-1 border-b px-2 @5xl:px-3">
+        {/* Ao lado da conversa fecha (X); no lugar dela volta (seta). */}
         <Button
           variant="ghost"
           size="icon"
-          className="shrink-0 @5xl:hidden"
+          className="shrink-0"
           onClick={onBack}
-          aria-label="Voltar à conversa"
+          aria-label="Fechar o contacto"
+          title="Fechar"
         >
-          <ArrowLeft />
+          <ArrowLeft className="@5xl:hidden" />
+          <X className="hidden @5xl:block" />
         </Button>
-        {/* Quatro separadores de largura igual: todos se leem inteiros, com ou sem contagem. */}
-        <div role="tablist" aria-label="Contacto" className="grid min-w-0 flex-1 grid-cols-4">
+        {/* Cada separador com a largura do seu nome: todos se leem inteiros ao lado do X. */}
+        <div role="tablist" aria-label="Contacto" className="flex min-w-0 flex-1 justify-between">
           {tabs.map((t) => (
             <button
               key={t.id}

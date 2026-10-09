@@ -1,269 +1,353 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
-import markAsset from "@/assets/brand/convertewebinar-icon.svg";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { AuthUI } from "@/components/ui/auth-ui";
-import { useAdminHostRedirect } from "@/lib/data";
+import { Check } from "lucide-react";
+import { AuthError, AuthHeading, AuthUI, EmailSent, PasswordField } from "@/components/ui/auth-ui";
+import { useAdminHostRedirect } from "@/lib/admin-host";
 import { friendlyError } from "@/lib/friendly-error";
-import { resetInitialPageLoader } from "@/components/page-loader";
 
-function LoginScreen() {
-  const navigate = useNavigate();
-  useAdminHostRedirect();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [show, setShow] = useState(false);
+/**
+ * O cliente Supabase (~45 KB) só descarrega quando a pessoa começa a escrever
+ * (ou o gestor de palavras-passe preenche) ou envia: a página abre leve em dados móveis.
+ */
+const loadSupabase = () => import("@/integrations/supabase/client").then((m) => m.supabase);
+const warmUp = () => void loadSupabase();
+/** Depois de entrar, o painel volta a mostrar o seu carregador (módulo do painel, carregado só aqui). */
+const toDashboard = async (navigate: ReturnType<typeof useNavigate>) => {
+  (await import("@/components/page-loader")).resetInitialPageLoader();
+  await navigate({ to: "/dashboard" });
+};
+const looksLikeEmail = (value: string) => /^\S+@\S+\.\S+$/.test(value);
+
+function useSubmit(action: (form: FormData) => Promise<void>, fallback: string) {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setLoading(true);
     setMessage("");
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      resetInitialPageLoader();
-      await navigate({ to: "/dashboard" });
+      await action(new FormData(event.currentTarget));
     } catch (error) {
       const raw = error instanceof Error ? error.message : "";
       setMessage(
         /invalid login credentials/i.test(raw)
           ? "Email ou palavra-passe incorretos. Tente novamente."
-          : friendlyError(error, "Não foi possível entrar."),
+          : friendlyError(error, fallback),
       );
     } finally {
       setLoading(false);
     }
   };
+  return { submit, message, loading };
+}
+
+function EmailField({
+  id,
+  defaultValue,
+  autoFocus,
+}: {
+  id: string;
+  defaultValue?: string;
+  autoFocus?: boolean;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="site-label">
+        Email
+      </label>
+      <input
+        id={id}
+        name="email"
+        type="email"
+        required
+        maxLength={255}
+        autoComplete="email"
+        placeholder="nome@empresa.com"
+        defaultValue={defaultValue}
+        autoFocus={autoFocus}
+        className="site-field"
+      />
+    </div>
+  );
+}
+
+function LoginScreen() {
+  const navigate = useNavigate();
+  const { submit, message, loading } = useSubmit(async (form) => {
+    const supabase = await loadSupabase();
+    const { error } = await supabase.auth.signInWithPassword({
+      email: String(form.get("email")),
+      password: String(form.get("password")),
+    });
+    if (error) throw error;
+    await toDashboard(navigate);
+  }, "Não foi possível entrar.");
 
   return (
-    <AuthUI>
-      <div className="flex w-full flex-col gap-7">
-        <div>
-          <img src={markAsset} alt="Convertewebinar" className="mb-10 h-11 w-auto" />
-          <h1 className="auth-heading">Bem-vindo de volta</h1>
-          <p className="auth-sub">Entre para preparar, apresentar e acompanhar os seus webinars.</p>
-        </div>
-        <form onSubmit={submit} className="flex flex-col gap-6">
-          <div className="flex flex-col gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="login-email">Email</Label>
-              <Input
-                id="login-email"
-                type="email"
-                placeholder="nome@empresa.com"
-                className="h-11"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                maxLength={255}
-                required
-                autoComplete="email"
-                autoFocus
-              />
-            </div>
-            <div className="grid gap-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="login-password">Palavra-passe</Label>
-                <Link
-                  to="/auth/reset"
-                  className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-                >
-                  Esqueceu-se?
-                </Link>
-              </div>
-              <div className="relative">
-                <Input
-                  id="login-password"
-                  type={show ? "text" : "password"}
-                  className="h-11 pr-11"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  minLength={8}
-                  maxLength={128}
-                  required
-                  autoComplete="current-password"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShow(!show)}
-                  className="absolute right-1.5 top-1/2 size-8 -translate-y-1/2 text-muted-foreground"
-                  aria-label={show ? "Ocultar palavra-passe" : "Mostrar palavra-passe"}
-                >
-                  {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                </Button>
-              </div>
-            </div>
-            {message && (
-              <p
-                role="alert"
-                className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+    <AuthUI
+      topLink={
+        <>
+          Ainda não tem conta?{" "}
+          <Link
+            to="/auth/register"
+            className="font-medium text-s-text underline underline-offset-2"
+          >
+            Criar conta
+          </Link>
+        </>
+      }
+    >
+      <AuthHeading title="Entrar">
+        Entre para preparar, apresentar e acompanhar os seus webinars.
+      </AuthHeading>
+      <form onSubmit={submit} onInput={warmUp} className="grid gap-5">
+        <EmailField id="login-email" autoFocus />
+        <PasswordField
+          id="login-password"
+          name="password"
+          label="Palavra-passe"
+          autoComplete="current-password"
+          after={
+            <p className="text-right">
+              <Link
+                to="/auth/reset"
+                className="inline-flex min-h-11 items-center text-site-small font-medium text-s-text-2 underline underline-offset-2 hover:text-s-text"
               >
-                {message}
-              </p>
-            )}
-            <Button type="submit" className="h-11 w-full" disabled={loading}>
-              {loading ? "A entrar..." : "Entrar"}
-            </Button>
-          </div>
-          <p className="text-center text-sm text-muted-foreground">
-            Novo por aqui?{" "}
-            <Link
-              to="/auth/register"
-              className="font-medium text-foreground underline-offset-4 hover:underline"
-            >
-              Criar conta
-            </Link>
-          </p>
-        </form>
-      </div>
+                Esqueceu-se da palavra-passe?
+              </Link>
+            </p>
+          }
+        />
+        {message && <AuthError>{message}</AuthError>}
+        <button type="submit" className="site-btn site-btn-primary w-full" disabled={loading}>
+          {loading ? "A entrar…" : "Entrar"}
+        </button>
+      </form>
     </AuthUI>
   );
 }
 
-export function AuthScreen({ mode }: { mode: "login" | "register" | "reset" }) {
-  useAdminHostRedirect();
-  const [email, setEmail] = useState("");
+/** Registo em dois passos: o email primeiro (vem preenchido da página inicial), depois o nome e a palavra-passe. */
+function RegisterScreen({ initialEmail }: { initialEmail?: string | undefined }) {
+  const navigate = useNavigate();
+  const start = initialEmail && looksLikeEmail(initialEmail) ? initialEmail : "";
+  const [email, setEmail] = useState(start);
+  const [step, setStep] = useState<1 | 2 | "sent">(start ? 2 : 1);
   const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [show, setShow] = useState(false);
-  const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
-  if (mode === "login") return <LoginScreen />;
-  const isRegister = mode === "register";
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage("");
-    try {
-      if (isRegister) {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { full_name: name }, emailRedirectTo: window.location.origin },
-        });
-        if (error) throw error;
-        setMessage("Conta criada. Consulte o seu email para confirmar o acesso.");
-      } else {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          // Onde a pessoa define a palavra-passe nova.
-          redirectTo: `${window.location.origin}/auth/welcome`,
-        });
-        if (error) throw error;
-        setMessage("Enviámos as instruções de recuperação para o seu email.");
-      }
-    } catch (error) {
-      setMessage(friendlyError(error, "Não foi possível concluir."));
-    } finally {
-      setLoading(false);
-    }
-  };
-  const title = isRegister ? "Criar a sua conta" : "Recuperar palavra-passe";
-  return (
-    <AuthUI>
-      {!isRegister && (
-        <Link
-          to="/auth/login"
-          className="mb-8 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+  const longEnough = password.length >= 8;
+
+  const { submit, message, loading } = useSubmit(async (form) => {
+    const supabase = await loadSupabase();
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { full_name: String(form.get("name")).trim() },
+        emailRedirectTo: window.location.origin,
+      },
+    });
+    if (error) throw error;
+    if (data.session) return toDashboard(navigate);
+    setStep("sent");
+  }, "Não foi possível criar a conta.");
+
+  const topLink = (
+    <>
+      Já tem conta?{" "}
+      <Link to="/auth/login" className="font-medium text-s-text underline underline-offset-2">
+        Entrar
+      </Link>
+    </>
+  );
+
+  if (step === "sent") {
+    return (
+      <AuthUI topLink={topLink}>
+        <EmailSent
+          title="Confirme o seu email"
+          email={email}
+          onResend={async () => {
+            const { error } = await (
+              await loadSupabase()
+            ).auth.resend({
+              type: "signup",
+              email,
+              options: { emailRedirectTo: window.location.origin },
+            });
+            return error ? friendlyError(error, "Não foi possível reenviar.") : undefined;
+          }}
         >
-          <ArrowLeft className="size-4" />
-          Voltar
-        </Link>
-      )}
-      <img src={markAsset} alt="Convertewebinar" className="mb-10 h-11 w-auto" />
-      <div className="mb-8">
-        <h1 className="auth-heading">{title}</h1>
-        <p className="auth-sub">
-          {isRegister
-            ? "Crie a sua conta e lance o primeiro webinar em minutos."
-            : "Enviámos-lhe um endereço seguro para recuperar o acesso à conta."}
-        </p>
-      </div>
-      <form onSubmit={submit} className="space-y-5">
-        {isRegister && (
-          <div>
-            <Label htmlFor="full-name">Nome completo</Label>
-            <Input
-              id="full-name"
-              className="mt-2 h-12"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={100}
-              required
-              autoComplete="name"
-              placeholder="O seu nome"
-            />
-          </div>
-        )}
+          <button
+            type="button"
+            className="site-btn w-full text-site-small text-s-text-2 hover:text-s-text"
+            onClick={() => {
+              setPassword("");
+              setStep(1);
+            }}
+          >
+            Usar outro email
+          </button>
+        </EmailSent>
+      </AuthUI>
+    );
+  }
+
+  if (step === 1) {
+    return (
+      <AuthUI topLink={topLink}>
+        <AuthHeading title="Criar conta" step="Passo 1 de 2">
+          Lance o primeiro webinar em minutos.
+        </AuthHeading>
+        <form
+          onInput={warmUp}
+          onSubmit={(event) => {
+            event.preventDefault();
+            setEmail(String(new FormData(event.currentTarget).get("email")).trim());
+            setStep(2);
+          }}
+          className="grid gap-5"
+        >
+          <EmailField id="register-email" defaultValue={email} autoFocus />
+          <button type="submit" className="site-btn site-btn-primary w-full">
+            Continuar
+          </button>
+        </form>
+      </AuthUI>
+    );
+  }
+
+  return (
+    <AuthUI topLink={topLink}>
+      <AuthHeading title="Criar conta" step="Passo 2 de 2">
+        Com <strong className="font-medium text-s-text">{email}</strong>.{" "}
+        <button
+          type="button"
+          className="font-medium text-s-text underline underline-offset-2"
+          onClick={() => setStep(1)}
+        >
+          Alterar
+        </button>
+      </AuthHeading>
+      <form onSubmit={submit} onInput={warmUp} className="grid gap-5">
         <div>
-          <Label htmlFor="auth-email">Email</Label>
-          <div className="relative mt-2">
-            <Mail className="pointer-events-none absolute left-4 top-4 size-4 text-muted-foreground" />
-            <Input
-              id="auth-email"
-              className="h-12 pl-11"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              maxLength={255}
-              required
-              autoComplete="email"
-              placeholder="nome@empresa.com"
-            />
-          </div>
+          <label htmlFor="register-name" className="site-label">
+            Como se chama?
+          </label>
+          <input
+            id="register-name"
+            name="name"
+            required
+            maxLength={100}
+            autoComplete="name"
+            autoFocus
+            className="site-field"
+          />
         </div>
-        {isRegister && (
-          <div>
-            <Label htmlFor="auth-password">Palavra-passe</Label>
-            <div className="relative mt-2">
-              <LockKeyhole className="pointer-events-none absolute left-4 top-4 size-4 text-muted-foreground" />
-              <Input
-                id="auth-password"
-                className="h-12 px-11"
-                type={show ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                minLength={8}
-                maxLength={128}
-                required
-                autoComplete="new-password"
+        <PasswordField
+          id="register-password"
+          label="Crie uma palavra-passe"
+          autoComplete="new-password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          aria-describedby="register-password-rule"
+          after={
+            <p
+              id="register-password-rule"
+              className={`mt-2 flex items-center gap-1.5 text-site-meta ${longEnough ? "text-[var(--status-success)]" : "text-s-text-2"}`}
+            >
+              <Check
+                className={`size-4 ${longEnough ? "" : "opacity-40"}`}
+                strokeWidth={2}
+                aria-hidden="true"
               />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => setShow(!show)}
-                className="absolute right-2 top-2 size-8 text-muted-foreground"
-                aria-label={show ? "Ocultar palavra-passe" : "Mostrar palavra-passe"}
-              >
-                {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </Button>
-            </div>
-          </div>
-        )}
-        {message && (
-          <p role="status" className="rounded-lg border bg-muted p-3 text-sm leading-5">
-            {message}
-          </p>
-        )}
-        <Button className="h-12 w-full text-base font-semibold" size="lg" disabled={loading}>
-          {loading ? "A processar..." : isRegister ? "Criar conta" : "Enviar instruções"}
-        </Button>
+              Pelo menos 8 caracteres
+            </p>
+          }
+        />
+        {message && <AuthError>{message}</AuthError>}
+        <button type="submit" className="site-btn site-btn-primary w-full" disabled={loading}>
+          {loading ? "A criar…" : "Criar conta"}
+        </button>
       </form>
-      {isRegister && (
-        <p className="mt-7 text-center text-sm text-muted-foreground">
-          Já tem conta?{" "}
-          <Link to="/auth/login" className="font-semibold text-primary hover:underline">
-            Entrar
-          </Link>
-        </p>
-      )}
     </AuthUI>
   );
+}
+
+function ResetScreen() {
+  const [email, setEmail] = useState("");
+  const [sent, setSent] = useState(false);
+  const send = async (to: string) => {
+    // Onde a pessoa define a palavra-passe nova.
+    const { error } = await (
+      await loadSupabase()
+    ).auth.resetPasswordForEmail(to, { redirectTo: `${window.location.origin}/auth/welcome` });
+    if (error) throw error;
+  };
+  const { submit, message, loading } = useSubmit(async (form) => {
+    const to = String(form.get("email")).trim();
+    await send(to);
+    setEmail(to);
+    setSent(true);
+  }, "Não foi possível enviar o email.");
+
+  const topLink = (
+    <>
+      Lembrou-se?{" "}
+      <Link to="/auth/login" className="font-medium text-s-text underline underline-offset-2">
+        Entrar
+      </Link>
+    </>
+  );
+
+  if (sent) {
+    return (
+      <AuthUI topLink={topLink}>
+        <EmailSent
+          title="Verifique o seu email"
+          email={email}
+          onResend={() =>
+            send(email).then(
+              () => undefined,
+              (error: unknown) => friendlyError(error, "Não foi possível reenviar."),
+            )
+          }
+        >
+          <Link
+            to="/auth/login"
+            className="site-btn w-full text-site-small text-s-text-2 hover:text-s-text"
+          >
+            Voltar a entrar
+          </Link>
+        </EmailSent>
+      </AuthUI>
+    );
+  }
+
+  return (
+    <AuthUI topLink={topLink}>
+      <AuthHeading title="Recuperar acesso">
+        Indique o email da conta. Enviamos um link para criar uma palavra-passe nova.
+      </AuthHeading>
+      <form onSubmit={submit} onInput={warmUp} className="grid gap-5">
+        <EmailField id="reset-email" autoFocus />
+        {message && <AuthError>{message}</AuthError>}
+        <button type="submit" className="site-btn site-btn-primary w-full" disabled={loading}>
+          {loading ? "A enviar…" : "Enviar link"}
+        </button>
+      </form>
+    </AuthUI>
+  );
+}
+
+export function AuthScreen({
+  mode,
+  email,
+}: {
+  mode: "login" | "register" | "reset";
+  email?: string | undefined;
+}) {
+  useAdminHostRedirect();
+  if (mode === "login") return <LoginScreen />;
+  if (mode === "register") return <RegisterScreen initialEmail={email} />;
+  return <ResetScreen />;
 }

@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import {
@@ -9,7 +10,10 @@ import {
   ChevronsLeft,
   ChevronsUpDown,
   Expand,
+  Flag,
   Gift,
+  Hourglass,
+  LogIn,
   Lock,
   Mic,
   Minus,
@@ -18,6 +22,7 @@ import {
   Phone,
   Play,
   Plus,
+  Radio,
   RotateCcw,
   RotateCw,
   Smartphone,
@@ -481,6 +486,76 @@ export function ScreenTabs({ tabs, dark }: { tabs: readonly ScreenTab[]; dark?: 
   );
 }
 
+/** As fases da sala, pela ordem em que a pessoa as vive. */
+export type Phase = "inscricao" | "espera" | "aovivo" | "fim";
+/** O nome de cada fase: na barra e no título do ecrã inteiro. */
+export const PHASE_NAME: Record<Phase, string> = { inscricao: "Inscrição", espera: "Espera", aovivo: "Ao vivo", fim: "Fim" };
+const PHASES: readonly [Phase, typeof Monitor][] = [
+  ["inscricao", LogIn],
+  ["espera", Hourglass],
+  ["aovivo", Radio],
+  ["fim", Flag],
+];
+
+/** A fase que o ecrã mostra: a página, a espera, a sala ou a sala no fim do vídeo. O WhatsApp não é uma fase. */
+export function phaseOf(screen: string, t: number, duration: number): Phase | null {
+  if (screen === "entry") return "inscricao";
+  if (screen === "waiting") return "espera";
+  if (screen !== "room") return null;
+  return duration > 0 && t >= duration - 0.5 ? "fim" : "aovivo";
+}
+
+/**
+ * A pré-visualização por fases: Inscrição, Espera, Ao vivo e Fim. Cada uma mostra o ecrã que a pessoa
+ * vê nesse momento; `off` desliga uma fase que este webinar não tem, com o porquê (ao tocar, num aviso:
+ * o `title` não aparece no telemóvel nem no tablet).
+ */
+export function PhaseBar({
+  phase,
+  onPick,
+  off,
+  dark,
+}: {
+  phase: Phase | null;
+  onPick: (phase: Phase) => void;
+  off?: Partial<Record<Phase, string>> | undefined;
+  dark?: boolean | undefined;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Fase da sala"
+      className={cn(
+        "inline-flex h-9 max-w-full shrink-0 items-center gap-0.5 overflow-x-auto rounded-[10px] p-[3px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        dark ? SEG_BOX.dark : SEG_BOX.light,
+      )}
+    >
+      {PHASES.map(([value, Icon]) => {
+        const label = PHASE_NAME[value];
+        const why = off?.[value];
+        return (
+        <button
+          key={value}
+          type="button"
+          role="radio"
+          aria-checked={phase === value}
+          aria-disabled={why ? true : undefined}
+          title={why ?? `Ver: ${label}`}
+          onClick={() => (why ? toast(why) : onPick(value))}
+          className={cn(
+            "inline-flex h-[30px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[7px] px-2.5 text-[12.5px] font-medium transition aria-disabled:cursor-not-allowed aria-disabled:opacity-40",
+            segItem(phase === value, dark),
+          )}
+        >
+          <Icon className={cn("hidden size-3.5 sm:block", value === "aovivo" && phase === value && "text-[#E5243B]")} />
+          {label}
+        </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Quanto recuar e avançar de cada vez. */
 const JUMPS = [10, 60, 120, 300] as const;
 const jumpLabel = (s: number) => (s < 60 ? `${s} s` : `${s / 60} min`);
@@ -662,6 +737,7 @@ export function FullScreen({
   onDevice,
   onClose,
   tools,
+  phases,
   children,
 }: {
   name: string;
@@ -670,6 +746,8 @@ export function FullScreen({
   onClose: () => void;
   /** À esquerda da escolha do aparelho (o zoom). */
   tools?: ReactNode;
+  /** As fases da sala, numa linha por baixo. */
+  phases?: ReactNode;
   children: ReactNode;
 }) {
   useEffect(() => {
@@ -697,6 +775,7 @@ export function FullScreen({
           <span className="hidden sm:inline">Fechar</span>
         </button>
       </div>
+      {phases ? <div className="flex shrink-0 justify-center px-4 pb-2">{phases}</div> : null}
       <div className="min-h-0 flex-1 px-2 pb-3 sm:px-4">{children}</div>
     </div>
   );

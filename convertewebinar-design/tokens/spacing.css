@@ -32,4 +32,14 @@
 --radius-control:var(--radius-sm);
 --radius-bar:var(--radius-xs);
 --radius-tag:var(--radius-xs);
+
+/* Site e auth (9/10): campos 8, cartões 16, palcos 24, botões em pílula.
+   O painel fica nos 6/8/12 do Geist. */
+--radius-field:8px;
+--radius-card-site:16px;
+--radius-panel:24px;
+--section-y:clamp(4rem, 9vw, 7.5rem);
+--section-y-tight:clamp(3rem, 6vw, 5rem);
+--container:79rem; /* 1264px */
+--gutter:clamp(1.25rem, 6vw, 5.5rem);
 }

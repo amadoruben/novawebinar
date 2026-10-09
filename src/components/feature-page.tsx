@@ -2,7 +2,6 @@ import { Link } from "@tanstack/react-router";
 import { ArrowRight, Check } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
-import { Button } from "@/components/ui/button";
 import {
   AssistanceVisual,
   DashboardVisual,
@@ -27,7 +26,7 @@ export function FeaturePage({ feature }: { feature: FeatureDefinition }) {
   const others = landingFeatures.filter((item) => item.slug !== feature.slug);
 
   return (
-    <div className="nova-landing">
+    <div data-site data-surface="base" className="nova-landing">
       <SiteHeader />
       <main className="lp-feature-page">
         <section className="lp-feature-hero">
@@ -36,8 +35,8 @@ export function FeaturePage({ feature }: { feature: FeatureDefinition }) {
             <h1>{feature.title}</h1>
             <p className="lp-feature-intro">{feature.intro}</p>
             <div className="lp-hero-actions">
-              <Button variant="dark" size="lg" asChild><Link to="/auth/register">Criar o meu webinar <ArrowRight /></Link></Button>
-              <Button variant="secondary" size="lg" asChild><Link to="/funcionalidades">Ver todas as funcionalidades</Link></Button>
+              <Link to="/auth/register" className="site-btn site-btn-primary">Criar conta <ArrowRight aria-hidden="true" /></Link>
+              <Link to="/funcionalidades" className="site-btn site-btn-outline">Ver todas as funcionalidades</Link>
             </div>
           </div>
         </section>

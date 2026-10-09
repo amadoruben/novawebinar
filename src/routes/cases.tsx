@@ -154,7 +154,7 @@ function CasesPage() {
       description="O que a IA passou à equipa: de quem é, em que estado está e até quando tem de ser respondido."
       action={false}
     >
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 sm:[&>*:last-child]:col-span-2 lg:grid-cols-5 lg:[&>*:last-child]:col-span-1">
         <Metric label="Abertos" value={String(stats.open)} />
         <Metric label="Sem responsável" value={String(stats.unassigned)} />
         <Metric label="Prazo em risco" value={String(stats.late)} />

@@ -6,6 +6,7 @@ import {
   leadSource,
   parseContactsCsv,
   relativeDays,
+  sourceLabel,
   sourceVerdict,
   timelineItems,
   whatsappLink,
@@ -139,7 +140,17 @@ describe("sourceVerdict", () => {
         { source: "whatsapp", contacts: 10, customers: 0, clicked: 5 },
         { source: "youtube", contacts: 10, customers: 0, clicked: 1 },
       ]),
-    ).toBe("Whatsapp é a origem que mais converte: 50% clicam na oferta, contra 30% no total.");
+    ).toBe("WhatsApp é a origem que mais converte: 50% clicam na oferta, contra 30% no total.");
+  });
+
+  it("escreve as marcas como elas se escrevem", () => {
+    expect(["youtube", "whatsapp", "tiktok", "instagram", null].map(sourceLabel)).toEqual([
+      "YouTube",
+      "WhatsApp",
+      "TikTok",
+      "Instagram",
+      "Direto / sem origem",
+    ]);
   });
 });
 

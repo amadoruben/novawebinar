@@ -63,6 +63,14 @@
 --accent-600:#C93A08;
 --accent-700:#A82F05;
 --accent-deep:#8A2604;
+/* Site e auth (9/10, lógica de superfícies do Nubank): misturas do laranja com o
+   branco ou o neutro Geist. As cores da marca não mudam. */
+--accent-25:#FEF8F5;  /* laranja 4% sobre branco */
+--accent-50:#FEF4F0;  /* laranja 6% */
+--warm-100:#F9F5F3;   /* laranja 3% sobre #FAFAFA: a nossa «areia» */
+--warm-200:#F2E9E6;   /* laranja 5% sobre #F2F2F2: cartão sobre warm-100 */
+--ink-warm:#25110A;   /* laranja 12% sobre #0A0A0A: rodapé */
+--ink-warm-2:#32140A; /* laranja 18%: cartão sobre o rodapé */
 --gradient-accent:linear-gradient(140deg,#E8440C 0%,#C93A08 45%,#8A2604 100%); /* @kind color */
 
 /* Nomes antigos (navy, mist, gray-50…900) passam a apontar para o neutro do
@@ -111,7 +119,7 @@
 
 --text-primary:var(--ds-gray-1000);
 --text-secondary:var(--ds-gray-900);
---text-tertiary:var(--ds-gray-700);
+--text-tertiary:#6F6F6F; /* 9/10: #8F8F8F dava 3.23:1 em branco; #6F6F6F dá 5.02 */
 --text-on-inverse:var(--white);
 --text-on-accent:var(--white);
 --text-on-accent-large:var(--white);
@@ -121,6 +129,7 @@
 --border-subtle:var(--ds-gray-alpha-200);
 --border-card:var(--ds-gray-alpha-400); /* aresta dos cartões e das janelas */
 --border-hairline:var(--ds-gray-400);
+--border-control:#8A8A8A; /* campos, caixas e interruptores: 3.45:1 (WCAG 1.4.11) */
 --chart-line:var(--ds-gray-500);
 --chart-hatch:var(--ds-gray-900);
 --chart-bar:var(--ds-gray-500);

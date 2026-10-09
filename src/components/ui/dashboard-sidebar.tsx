@@ -17,10 +17,10 @@ import {
   WalletMinimal,
   UserRoundCog,
   Video,
-  X,
   Zap,
+  type LucideIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import iconAsset from "@/assets/brand/convertewebinar-icon.svg";
@@ -49,15 +49,16 @@ import { cn } from "@/lib/utils";
 type NavItem = {
   to: string;
   title: string;
-  icon: React.ElementType;
+  icon: LucideIcon;
   exact?: boolean;
   /** Quem vê a entrada, além do que a função já pode abrir. */
   show?: (role: WorkspaceRole | undefined) => boolean;
 };
 
 /*
- * Organização da navegação: só o essencial em cima, o resto em secções
- * discretas e a conta em baixo (referência: barras laterais simples, sem ruído).
+ * Organização da navegação (9/10): em cima, as quatro entradas do dia a dia (as
+ * mesmas do menu de baixo do telemóvel) e a Biblioteca; depois as pessoas, os
+ * dados e, no fundo, a conta.
  */
 // Ícones da referência do projecto (convertewebinar-design: layout-grid, calendar,
 // square-activity…) e próprios da Convertewebinar, diferentes dos da NovaWebinar.
@@ -82,25 +83,30 @@ const MAIN: NavItem[] = [
   { to: "/dashboard", title: "Painel", icon: NAV_ICON.dashboard, exact: true },
   { to: "/webinars", title: "Webinars", icon: NAV_ICON.webinars },
   { to: "/calendar", title: "Agenda", icon: NAV_ICON.calendar },
-  { to: "/support", title: "Atendimento", icon: NAV_ICON.support, show: canAttend },
-  { to: "/contacts", title: "Contactos", icon: NAV_ICON.contacts },
   { to: "/automations", title: "Automações", icon: NAV_ICON.automations },
+  { to: "/library", title: "Biblioteca", icon: NAV_ICON.library },
 ];
 
 const SECTIONS: { heading: string; items: NavItem[] }[] = [
   {
-    heading: "Operação",
+    heading: "Pessoas",
+    items: [
+      { to: "/support", title: "Atendimento", icon: NAV_ICON.support, show: canAttend },
+      { to: "/cases", title: "Casos", icon: NAV_ICON.cases, show: canAttend },
+      { to: "/contacts", title: "Contactos", icon: NAV_ICON.contacts },
+    ],
+  },
+  {
+    heading: "Dados",
     items: [
       { to: "/live-view", title: "Ao vivo", icon: NAV_ICON.live },
-      { to: "/cases", title: "Casos", icon: NAV_ICON.cases, show: canAttend },
       { to: "/analytics", title: "Análises", icon: NAV_ICON.analytics },
-      { to: "/library", title: "Biblioteca", icon: NAV_ICON.library },
     ],
   },
 ];
 
 const ACCOUNT: NavItem[] = [
-  { to: "/team", title: "Utilizadores", icon: NAV_ICON.team, show: canManageTeam },
+  { to: "/team", title: "Equipas", icon: NAV_ICON.team, show: canManageTeam },
   { to: "/integrations", title: "Integrações", icon: NAV_ICON.integrations },
   { to: "/credits", title: "Créditos", icon: NAV_ICON.credits },
 ];
@@ -111,6 +117,24 @@ export function navGroups(role: WorkspaceRole | undefined) {
   return [{ heading: "Principal", items: MAIN }, ...SECTIONS, { heading: "Conta", items: ACCOUNT }]
     .map((g) => ({ heading: g.heading, items: g.items.filter(visible) }))
     .filter((g) => g.items.length);
+}
+
+/**
+ * O menu do telemóvel: as quatro primeiras entradas que a função vê ficam na barra de
+ * baixo (Painel, Webinars, Agenda, Automações; quem só atende: Atendimento, Casos,
+ * Contactos) e as restantes vão para a folha «Mais», pelos mesmos grupos.
+ */
+export function phoneNav(role: WorkspaceRole | undefined) {
+  const groups = navGroups(role);
+  const tabs = groups
+    .flatMap((g) => g.items)
+    .slice(0, 4)
+    .map((it) => ({ to: it.to, label: it.title, icon: it.icon, ...(it.exact ? { exact: true } : {}) }));
+  const inTabs = new Set(tabs.map((t) => t.to));
+  const more = groups
+    .map((g) => ({ ...g, items: g.items.filter((it) => !inTabs.has(it.to)) }))
+    .filter((g) => g.items.length);
+  return { tabs, more };
 }
 
 export const roleLabels: Record<WorkspaceRole, string> = {
@@ -124,7 +148,6 @@ export function SidebarNav({
   className = "",
   collapsed = false,
   onToggleCollapse,
-  onClose,
   role,
   searching,
   onSearchingChange,
@@ -137,7 +160,6 @@ export function SidebarNav({
   className?: string | undefined;
   collapsed?: boolean | undefined;
   onToggleCollapse?: (() => void) | undefined;
-  onClose?: (() => void) | undefined;
 }) {
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   const navigate = useNavigate();
@@ -146,6 +168,11 @@ export function SidebarNav({
   const credits = useCreditsRoute();
   const { data: workspace } = useWorkspace();
   const [query, setQuery] = useState("");
+  // ⌘K no Mac, Ctrl K no resto; decidido depois de montar para o servidor e o browser coincidirem.
+  const [shortcut, setShortcut] = useState("Ctrl K");
+  useEffect(() => {
+    if (/Mac|iPhone|iPad/.test(navigator.userAgent)) setShortcut("⌘K");
+  }, []);
 
   const visible = (item: NavItem) => canOpenPath(role, item.to) && (item.show?.(role) ?? true);
   const home = role === "support" ? "/support" : "/dashboard";
@@ -160,7 +187,6 @@ export function SidebarNav({
   const go = (to: string, search?: Record<string, string | undefined>) => {
     onSearchingChange(false);
     setQuery("");
-    onClose?.();
     if (to === "/integrations") return integrations.go([]);
     if (to === "/settings") return settings.go([]);
     if (to === "/credits") return credits.go([]);
@@ -208,16 +234,13 @@ export function SidebarNav({
       <button
         key={item.to}
         type="button"
-        onClick={() => {
-          onClose?.();
-          modal.go([]);
-        }}
+        onClick={() => modal.go([])}
         {...props}
       >
         {content}
       </button>
     ) : (
-      <Link key={item.to} to={item.to} onClick={onClose} {...props}>
+      <Link key={item.to} to={item.to} {...props}>
         {content}
       </Link>
     );
@@ -244,11 +267,10 @@ export function SidebarNav({
         className,
       )}
     >
-      {/* Cabeçalho: marca, pesquisa e recolher, como nas referências. */}
-      <div className={cn("flex shrink-0 items-center gap-1 pt-5 pb-4", collapsed ? "flex-col gap-3 px-3" : "px-3")}>
+      {/* Cabeçalho: a marca, os avisos e recolher; por baixo, a pesquisa (⌘K). */}
+      <div className={cn("flex shrink-0 items-center pt-5", collapsed ? "flex-col gap-3 px-3 pb-4" : "gap-0.5 px-3 pb-3")}>
         <Link
           to={home}
-          onClick={onClose}
           aria-label="Convertewebinar"
           className={cn("flex min-w-0 items-center gap-2.5", !collapsed && "flex-1 pl-1")}
         >
@@ -259,34 +281,43 @@ export function SidebarNav({
             </span>
           )}
         </Link>
-        <div className={cn("flex items-center", collapsed ? "flex-col gap-1" : "gap-0.5")}>
+        {collapsed && (
           <button
             type="button"
             className={iconButton}
             onClick={() => onSearchingChange(true)}
-            title="Pesquisar (⌘K)"
+            title={`Pesquisar (${shortcut})`}
             aria-label="Pesquisar"
           >
             <Search className="size-[17px]" strokeWidth={1.6} />
           </button>
-          {onToggleCollapse && (
-            <button
-              type="button"
-              className={cn(iconButton, "hidden md:inline-flex")}
-              onClick={onToggleCollapse}
-              title={collapsed ? "Abrir menu" : "Recolher menu"}
-              aria-label={collapsed ? "Abrir menu" : "Recolher menu"}
-            >
-              <PanelLeft className="size-[17px]" strokeWidth={1.6} />
-            </button>
-          )}
-          {onClose && (
-            <button type="button" className={cn(iconButton, "md:hidden")} onClick={onClose} aria-label="Fechar menu">
-              <X className="size-[17px]" strokeWidth={1.6} />
-            </button>
-          )}
-        </div>
+        )}
+        <NotificationsBell quiet className="size-8" side={collapsed ? "right" : "bottom"} align="start" />
+        {onToggleCollapse && (
+          <button
+            type="button"
+            className={cn(iconButton, "hidden md:inline-flex")}
+            onClick={onToggleCollapse}
+            title={collapsed ? "Abrir menu" : "Recolher menu"}
+            aria-label={collapsed ? "Abrir menu" : "Recolher menu"}
+          >
+            <PanelLeft className="size-[17px]" strokeWidth={1.6} />
+          </button>
+        )}
       </div>
+      {!collapsed && (
+        <div className="shrink-0 px-3 pb-4">
+          <button
+            type="button"
+            onClick={() => onSearchingChange(true)}
+            className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-md bg-white px-2.5 text-[13px] text-gray-600 shadow-[var(--shadow-border)] transition-colors hover:text-foreground"
+          >
+            <Search className="size-[15px] shrink-0" strokeWidth={1.6} aria-hidden />
+            <span className="flex-1 text-left">Pesquisar…</span>
+            <kbd className="rounded-xs bg-gray-100 px-1.5 py-px font-sans text-[11px] text-gray-600">{shortcut}</kbd>
+          </button>
+        </div>
+      )}
 
       <nav
         aria-label="Navegação principal"
@@ -316,85 +347,68 @@ export function SidebarNav({
         )}
       </nav>
 
-      {/* A pessoa, sempre visível no fundo (menu com definições e sessão). */}
-      <div className="shrink-0 px-3 pb-4">
-        <div
-          className={cn(
-            "flex items-center border-t border-[var(--border-subtle)] pt-3",
-            collapsed ? "flex-col gap-2" : "gap-1",
-          )}
-        >
-          {/* O nome abre as Definições (pop-up); a seta, a troca de workspace e a saída. */}
-          <button
-            type="button"
-            onClick={() => go("/settings")}
-            className={cn(
-              "flex min-w-0 cursor-pointer items-center gap-2.5 rounded-md text-left transition-colors hover:bg-[var(--hover-ghost)]",
-              collapsed ? "p-1" : "flex-1 py-1 pr-2 pl-1",
-              settings.open && "bg-chip",
-            )}
-            aria-label="Perfil e definições"
-          >
-            {avatar}
-            {!collapsed && (
-              <span className="flex min-w-0 flex-1 flex-col leading-tight">
-                <span className="truncate text-[14px] tracking-[-0.01em]">{name}</span>
-                <span className="truncate text-[11px] text-muted-foreground">
-                  {workspace?.organizationName ?? (workspace ? roleLabels[workspace.role] : "")}
-                </span>
-              </span>
-            )}
-          </button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className={cn(iconButton, "data-[state=open]:bg-chip", collapsed && "size-7")}
-                aria-label="Conta e espaço de trabalho"
-                title="Conta e espaço de trabalho"
-              >
-                <ChevronsUpDown className="size-3.5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent side="top" align="start" className="w-64">
-              <DropdownMenuLabel className="flex flex-col gap-0.5">
-                <span className="text-sm text-foreground">{name}</span>
-                <span>{workspace ? roleLabels[workspace.role] : ""}</span>
-              </DropdownMenuLabel>
-              {workspace && workspace.organizations.length > 1 && (
+      {/* A pessoa, sempre visível no fundo: um toque abre a conta (definições, espaço de trabalho, sair). */}
+      <div className="shrink-0 border-t border-[var(--border-subtle)] px-3 py-3">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                "flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md text-left transition-colors hover:bg-[var(--hover-ghost)] data-[state=open]:bg-chip",
+                collapsed ? "justify-center p-1" : "py-1.5 pr-2 pl-1.5",
+              )}
+              aria-label="Conta e espaço de trabalho"
+              title={collapsed ? name : undefined}
+            >
+              {avatar}
+              {!collapsed && (
                 <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Espaço de trabalho</DropdownMenuLabel>
-                  {workspace.organizations.map((org) => (
-                    <DropdownMenuItem
-                      key={org.id}
-                      disabled={org.id === workspace.organizationId}
-                      onSelect={() => switchWorkspace(org.id)}
-                    >
-                      <span className="truncate">{org.name}</span>
-                      {org.isTest && (
-                        <span className="shrink-0 rounded-xs bg-warning-soft px-1.5 py-0.5 text-[10px] tracking-wide text-warning uppercase">
-                          Teste
-                        </span>
-                      )}
-                      <span className="ml-auto pl-3 text-xs text-muted-foreground">{roleLabels[org.role]}</span>
-                    </DropdownMenuItem>
-                  ))}
+                  <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                    <span className="truncate text-[14px] tracking-[-0.01em]">{name}</span>
+                    <span className="truncate text-[11px] text-muted-foreground">
+                      {workspace?.organizationName ?? (workspace ? roleLabels[workspace.role] : "")}
+                    </span>
+                  </span>
+                  <ChevronsUpDown className="size-3.5 shrink-0 text-gray-500" aria-hidden />
                 </>
               )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => go("/settings")}>
-                <Settings /> Definições
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void signOut()}>
-                <LogOut /> Terminar sessão
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <div className="hidden md:block">
-            <NotificationsBell quiet side={collapsed ? "right" : "top"} align="start" />
-          </div>
-        </div>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side={collapsed ? "right" : "top"} align={collapsed ? "end" : "start"} className="w-64">
+            <DropdownMenuLabel className="flex flex-col gap-0.5">
+              <span className="text-sm text-foreground">{name}</span>
+              <span>{workspace ? roleLabels[workspace.role] : ""}</span>
+            </DropdownMenuLabel>
+            {workspace && workspace.organizations.length > 1 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Espaço de trabalho</DropdownMenuLabel>
+                {workspace.organizations.map((org) => (
+                  <DropdownMenuItem
+                    key={org.id}
+                    disabled={org.id === workspace.organizationId}
+                    onSelect={() => switchWorkspace(org.id)}
+                  >
+                    <span className="truncate">{org.name}</span>
+                    {org.isTest && (
+                      <span className="shrink-0 rounded-xs bg-warning-soft px-1.5 py-0.5 text-[10px] tracking-wide text-warning uppercase">
+                        Teste
+                      </span>
+                    )}
+                    <span className="ml-auto pl-3 text-xs text-muted-foreground">{roleLabels[org.role]}</span>
+                  </DropdownMenuItem>
+                ))}
+              </>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => go("/settings")}>
+              <Settings /> Definições
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void signOut()}>
+              <LogOut /> Terminar sessão
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <CommandDialog open={searching} onOpenChange={onSearchingChange}>

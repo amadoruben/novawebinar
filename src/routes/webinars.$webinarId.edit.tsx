@@ -7,13 +7,13 @@ import {
   ArrowRight,
   Bot,
   CalendarDays,
+  ClipboardCheck,
   Eye,
   Flag,
   Gift,
   Loader2,
   LogIn,
   MessagesSquare,
-  Radio,
   ShoppingBag,
   Users,
   Video,
@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import {
+  AI_JOB_STAGES,
   defaultAiSettings,
   startAiJob,
   useAiJob,
@@ -37,6 +38,9 @@ import {
   type TranscriptSegment,
 } from "@/lib/ai-comment-jobs";
 import { getWebinarAnalysis, getWebinarTranscript, saveWebinarTranscript } from "@/lib/ai-comments.functions";
+import { getAgent } from "@/lib/ai-agent/agent.functions";
+import { activationBlockers, channelStatus, readSteps } from "@/lib/workflow";
+import { reviewIssues, reviewSummary, type ReviewFix, type ReviewIssue } from "@/lib/webinar-review";
 import { curveBounds } from "@/lib/audience-curve";
 import {
   applyChatRealism,
@@ -64,7 +68,7 @@ import {
   useWorkspace,
   type WebinarStatus,
 } from "@/lib/data";
-import { entryFieldsProblem, parseEntryFields, type EntryField } from "@/lib/entry-fields";
+import { entryFieldsProblem, entryNotice, parseEntryFields, type EntryField } from "@/lib/entry-fields";
 import {
   audienceModeFor,
   buildFormatCurve,
@@ -74,6 +78,7 @@ import {
   offerDeadlinePassed,
   parseExtraOffers,
   liveSettings,
+  roomCountdown,
   roomFormat,
   type AudienceContext,
   type AudienceFormat,
@@ -104,6 +109,7 @@ import {
 } from "@/lib/webinar-draft";
 import { useSimulatedPurchases, useSocialProof } from "@/components/social-proof-editor";
 import { EntryScreen, entryLiveLabel, resolveTheme } from "@/components/room/entry-screen";
+import { WaitingScreen } from "@/components/room/waiting-screen";
 import { useVideoShape } from "@/components/video-player";
 import type { Appearance, Reaction } from "@/components/room/room-parts";
 import { emptyEditorForm, type EditorForm, type FocusProps } from "@/components/webinar-editor/form";
@@ -115,17 +121,21 @@ import {
   ExpandButton,
   ZoomControl,
   FullScreen,
+  PhaseBar,
+  PHASE_NAME,
+  phaseOf,
   PlayChip,
   RotateButton,
   ScreenTabs,
-  WaitingPreview,
+  SCREENS as SCREEN_SIZES,
   WhatsAppPreview,
   type Device,
+  type Phase,
   type ScreenTab,
 } from "@/components/webinar-editor/preview";
 import { playPreviewWithSound, RoomPreview, type PreviewMine, type RoomTab } from "@/components/webinar-editor/room-preview";
 import type { RiskZone } from "@/components/webinar-editor/timeline-dock";
-import { PublishPage, type LaunchIssue } from "@/components/webinar-editor/publish-page";
+import { PublishPage } from "@/components/webinar-editor/publish-page";
 import { StepInicio } from "@/components/webinar-editor/steps/inicio";
 import { StepEntrada } from "@/components/webinar-editor/steps/entrada";
 import { StepVideo, type EditorClock } from "@/components/webinar-editor/steps/video";
@@ -136,6 +146,7 @@ import { demoSales, StepVendas } from "@/components/webinar-editor/steps/vendas"
 import { StepAutomacoes } from "@/components/webinar-editor/steps/automacoes";
 import { StepAgente } from "@/components/webinar-editor/steps/agente";
 import { StepAgenda, type ScheduleKind } from "@/components/webinar-editor/steps/agenda";
+import { StepRevisao } from "@/components/webinar-editor/steps/revisao";
 import type { Database } from "@/integrations/supabase/types";
 
 type Provider = Database["public"]["Enums"]["video_provider"];
@@ -160,7 +171,7 @@ export const Route = createFileRoute("/webinars/$webinarId/edit")({
 });
 
 /** Ícone, título e ajuda de cada etapa. A ordem e os grupos vêm do rascunho. */
-const STEP_UI: Record<EditorStep, { icon: LucideIcon; title: string; help: HelpTopic }> = {
+const STEP_UI: Record<EditorStep, { icon: LucideIcon; title: string; help?: HelpTopic }> = {
   inicio: { icon: Flag, title: "Webinar e quem apresenta", help: "inicio" },
   entrada: { icon: LogIn, title: "Página de entrada", help: "entrada" },
   video: { icon: Video, title: "Vídeo", help: "video" },
@@ -171,9 +182,13 @@ const STEP_UI: Record<EditorStep, { icon: LucideIcon; title: string; help: HelpT
   automacoes: { icon: Zap, title: "Automações", help: "automacoes" },
   agente: { icon: Bot, title: "Agente IA", help: "agente" },
   agenda: { icon: CalendarDays, title: "Agenda", help: "agenda" },
+  // A própria Revisão é o guia: sem (i).
+  revisao: { icon: ClipboardCheck, title: "Revisão" },
 };
 const STEPS = EDITOR_STEPS.map((s) => ({ ...s, ...STEP_UI[s.id] }));
 const GROUP_NAME = { antes: "Antes da sala", sala: "Na sala", depois: "Depois da sala", lancar: "Lançar" } as const;
+
+const NOOP = () => {};
 
 /** Etapas que seguem o tempo do vídeo: sem vídeo, pedem-no primeiro. */
 const NEEDS_VIDEO: readonly EditorStep[] = ["chat", "audiencia", "oferta", "vendas"];
@@ -287,6 +302,7 @@ function EditWebinar() {
       registration_require_phone: webinar.registration_require_phone,
       registration_progress_enabled: webinar.registration_progress_enabled ?? false,
       registration_progress_value: String(webinar.registration_progress_value ?? 92),
+      registration_badge_text: webinar.registration_badge_text ?? "",
       room_theme: webinar.room_theme === "light" ? "light" : "dark",
       share_title: webinar.share_title ?? "",
       share_description: webinar.share_description ?? "",
@@ -296,6 +312,7 @@ function EditWebinar() {
       host_verified: webinar.host_verified,
       room_theme_system: webinar.room_theme_system,
       room_format: roomFormat(webinar.chat_settings),
+      entry_mode: (webinar.chat_settings as { entry_mode?: unknown } | null)?.entry_mode === "own" ? "own" : "page",
       // Num webinar antigo, a contagem vem das colunas prelive_*: o editor mostra o que a sala faz.
       live: liveSettings(webinar.chat_settings, webinar),
       entry_card_color: webinar.entry_card_color,
@@ -375,6 +392,12 @@ function EditWebinar() {
   const questions = useMemo(() => hostQuestions(speech), [speech]);
 
   const aiJob = useAiJob(webinarId);
+  // O agente, para a Revisão: a mesma leitura (e a mesma cache) do passo Agente.
+  const { data: agentBundle } = useQuery({
+    queryKey: ["ai-agent", webinarId],
+    queryFn: () => getAgent({ data: { webinarId } }),
+    enabled: step === "revisao",
+  });
   const { data: savedAnalysis, isPending: analysisPending } = useQuery({
     queryKey: ["webinar-analysis", webinarId],
     queryFn: async () => (await getWebinarAnalysis({ data: { webinarId } })).analysis,
@@ -463,7 +486,10 @@ function EditWebinar() {
   const [full, setFull] = useState(false);
   const [roomTab, setRoomTab] = useState<RoomTab | null>(null);
   const [entryView, setEntryView] = useState<"page" | "room">("page");
-  const [entryMode, setEntryMode] = useState<"page" | "own">("page");
+  // A fase escolhida na barra da pré-visualização (Inscrição, Espera, Ao vivo, Fim); null = o ecrã da etapa.
+  const [phase, setPhase] = useState<Phase | null>(null);
+  // A Revisão chegou ao fim: o Publicar do rodapé acorda.
+  const [reviewDone, setReviewDone] = useState(false);
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const [mine, setMine] = useState<PreviewMine[]>([]);
   const [reactions, setReactions] = useState<Reaction[]>([]);
@@ -514,6 +540,8 @@ function EditWebinar() {
 
   const setStep = (next: EditorStep) => {
     setStepState(next);
+    setPhase(null);
+    if (next === "revisao") setReviewDone(false);
     setPublished(false);
     setPlaying(false);
     setRoomTab(null);
@@ -728,7 +756,7 @@ function EditWebinar() {
   })();
   const offerVisible = Boolean(form.cta_text.trim());
   const fieldsProblem = entryFieldsProblem(entryFields);
-  const launchIssues: LaunchIssue[] = [
+  const launchIssues: ReviewIssue[] = [
     ...(fieldsProblem ? [{ step: "entrada" as const, title: fieldsProblem, detail: "Impede gravar." }] : []),
     ...(!selectedVideo ? [{ step: "video" as const, title: "Falta o vídeo", detail: "O chat, a oferta e a audiência seguem o tempo dele." }] : []),
     ...draftIssues.map((issue) => ({ step: issue.step, title: issue.message, detail: issue.blocking ? "Impede gravar." : "" })),
@@ -741,6 +769,8 @@ function EditWebinar() {
             step: "oferta" as const,
             title: "Falta o minuto do pitch",
             detail: suggestedPitch !== null ? `A análise sugere ${clock(suggestedPitch)}.` : "Sem minuto, a oferta abre no início.",
+            // A Revisão usa o minuto sugerido, como o «Pitch encontrado» da Oferta.
+            ...(suggestedPitch !== null ? { fix: "pitch" as const } : {}),
           },
         ]
       : []),
@@ -759,7 +789,6 @@ function EditWebinar() {
         ]
       : []),
   ];
-  const stepsWithIssues = new Set<EditorStep>(launchIssues.map((issue) => issue.step));
 
   const save = async (options?: { silent?: boolean }): Promise<boolean> => {
     if (!webinar) return false;
@@ -834,12 +863,14 @@ function EditWebinar() {
           registration_require_phone: Boolean(whatsapp?.required),
           registration_progress_enabled: form.registration_progress_enabled,
           registration_progress_value: Math.min(100, Math.max(0, Number(form.registration_progress_value) || 0)),
+          registration_badge_text: form.registration_badge_text.trim().slice(0, 40),
           entry_card_color: form.entry_card_color,
           entry_button_color: form.entry_button_color,
           // As regras do chat e o formato da sala (ao lado ou por cima do vídeo) ficam juntos.
           chat_settings: {
             ...chatRules,
             room_format: form.room_format,
+            entry_mode: form.entry_mode,
             live: { ...form.live, links: Object.fromEntries(Object.entries(form.live.links).map(([k, v]) => [k, (v ?? "").trim()]).filter(([, v]) => v)) },
           } as unknown as Json,
           share_title: form.share_title.trim(),
@@ -1317,9 +1348,57 @@ function EditWebinar() {
   const offerClosed = offerDeadlinePassed(form.offer_deadline, form.timezone, Date.now());
   const needsVideo = NEEDS_VIDEO.includes(step) && !selectedVideo;
 
+  // A Revisão: os avisos de lançamento acima e o que só ela vê (chat vazio, fala sem transcrição, automações por completar).
+  const agentRow = agentBundle?.agent;
+  const reviewFacts = {
+    title: form.public_title,
+    hostName: form.host_name,
+    fields: entryFields.length,
+    video: selectedVideo ? duration : null,
+    // Enquanto a análise carrega, não se acusa a falta dela.
+    audience: { format, min: range.min, max: range.max, analysed: analysisPending || moments.length > 0 },
+    comments: comments.length,
+    countries: chatRules.countries.length,
+    offer: offerVisible ? { product, pitch: pitchSeconds } : null,
+    // A mesma conta do passo Vendas: menos de 3 s entre compras depois do pitch.
+    sales: {
+      enabled: salesEnabled,
+      count: salesCount,
+      crowded: Math.max(12, duration - (pitchSeconds ?? 0) - 6) / Math.max(1, salesCount) < 3,
+    },
+    automations: automations
+      ? {
+          workflow: automations.workflows.length > 0,
+          total: automations.automations.length,
+          active: automations.automations.filter((a) => a.active).length,
+          // Só as mensagens: os canais são da conta (Integrações), não deste webinar.
+          incomplete: automations.automations.filter((a) => activationBlockers(readSteps(a.steps), channelStatus(true, true, true)).length > 0).length,
+        }
+      : null,
+    agent: agentRow ? { on: Boolean(agentRow["enabled"]) && agentRow["mode"] !== "desativado", name: String(agentRow["agent_name"] || "Equipa") } : null,
+    session: scheduleKind === "ondemand" ? null : nextSession ?? "Sem data",
+  };
+  // Os mesmos pontos na Revisão, no cabeçalho, na barra das etapas e na página depois de publicar.
+  const reviewList: ReviewIssue[] = [...launchIssues, ...reviewIssues(reviewFacts)];
+  const stepsWithIssues = new Set<EditorStep>(reviewList.map((issue) => issue.step));
+  // A geração com IA: a decorrer, pronta (rever sem gerar outra vez, que gastava créditos) ou parada com erro.
+  const aiSteps: EditorStep[] = ["chat", "audiencia"];
+  const fixing =
+    aiJob?.status === "running"
+      ? { steps: aiSteps, label: `${AI_JOB_STAGES[aiJob.stage] ?? "A trabalhar"}…` }
+      : aiJob?.status === "ready" && aiJob.drafts?.length
+        ? { steps: aiSteps, onReview: () => (setStep("chat"), setAiOpen(true)) }
+        : aiJob?.status === "error" && aiJob.error
+          ? { steps: aiSteps, error: aiJob.error }
+          : null;
+  const runFix = (fix: ReviewFix) => {
+    if (fix === "pitch" && suggestedPitch !== null) set({ cta_start_seconds: String(suggestedPitch) });
+    if (fix === "comments") void generate();
+  };
+
   // O ecrã que cada etapa mostra.
   type Screen = "entry" | "room" | "waiting" | "whatsapp";
-  const screen: Screen =
+  const stepScreen: Screen =
     step === "inicio"
       ? "entry"
       : step === "entrada"
@@ -1333,11 +1412,16 @@ function EditWebinar() {
           : step === "automacoes"
             ? "whatsapp"
             : "room";
+  // A barra das fases manda no ecrã até se mudar de etapa.
+  const screen: Screen = phase === "inscricao" ? "entry" : phase === "espera" ? "waiting" : phase ? "room" : stepScreen;
   const defaultTab: RoomTab = step === "oferta" && !phoneWebinar ? "offer" : step === "agente" ? "support" : "chat";
   const tab = roomTab ?? defaultTab;
-  const screenName = { entry: "Página de entrada", room: "Sala ao vivo", waiting: "Sala de espera", whatsapp: "WhatsApp" }[screen];
-  const ScreenIcon = { entry: LogIn, room: Radio, waiting: CalendarDays, whatsapp: MessagesSquare }[screen];
+  // No ecrã inteiro, o título é a fase que se vê (Inscrição, Espera, Ao vivo, Fim).
+  const shownPhase = phaseOf(screen, t, duration);
+  const screenName = shownPhase ? PHASE_NAME[shownPhase] : "WhatsApp";
   const screenDevice: Device = screen === "whatsapp" ? "phone" : device;
+  // A barra de estado do aparelho (relógio) no tema do ecrã: as três pré-visualizações usam a mesma.
+  const stageLight = screen === "whatsapp" || (previewTheme === "light" && !(screen === "room" && form.room_format === "live" && videoShape === "vertical"));
   // Só a sala roda (o telemóvel e o tablet deitados); a página e a espera ficam ao alto.
   const rotated = screenDevice !== "desktop" && landscape && screen === "room";
   const live = entryLiveLabel(nextWindow.startMs, form.timezone, Date.now());
@@ -1390,6 +1474,7 @@ function EditWebinar() {
       onBuy={() => toast(`Abre o checkout num separador novo${form.offer_utm ? ", com a origem da pessoa" : ""}.`)}
     />
   );
+  const titleOnly = step === "inicio" && !phase;
   const entry = (
     <EntryScreen
       preview
@@ -1401,10 +1486,11 @@ function EditWebinar() {
       live={live.live}
       liveLabel={live.label}
       video={videoUrl && selectedVideo?.provider === "upload" ? { url: videoUrl, startSeconds: 0 } : null}
-      // No Início a página mostra só o que se preencheu ali (o título); os campos e o botão entram na etapa Página.
-      buttonText={step === "inicio" ? "" : form.registration_button_text || "Entrar na sala"}
-      progress={step !== "inicio" && form.registration_progress_enabled ? Number(form.registration_progress_value) || 0 : null}
-      fields={step === "inicio" ? [] : entryFields}
+      // No Início a página mostra só o que se preencheu ali (o título); os campos e o botão entram na etapa Página
+      // (ou quando se escolhe a fase Inscrição).
+      buttonText={titleOnly ? "" : form.registration_button_text || "Entrar na sala"}
+      notice={titleOnly ? null : entryNotice(form)}
+      fields={titleOnly ? [] : entryFields}
       values={{}}
       country={{ code: "AO", name: "Angola", dial: "+244", flag: "🇦🇴" }}
       cardColor={form.entry_card_color}
@@ -1412,19 +1498,28 @@ function EditWebinar() {
       highlight={focusKey}
     />
   );
+  const waitingStart = nextWindow.startMs && nextWindow.startMs > Date.now() ? nextWindow.startMs : Date.now() + 26 * 3600_000;
+  const waitingCountdown = roomCountdown(form.live.countdown, webinar);
   const screenBody =
     screen === "room" ? (
       room
     ) : screen === "entry" ? (
       entry
     ) : screen === "waiting" ? (
-      <WaitingPreview
-        device={screenDevice}
-        title={form.public_title}
-        remainingSeconds={nextWindow.startMs ? (nextWindow.startMs - Date.now()) / 1000 : 0}
-        when={nextSession ?? ""}
-        highlight={focusKey === "date"}
-      />
+      // A sala de espera da sala pública, com o estilo e a cor da contagem; sem sessão marcada, conta até amanhã.
+      <div style={screenDevice === "desktop" ? { width: 1280, height: 720 } : { width: SCREEN_SIZES[screenDevice].w, height: SCREEN_SIZES[screenDevice].h }}>
+        <WaitingScreen
+          title={form.public_title}
+          startMs={waitingStart}
+          opensMs={waitingStart - waitingCountdown.seconds * 1000}
+          timezone={form.timezone}
+          themeClass={cn(previewTheme === "light" && "room-light", "!min-h-full h-full")}
+          style={waitingCountdown.style}
+          color={waitingCountdown.color}
+          onZero={NOOP}
+          highlight={focusKey === "date"}
+        />
+      </div>
     ) : (
       <WhatsAppPreview
         hostName={form.host_name}
@@ -1449,12 +1544,12 @@ function EditWebinar() {
   const tabs: ScreenTab[] =
     step === "entrada" || step === "inicio"
       ? [
-          { key: "page", label: "Página", active: screen === "entry", onClick: () => (setStepState("entrada"), setEntryView("page")) },
+          { key: "page", label: "Página", active: screen === "entry", onClick: () => (setStepState("entrada"), setPhase(null), setEntryView("page")) },
           {
             key: "room",
             label: "Na sala",
             active: step === "entrada" && entryView === "room",
-            onClick: () => (setStepState("entrada"), setEntryView("room")),
+            onClick: () => (setStepState("entrada"), setPhase(null), setEntryView("room")),
           },
         ]
       : screen === "room"
@@ -1474,6 +1569,30 @@ function EditWebinar() {
     screen === "room" && duration > 0 && !needsVideo ? (
       <PlayChip t={t} duration={duration} playing={playing} onToggle={togglePlay} onSeek={seek} marks={playMarks} />
     ) : null;
+
+  // As fases da sala (Inscrição, Espera, Ao vivo, Fim): o ecrã de cada uma é o da sala pública.
+  const pickPhase = (next: Phase) => {
+    setPhase(next);
+    setPlaying(false);
+    if (next === "fim") seek(duration);
+    if (next === "aovivo" && duration > 0 && t >= duration - 0.5) seek(pitchSeconds ?? suggestedPitch ?? 0);
+  };
+  const phaseBar = (dark?: boolean) => (
+    <PhaseBar
+      phase={phaseOf(screen, t, duration)}
+      onPick={pickPhase}
+      off={
+        scheduleKind === "ondemand"
+          ? { espera: "«Sempre disponível»: cada pessoa começa quando entra, sem espera." }
+          : !form.waiting_room_enabled
+            ? { espera: "Sala de espera desligada na Agenda." }
+            : !nextWindow.startMs
+              ? { espera: "Sem data marcada na Agenda." }
+              : undefined
+      }
+      dark={dark}
+    />
+  );
 
   const tools = (
     <span className="flex shrink-0 items-center gap-2">
@@ -1501,7 +1620,7 @@ function EditWebinar() {
                 <span className={cn("size-1.5 rounded-full", form.status === "draft" ? "bg-gray-400" : "bg-[#1D8A5E]")} />
                 {lifecycleLabel(lifecycle)}
                 {dirty ? <span> · por guardar</span> : null}
-                {launchIssues.length > 0 ? <span className="text-warning"> · {launchIssues.length} por resolver</span> : null}
+                {reviewList.length > 0 ? <span className="text-warning"> · {reviewList.length} por resolver</span> : null}
               </p>
             </div>
             <Button variant="ghost" size="icon" className="size-8 shrink-0" asChild>
@@ -1509,7 +1628,14 @@ function EditWebinar() {
                 <Eye />
               </a>
             </Button>
-            <Button variant="dark" size="sm" className="shrink-0" onClick={publish} disabled={saving}>
+            {/* Publicar passa pela Revisão; na Revisão, publica. */}
+            <Button
+              variant="dark"
+              size="sm"
+              className="shrink-0"
+              onClick={step === "revisao" ? publish : () => setStep("revisao")}
+              disabled={saving || (step === "revisao" && !reviewDone)}
+            >
               {saving ? <Loader2 className="animate-spin" /> : null}
               Publicar
             </Button>
@@ -1547,7 +1673,7 @@ function EditWebinar() {
         </header>
 
         {published ? (
-          <PublishPage issues={launchIssues} roomLink={roomLink} onResolve={setStep} onBack={() => setPublished(false)} />
+          <PublishPage issues={reviewList} roomLink={roomLink} onResolve={setStep} onBack={() => setPublished(false)} />
         ) : (
           <div className="grid min-h-0 flex-1 lg:grid-cols-[340px_minmax(0,1fr)]">
             <section data-editor-panel className="flex min-h-0 min-w-0 flex-col bg-background lg:border-r">
@@ -1559,12 +1685,13 @@ function EditWebinar() {
                         <span className="truncate text-[12px] text-muted-foreground">Pré-visualização</span>
                         {tools}
                       </div>
+                      <div className="flex justify-center px-4 pt-2">{phaseBar()}</div>
                       <div className="h-[min(64dvh,600px)] px-2">
                         <DeviceStage
                           device={screenDevice}
                           landscape={rotated}
                           url={`${roomOrigin}/w/${roomSlug}`}
-                          light={screen === "whatsapp" || (screen !== "room" && previewTheme === "light")}
+                          light={stageLight}
                           dock={{ play, tabs: tabs.length ? <ScreenTabs tabs={tabs} /> : null }}
                         >
                           {screenBody}
@@ -1585,7 +1712,7 @@ function EditWebinar() {
               ) : null}
               <div className="flex shrink-0 items-center gap-1 px-5 pb-1 pt-3.5">
                 <h1 className="text-[17px] font-semibold tracking-tight">{active.title}</h1>
-                <HelpButton topic={active.help} />
+                {active.help ? <HelpButton topic={active.help} /> : null}
               </div>
               <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-3.5">
                 {needsVideo ? (
@@ -1622,13 +1749,14 @@ function EditWebinar() {
                     onFields={setEntryFields}
                     colors={{ card: form.entry_card_color, button: form.entry_button_color }}
                     onColors={(c) => set({ entry_card_color: c.card, entry_button_color: c.button })}
-                    mode={entryMode}
-                    onMode={setEntryMode}
+                    mode={form.entry_mode}
+                    onMode={(entry_mode) => set({ entry_mode })}
                     roomLink={roomLink}
                     embed={{
                       code: forms[0]
                         ? `<div data-convertewebinar-form="${forms[0].id}"></div>\n<script src="${baseUrl}/api/public/forms/${forms[0].id}/embed" async></script>`
                         : null,
+                      formId: forms[0]?.id ?? null,
                       creating: creatingForm,
                       onCreate: () => void createForm(),
                     }}
@@ -1789,6 +1917,16 @@ function EditWebinar() {
                   <StepAutomacoes webinarId={webinarId} organizationId={organizationId} title={form.public_title || form.internal_name || "Webinar"} />
                 ) : step === "agente" ? (
                   <StepAgente webinarId={webinarId} onState={setAgentState} onSeek={seek} />
+                ) : step === "revisao" ? (
+                  <StepRevisao
+                    steps={STEPS.filter((s) => s.id !== "revisao")}
+                    issues={reviewList}
+                    summary={reviewSummary(reviewFacts)}
+                    working={fixing}
+                    onGo={setStep}
+                    onFix={runFix}
+                    onDone={() => setReviewDone(true)}
+                  />
                 ) : (
                   <StepAgenda
                     form={form}
@@ -1836,7 +1974,7 @@ function EditWebinar() {
                     <Eye />
                     Ver
                   </Button>
-                  <Button variant="dark" className="min-w-0" onClick={saveAndGo} disabled={saving}>
+                  <Button variant="dark" className="min-w-0" onClick={saveAndGo} disabled={saving || (step === "revisao" && !reviewDone)}>
                     {saving ? <Loader2 className="animate-spin" /> : null}
                     <span className="truncate">{nextStep ? `Continuar: ${nextStep.label}` : "Publicar"}</span>
                     {nextStep ? <ArrowRight /> : null}
@@ -1847,13 +1985,7 @@ function EditWebinar() {
 
             <section className="hidden min-w-0 flex-col bg-[var(--background)] lg:flex lg:min-h-0">
               <div className="flex shrink-0 items-center gap-3 px-4 pt-2.5">
-                <span className="flex min-w-0 flex-1 items-center gap-2 text-[12.5px] font-medium">
-                  <ScreenIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="truncate">
-                    {screenName}
-                    <span className="font-normal text-muted-foreground"> · pré-visualização</span>
-                  </span>
-                </span>
+                <span className="flex min-w-0 flex-1">{phaseBar()}</span>
                 {tools}
               </div>
               <div className="min-h-0 flex-1 pb-3">
@@ -1864,7 +1996,7 @@ function EditWebinar() {
                   landscape={rotated}
                   url={`${roomOrigin}/w/${roomSlug}`}
                   highlightUrl={focusKey === "url"}
-                  light={screen === "whatsapp" || (screen !== "room" && previewTheme === "light")}
+                  light={stageLight}
                   zoom={zoom}
                   dock={{ play, tabs: tabs.length ? <ScreenTabs tabs={tabs} /> : null }}
                 >
@@ -1884,12 +2016,13 @@ function EditWebinar() {
           onDevice={setDevice}
           onClose={() => setFull(false)}
           tools={<ZoomControl dark zoom={zoom} onZoom={setZoom} />}
+          phases={phaseBar(true)}
         >
           <DeviceStage
             device={screenDevice}
             landscape={rotated}
             url={`${roomOrigin}/w/${roomSlug}`}
-            light={screen === "whatsapp"}
+            light={stageLight}
             dark
             zoom={zoom}
             dock={{

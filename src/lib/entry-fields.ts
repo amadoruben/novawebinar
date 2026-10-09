@@ -35,6 +35,10 @@ export const FIELD_ICON_KEYS = [
   "building",
   "briefcase",
   "instagram",
+  "tiktok",
+  "facebook",
+  "linkedin",
+  "youtube",
   "calendar",
   "globe",
   "school",
@@ -130,6 +134,41 @@ export function entryFieldsProblem(fields: readonly EntryField[]): string | null
   if (!contact) return "Precisa de pelo menos um contacto: e-mail ou WhatsApp.";
   if (fields.length > MAX_FIELDS) return `No máximo ${MAX_FIELDS} campos.`;
   return null;
+}
+
+/** O nome do campo na API pública e no formulário embed: nome, e-mail e WhatsApp («phone») soltos; os outros em «answers». */
+export function fieldApiKey(field: Pick<EntryField, "id" | "kind">): string {
+  return field.kind === "name" || field.kind === "email" ? field.kind : field.kind === "whatsapp" ? "phone" : field.id;
+}
+
+/** Os campos como o formulário embed os desenha na página externa: os mesmos da página do Convertewebinar. */
+export function embedFields(fields: readonly EntryField[]) {
+  return fields.map((field) => ({
+    key: fieldApiKey(field),
+    /** Fora de «answers»: nome, e-mail ou WhatsApp. */
+    base: BASE_KINDS.includes(field.kind),
+    phone: field.kind === "whatsapp",
+    label: field.label,
+    input: field.kind === "whatsapp" ? "tel" : FIELD_KINDS[field.kind].input,
+    placeholder: FIELD_KINDS[field.kind].placeholder,
+    autoComplete: FIELD_KINDS[field.kind].autoComplete ?? "off",
+    required: field.required,
+  }));
+}
+
+/** O aviso no topo da página: as vagas em % ou um texto curto. Desligado por omissão. */
+export type EntryNotice = { kind: "progress"; value: number } | { kind: "text"; text: string };
+export const NOTICE_TEXT_MAX = 40;
+
+export function entryNotice(w: {
+  registration_progress_enabled: boolean;
+  registration_progress_value: number | string;
+  registration_badge_text?: string | null | undefined;
+}): EntryNotice | null {
+  if (w.registration_progress_enabled)
+    return { kind: "progress", value: Math.min(100, Math.max(0, Math.round(Number(w.registration_progress_value) || 0))) };
+  const text = (w.registration_badge_text ?? "").trim().slice(0, NOTICE_TEXT_MAX);
+  return text ? { kind: "text", text } : null;
 }
 
 export function newFieldId() {

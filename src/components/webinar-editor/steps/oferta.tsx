@@ -26,6 +26,7 @@ import {
   isGroupLink,
   OFFER_COLOR_SUGGESTIONS,
   OFFER_LOOKS,
+  type OfferColors,
   type OfferLook,
   type OfferSlot,
 } from "@/lib/room-logic";
@@ -47,6 +48,14 @@ function targetOf(url: string): Target {
 /** Os textos de botão que se trocam sozinhos ao mudar o destino (os escritos à mão ficam). */
 const BUTTON_DEFAULT: Record<Target, string> = { link: "Quero minha vaga", group: "Entrar no grupo" };
 const AUTO_BUTTONS = new Set(["", "Quero minha vaga", "Quero entrar", "Entrar no grupo"]);
+const LOOK_HINT: Record<OfferLook, string> = {
+  square: "Imagem grande",
+  compact: "Numa linha",
+  classic: "Fundo transparente",
+};
+/** Sugestões para o fundo e o texto do cartão (claros e escuros que combinam com as cores do botão). */
+const CARD_COLORS = ["#FFFFFF", "#F5F5F4", "#171717", "#0F172A", "#1E3A8A"] as const;
+const TEXT_COLORS = ["#FFFFFF", "#171717", "#FACC15", "#E8440C"] as const;
 
 /** Uma oferta no ecrã: a principal (campos do webinar) ou uma das seguintes. */
 type OfferView = {
@@ -95,6 +104,12 @@ export function StepOferta({
   const lastText = useRef(form.cta_text || "Quero minha vaga");
   const d = Math.max(1, c.duration);
   const [open, setOpen] = useState<string | null>("main");
+  // As cores próprias da oferta; uma vazia segue a cor do botão de entrar ou o tema da sala.
+  const offerColors = form.live.offerColors ?? {};
+  const setOfferColors = (patch: { [K in keyof OfferColors]?: string | undefined }) => {
+    const next = Object.fromEntries(Object.entries({ ...offerColors, ...patch }).filter(([, v]) => v));
+    set({ live: { ...form.live, offerColors: next } });
+  };
   const start = form.cta_start_seconds.trim() === "" ? null : Number(form.cta_start_seconds) || 0;
   // Sem minuto escolhido, a sala abre a oferta no início do vídeo (`cta_start_seconds ?? 0`).
   const opensAt = start ?? 0;
@@ -241,7 +256,7 @@ export function StepOferta({
           </Section>
 
           <Section icon={Palette} title="Aparência" help="aparenciaOferta">
-            <div className="grid grid-cols-2 gap-2.5" role="radiogroup" aria-label="Forma da oferta">
+            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Forma da oferta">
               {OFFER_LOOKS.map(({ id, name }) => {
                 const on = form.live.offerLook === id;
                 return (
@@ -251,7 +266,7 @@ export function StepOferta({
                     role="radio"
                     aria-checked={on}
                     onClick={() => set({ live: { ...form.live, offerLook: id } })}
-                    className="group grid gap-2 text-left"
+                    className="group grid content-start gap-2 text-left"
                   >
                     <span
                       className={cn(
@@ -259,7 +274,7 @@ export function StepOferta({
                         on ? "ring-2 ring-foreground ring-offset-2" : "group-hover:ring-black/25",
                       )}
                     >
-                      <OfferLookThumb look={id} color={form.live.offerColor} />
+                      <OfferLookThumb look={id} color={offerColors.button ?? form.live.offerColor} card={offerColors.card} />
                       {on ? (
                         <span className="absolute right-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-foreground text-background">
                           <Check className="size-3" />
@@ -268,19 +283,45 @@ export function StepOferta({
                     </span>
                     <span className="grid">
                       <span className={cn("text-[13px]", on ? "font-semibold" : "font-medium text-muted-foreground")}>{name}</span>
-                      <span className="text-[12px] leading-snug text-muted-foreground">{id === "square" ? "O produto num quadrado grande" : "Numa linha, ocupa pouco"}</span>
+                      <span className="text-[12px] leading-snug text-muted-foreground">{LOOK_HINT[id]}</span>
                     </span>
                   </button>
                 );
               })}
             </div>
-            <Swatches
-              label="Cor do botão e do cartão"
-              value={form.live.offerColor}
-              onChange={(offerColor) => set({ live: { ...form.live, offerColor } })}
-              options={OFFER_COLOR_SUGGESTIONS}
+            <OfferColorField
+              label="Cor do botão"
+              value={offerColors.button}
+              fallback={form.live.offerColor}
+              reset="Usar a cor do botão de entrar"
+              hint="Por omissão, a cor do botão de entrar."
+              onChange={(button) => setOfferColors({ button })}
             />
-            <p className="text-[12.5px] leading-snug text-muted-foreground">É a mesma cor do botão de entrar. No telemóvel, o cartão sobe por cima do chat.</p>
+            <details className="group rounded-xl border" open={Boolean(offerColors.card || offerColors.text) || undefined}>
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-3.5 py-2.5 text-[13px] font-medium [&::-webkit-details-marker]:hidden">
+                Fundo e texto do cartão
+                <span className="ml-auto text-[12px] font-normal text-muted-foreground">{offerColors.card || offerColors.text ? "Escolhidos" : "Do tema da sala"}</span>
+                <ChevronDown className="size-4 text-muted-foreground transition group-open:rotate-180" />
+              </summary>
+              <div className="grid gap-3.5 border-t px-3.5 pb-3.5 pt-3">
+                <OfferColorField
+                  label="Fundo"
+                  value={offerColors.card}
+                  fallback=""
+                  reset="Usar o fundo do tema"
+                  options={CARD_COLORS}
+                  onChange={(card) => setOfferColors({ card })}
+                />
+                <OfferColorField
+                  label="Texto"
+                  value={offerColors.text}
+                  fallback=""
+                  reset="Texto automático"
+                  options={TEXT_COLORS}
+                  onChange={(text) => setOfferColors({ text })}
+                />
+              </div>
+            </details>
           </Section>
 
           <Section icon={Clock} title="Cronómetro e prazo" help="urgencia">
@@ -654,16 +695,76 @@ function OfferCardEditor({
   );
 }
 
-/** O cartão da oferta em miniatura, na cor escolhida: «Quadrada» (o produto num quadrado grande) ou «Compacta» (uma linha). */
-function OfferLookThumb({ look, color }: { look: OfferLook; color: string }) {
+/**
+ * Uma cor da oferta à escolha; vazia, mostra a de omissão (`fallback`) e não grava nada. Escolhida,
+ * aparece o link para voltar à de omissão.
+ */
+function OfferColorField({
+  label,
+  value,
+  fallback,
+  reset,
+  hint,
+  options = OFFER_COLOR_SUGGESTIONS,
+  onChange,
+}: {
+  label: string;
+  value: string | undefined;
+  fallback: string;
+  reset: string;
+  /** Uma linha, enquanto vale a de omissão. */
+  hint?: string | undefined;
+  options?: readonly string[] | undefined;
+  onChange: (value: string | undefined) => void;
+}) {
+  return (
+    <div className="grid gap-1">
+      <Swatches label={label} value={value ?? fallback} onChange={onChange} options={options} />
+      {value ? (
+        <button
+          type="button"
+          onClick={() => onChange(undefined)}
+          className="justify-self-start text-[12.5px] font-medium text-muted-foreground underline underline-offset-2 hover:text-foreground"
+        >
+          {reset}
+        </button>
+      ) : hint ? (
+        <p className="text-[12.5px] text-muted-foreground">{hint}</p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * O cartão da oferta em miniatura, nas cores escolhidas: «Quadrada» (o produto num quadrado grande),
+ * «Compacta» (uma linha) ou «Clássica» (a faixa na cor por cima e o fundo meio transparente).
+ */
+function OfferLookThumb({ look, color, card }: { look: OfferLook; color: string; card?: string | undefined }) {
   const bar = (width: string, tone = "bg-white/25") => <i className={cn("block h-1.5 rounded-full", tone)} style={{ width }} />;
+  // Um vídeo por trás, para se notar o fundo meio transparente da «Clássica».
+  const stage = "grid aspect-[16/10] content-center bg-[linear-gradient(135deg,#3a4150,#141414_70%)] px-[12%]";
+  if (look === "classic") {
+    return (
+      <span className={stage}>
+        <span className="grid overflow-hidden rounded-lg ring-1 ring-white/10" style={{ background: `color-mix(in srgb, ${card ?? "#212121"} 70%, transparent)` }}>
+          <span className="grid gap-1 px-1.5 py-1.5" style={{ background: `linear-gradient(110deg, color-mix(in srgb, ${color} 20%, #000), ${color})` }}>
+            {bar("80%", "bg-white/90")}
+          </span>
+          <span className="grid gap-1 p-1.5">
+            {bar("55%")}
+            <i className="block h-2.5 rounded-full" style={{ background: color }} />
+          </span>
+        </span>
+      </span>
+    );
+  }
   const square = look === "square";
   return (
-    <span className="grid aspect-[16/10] content-center bg-[#141414] px-[14%]">
-      <span className="grid gap-1.5 rounded-lg bg-[#212121] p-2 ring-1 ring-white/10">
+    <span className={stage}>
+      <span className="grid gap-1.5 rounded-lg p-1.5 ring-1 ring-white/10" style={{ background: card ?? "#212121" }}>
         <span className="flex items-center gap-1.5">
           <span
-            className={cn("shrink-0", square ? "size-8 rounded-[5px]" : "size-4 rounded-[3px]")}
+            className={cn("shrink-0", square ? "size-6 rounded-[5px]" : "size-3.5 rounded-[3px]")}
             style={{ background: `linear-gradient(140deg, ${color}, color-mix(in srgb, ${color} 30%, #000))` }}
           />
           <span className="grid flex-1 gap-1">
@@ -671,7 +772,7 @@ function OfferLookThumb({ look, color }: { look: OfferLook; color: string }) {
             {bar("50%")}
           </span>
         </span>
-        <i className="block h-3 rounded-[4px]" style={{ background: color }} />
+        <i className="block h-2.5 rounded-[4px]" style={{ background: color }} />
       </span>
     </span>
   );

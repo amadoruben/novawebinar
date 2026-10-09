@@ -114,12 +114,16 @@ export function SourceList({
   );
 }
 
+export type AgentPanelTab = (typeof SUBTABS)[number]["id"];
+
 export function AgentPanel({
   webinarId,
   onSeek,
+  initialTab = "conhecimento",
 }: {
   webinarId: string;
   onSeek?: ((seconds: number) => void) | undefined;
+  initialTab?: AgentPanelTab | undefined;
 }) {
   const queryClient = useQueryClient();
   const load = useServerFn(getAgent);
@@ -155,8 +159,8 @@ export function AgentPanel({
 
 
 
-  // O interruptor e a autonomia ficam no passo Agente; aqui abre-se no conhecimento.
-  const [tab, setTab] = useState<(typeof SUBTABS)[number]["id"]>("conhecimento");
+  // O interruptor, a autonomia e as fontes ficam no passo Agente; aqui abre-se no que se pediu.
+  const [tab, setTab] = useState<AgentPanelTab>(initialTab);
   const { data, isLoading } = useQuery({
     queryKey: ["ai-agent", webinarId],
     queryFn: () => load({ data: { webinarId } }),
@@ -218,29 +222,6 @@ export function AgentPanel({
 
       {tab === "visao" ? (
         <section className="space-y-4 rounded-card bg-card p-5">
-          <div className="rounded-xl border p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-semibold">Usar conteúdo do webinar como conhecimento</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Quando ativo, o Agente IA utiliza a transcrição e a compreensão completa deste
-                  webinar para responder às perguntas dos participantes. Só pode revelar o que já foi
-                  apresentado até ao minuto em que a pessoa está.
-                </p>
-              </div>
-              <Switch
-                checked={Boolean(agent["use_webinar_transcript"])}
-                onCheckedChange={(checked) => update({ use_webinar_transcript: checked })}
-              />
-            </div>
-            {!agent["use_webinar_transcript"] ? (
-              <p className="mt-3 text-xs text-muted-foreground">
-                Desligado: nada da transcrição entra nas respostas. O agente usa apenas o
-                conhecimento configurado por si.
-              </p>
-            ) : null}
-          </div>
-
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>Nome do assistente</Label>
