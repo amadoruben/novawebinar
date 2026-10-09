@@ -54,19 +54,3 @@ export function buildSentences(words: NormalizedWord[]): NormalizedSentence[] {
 
   return sentences;
 }
-
-/** Frases que tocam um intervalo (em milissegundos). */
-export function sentencesBetween(
-  sentences: NormalizedSentence[],
-  fromMs: number,
-  toMs: number,
-): NormalizedSentence[] {
-  return sentences.filter((sentence) => sentence.endMs >= fromMs && sentence.startMs <= toMs);
-}
-
-/** Frases com confiança abaixo do limite: não servem para decisões fortes. */
-export function lowConfidenceSentences(sentences: NormalizedSentence[], threshold = 0.6) {
-  return sentences.filter(
-    (sentence) => typeof sentence.confidence === "number" && sentence.confidence < threshold,
-  );
-}

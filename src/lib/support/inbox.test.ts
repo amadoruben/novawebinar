@@ -4,7 +4,6 @@ import {
   countTabs,
   inboxState,
   sortInbox,
-  stripState,
   toInboxItem,
   webinarFilters,
   type InboxItem,
@@ -118,20 +117,6 @@ describe("caixa do atendimento", () => {
       { id: "w1", title: "Fórmula Digital", count: 2 },
       { id: "w2", title: "Tráfego", count: 1 },
     ]);
-  });
-});
-
-describe("faixa dos webinars", () => {
-  const session = (state: "scheduled" | "live" | "finished", endMs: number | null = 2) =>
-    ({ kind: "session", state, startMs: 1, endMs, lastEndedMs: null }) as const;
-  it("usa o ciclo de vida: terminado sai, sem fim é «Iniciado»", () => {
-    expect(stripState(session("finished"))).toBeNull();
-    expect(stripState({ kind: "draft" })).toBeNull();
-    expect(stripState(session("live"))).toBe("live");
-    expect(stripState(session("live", null))).toBe("started");
-    expect(stripState(session("scheduled"))).toBe("soon");
-    expect(stripState({ kind: "jit", intervalMinutes: 15 })).toBe("running");
-    expect(stripState({ kind: "on_demand" })).toBe("running");
   });
 });
 

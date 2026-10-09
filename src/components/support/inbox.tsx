@@ -86,7 +86,7 @@ export function PersonPhoto({
 
 export function ExampleTag() {
   return (
-    <span className="shrink-0 rounded-xs bg-warning-soft px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-warning">
+    <span className="shrink-0 rounded-xs bg-warning-soft px-1.5 py-px text-xs font-semibold uppercase text-warning">
       Exemplo
     </span>
   );
@@ -148,7 +148,7 @@ export function InboxList({
               {t.id === "new" && counts.new > 0 && (
                 <span
                   className={cn(
-                    "min-w-[1.125rem] rounded-pill px-1 text-center text-[11px] tabular-nums",
+                    "min-w-[1.125rem] rounded-pill px-1 text-center text-xs tabular-nums",
                     tab === t.id ? "bg-foreground text-background" : "bg-gray-150 text-foreground",
                   )}
                 >

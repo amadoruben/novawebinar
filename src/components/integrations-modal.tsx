@@ -11,7 +11,6 @@ import {
   Copy,
   ExternalLink,
   Mail,
-  MessageSquareText,
   RefreshCw,
   Search,
   Send,
@@ -45,6 +44,7 @@ import {
   PanelSection,
   PanelTitle,
 } from "@/components/panel-modal";
+import { EmptyState } from "@/components/ds/data";
 import { SettingsModal } from "@/components/settings-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,7 +81,6 @@ import { cn } from "@/lib/utils";
 import { whatsappSession } from "@/lib/whatsapp.functions";
 
 type Events = NonNullable<ReturnType<typeof useIntegrationEvents>["data"]>;
-type Go = (path: string[] | null) => void;
 
 // O balão do WhatsApp no mesmo traço fino dos outros ícones do menu (desenho do Tabler, MIT).
 const WhatsappLine = createLucideIcon("whatsapp-line", [
@@ -271,7 +270,7 @@ function StatusPill({ status, small = false }: { status: Status; small?: boolean
     <span
       className={cn(
         "inline-flex shrink-0 items-center gap-1.5 rounded-full border font-medium",
-        small ? "px-2 py-px text-[11px]" : "px-2.5 py-0.5 text-xs",
+        small ? "px-2 py-px text-xs" : "px-2.5 py-0.5 text-xs",
         status.tone === "on" && "border-success/30 bg-success-soft text-success",
         status.tone === "warn" && "border-warning/40 bg-warning-soft text-warning-foreground",
         status.tone === "off" && "bg-white text-muted-foreground",
@@ -1314,14 +1313,11 @@ function ChannelSoon({
 function Activity({ events }: { events: Events }) {
   if (events.length === 0) {
     return (
-      <div className="rounded-xl border border-hairline bg-white px-6 py-14 text-center">
-        <Webhook className="mx-auto size-6 text-gray-600" aria-hidden />
-        <p className="mt-3 font-medium text-foreground">Ainda não chegou nada</p>
-        <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-          Quando uma plataforma enviar uma venda ou um teste, aparece aqui com o estado e, se for
-          recusado, o motivo.
-        </p>
-      </div>
+      <EmptyState
+        icon={Webhook}
+        title="Ainda não chegou nada"
+        description="Quando uma plataforma enviar uma venda ou um teste, aparece aqui com o estado e, se for recusado, o motivo."
+      />
     );
   }
   return (

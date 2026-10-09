@@ -1,10 +1,9 @@
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, CalendarClock, Check, Wand2, X } from "lucide-react";
+import { AlertTriangle, CalendarClock, Check, Wand2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { AI_JOB_STAGES, dismissAiJob, useAiJobs, type AiJob } from "@/lib/ai-comment-jobs";
-import { dismissSyncJob, useSyncJobs, type SyncJob } from "@/lib/sync-jobs";
-import { friendlyError } from "@/lib/friendly-error";
+import { AI_JOB_STAGES, useAiJobs, type AiJob } from "@/lib/ai-comment-jobs";
+import { useSyncJobs, type SyncJob } from "@/lib/sync-jobs";
 import { cn } from "@/lib/utils";
 
 function Bars() {
@@ -62,52 +61,6 @@ function Shell({ job, children }: { job: AiJob; children: React.ReactNode }) {
         </div>
       )}
     </div>
-  );
-}
-
-/** Estado do gerador de chat para um webinar, dentro do editor. */
-export function AiJobBanner({ job, onOpen }: { job: AiJob; onOpen: () => void }) {
-  return (
-    <Shell job={job}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 text-sm font-semibold">
-            {job.status === "running"
-              ? "A gerar chat com IA"
-              : job.status === "ready"
-                ? "Chat gerado e pronto a rever"
-                : "A geração falhou"}
-            {job.status === "running" && <Bars />}
-          </p>
-          <p className="truncate text-xs text-muted-foreground">
-            {job.status === "running"
-              ? `${AI_JOB_STAGES[job.stage]}… pode continuar a trabalhar, isto corre em segundo plano.`
-              : job.status === "ready"
-                ? `${job.drafts?.length ?? 0} comentários à sua espera. Nada foi publicado.`
-                : friendlyError(job.error, "Não foi possível concluir a geração. Tente novamente.")}
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-2">
-          <Button
-            size="sm"
-            variant={job.status === "ready" ? "default" : "outline"}
-            onClick={onOpen}
-          >
-            {job.status === "ready" ? "Rever comentários" : "Ver progresso"}
-          </Button>
-          {job.status === "error" && (
-            <Button
-              size="icon"
-              variant="ghost"
-              aria-label="Dispensar"
-              onClick={() => dismissAiJob(job.webinarId)}
-            >
-              <X className="size-4" />
-            </Button>
-          )}
-        </div>
-      </div>
-    </Shell>
   );
 }
 
@@ -196,37 +149,6 @@ function syncTitle(job: SyncJob) {
     : job.status === "done"
       ? "Comentários sincronizados com a fala"
       : "A sincronização falhou";
-}
-
-/** Estado da sincronização de um webinar, dentro do editor. */
-export function SyncJobBanner({ job }: { job: SyncJob }) {
-  return (
-    <SyncShell job={job}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 text-sm font-semibold">
-            {syncTitle(job)}
-            {job.status === "running" && <Bars />}
-          </p>
-          <p className="truncate text-xs text-muted-foreground">
-            {job.status === "running"
-              ? `${job.note} Pode continuar a trabalhar, isto corre em segundo plano.`
-              : job.note}
-          </p>
-        </div>
-        {job.status !== "running" && (
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label="Dispensar"
-            onClick={() => dismissSyncJob(job.webinarId)}
-          >
-            <X className="size-4" />
-          </Button>
-        )}
-      </div>
-    </SyncShell>
-  );
 }
 
 /** Lista global das sincronizações, para a página inicial. */

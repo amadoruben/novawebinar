@@ -35,18 +35,19 @@ function AutomationsPage() {
   return (
     <AppShell
       title="Automações"
-      description="Um fluxo por webinar. Primeiro configura o webinar, o grupo e os canais; depois desenha o que sai antes, no dia e depois, e o que acontece a quem compra, abandona ou falha o pagamento."
+      description="Um fluxo por webinar, com as mensagens de antes, do dia e de depois da sessão."
       action={
-        <Button asChild>
-          <Link to="/automations/new">
-            <Plus /> Novo fluxo
-          </Link>
-        </Button>
+        // Sem fluxos, a lista mostra o estado vazio com o seu «Novo fluxo».
+        (isLoading || workflows.length > 0) && (
+          <Button asChild>
+            <Link to="/automations/new">
+              <Plus /> Novo fluxo
+            </Link>
+          </Button>
+        )
       }
     >
       <WorkflowList workflows={workflows} automations={automations} stats={stats} loading={isLoading} />
-
-
       <RunSheet run={linkedRun ?? null} onClose={() => void navigate({ search: { run: undefined }, replace: true })} />
     </AppShell>
   );

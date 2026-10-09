@@ -408,7 +408,7 @@ function PersonRow({
         <div className="min-w-0">
           <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
             <span className="truncate">{p.name}</span>
-            {p.supervisor && <span className="shrink-0 text-[11px] font-normal text-muted-foreground">supervisor</span>}
+            {p.supervisor && <span className="shrink-0 text-xs font-normal text-muted-foreground">supervisor</span>}
           </p>
           <p className="truncate text-xs text-muted-foreground">{subtitle || "—"}</p>
           {/* No telemóvel, estado e casos numa linha só. */}

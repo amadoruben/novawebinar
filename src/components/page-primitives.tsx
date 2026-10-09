@@ -10,12 +10,15 @@ import {
   Radio,
   Trash2,
   Users,
+  Video,
+  type LucideIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { EmptyState } from "@/components/ds/data";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -62,7 +65,7 @@ export function Metric({
       <div className="flex min-w-0 items-start justify-between gap-3 max-sm:items-center">
         <span className="block text-sm leading-tight text-muted-foreground">{label}</span>
         {Icon && (
-          <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm bg-chip text-muted-foreground max-sm:hidden">
+          <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-chip text-muted-foreground max-sm:hidden">
             <Icon className="size-4" strokeWidth={1.5} />
           </span>
         )}
@@ -75,27 +78,36 @@ export function Metric({
   );
 }
 
+/** O estado vazio de uma página: o mesmo EmptyState do painel, com uma ligação como acção. */
 export function EmptySection({
   title,
   description,
+  icon,
+  action,
   actionLabel,
   actionTo,
 }: {
   title: string;
   description: string;
+  icon?: LucideIcon;
+  action?: ReactNode;
   actionLabel?: string;
-  actionTo?: "/webinars/new" | "/library" | "/webinars";
+  actionTo?: "/webinars/new" | "/library" | "/webinars" | "/support";
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-card bg-card px-5 py-10 text-center sm:px-6 sm:py-14">
-      <h2 className="text-base font-semibold tracking-[var(--tracking-title)]">{title}</h2>
-      <p className="mt-2 max-w-md text-sm text-muted-foreground">{description}</p>
-      {actionLabel && actionTo && (
-        <Button className="mt-5" asChild>
-          <Link to={actionTo}>{actionLabel}</Link>
-        </Button>
-      )}
-    </div>
+    <EmptyState
+      icon={icon}
+      title={title}
+      description={description}
+      action={
+        action ??
+        (actionLabel && actionTo && (
+          <Button asChild>
+            <Link to={actionTo}>{actionLabel}</Link>
+          </Button>
+        ))
+      }
+    />
   );
 }
 
@@ -158,26 +170,25 @@ function ActiveSwitch({ webinar }: { webinar: WebinarRow }) {
 function LinkField({ label, value }: { label: string; value: string }) {
   return (
     <div className="space-y-1.5">
-      <p className="text-xs font-semibold">{label}</p>
+      <p className="text-sm font-medium">{label}</p>
       <div className="flex gap-2">
         <Input
           readOnly
           value={value}
-          className="h-9 text-xs"
+          className="text-sm"
           onFocus={(e) => e.currentTarget.select()}
         />
         <Button
           type="button"
           variant="outline"
-          size="sm"
-          className="h-9"
+          size="icon"
           aria-label={`Copiar: ${label}`}
           onClick={() => {
             void navigator.clipboard.writeText(value);
             toast.success("Endereço copiado");
           }}
         >
-          <Copy className="size-3.5" />
+          <Copy />
         </Button>
       </div>
     </div>
@@ -212,9 +223,8 @@ function WebinarDetailsDialog({
           {webinar.replay_enabled ? (
             <LinkField label="Replay" value={`${roomLink}?replay=1`} />
           ) : (
-            <p className="text-xs text-muted-foreground">
-              O replay está desligado neste webinar. Ative-o na edição para gerar o endereço
-              automaticamente.
+            <p className="text-sm text-muted-foreground">
+              O replay está desligado neste webinar. Ative-o na edição para gerar o endereço.
             </p>
           )}
           <LinkField label="Sala de teste" value={testLink} />
@@ -226,7 +236,7 @@ function WebinarDetailsDialog({
               </Link>
             </Button>
             <Button size="sm" variant="outline" asChild>
-              <a href={roomLink} target="_blank" rel="noreferrer">
+              <a href={roomLink} target="_blank" rel="noreferrer" aria-label="Abrir sala (abre numa nova janela)">
                 Abrir sala
               </a>
             </Button>
@@ -303,13 +313,22 @@ export function WebinarTable({
       <div className="flex items-center justify-between px-5 pt-5 pb-3 sm:px-6 sm:pt-6">
         <div>
           <h2 className="text-base font-semibold tracking-[var(--tracking-title)]">{title}</h2>
-          <p className="mt-1 text-xs text-muted-foreground">Acompanhe desempenho e sessões</p>
+          {!loading && (
+            <p className="mt-1 text-[13px] text-muted-foreground tabular-nums">
+              {rows.length} {rows.length === 1 ? "webinar" : "webinars"}
+            </p>
+          )}
         </div>
       </div>
       {loading ? (
         <PageSkeleton variant="table" className="rounded-none border-0" />
       ) : rows.length === 0 ? (
-        <p className="p-6 text-sm text-muted-foreground">Ainda não existem webinars nesta lista.</p>
+        <EmptyState
+          icon={Video}
+          title="Nenhum webinar aqui"
+          description="Escolha outro separador ou procure por outro nome."
+          className="bg-transparent pt-6 pb-10"
+        />
       ) : (
         <div className="hidden overflow-x-auto lg:block">
           <table className="w-full min-w-[680px] text-left text-sm">

@@ -14,9 +14,6 @@ import {
 } from "@/lib/contacts";
 
 export type Webinar = Database["public"]["Tables"]["webinars"]["Row"];
-export type VideoSource = Database["public"]["Tables"]["video_sources"]["Row"];
-export type Participant = Database["public"]["Tables"]["participants"]["Row"];
-export type ScheduledComment = Database["public"]["Tables"]["scheduled_comments"]["Row"];
 export type WebinarStatus = Database["public"]["Enums"]["webinar_status"];
 
 export type Workspace = {
@@ -233,39 +230,6 @@ export function useAudienceConfiguration(webinarId: string) {
   });
 }
 
-export function useConversations(organizationId?: string) {
-  return useQuery({
-    queryKey: ["conversations", organizationId],
-    enabled: Boolean(organizationId),
-    queryFn: async () => {
-      if (!organizationId) return [];
-      const { data, error } = await supabase
-        .from("private_conversations")
-        .select("*, participants(name, email), webinars(public_title)")
-        .eq("organization_id", organizationId)
-        .order("last_message_at", { ascending: false });
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-}
-
-export function useMessages(conversationId?: string) {
-  return useQuery({
-    queryKey: ["messages", conversationId],
-    enabled: Boolean(conversationId),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("private_messages")
-        .select("*")
-        .eq("conversation_id", conversationId!)
-        .order("created_at", { ascending: true });
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-}
-
 export function useInvalidate() {
   const queryClient = useQueryClient();
   return (keys: string[]) => {
@@ -299,14 +263,6 @@ export function statusFromLifecycle(lifecycle: WebinarLifecycle, replayEnabled: 
   if (lifecycle.state === "finished") return replayEnabled ? "replay" : "finished";
   return lifecycle.state;
 }
-
-export const statusLabels: Record<WebinarStatus, string> = {
-  draft: "Rascunho",
-  scheduled: "Agendado",
-  live: "Ao vivo",
-  replay: "Replay",
-  finished: "Finalizado",
-};
 
 export const providerLabels: Record<Database["public"]["Enums"]["video_provider"], string> = {
   upload: "Upload",
@@ -432,26 +388,6 @@ export function useMonthRevenue(organizationId: string | undefined) {
           .eq("organization_id", organizationId!)
           .eq("status", "approved")
           .gte("approved_at", start.toISOString())
-          .order("id")
-          .range(from, to),
-      );
-    },
-  });
-}
-
-/** Pagamentos que mudaram de estado nos últimos 30 dias: as vendas contam-se aqui, uma vez cada. */
-export function useRecentPayments(organizationId: string | undefined) {
-  return useQuery({
-    queryKey: ["integrations", "payments", organizationId],
-    enabled: Boolean(organizationId),
-    queryFn: () => {
-      const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
-      return fetchAll((from, to) =>
-        supabase
-          .from("real_purchase_events")
-          .select("provider, status", { count: "exact" })
-          .eq("organization_id", organizationId!)
-          .gte("status_at", since)
           .order("id")
           .range(from, to),
       );
@@ -1117,22 +1053,6 @@ export function useContactLists(organizationId: string | undefined) {
   });
 }
 export type ContactList = NonNullable<ReturnType<typeof useContactLists>["data"]>[number];
-
-/** Os segmentos em que estão estes contactos (calculados agora pela base de dados). */
-export function useContactSegments(contactIds: string[]) {
-  return useQuery({
-    queryKey: ["contacts", "segments", contactIds.join(",")],
-    enabled: contactIds.length > 0,
-    placeholderData: keepPreviousData,
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc("contact_segments", { _contact_ids: contactIds.slice(0, 200) });
-      if (error) throw error;
-      const map = new Map<string, string[]>();
-      for (const row of data ?? []) map.set(row.contact_id, [...(map.get(row.contact_id) ?? []), row.list_id]);
-      return map;
-    },
-  });
-}
 
 /** Cria ou altera um segmento; as regras são validadas outra vez pela base de dados. */
 export async function saveSegment(

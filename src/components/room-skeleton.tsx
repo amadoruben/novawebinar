@@ -13,7 +13,12 @@ export function getCachedRoomTheme(id: string): RoomTheme {
   // evita o salto de escuro para claro. A partir da primeira abertura, o tema
   // real da sala fica guardado e o esqueleto passa a acertar sempre.
   if (typeof window === "undefined") return "light";
-  return window.localStorage.getItem(themeKey(id)) === "dark" ? "dark" : "light";
+  try {
+    return window.localStorage.getItem(themeKey(id)) === "dark" ? "dark" : "light";
+  } catch {
+    // Armazenamento bloqueado (cookies desligados, sala num iframe de outro site): a sala abre na mesma.
+    return "light";
+  }
 }
 
 export function cacheRoomTheme(id: string, theme: RoomTheme) {

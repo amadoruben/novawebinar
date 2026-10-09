@@ -3,6 +3,7 @@ import { Headset, MessagesSquare, Pin, Play, ShoppingCart, X } from "lucide-reac
 import { VideoPlayer } from "@/components/video-player";
 import { PreliveCountdown } from "@/components/prelive-countdown";
 import { chatEcho, placeOf, type ChatPerson } from "@/lib/chat-reactions";
+import { useSimulatedHearts } from "@/lib/room-hearts";
 import { cn } from "@/lib/utils";
 import {
   activeOffer,
@@ -49,6 +50,7 @@ import {
   CaptionLine,
   ChatComposer,
   ChatLine,
+  ChatToggle,
   ENTRY_DIM,
   EntryPlay,
   LIVE_COLUMN_BG,
@@ -57,6 +59,7 @@ import {
   OfferCard,
   PulseDot,
   RoomPartsStyle,
+  RoomTabs,
   RoomTitle,
   SALE_TOAST_SPOT,
   SaleLine,
@@ -350,8 +353,11 @@ function chatItemsAt(props: Pick<RoomPreviewProps, "comments" | "sales" | "sales
 }
 
 export function RoomPreview(props: RoomPreviewProps) {
-  if (props.live) return <LivePreview {...props} />;
-  return <WebinarPreview {...props} />;
+  // Os corações simulados da sala (ver room-hearts), juntos aos que se tocam aqui.
+  const sim = useSimulatedHearts(props.t, props.title, activeOffer(props.offers, props.t) !== null);
+  const room = { ...props, reactions: [...props.reactions, ...sim] };
+  if (props.live) return <LivePreview {...room} />;
+  return <WebinarPreview {...room} />;
 }
 
 /** O formato Webinar: o vídeo deitado e o chat ao lado (no telemóvel, por baixo). */
@@ -368,8 +374,9 @@ function WebinarPreview(props: RoomPreviewProps) {
   const live = props.liveSettings ?? LIVE_DEFAULTS;
   const peek = useCountdownPeek() && Boolean(live.countdown?.on);
   const social = useFollow(props, Boolean(open));
-  // Deitado, o chat recolhido: abre com a oferta ou quando o editor mostra outro separador.
-  const [side, setSide] = useState(false);
+  // Deitado, o chat por cima do vídeo, como na sala: oculta-se no X e volta no botão; abre também com a
+  // oferta ou quando o editor mostra outro separador.
+  const [side, setSide] = useState(true);
   useEffect(() => {
     if (props.tab !== "chat" || shown) setSide(true);
   }, [props.tab, shown?.id]);
@@ -511,24 +518,12 @@ function WebinarPreview(props: RoomPreviewProps) {
           <div className="w-[min(100cqw,177.78cqh)]">{videoCard}</div>
         </div>
         {side ? (
-          <div className="absolute inset-y-0 right-0 z-10 flex w-[340px] flex-col border-l border-room-line bg-room-surface shadow-[-24px_0_48px_-12px_rgb(0_0_0/0.5)]">
+          <div className="absolute inset-y-0 right-0 z-10 flex w-[340px] flex-col border-l border-room-line/60 bg-room-bg shadow-[-24px_0_48px_-12px_rgb(0_0_0/0.5)]">
             <Panel {...props} tab={tab} shown={shown} open={open} hl={hl} phone={phone} afterVideo={afterVideo} notice={live.notify && props.agent.on} onClose={() => setSide(false)} />
             {social.sheet}
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => setSide(true)}
-            aria-label={shown ? "Abrir o chat e a oferta" : "Abrir o chat"}
-            className="absolute right-3 top-3 z-10 grid size-11 place-items-center rounded-full bg-black/60 text-white ring-1 ring-white/15"
-          >
-            {shown ? <ShoppingCart className="size-5" /> : <MessagesSquare className="size-5" />}
-            {shown ? (
-              <span className="absolute right-1 top-1 flex">
-                <PulseDot />
-              </span>
-            ) : null}
-          </button>
+          <ChatToggle open={false} onToggle={() => setSide(true)} alert={Boolean(shown)} className="absolute right-3 top-3 z-10" />
         )}
       </div>
     );
@@ -580,6 +575,8 @@ function LivePreview(props: RoomPreviewProps) {
   const landscape = props.device === "phone-landscape";
   const portrait = phone && !landscape;
   const tablet = props.device === "tablet";
+  // Como na sala: no tablet (ao alto ou deitado) o chat tem letra e caixa maiores.
+  const bigChat = tablet || props.device === "tablet-landscape";
   const tall = tallScreen(props.device);
   // No tablet ao alto, o topo encosta às margens e o chat fica numa coluna à esquerda, à escala de um
   // telemóvel; a linha de escrever vai de margem a margem (o coração no canto de baixo à direita).
@@ -633,13 +630,14 @@ function LivePreview(props: RoomPreviewProps) {
 
   const lower = (
     <>
-      <div className={cn("contents", tablet && "flex w-[460px] flex-col", tablet && stack && "min-h-0 flex-1")}>
+      <div className={cn("contents", tablet && "flex flex-col", tablet && (stack ? "min-h-0 w-full flex-1" : "w-[min(620px,100%)]"))}>
         {toastOverChat ? saleToast : null}
         <LiveFeed
           items={feed}
           onNotice={() => props.onTab("support")}
           panel={themed}
-          className={!phone ? "min-h-0 flex-1 pr-0" : landscape || stack ? "min-h-0 flex-1" : LIVE_FEED_LINES}
+          big={bigChat}
+          className={!phone ? "min-h-0 flex-1 pr-0" : stack ? cn("min-h-0 flex-1 justify-end overflow-hidden", !tablet && "[&>div]:gap-3.5") : landscape ? "min-h-0 flex-1" : cn(LIVE_FEED_LINES, tablet && "max-h-[300px]")}
         />
         {offer && cardOpen ? (
           <div className={hl("pitch")}>
@@ -660,6 +658,9 @@ function LivePreview(props: RoomPreviewProps) {
         onHeart={props.onHeart}
         reactions={props.reactions}
         panel={themed}
+        big={bigChat}
+        // Empilhado no telemóvel: a caixa separada do chat por uma linha fina, de ponta a ponta (como na sala).
+        className={stack && !tablet ? "-mx-5 mt-3 border-t border-room-line/60 px-5 pt-3" : undefined}
       />
     </>
   );
@@ -825,7 +826,7 @@ function LivePreview(props: RoomPreviewProps) {
             <LiveTopBar host={host} follow={follow} onHost={openFollow} status={badge} viewers={videoEnded ? null : props.viewers} extra={settings} />
           </div>
         </div>
-        <div className={cn("flex min-h-0 flex-1 flex-col justify-end pt-3", tablet ? "px-5 pb-5" : "px-3.5 pb-8")}>{lower}</div>
+        <div className={cn("flex min-h-0 flex-1 flex-col justify-end px-5 pt-3", tablet ? "pb-5" : "pb-8")}>{lower}</div>
         {sheets}
       </div>
     );
@@ -880,7 +881,7 @@ function LivePreview(props: RoomPreviewProps) {
         {frameToast}
         {ended}
       </section>
-      <aside className="relative flex h-full w-[400px] shrink-0 flex-col border-l border-room-line bg-room-surface">
+      <aside className={cn("relative flex h-full shrink-0 flex-col border-l border-room-line/60 bg-room-bg", wideTablet ? "w-[440px]" : "w-[400px]")}>
         <div className={hl("title")}>
           <LivePanelHead title={props.title} host={host} follow={follow} onHost={openFollow} />
         </div>
@@ -933,36 +934,25 @@ function Panel({
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-col overflow-hidden bg-room-surface",
-        phone ? "flex-1 pb-[22px]" : "room-panel flex-1 rounded-2xl ring-1 ring-inset ring-room-line",
-        // No telemóvel ao alto o chat fica no fundo da página, da cor das barras do navegador (como na sala).
-        props.device === "phone" && "bg-room-bg",
+        // O chat na cor da sala (como na sala real); só uma linha muito suave à volta.
+        "flex min-h-0 flex-col overflow-hidden bg-room-bg",
+        phone ? "flex-1 pb-[22px]" : "room-panel flex-1 rounded-2xl ring-1 ring-inset ring-room-line/60",
       )}
     >
-      <div className="mx-3 flex shrink-0 border-b border-room-line">
-        {tabs.map(([value, label, Icon]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => props.onTab(value)}
-            className={cn(
-              "relative flex flex-1 items-center justify-center gap-2 font-semibold transition",
-              phone ? "h-[46px] text-sm" : "h-[54px] text-[15px]",
-              tab === value ? "text-primary" : "text-room-subtle hover:text-room-text",
-            )}
-          >
-            <Icon className="size-4" />
-            {label}
-            {value === "offer" && tab !== "offer" ? <PulseDot /> : null}
-            {tab === value ? <span className="absolute inset-x-5 -bottom-px h-[3px] rounded-full bg-primary" /> : null}
-          </button>
-        ))}
-        {onClose ? (
-          <button type="button" onClick={onClose} aria-label="Fechar o chat" className="grid w-9 shrink-0 place-items-center text-room-subtle hover:text-room-text">
-            <X className="size-5" />
-          </button>
-        ) : null}
-      </div>
+      <RoomTabs
+        segmented={props.device === "phone"}
+        big={!phone}
+        active={tab}
+        onTab={props.onTab}
+        items={tabs.map(([value, label, Icon]) => ({ value, label, Icon, extra: value === "offer" && tab !== "offer" ? <PulseDot /> : null }))}
+        trailing={
+          onClose ? (
+            <button type="button" onClick={onClose} aria-label="Fechar o chat" className="grid w-9 shrink-0 place-items-center text-room-subtle hover:text-room-text">
+              <X className="size-5" />
+            </button>
+          ) : null
+        }
+      />
 
       {tab === "offer" && shown ? (
         <div className={cn("min-h-0 flex-1 overflow-y-auto", hl("pitch"))}>
@@ -995,13 +985,13 @@ function Panel({
       ) : (
         <>
           {tab === "chat" && props.pin ? (
-            <div className={cn("mx-3 mt-3 flex shrink-0 items-center gap-2.5 rounded-xl bg-room-raised px-3.5 py-3 text-sm", hl("pin"))}>
+            <div className={cn("mt-3 flex shrink-0 items-center gap-2.5 rounded-xl bg-room-raised px-3.5 py-3 text-sm", props.device === "phone" ? "mx-5" : "mx-3", hl("pin"))}>
               <Pin className="size-4 shrink-0 text-primary" />
               <span className="min-w-0 truncate">{props.pin}</span>
             </div>
           ) : null}
           {/* As mensagens mais antigas desvanecem em cima, em vez de ficarem cortadas a meio. */}
-          <div className="flex min-h-0 flex-1 flex-col justify-end gap-3.5 overflow-hidden p-4 [mask-image:linear-gradient(transparent,#000_28px)]">
+          <div className={cn("flex min-h-0 flex-1 flex-col justify-end overflow-hidden [mask-image:linear-gradient(transparent,#000_28px)]", props.device === "phone" ? "gap-4 px-5 pb-4 pt-5" : "gap-3.5 p-4")}>
             {tab === "chat" ? (
               chatItems.length === 0 && !notice ? (
                 <p className="m-auto text-center text-sm text-room-subtle">As mensagens aparecem ao longo do vídeo.</p>

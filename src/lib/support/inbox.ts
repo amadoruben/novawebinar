@@ -3,7 +3,6 @@
  * aparece. Primeiro quem precisa de uma pessoa, do mais urgente para o menos
  * urgente; as vendas que o agente qualificou passam à frente das outras dúvidas.
  */
-import type { WebinarLifecycle } from "@/lib/schedule";
 import { keywordIntents } from "./classify";
 import { priorityRank, slaState, type CaseRow, type SlaState } from "./model";
 
@@ -186,24 +185,6 @@ export function matchesSearch(item: InboxItem, term: string) {
   const clean = term.trim().toLowerCase();
   if (!clean) return true;
   return [item.name, item.preview, item.webinarTitle].some((v) => v?.toLowerCase().includes(clean));
-}
-
-/* ---------- Faixa dos webinars ---------- */
-
-/** O estado de um webinar na faixa do Atendimento. */
-export type StripState = "live" | "started" | "soon" | "running";
-
-/**
- * O estado na faixa vem do ciclo de vida, o mesmo de todas as páginas:
- * terminado ou rascunho sai da faixa; começado sem fim conhecido é «Iniciado»;
- * o just in time e o sob demanda estão sempre «Em andamento».
- */
-export function stripState(lifecycle: WebinarLifecycle): StripState | null {
-  if (lifecycle.kind === "draft") return null;
-  if (lifecycle.kind !== "session") return "running";
-  if (lifecycle.state === "finished") return null;
-  if (lifecycle.state === "scheduled") return "soon";
-  return lifecycle.endMs === null ? "started" : "live";
 }
 
 /* ---------- O agente hoje ---------- */

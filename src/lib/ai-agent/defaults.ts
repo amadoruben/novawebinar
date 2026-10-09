@@ -5,8 +5,6 @@
  * a viver em `scheduled_comments` e nunca se misturam com estas respostas.
  */
 
-export type AgentMode = "desativado" | "copiloto" | "hibrido" | "automatico";
-
 export const TONES = [
   { id: "profissional", label: "Profissional" },
   { id: "proximo", label: "Próximo" },
@@ -103,29 +101,6 @@ export const KNOWLEDGE_FIELDS: {
   { section: "oferta", field: "link", label: "Link de compra" },
   { section: "oferta", field: "cupoes", label: "Cupões" },
 ];
-
-export const DEFAULT_OBJECTIONS = [
-  "Está caro.",
-  "Não tenho dinheiro agora.",
-  "Será que funciona para mim?",
-  "Não tenho experiência.",
-  "Não tenho tempo.",
-  "Preciso falar com a minha esposa.",
-  "Tenho medo de comprar.",
-  "Já tentei algo parecido.",
-];
-
-export const CLASSIFICATIONS = [
-  "QUESTION",
-  "OBJECTION",
-  "PURCHASE_INTENT",
-  "SUPPORT",
-  "COMMENT",
-  "PRAISE",
-  "SMALL_TALK",
-  "HUMAN_REQUEST",
-  "UNKNOWN",
-] as const;
 
 export type AgentSource = {
   kind: "produto" | "oferta" | "negocio" | "faq" | "objecao" | "webinar" | "regra";

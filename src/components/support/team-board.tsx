@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { INTENTS, intentLabel, staffStatusLabel, type StaffStatus } from "@/lib/support/model";
+import { intentLabel, staffStatusLabel, type StaffStatus } from "@/lib/support/model";
 import { Avatar } from "./badges";
 
 export type BoardTeam = { id: string; name: string; isFallback: boolean };
@@ -134,7 +134,7 @@ export function TeamBoard({
                         <span className="block truncate text-sm font-medium">
                           {p.name}
                           {p.supervisor && (
-                            <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">
+                            <span className="ml-1.5 text-xs font-normal text-muted-foreground">
                               supervisor
                             </span>
                           )}
@@ -308,74 +308,3 @@ function PickMenu({
     </DropdownMenu>
   );
 }
-
-/* ---------- Exemplo (só para ver o desenho) ---------- */
-
-const EXAMPLE_ROUTES: Record<string, string | null> = {
-  purchase: "vendas",
-  checkout: "vendas",
-  negotiation: "vendas",
-  offer_question: "vendas",
-  payment: "financeiro",
-  refund: "financeiro",
-  access: "formacao",
-  post_purchase: "formacao",
-  technical: "suporte",
-};
-
-export const EXAMPLE_TEAM = {
-  teams: [
-    { id: "vendas", name: "Vendas", isFallback: false },
-    { id: "financeiro", name: "Financeiro", isFallback: false },
-    { id: "suporte", name: "Suporte", isFallback: true },
-    { id: "formacao", name: "Formação", isFallback: false },
-  ],
-  people: [
-    {
-      id: "sara",
-      name: "Sara Lopes",
-      teamId: "vendas",
-      presence: "available" as const,
-      active: true,
-      supervisor: true,
-    },
-    {
-      id: "bruno",
-      name: "Bruno Dias",
-      teamId: "vendas",
-      presence: "online" as const,
-      active: true,
-      supervisor: false,
-    },
-    {
-      id: "rui",
-      name: "Rui Almeida",
-      teamId: "financeiro",
-      presence: "available" as const,
-      active: true,
-      supervisor: false,
-    },
-    {
-      id: "ines",
-      name: "Inês Tavares",
-      teamId: "suporte",
-      presence: "away" as const,
-      active: true,
-      supervisor: false,
-    },
-    {
-      id: "tiago",
-      name: "Tiago Mendes",
-      teamId: null,
-      presence: "offline" as const,
-      active: true,
-      supervisor: false,
-    },
-  ],
-  rules: INTENTS.map((i) => ({
-    id: i.id,
-    intent: i.id,
-    teamId: EXAMPLE_ROUTES[i.id] ?? null,
-    slaMinutes: ["purchase", "checkout", "payment"].includes(i.id) ? 10 : 30,
-  })),
-};

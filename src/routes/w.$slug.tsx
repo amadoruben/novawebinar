@@ -11,8 +11,8 @@ import { DEFAULT_PHONE_COUNTRY, phoneCountryForIso, type PhoneCountry } from "@/
 import { WebinarRoom, type RoomProgressOptions } from "@/components/webinar-room";
 import { ROOM_VIEWPORT } from "@/lib/room-viewport";
 import { RoomSkeleton, getCachedRoomTheme, cacheRoomTheme } from "@/components/room-skeleton";
-import { EntryScreen, entryLiveLabel, isDirectVideo, resolveTheme } from "@/components/room/entry-screen";
-import type { Appearance } from "@/components/room/room-parts";
+import { EntryScreen, entryLiveLabel, isDirectVideo } from "@/components/room/entry-screen";
+import { programmedAppearance, useRoomAppearance } from "@/lib/room-theme";
 import { entryNotice, parseEntryFields, validateEntry } from "@/lib/entry-fields";
 import { offerDeadlinePassed, parseExtraOffers, roomCountdown } from "@/lib/room-logic";
 import { useRoomTeam, type TeamRole } from "@/lib/room-team";
@@ -25,7 +25,6 @@ import { TeamEntry, TeamNotice } from "@/components/room/team-entry";
 import { WaitingScreen } from "@/components/room/waiting-screen";
 import { preliveTitle } from "@/lib/prelive-templates";
 
-const APPEARANCE_KEY = "cw:room-appearance";
 import {
   getPublicRoom,
   joinPublicRoom,
@@ -121,6 +120,23 @@ function storageKey(slug: string) {
   return `novawebinar:viewer:${slug}`;
 }
 
+// O armazenamento pode estar bloqueado (cookies desligados, sala num iframe de outro site): quem se
+// inscreve entra na mesma, só não fica lembrado para a próxima visita.
+function rememberViewer(slug: string, viewer: Viewer) {
+  try {
+    window.localStorage.setItem(storageKey(slug), JSON.stringify(viewer));
+  } catch {
+    /* só nesta visita */
+  }
+}
+function forgetViewer(slug: string) {
+  try {
+    window.localStorage.removeItem(storageKey(slug));
+  } catch {
+    /* nada guardado */
+  }
+}
+
 export function PublicRoom({
   slug,
   replay,
@@ -162,30 +178,6 @@ export function PublicRoom({
   const [error, setError] = useState("");
   const [errorField, setErrorField] = useState<string | undefined>(undefined);
 
-  // Aparência: a do organizador, ou a que a pessoa escolheu no ⚙ do vídeo (fica neste browser).
-  const [viewerAppearance, setViewerAppearance] = useState<Appearance | null>(null);
-  const [prefersDark, setPrefersDark] = useState(true);
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(APPEARANCE_KEY);
-      if (saved === "system" || saved === "dark" || saved === "light") setViewerAppearance(saved);
-    } catch {
-      /* sem armazenamento: fica a do organizador */
-    }
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    setPrefersDark(media.matches);
-    const onChange = (event: MediaQueryListEvent) => setPrefersDark(event.matches);
-    media.addEventListener("change", onChange);
-    return () => media.removeEventListener("change", onChange);
-  }, []);
-  const chooseAppearance = useCallback((next: Appearance) => {
-    setViewerAppearance(next);
-    try {
-      window.localStorage.setItem(APPEARANCE_KEY, next);
-    } catch {
-      /* fica só nesta visita */
-    }
-  }, []);
   const [waiting, setWaiting] = useState(true);
 
   // O indicativo vem pré-selecionado pela localização por endereço de rede
@@ -232,6 +224,13 @@ export function PublicRoom({
     // A sala veio no HTML (loader): não se volta a pedir logo a seguir a abrir a página.
     staleTime: 60_000,
   });
+
+  // Aparência: a programada no editor, ou a que a pessoa escolheu no ⚙ do vídeo (uma por sala, neste
+  // browser). Na sala de teste experimenta-se sem guardar, para nunca mudar a sala a sério.
+  const { appearance, theme, choose: chooseAppearance } = useRoomAppearance(
+    data ? programmedAppearance(data.webinar) : "dark",
+    testMode ? null : `cw:room-appearance:${slug}`,
+  );
 
   // A equipa: confirma o link (ou a sessão iniciada na organização) e guarda o nome escolhido neste browser.
   const getTeamToken = useServerFn(getTeamRoomToken);
@@ -280,7 +279,6 @@ export function PublicRoom({
   // Guardamos o tema da sala para o esqueleto seguir o mesmo aspeto. O tema
   // memorizado só é lido depois da hidratação: lê-lo durante a renderização
   // faria o servidor e o navegador desenharem ecrãs diferentes.
-  const roomTheme = data?.webinar.room_theme === "light" ? "light" : "dark";
   const [skeletonTheme, setSkeletonTheme] = useState<"light" | "dark">("light");
   // A sala depende do relógio, do armazenamento local e da localização de quem
   // assiste: só a desenhamos depois de o navegador assumir a página, para que
@@ -291,8 +289,8 @@ export function PublicRoom({
     setSkeletonTheme(getCachedRoomTheme(slug));
   }, [slug]);
   useEffect(() => {
-    if (data) cacheRoomTheme(slug, roomTheme);
-  }, [data, roomTheme, slug]);
+    if (data) cacheRoomTheme(slug, theme);
+  }, [data, theme, slug]);
 
   // Quem regressa: a sala segue a sessão desta pessoa (não a próxima do webinar). Uma leitura por visita;
   // ao vivo pela ligação normal (no replay pelo link e na sala de teste, a sala de sempre).
@@ -328,13 +326,13 @@ export function PublicRoom({
   }, [nextStartMs]);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(storageKey(slug));
-    if (!stored) return;
     try {
+      const stored = window.localStorage.getItem(storageKey(slug));
+      if (!stored) return;
       const parsed = JSON.parse(stored) as Viewer;
       // Entradas antigas guardavam só o id da participação: já não servem, a pessoa entra outra vez.
       if (!parsed?.token) {
-        window.localStorage.removeItem(storageKey(slug));
+        forgetViewer(slug);
         return;
       }
       if (parsed.name) {
@@ -348,7 +346,7 @@ export function PublicRoom({
         }
       }
     } catch {
-      window.localStorage.removeItem(storageKey(slug));
+      forgetViewer(slug);
     }
   }, [slug]);
 
@@ -365,7 +363,7 @@ export function PublicRoom({
   // Credencial recusada pelo servidor: volta ao formulário em vez de falhar de 5 em 5 segundos.
   useEffect(() => {
     if (threadError?.message !== VIEWER_EXPIRED) return;
-    window.localStorage.removeItem(storageKey(slug));
+    forgetViewer(slug);
     setViewer(null);
   }, [threadError, slug]);
 
@@ -452,7 +450,7 @@ export function PublicRoom({
           },
         });
         const next = { token: result.token, name: result.name };
-        window.localStorage.setItem(storageKey(slug), JSON.stringify(next));
+        rememberViewer(slug, next);
         setViewer(next);
       } catch {
         autoJoinRef.current = false;
@@ -537,9 +535,6 @@ export function PublicRoom({
     );
 
   const { webinar, comments, audience, socialProof, simulatedPurchases, captions } = data;
-  const appearance: Appearance =
-    viewerAppearance ?? (webinar.room_theme_system ? "system" : webinar.room_theme === "light" ? "light" : "dark");
-  const theme = resolveTheme(appearance, prefersDark);
   const themeClass = theme === "light" ? "room-light" : "";
   const fields = parseEntryFields(webinar.entry_fields, {
     collectPhone: webinar.registration_collect_phone,
@@ -727,7 +722,7 @@ export function PublicRoom({
           },
         });
         const next = { token: result.token, name: result.name };
-        window.localStorage.setItem(storageKey(slug), JSON.stringify(next));
+        rememberViewer(slug, next);
         if (!testMode) trackPixels("lead");
         setViewer(next);
       } catch (cause) {

@@ -471,7 +471,7 @@ export function ContactList({
                         </Badge>
                       )}
                       {launch && (
-                        <span className="min-w-0 truncate px-1 text-[11px] text-muted-foreground">{launch}</span>
+                        <span className="min-w-0 truncate px-1 text-xs text-muted-foreground">{launch}</span>
                       )}
                     </span>
                   </span>
@@ -588,7 +588,7 @@ export function ContactFileView({
             >
               {t.label}
               {t.count ? (
-                <span className="hidden text-[11px] tabular-nums text-muted-foreground @2xl:inline">{t.count}</span>
+                <span className="hidden text-xs tabular-nums text-muted-foreground @2xl:inline">{t.count}</span>
               ) : null}
             </button>
           ))}
@@ -632,8 +632,9 @@ export function ContactFileView({
               {file.device && <Line icon={MonitorSmartphone} text={DEVICE_LABEL[file.device] ?? file.device} />}
             </div>
 
-            <section className="rounded-xl border bg-gray-50 p-3">
-              <p className="text-[12px] font-semibold text-muted-foreground">Próxima acção</p>
+            {/* O destaque da ficha (um por página, Nubank): superfície tingida da marca, sem aresta. */}
+            <section className="rounded-xl bg-tint-brand p-3">
+              <p className="text-[12px] font-semibold text-tint-brand-ink">Próxima acção</p>
               <p className="mt-1 text-[15px] font-medium leading-snug">{insight.nextAction.label}</p>
               <p className="mt-1 text-[13px] text-muted-foreground">{insight.reason}</p>
               <p className="mt-2.5 rounded-lg bg-card px-3 py-2 text-[13px] shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-200)]">
@@ -666,7 +667,7 @@ export function ContactFileView({
                     key={step.key}
                     className={cn(
                       "inline-flex h-7 items-center gap-1.5 rounded-pill px-2.5 text-[12px]",
-                      step.state === "done" && "bg-gray-150 text-foreground [&>svg]:text-success",
+                      step.state === "done" && "bg-success-soft text-foreground [&>svg]:text-success",
                       step.state === "bad" && "bg-destructive-soft text-destructive",
                       step.state === "todo" && "text-muted-foreground shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-400)]",
                     )}
@@ -746,17 +747,17 @@ export function ContactFileView({
                   </div>
                   {l.bar && (
                     <div
-                      className="relative mt-3 h-1.5 rounded-full bg-gray-150"
+                      className="relative mt-3 h-1.5 rounded-full bg-chart-track"
                       role="img"
                       aria-label={`Viu de ${l.bar.from}% a ${l.bar.to}% do vídeo`}
                     >
                       <div
-                        className="absolute inset-y-0 rounded-full bg-foreground"
+                        className="absolute inset-y-0 rounded-full bg-chart-1"
                         style={{ left: `${l.bar.from}%`, width: `${Math.max(1, l.bar.to - l.bar.from)}%` }}
                       />
                       {l.bar.offerAt !== null && (
                         <span
-                          className="absolute -top-1 h-3.5 w-0.5 rounded-full bg-success"
+                          className="absolute -top-1 h-3.5 w-0.5 rounded-full bg-chart-2"
                           style={{ left: `${l.bar.offerAt}%` }}
                           title="Início da oferta"
                         />
@@ -1047,9 +1048,9 @@ export function GroupSummary({
                           <span className="ml-1 text-[12px] text-muted-foreground">{pct(n, all)}%</span>
                         </span>
                       </span>
-                      <span className="mt-1 block h-1.5 rounded-full bg-gray-150" aria-hidden>
+                      <span className="mt-1 block h-1.5 rounded-full bg-chart-track" aria-hidden>
                         <span
-                          className={cn("block h-1.5 rounded-full", s.id === "customer" ? "bg-success" : "bg-foreground")}
+                          className={cn("block h-1.5 rounded-full", s.id === "customer" ? "bg-success" : "bg-chart-1")}
                           style={{ width: `${pct(n, all)}%` }}
                         />
                       </span>

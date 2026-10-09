@@ -157,7 +157,6 @@ const ACTION_ICON: Record<BilledAction, LucideIcon> = {
   transcription: AudioLines,
 };
 const actionIcon = (action: string) => ACTION_ICON[action as BilledAction] ?? Receipt;
-const actionLabel = (action: string) => ACTION_LABEL[action as BilledAction] ?? action;
 
 /** Aberto pelo endereço (#creditos/secção): o X fecha-o. */
 export default function CreditsRouteModal() {
@@ -351,7 +350,7 @@ export function CreditsDialog({
 /* ---------- Peças ---------- */
 
 const TONES = {
-  brand: "bg-accent text-brand",
+  brand: "bg-tint-brand text-tint-brand-ink",
   success: "bg-success-soft text-success",
   info: "bg-info-soft text-info",
   warning: "bg-warning-soft text-warning",
@@ -418,9 +417,10 @@ function Stat({
       </div>
       <div className="hidden text-[12px] text-muted-foreground @2xl:block">{note}</div>
       {bar != null && (
-        <div className="h-1.5 w-full rounded-full bg-gray-150 @2xl:mt-1" aria-hidden>
+        // O medidor diz o estado pela cor: a marca até 80%, aviso a partir daí, erro no limite.
+        <div className="h-1.5 w-full rounded-full bg-chart-track @2xl:mt-1" aria-hidden>
           <div
-            className={cn("h-full rounded-full", bar >= 80 ? "bg-warning" : "bg-foreground")}
+            className={cn("h-full rounded-full", bar >= 100 ? "bg-destructive" : bar >= 80 ? "bg-warning" : "bg-chart-1")}
             style={{ width: `${Math.max(bar, 2)}%` }}
           />
         </div>
@@ -509,13 +509,13 @@ function Summary({
             // De que é feito o saldo: o do plano gasta-se primeiro e acaba no fim do mês.
             balance > 0 && (
               <div className="space-y-2">
-                <div className="flex h-2 overflow-hidden rounded-full bg-gray-150" aria-hidden>
-                  <div className="bg-info" style={{ width: `${(planLeft / balance) * 100}%` }} />
-                  <div className="bg-success" style={{ width: `${(kept / balance) * 100}%` }} />
+                <div className="flex h-2 gap-0.5 overflow-hidden rounded-full" aria-hidden>
+                  <div className="rounded-full bg-chart-1" style={{ width: `${(planLeft / balance) * 100}%` }} />
+                  <div className="rounded-full bg-chart-2" style={{ width: `${(kept / balance) * 100}%` }} />
                 </div>
                 <ul className="flex flex-col gap-1 text-[13px] text-muted-foreground @xl:flex-row @xl:gap-6">
                   <li className="flex items-start gap-2">
-                    <span className="mt-[5px] size-2 shrink-0 rounded-full bg-info" aria-hidden />
+                    <span className="mt-[5px] size-2 shrink-0 rounded-full bg-chart-1" aria-hidden />
                     <span>
                       <strong className="font-medium text-foreground tabular-nums">
                         {formatUsd(planLeft)}
@@ -525,7 +525,7 @@ function Summary({
                   </li>
                   <li className="flex items-start gap-2">
                     <span
-                      className="mt-[5px] size-2 shrink-0 rounded-full bg-success"
+                      className="mt-[5px] size-2 shrink-0 rounded-full bg-chart-2"
                       aria-hidden
                     />
                     <span>
@@ -699,7 +699,7 @@ function Usage({
             const share = spent && monthTotal ? (spent.micros / monthTotal) * 100 : 0;
             return (
               <li key={action} className="flex gap-3 py-3">
-                <Tile icon={ACTION_ICON[action]} tone="muted" className="size-9" />
+                <Tile icon={ACTION_ICON[action]} tone="brand" className="size-9" />
                 <span className="min-w-0 flex-1 space-y-1.5">
                   <span className="flex items-start justify-between gap-3">
                     <span className="min-w-0">
@@ -719,7 +719,7 @@ function Usage({
                       <span
                         className={cn(
                           "block font-semibold tabular-nums",
-                          spent ? "text-foreground" : "text-gray-500",
+                          spent ? "text-foreground" : "text-muted-foreground",
                         )}
                       >
                         {spent ? (
@@ -737,9 +737,9 @@ function Usage({
                     </span>
                   </span>
                   {spent && (
-                    <span className="block h-1.5 rounded-full bg-gray-150" aria-hidden>
+                    <span className="block h-1.5 rounded-full bg-chart-track" aria-hidden>
                       <span
-                        className="block h-full rounded-full bg-foreground"
+                        className="block h-full rounded-full bg-chart-1"
                         style={{ width: `${Math.max(share, 2)}%` }}
                       />
                     </span>
@@ -898,7 +898,7 @@ function Plan({
                   <span className="flex items-center gap-2 font-medium text-foreground">
                     {p.label}
                     {mine && (
-                      <span className="rounded-sm bg-gray-150 px-1.5 py-0.5 text-[11px] font-medium text-gray-800">
+                      <span className="rounded-sm bg-gray-150 px-1.5 py-0.5 text-xs font-medium text-gray-800">
                         Actual
                       </span>
                     )}

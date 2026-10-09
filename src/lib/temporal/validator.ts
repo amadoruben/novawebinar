@@ -66,9 +66,6 @@ export function humanLatencyMs(message: string, seed = 0): number {
   return Math.round(base + complexity + Math.abs(jitter));
 }
 
-export const MAX_ANSWER_WINDOW_MS = 120_000;
-export const MAX_REACTION_WINDOW_MS = 90_000;
-
 const OFFER_WORDS =
   /(pre[çc]o|pagar|pagamento|presta[çc]|parcel|desconto|b[óo]nus|garantia|inscri|comprar|checkout|matr[íi]cula|vaga)/i;
 

@@ -107,11 +107,6 @@ export function detectPresenterEvents(sentences: NormalizedSentence[]): Presente
   return events;
 }
 
-/** Eventos que esperam resposta escrita da audiência. */
-export function respondableEvents(events: PresenterEvent[]) {
-  return events.filter((event) => event.expectedResponseType !== "NONE");
-}
-
 /**
  * Frases que podem ser pedidos à audiência mas que as regras diretas não
  * apanharam. Servem de entrada para a classificação semântica.
@@ -192,4 +187,3 @@ export function mergeClassifiedPrompts(
   out.sort((a, b) => a.startMs - b.startMs);
   return out;
 }
-

@@ -58,11 +58,6 @@ export function moveTo<T extends TimedItem>(item: T, seconds: number): T {
   return item;
 }
 
-/** Instante válido dentro do vídeo: entre o início e o fim, inclusive. */
-export function isWithin(seconds: number, bounds: Bounds): boolean {
-  return Number.isFinite(seconds) && seconds >= bounds.start && seconds <= bounds.end;
-}
-
 /**
  * Regra de afastamento: dois comentários nunca no mesmo segundo, com `gap`
  * segundos entre eles, sem nunca passar o fim do vídeo.

@@ -9,7 +9,6 @@ import {
   TIMELINE_FIXES,
   WEBINAR_ANALYSIS,
 } from "@/lib/ai-comments.functions";
-import { NAMES } from "@/lib/sales/notifications.functions";
 import { PROMPTS } from "@/lib/temporal/prompt-classifier.server";
 
 import type { JsonSchema } from "./types";
@@ -19,7 +18,6 @@ const ALL: JsonSchema[] = [
   PROMPTS,
   AGENT_REPLY,
   ...Object.values(CONTENT_SCHEMAS),
-  NAMES,
   CHAT_COMMENTS,
   TIMELINE_FIXES,
   AUDIENCE_PROMPTS,

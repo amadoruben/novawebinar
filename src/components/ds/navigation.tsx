@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 
 /*
  * Navegação da referência (convertewebinar-design/components/navigation):
- * NavTabs (pílulas), Breadcrumb, SideRail, BottomNav e o cabeçalho de página.
+ * NavTabs (pílulas), Breadcrumb, BottomNav e o cabeçalho de página.
  */
 
 export type NavTabItem<T extends string = string> = {
@@ -49,7 +49,7 @@ export function NavTabs<T extends string>({
             aria-current={active ? "page" : undefined}
             onClick={() => onChange(it.id)}
             className={cn(
-              "inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-sm transition-[background-color,color] duration-[var(--duration-fast)] ease-in-out focus-visible:outline-none focus-visible:ring-focus",
+              "relative touch-hit inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-sm transition-[background-color,color] duration-[var(--duration-fast)] ease-in-out focus-visible:outline-none focus-visible:ring-focus",
               size === "sm" ? "h-7 px-2.5 text-xs" : "h-8 px-3 text-[13px]",
               it.icon && (size === "sm" ? "pl-2" : "pl-2.5"),
               active
@@ -62,7 +62,7 @@ export function NavTabs<T extends string>({
             {it.count != null && (
               <span
                 className={cn(
-                  "ml-0.5 rounded-pill px-1.5 text-[11px] tabular-nums",
+                  "ml-0.5 rounded-pill px-1.5 text-xs tabular-nums",
                   active ? "bg-white text-foreground" : "bg-gray-100 text-muted-foreground",
                 )}
               >
@@ -190,43 +190,6 @@ export function PageHeader({
 }
 
 export type RailItem = { to: string; label: string; icon: LucideIcon; exact?: boolean };
-
-/** Coluna de botões circulares (menu recolhido). Activo = laranja cheio. */
-export function SideRail({
-  items,
-  isActive,
-  onNavigate,
-  className,
-}: {
-  items: RailItem[];
-  isActive: (item: RailItem) => boolean;
-  onNavigate?: (() => void) | undefined;
-  className?: string | undefined;
-}) {
-  return (
-    <div className={cn("flex flex-col items-center gap-2", className)}>
-      {items.map((it) => {
-        const active = isActive(it);
-        return (
-          <Link
-            key={it.to}
-            to={it.to as never}
-            onClick={onNavigate}
-            aria-label={it.label}
-            title={it.label}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "inline-flex size-10 items-center justify-center rounded-full transition-[background-color,color] duration-[var(--duration-fast)] ease-standard focus-visible:outline-none focus-visible:ring-focus",
-              active ? "bg-primary text-white" : "bg-white text-foreground hover:bg-gray-100",
-            )}
-          >
-            <it.icon className="size-[17px]" strokeWidth={1.5} />
-          </Link>
-        );
-      })}
-    </div>
-  );
-}
 
 /** Barra inferior no telemóvel: activo = pílula cinza com ícone laranja, como no menu. */
 export function BottomNav({

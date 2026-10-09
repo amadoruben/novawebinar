@@ -7,18 +7,26 @@ import { Link } from "@tanstack/react-router";
 import {
   ArrowRight,
   ArrowUpRight,
+  Banknote,
   CalendarDays,
   CircleAlert,
+  Clock,
+  Heart,
   Link2,
   Monitor,
+  MousePointerClick,
   Pencil,
   Plus,
   Radio,
+  Receipt,
+  ShoppingBag,
   Smartphone,
   Tablet,
+  Users,
+  Video,
 } from "lucide-react";
 import { cloneElement, useState, type ReactElement, type ReactNode } from "react";
-import { Avatar } from "@/components/ds";
+import { Avatar, TintIcon } from "@/components/ds";
 import { posterFromUrl } from "@/components/video-thumb";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -44,12 +52,11 @@ import { cn } from "@/lib/utils";
 const nf = new Intl.NumberFormat("pt-PT");
 const card = "h-full min-w-0 rounded-card bg-card";
 
-/** As cores dos dados (paleta validada para daltonismo): azul, laranja, verde-água. */
-const SERIES = ["#0072F5", "#EB6834", "#1BAF7A"] as const;
+/** As cores dos dados (tokens --chart-*, paleta validada para daltonismo): o mesmo aparelho, a mesma cor em todo o lado. */
 const DEVICE_COLOR: Record<string, string> = {
-  desktop: SERIES[0],
-  mobile: SERIES[1],
-  tablet: SERIES[2],
+  mobile: "var(--chart-1)",
+  desktop: "var(--chart-2)",
+  tablet: "var(--chart-3)",
 };
 const DEVICE_ICON: Record<string, typeof Monitor> = {
   desktop: Monitor,
@@ -275,9 +282,9 @@ export function Hero({
                     <span className="relative size-2 rounded-full bg-white" />
                   </span>
                 ) : hero.kind === "open" ? (
-                  <Radio className="size-3.5" strokeWidth={1.75} aria-hidden />
+                  <Radio className="size-3.5 text-[var(--accent-200)]" strokeWidth={1.75} aria-hidden />
                 ) : (
-                  <CalendarDays className="size-3.5" strokeWidth={1.75} aria-hidden />
+                  <CalendarDays className="size-3.5 text-[var(--accent-200)]" strokeWidth={1.75} aria-hidden />
                 )}
                 {hero.kind === "open" && hero.badge ? hero.badge : KIND_BADGE[hero.kind]}
               </span>
@@ -434,12 +441,15 @@ export type Results = {
 
 function Stat({
   label,
+  icon,
   value,
   sub,
   title,
   loading,
 }: {
   label: string;
+  /** O ícone num círculo tingido da marca (fundo claro, ícone na cor). */
+  icon: typeof Users;
   value: string;
   sub: ReactNode;
   title?: string | undefined;
@@ -447,6 +457,7 @@ function Stat({
 }) {
   return (
     <div className="min-w-0 px-4 py-4 sm:px-5 sm:py-5" title={title}>
+      <TintIcon icon={icon} className="mb-3" />
       <p className="truncate text-[13px] text-muted-foreground">{label}</p>
       {loading ? (
         <>
@@ -469,7 +480,7 @@ function Stat({
 function StatRow({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div>
-      <p className="px-4 pt-4 text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase sm:px-5">
+      <p className="px-4 pt-4 text-xs font-medium tracking-[0.06em] text-muted-foreground uppercase sm:px-5">
         {title}
       </p>
       <div className="grid grid-cols-2 [&>*:nth-child(odd)]:border-r [&>*:nth-child(-n+2)]:border-b lg:grid-cols-4 lg:[&>*]:!border-b-0 lg:[&>*:not(:last-child)]:border-r [&>*]:border-[var(--border-subtle)]">
@@ -505,18 +516,21 @@ export function ResultsCard({
         <Stat
           loading={busy}
           label="Participantes"
+          icon={Users}
           value={nf.format(r?.registered ?? 0)}
           sub={r?.registered ? `${nf.format(r.attended)} assistiram (${percent(r.attended, r.registered)})` : "Ainda sem inscritos"}
         />
         <Stat
           loading={busy}
           label="Tempo médio assistido"
+          icon={Clock}
           value={r?.attended ? watchLabel(r.averageWatchSeconds) : "—"}
           sub={r?.attended ? "de quem assistiu" : "Ninguém assistiu ainda"}
         />
         <Stat
           loading={busy}
           label="Reacções"
+          icon={Heart}
           value={r?.reactions == null ? "—" : nf.format(r.reactions)}
           sub={r?.messages == null ? "Mensagens por contar" : `${nf.format(r.messages)} mensagens no chat`}
           title="Corações tocados na sala e mensagens que os participantes escreveram no chat."
@@ -524,6 +538,7 @@ export function ResultsCard({
         <Stat
           loading={busy}
           label="Webinars criados"
+          icon={Video}
           value={nf.format(r?.webinarsCreated ?? 0)}
           sub={`${nf.format(r?.webinarsTotal ?? 0)} no total`}
         />
@@ -532,24 +547,28 @@ export function ResultsCard({
         <Stat
           loading={busy}
           label="Conversão no CTA"
+          icon={MousePointerClick}
           value={cta ?? "—"}
           sub={r?.sawOffer ? `${nf.format(r.clicked)} clicaram de ${nf.format(r.sawOffer)} que viram a oferta` : "Ninguém viu a oferta ainda"}
         />
         <Stat
           loading={busy}
           label="Conversões"
+          icon={ShoppingBag}
           value={nf.format(r?.buyers ?? 0)}
           sub={conversion ? `${conversion} de quem assistiu comprou` : "Pessoas do webinar que compraram"}
         />
         <Stat
           loading={busy}
           label="Total de compras"
+          icon={Receipt}
           value={nf.format(r?.purchases ?? 0)}
           sub="pagamentos aprovados"
         />
         <Stat
           loading={busy}
           label="Facturação"
+          icon={Banknote}
           value={money.length ? shortMoney(money[0]!.amount, money[0]!.currency) : "—"}
           title={money.map((m) => `${new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 2 }).format(m.amount)} ${m.currency}`).join(" + ") || undefined}
           sub={
@@ -631,11 +650,11 @@ export function FunnelCard({
                 <span className="font-medium text-foreground">
                   {steps[worst.i - 1]!.label.toLowerCase()} → {steps[worst.i]!.label.toLowerCase()}
                 </span>{" "}
-                (−{Math.round(worst.drop * 100)}%)
+                <span className="font-medium text-destructive">(−{Math.round(worst.drop * 100)}%)</span>
               </p>
             )}
           </div>
-          {/* Uma só escala: 100% = inscritos. A faixa cinza é essa escala. */}
+          {/* Uma só escala: 100% = inscritos. A faixa clara é essa escala; o último passo (compraram) no laranja escuro. */}
           <ol className="flex flex-col gap-3.5">
             {steps.map((s, i) => (
               <li
@@ -646,13 +665,13 @@ export function FunnelCard({
                 }`}
               >
                 <span className="truncate text-[13px] text-foreground">{s.label}</span>
-                <span className="col-span-2 row-start-2 h-3 overflow-hidden rounded-[4px] bg-gray-100 sm:col-span-1 sm:row-start-1 sm:col-start-2">
+                <span className="col-span-2 row-start-2 h-3 overflow-hidden rounded-[4px] bg-chart-track sm:col-span-1 sm:row-start-1 sm:col-start-2">
                   <span
-                    className="block h-full rounded-[4px] transition-[width] duration-500"
-                    style={{
-                      width: `${Math.max(s.value ? 1.5 : 0, Math.min(100, s.share * 100))}%`,
-                      background: SERIES[0],
-                    }}
+                    className={cn(
+                      "block h-full rounded-[4px] transition-[width] duration-500",
+                      i === steps.length - 1 ? "bg-chart-emphasis" : "bg-chart-1",
+                    )}
+                    style={{ width: `${Math.max(s.value ? 1.5 : 0, Math.min(100, s.share * 100))}%` }}
                   />
                 </span>
                 <span className="text-right text-[13px] whitespace-nowrap tabular-nums sm:col-start-3 sm:row-start-1">
@@ -767,10 +786,10 @@ export function AudienceCard({ mix, loading }: { mix: AudienceMix | null; loadin
                       </span>
                       <span className="truncate">{r.label}</span>
                     </span>
-                    <span className="col-span-2 row-start-2 h-2 overflow-hidden rounded-[4px] bg-gray-100 sm:col-span-1 sm:col-start-2 sm:row-start-1">
+                    <span className="col-span-2 row-start-2 h-2 overflow-hidden rounded-[4px] bg-chart-track sm:col-span-1 sm:col-start-2 sm:row-start-1">
                       <span
-                        className="block h-full rounded-[4px]"
-                        style={{ width: `${maxShare ? (r.share / maxShare) * 100 : 0}%`, background: SERIES[0] }}
+                        className={cn("block h-full rounded-[4px]", r.key === "outros" ? "bg-chart-other" : "bg-chart-1")}
+                        style={{ width: `${maxShare ? (r.share / maxShare) * 100 : 0}%` }}
                       />
                     </span>
                     <span className="text-right text-[13px] tabular-nums sm:col-start-3 sm:row-start-1">
@@ -834,7 +853,7 @@ function MiniMonth({
       <p className="mb-2 text-[13px] font-medium first-letter:uppercase">{label}</p>
       <div className="grid grid-cols-7 gap-y-1 text-center">
         {["S", "T", "Q", "Q", "S", "S", "D"].map((d, i) => (
-          <span key={i} className="pb-1 text-[11px] text-muted-foreground">
+          <span key={i} className="pb-1 text-xs text-muted-foreground">
             {d}
           </span>
         ))}
@@ -951,7 +970,7 @@ export function AgendaCard({ data, loading }: { data: AgendaData | null; loading
                             past ? "bg-chip text-muted-foreground" : "bg-accent text-accent-700",
                           )}
                         >
-                          <span className="text-[10px] font-medium uppercase">{WEEKDAYS_SHORT[d.weekday]}</span>
+                          <span className="text-xs font-medium uppercase">{WEEKDAYS_SHORT[d.weekday]}</span>
                           <span className="mt-0.5 text-[17px] font-semibold tabular-nums">{d.day}</span>
                         </span>
                         <span className="min-w-0 flex-1">
@@ -1147,7 +1166,7 @@ export function RecentWebinars({ items, loading }: { items: RecentWebinar[] | nu
                   <Poster image={w.image} title={w.title} />
                   <span
                     className={cn(
-                      "absolute top-2 left-2 rounded-pill px-2 py-0.5 text-[11px] font-medium backdrop-blur",
+                      "absolute top-2 left-2 rounded-pill px-2 py-0.5 text-xs font-medium backdrop-blur",
                       w.tone === "live" ? "bg-live text-white" : w.tone === "next" ? "bg-white/90 text-foreground" : "bg-black/55 text-white",
                     )}
                   >
@@ -1171,7 +1190,7 @@ export function RecentWebinars({ items, loading }: { items: RecentWebinar[] | nu
                         ] as const
                       ).map(([label, value]) => (
                         <div key={label} className="min-w-0">
-                          <dt className="truncate text-[11px] text-muted-foreground">{label}</dt>
+                          <dt className="truncate text-xs text-muted-foreground">{label}</dt>
                           <dd className="text-[15px] font-semibold tabular-nums">{nf.format(value)}</dd>
                         </div>
                       ))}

@@ -28,7 +28,7 @@ const TabsTrigger = React.forwardRef<
     ref={ref}
     className={cn(
       /* Separadores secundários do Geist: 32px, raio 6, label-13; o activo em cinza 200. */
-      "inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-sm px-3 text-[13px] text-gray-600 transition-[background-color,color] duration-[var(--duration-fast)] ease-in-out hover:bg-[var(--hover-ghost)] hover:text-foreground focus-visible:outline-none focus-visible:ring-focus disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 data-[state=active]:bg-gray-150 data-[state=active]:text-foreground [&_svg]:size-3.5",
+      "relative touch-hit inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-sm px-3 text-[13px] text-gray-600 transition-[background-color,color] duration-[var(--duration-fast)] ease-in-out hover:bg-[var(--hover-ghost)] hover:text-foreground focus-visible:outline-none focus-visible:ring-focus disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 data-[state=active]:bg-gray-150 data-[state=active]:text-foreground [&_svg]:size-3.5",
       className,
     )}
     {...props}

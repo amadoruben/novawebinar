@@ -3,7 +3,6 @@ import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import {
-  CalendarDays,
   Camera,
   Check,
   ChevronLeft,
@@ -11,7 +10,6 @@ import {
   ChevronsUpDown,
   Expand,
   Flag,
-  Gift,
   Hourglass,
   LogIn,
   Lock,
@@ -29,11 +27,9 @@ import {
   Tablet,
   Video,
   X,
-  ZoomIn,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clock } from "@/lib/room-logic";
-import { ROOM_FONT } from "@/components/room/entry-screen";
 
 /** A pré-visualização do editor: o aparelho à escala, sem deformar, e o ecrã completo. */
 
@@ -271,6 +267,7 @@ export function DeviceStage({
   dock,
   dark,
   zoom,
+  onFit,
   children,
 }: {
   device: Device;
@@ -283,6 +280,8 @@ export function DeviceStage({
   dark?: boolean | undefined;
   /** Zoom em relação ao tamanho real (1 = 100%); sem zoom, o aparelho cabe inteiro no espaço. */
   zoom?: number | null | undefined;
+  /** Recebe o tamanho com que o aparelho cabe inteiro (para o zoom mostrar o valor e partir dele). */
+  onFit?: ((k: number) => void) | undefined;
   children: ReactNode;
 }) {
   const [ref, size] = useSize<HTMLDivElement>();
@@ -303,6 +302,9 @@ export function DeviceStage({
   }, [shown]);
   const fit = deviceScale(device, size.w, size.h - (has ? (open ? rowH + 22 : 20) : 0), landscape);
   const k = zoom ?? fit;
+  useEffect(() => {
+    if (size.w > 0 && size.h > 0) onFit?.(fit);
+  }, [fit, onFit, size.w, size.h]);
   const frameW = frameSize(device, Boolean(landscape)).w * k;
   // Com zoom, o aparelho fica maior do que o espaço e desliza-se, com a barra à direita (como no ManyChat).
   return (
@@ -356,37 +358,52 @@ export function DeviceStage({
 const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 
 /**
- * O zoom do aparelho: o primeiro clique liga-o (100%, o tamanho real); depois «−» e «+» reduzem e
- * aumentam, e «Ajustar» volta ao aparelho inteiro no espaço.
+ * O zoom do aparelho, sempre à vista: «−» e «+» mudam o tamanho a partir do que se vê, o valor é o tamanho
+ * em relação ao real (100%) e «Repor» volta ao aparelho inteiro no espaço.
  */
-export function ZoomControl({ zoom, onZoom, dark }: { zoom: number | null; onZoom: (zoom: number | null) => void; dark?: boolean | undefined }) {
-  const btn = cn("grid h-7 min-w-7 place-items-center rounded-[7px] px-1.5 transition disabled:opacity-40", segItem(false, dark));
-  if (zoom === null) {
-    return (
-      <button
-        type="button"
-        onClick={() => onZoom(1)}
-        title="Zoom: ver o aparelho ao tamanho real e deslizar"
-        className={cn("inline-flex h-[34px] shrink-0 items-center gap-1.5 rounded-[10px] px-2.5 text-[12px] font-medium", dark ? SEG_BOX.dark : SEG_BOX.light, segItem(false, dark))}
-      >
-        <ZoomIn className="size-3.5" />
-        {/* No telemóvel, só a lupa: o nome do ecrã precisa do espaço. */}
-        <span className="sr-only sm:not-sr-only">Zoom</span>
-      </button>
-    );
-  }
-  const i = ZOOMS.findIndex((z) => z >= zoom);
+export function ZoomControl({
+  zoom,
+  fit,
+  onZoom,
+  dark,
+}: {
+  zoom: number | null;
+  /** O tamanho com que o aparelho cabe inteiro (o valor quando não há zoom). */
+  fit?: number | null | undefined;
+  onZoom: (zoom: number | null) => void;
+  dark?: boolean | undefined;
+}) {
+  const now = zoom ?? fit ?? 1;
+  const smaller = [...ZOOMS].reverse().find((z) => z < now - 0.01);
+  const bigger = ZOOMS.find((z) => z > now + 0.01);
+  const btn = cn(
+    "grid h-7 min-w-8 place-items-center rounded-[7px] px-1.5 transition disabled:pointer-events-none disabled:opacity-35",
+    segItem(false, dark),
+  );
   return (
-    <div className={cn("inline-flex h-[34px] shrink-0 items-center gap-0.5 rounded-[10px] p-[3px] text-[12px] font-medium", dark ? SEG_BOX.dark : SEG_BOX.light)} role="group" aria-label="Zoom">
-      <button type="button" className={btn} onClick={() => onZoom(ZOOMS[Math.max(0, i - 1)]!)} disabled={i <= 0} aria-label="Reduzir">
-        <Minus className="size-3.5" />
+    <div
+      role="group"
+      aria-label="Zoom do aparelho"
+      className={cn("inline-flex h-[34px] shrink-0 items-center gap-0.5 rounded-[10px] p-[3px] text-[12.5px] font-medium", dark ? SEG_BOX.dark : SEG_BOX.light)}
+    >
+      <button type="button" className={btn} onClick={() => smaller && onZoom(smaller)} disabled={!smaller} aria-label="Diminuir o zoom" title="Diminuir">
+        <Minus className="size-4" />
       </button>
-      <span className={cn("grid h-7 min-w-[46px] place-items-center rounded-[7px] font-mono tabular-nums", segItem(true, dark))}>{Math.round(zoom * 100)}%</span>
-      <button type="button" className={btn} onClick={() => onZoom(ZOOMS[Math.min(ZOOMS.length - 1, i + 1)]!)} disabled={i >= ZOOMS.length - 1} aria-label="Aumentar">
-        <Plus className="size-3.5" />
+      <span
+        aria-live="polite"
+        title={zoom === null ? "O aparelho inteiro no espaço" : "Tamanho em relação ao real"}
+        className={cn(
+          "grid h-7 min-w-[50px] place-items-center rounded-[7px] font-mono tabular-nums",
+          zoom === null ? (dark ? "text-[#A1A1A1]" : "text-[#666]") : segItem(true, dark),
+        )}
+      >
+        {Math.round(now * 100)}%
+      </span>
+      <button type="button" className={btn} onClick={() => bigger && onZoom(bigger)} disabled={!bigger} aria-label="Aumentar o zoom" title="Aumentar">
+        <Plus className="size-4" />
       </button>
-      <button type="button" className={cn(btn, "px-2")} onClick={() => onZoom(null)} title="O aparelho inteiro no espaço">
-        Ajustar
+      <button type="button" className={cn(btn, "px-2")} onClick={() => onZoom(null)} disabled={zoom === null} title="Repor: o aparelho inteiro no espaço">
+        Repor
       </button>
     </div>
   );
@@ -433,7 +450,8 @@ export function DeviceToggle({ device, onChange, dark }: { device: Device; onCha
   const id = useId();
   return (
     <div className="inline-flex shrink-0 items-center gap-1.5">
-      <span id={id} className={cn("text-[11.5px] font-medium", dark ? "text-[#A1A1A1]" : "text-muted-foreground")}>
+      {/* No ecrã completo do telemóvel o espaço vai para o zoom e para o Fechar. */}
+      <span id={id} className={cn("text-[11.5px] font-medium", dark ? "hidden text-[#A1A1A1] sm:inline" : "text-muted-foreground")}>
         Ver em
       </span>
       <div role="radiogroup" aria-labelledby={id} className={cn("inline-flex gap-0.5 rounded-[10px] p-[3px]", dark ? SEG_BOX.dark : SEG_BOX.light)}>
@@ -556,16 +574,16 @@ export function PhaseBar({
   );
 }
 
-/** Quanto recuar e avançar de cada vez. */
-const JUMPS = [10, 60, 120, 300] as const;
-const jumpLabel = (s: number) => (s < 60 ? `${s} s` : `${s / 60} min`);
+/** Quanto recuar e avançar de cada vez: segundos, para acertar um momento; para ir longe, a barra. */
+const JUMPS = [1, 2, 3, 5] as const;
+const jumpLabel = (s: number) => `${s} s`;
 
 export type PlayMark = { at: number; label: string; tone: "offer" | "follow" };
 
 /**
  * O leitor da sala, por baixo do aparelho (ideia dos leitores da ElevenLabs, sem os instalar).
- * Fechado é o play e o minuto. Ao tocar no play abre: recuar e avançar (10 s, 1, 2 ou 5 min, à
- * escolha), a barra com as ofertas e o + Seguir marcados, e o tempo. A seta volta a fechá-lo.
+ * Fechado é o play e o minuto. Ao tocar no play abre: recuar e avançar (1, 2, 3 ou 5 s, à escolha;
+ * cada toque soma), a barra com as ofertas e o + Seguir marcados, e o tempo. A seta volta a fechá-lo.
  */
 export function PlayChip({
   t,
@@ -585,7 +603,7 @@ export function PlayChip({
   dark?: boolean | undefined;
 }) {
   const [open, setOpen] = useState(false);
-  const [jump, setJump] = useState<(typeof JUMPS)[number]>(10);
+  const [jump, setJump] = useState<(typeof JUMPS)[number]>(5);
   const [hover, setHover] = useState<number | null>(null);
   const d = Math.max(1, duration);
   const go = (delta: number) => onSeek(Math.max(0, Math.min(duration, t + delta)));
@@ -777,79 +795,6 @@ export function FullScreen({
       </div>
       {phases ? <div className="flex shrink-0 justify-center px-4 pb-2">{phases}</div> : null}
       <div className="min-h-0 flex-1 px-2 pb-3 sm:px-4">{children}</div>
-    </div>
-  );
-}
-
-/** A sala de espera: contagem decrescente até à sessão. */
-export function WaitingPreview({
-  device,
-  title,
-  remainingSeconds,
-  when,
-  highlight,
-}: {
-  device: Device;
-  title: string;
-  remainingSeconds: number;
-  when: string;
-  highlight?: boolean | undefined;
-}) {
-  const phone = device !== "desktop";
-  const screen = device === "tablet" ? SCREENS.tablet : SCREENS.phone;
-  const r = Math.max(0, Math.floor(remainingSeconds));
-  const parts: [number, string][] = [
-    [Math.floor(r / 86400), "dias"],
-    [Math.floor((r % 86400) / 3600), "horas"],
-    [Math.floor((r % 3600) / 60), "min"],
-    [r % 60, "seg"],
-  ];
-  return (
-    <div
-      className={cn(
-        "grid place-items-center text-white",
-        phone ? "content-start pt-[200px]" : "h-[720px] w-[1280px]",
-      )}
-      style={{
-        ...(phone ? { width: screen.w, height: screen.h } : null),
-        fontFamily: ROOM_FONT,
-        background: "radial-gradient(70% 60% at 50% 0%, rgba(232,68,12,.14), transparent 60%), #141414",
-      }}
-    >
-      <div className={cn("grid justify-items-center text-center", phone ? "w-[345px] gap-4" : "w-[680px] gap-5")}>
-        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#E8440C]">A sessão começa em</p>
-        <div
-          className={cn(
-            "flex",
-            phone ? "gap-2" : "gap-3",
-            highlight && "outline outline-2 outline-offset-4 outline-[#E8440C]",
-          )}
-        >
-          {parts.map(([value, label]) => (
-            <div
-              key={label}
-              className={cn(
-                "grid place-items-center content-center gap-0.5 rounded-2xl bg-[#1F1F1F] shadow-[0_0_0_1px_#2E2E2E]",
-                phone ? "size-[76px]" : "size-[100px]",
-              )}
-            >
-              <b className={cn("font-extrabold tabular-nums", phone ? "text-[28px]" : "text-[40px]")}>
-                {String(value).padStart(2, "0")}
-              </b>
-              <small className="text-[11px] uppercase tracking-[0.16em] text-[#A3A3A3]">{label}</small>
-            </div>
-          ))}
-        </div>
-        <h1 className={cn("font-extrabold leading-tight", phone ? "text-[23px]" : "text-[30px]")}>{title}</h1>
-        <p className="flex items-center gap-2 text-sm text-[#D4D4D4]">
-          <CalendarDays className="size-4" />
-          {when}
-        </p>
-        <span className="inline-flex h-[46px] items-center gap-2 rounded-full bg-[#262626] px-5 text-sm font-semibold shadow-[0_0_0_1px_#2E2E2E]">
-          <CalendarDays className="size-4" />
-          Adicionar ao calendário
-        </span>
-      </div>
     </div>
   );
 }

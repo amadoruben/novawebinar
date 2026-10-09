@@ -243,7 +243,7 @@ export function LiveTopBar({
       <div className="flex shrink-0 items-center gap-1.5">
         {status ? <LiveBadge label={status.label} tone={status.tone} /> : null}
         {viewers !== null ? <LiveViewers count={viewers} /> : null}
-        {extra ? <div className="ml-0.5 grid place-items-center">{extra}</div> : null}
+        {extra ? <div className="ml-0.5 flex items-center gap-1.5">{extra}</div> : null}
       </div>
     </div>
   );
@@ -262,7 +262,7 @@ export function LivePanelHead({
   onHost?: (() => void) | undefined;
 }) {
   return (
-    <div className="shrink-0 border-b border-room-line px-5 pb-4 pt-[18px] text-room-text">
+    <div className="shrink-0 border-b border-room-line/60 px-5 pb-4 pt-[18px] text-room-text">
       {title ? (
         <h2 className="text-balance text-[20px] font-extrabold leading-tight tracking-[-0.01em]">{title}</h2>
       ) : (
@@ -312,6 +312,7 @@ export function LiveFeed({
   feedRef,
   className,
   panel,
+  big,
 }: {
   items: readonly LiveFeedItem[];
   onNotice?: (() => void) | undefined;
@@ -319,6 +320,8 @@ export function LiveFeed({
   className?: string | undefined;
   /** No painel do computador: o texto segue o tema, sem a sombra que o destaca do vídeo. */
   panel?: boolean | undefined;
+  /** Tablet: letra maior, para ler à distância de um tablet. */
+  big?: boolean | undefined;
 }) {
   // O texto das mensagens um pouco transparente, na cor do tema; o nome fica cheio.
   const ink = panel ? "text-room-text/88" : "text-white/90";
@@ -326,7 +329,7 @@ export function LiveFeed({
     <div ref={feedRef} className={cn("lv-feed flex flex-col overflow-y-auto overscroll-contain pr-11 [scrollbar-width:none]", className)}>
       <div
         className={cn(
-          "mt-auto grid gap-2.5 pt-10 text-[15px] leading-[1.35]",
+          "mt-auto grid pt-10", big ? "gap-3 text-[17px] leading-[1.4]" : "gap-2.5 text-[15px] leading-[1.35]",
           panel ? "text-room-text" : "text-white [text-shadow:0_1px_3px_rgba(0,0,0,.6)]",
         )}
       >
@@ -662,11 +665,16 @@ export function LiveComposer({
   onHeart,
   reactions,
   panel,
+  className,
+  big,
 }: {
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
   inputProps?: React.InputHTMLAttributes<HTMLInputElement> | undefined;
+  className?: string | undefined;
+  /** Tablet: a caixa e a letra maiores. */
+  big?: boolean | undefined;
   bag: { blink: boolean; onClick: () => void } | null;
   /** null: sem Suporte (quem está na sala como equipa). */
   support: { unread: number; open: boolean; onClick: () => void } | null;
@@ -679,7 +687,7 @@ export function LiveComposer({
   const ink = panel ? "text-room-text" : "text-white";
   return (
     <form
-      className="mt-2.5 flex items-center gap-1"
+      className={cn("mt-2.5 flex items-center gap-1", className)}
       onSubmit={(event) => {
         event.preventDefault();
         if (value.trim()) onSubmit();
@@ -687,7 +695,7 @@ export function LiveComposer({
     >
       <div
         className={cn(
-          "flex h-11 min-w-0 flex-1 items-center gap-0.5 rounded-full pl-[15px] pr-[5px]",
+          "flex min-w-0 flex-1 items-center gap-0.5 rounded-full pl-[15px] pr-[5px]", big ? "h-[52px]" : "h-11",
           panel ? "bg-room-raised" : "border-[1.5px] border-white/60 bg-black/[0.18]",
         )}
       >
@@ -700,7 +708,7 @@ export function LiveComposer({
           maxLength={200}
           aria-label="Mensagem"
           className={cn(
-            "min-w-0 flex-1 bg-transparent text-[15px] outline-none",
+            "min-w-0 flex-1 bg-transparent outline-none", big ? "text-[17px]" : "text-[15px]",
             panel ? "text-room-text placeholder:text-room-subtle" : "text-white placeholder:text-white/85",
           )}
         />

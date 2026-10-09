@@ -49,7 +49,6 @@ import {
   PAGE_TYPE_LABEL,
   PAID_ORIGINS,
   readSteps,
-  stageOf,
   stepLayout,
   triggerTitle,
   type Audience,
@@ -60,7 +59,6 @@ import {
   type Orientation,
   type PageType,
   type Send,
-  type Stage,
 } from "@/lib/workflow";
 import { DND, StartEmptyCard, ToolsPanel, type StartEmpty } from "./flow-tools";
 import { Glyph, LOOK, lookOf } from "./flow-look";
@@ -101,13 +99,6 @@ export const CHANNEL_ICON: Record<Channel, LucideIcon> = {
   whatsapp: FLOW_CHANNEL.whatsapp.icon,
   sms: FLOW_CHANNEL.sms.icon,
   webhook: FLOW_CHANNEL.webhook.icon,
-};
-
-/** Etapas da jornada nas três famílias da referência: antes (cinza), evento (azul-noite), depois (laranja). */
-export const STAGE_TONE: Record<Stage, { bar: string; soft: string; text: string }> = {
-  pre: { bar: "bg-gray-400", soft: "bg-gray-100", text: "text-gray-700" },
-  event: { bar: "bg-navy", soft: "bg-chip", text: "text-foreground" },
-  post: { bar: "bg-primary", soft: "bg-accent", text: "text-accent-700" },
 };
 
 export type JourneyCounts = {

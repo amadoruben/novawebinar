@@ -314,7 +314,7 @@ export function SidebarNav({
           >
             <Search className="size-[15px] shrink-0" strokeWidth={1.6} aria-hidden />
             <span className="flex-1 text-left">Pesquisar…</span>
-            <kbd className="rounded-xs bg-gray-100 px-1.5 py-px font-sans text-[11px] text-gray-600">{shortcut}</kbd>
+            <kbd className="rounded-xs bg-gray-100 px-1.5 py-px font-sans text-xs text-gray-600">{shortcut}</kbd>
           </button>
         </div>
       )}
@@ -365,7 +365,7 @@ export function SidebarNav({
                 <>
                   <span className="flex min-w-0 flex-1 flex-col leading-tight">
                     <span className="truncate text-[14px] tracking-[-0.01em]">{name}</span>
-                    <span className="truncate text-[11px] text-muted-foreground">
+                    <span className="truncate text-xs text-muted-foreground">
                       {workspace?.organizationName ?? (workspace ? roleLabels[workspace.role] : "")}
                     </span>
                   </span>
@@ -391,7 +391,7 @@ export function SidebarNav({
                   >
                     <span className="truncate">{org.name}</span>
                     {org.isTest && (
-                      <span className="shrink-0 rounded-xs bg-warning-soft px-1.5 py-0.5 text-[10px] tracking-wide text-warning uppercase">
+                      <span className="shrink-0 rounded-xs bg-warning-soft px-1.5 py-0.5 text-xs text-warning uppercase">
                         Teste
                       </span>
                     )}

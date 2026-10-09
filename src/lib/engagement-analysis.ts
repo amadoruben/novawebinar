@@ -7,21 +7,7 @@
 
 export type EngagementObjective = "retention" | "engagement" | "conversion" | "balanced";
 
-export const OBJECTIVE_LABEL: Record<EngagementObjective, string> = {
-  retention: "Retenção",
-  engagement: "Engajamento",
-  conversion: "Conversão",
-  balanced: "Equilibrado",
-};
-
 export type DropRisk = "baixo" | "moderado" | "alto" | "critico";
-
-export const RISK_LABEL: Record<DropRisk, string> = {
-  baixo: "Baixo",
-  moderado: "Moderado",
-  alto: "Alto",
-  critico: "Crítico",
-};
 
 /** Um trecho do webinar com significado próprio e as suas notas internas. */
 export type AnalysisSegment = {
@@ -271,9 +257,4 @@ export function openingSurgeFactor(from: number, to: number): number {
     steps += 1;
   }
   return steps > 0 ? total / steps : 1;
-}
-
-export function segmentAt(analysis: WebinarAnalysis | null, seconds: number) {
-  if (!analysis) return null;
-  return analysis.segments.find((s) => seconds >= s.from && seconds <= s.to) ?? null;
 }

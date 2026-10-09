@@ -594,17 +594,3 @@ export const DEVICE_LABEL: Record<string, string> = {
   desktop: "Computador",
   tablet: "Tablet",
 };
-
-/** O pagamento de um contacto numa palavra: o desfecho mais importante primeiro. */
-export function paymentState(c: {
-  purchases?: number | null;
-  payment_failed?: boolean | null;
-  checkout_abandoned?: boolean | null;
-  checkout_started?: boolean | null;
-}): { label: string; variant: "success" | "destructive" | "warning" | "secondary" } | null {
-  if ((c.purchases ?? 0) > 0) return { label: c.purchases! > 1 ? `Comprou (${c.purchases})` : "Comprou", variant: "success" };
-  if (c.payment_failed) return { label: "Pagamento falhou", variant: "destructive" };
-  if (c.checkout_abandoned) return { label: "Abandonou", variant: "warning" };
-  if (c.checkout_started) return { label: "Iniciou o pagamento", variant: "secondary" };
-  return null;
-}

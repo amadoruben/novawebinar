@@ -59,6 +59,37 @@ export function stepFromSearch(value: string | undefined): EditorStep {
   return known ? known.id : (MOVED_STEPS[value] ?? "inicio");
 }
 
+/**
+ * O editor só desenha a etapa quando já leu o que ela mostra. O webinar sozinho não chega: o vídeo escolhido e
+ * a duração vêm dos vídeos da conta (lidos depois da conta) e os comentários vêm à parte. Sem esta espera, o
+ * Chat abria a pedir «Primeiro, o vídeo» e sem comentários num webinar que tem os dois.
+ */
+export function editorLoading(pending: {
+  webinar: boolean;
+  /** O formulário já recebeu o webinar lido (ou não há webinar). */
+  hydrated: boolean;
+  workspace: boolean;
+  /** Há conta: só com ela se pedem os vídeos. */
+  organization: boolean;
+  videos: boolean;
+  comments: boolean;
+}): boolean {
+  if (pending.webinar || pending.workspace || pending.comments) return true;
+  // Sem conta (a leitura falhou), os vídeos nunca se pedem: não se espera por eles para sempre.
+  if (pending.organization && pending.videos) return true;
+  return !pending.hydrated;
+}
+
+/**
+ * Um chat gerado, pronto e ainda por mostrar: o editor leva ao Chat e abre a revisão uma única vez. Depois
+ * fica marcado como visto; rever continua à mão no Chat e na Revisão.
+ */
+export function reviewToAnnounce(
+  job: { status: string; drafts: readonly unknown[] | null; seen?: boolean | undefined } | undefined,
+): boolean {
+  return job?.status === "ready" && Boolean(job.drafts?.length) && !job.seen;
+}
+
 export type DraftIssue = {
   step: "agenda" | "oferta";
   field: string;

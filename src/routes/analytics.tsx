@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { Radio } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { Button } from "@/components/ui/button";
 import { AnalyticsBoard } from "@/components/audience-insights";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -94,14 +95,12 @@ function AnalyticsPage() {
             <Input type="date" aria-label="Até" className="w-[150px]" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
           </>
         )}
-        <Link
-          to="/live-view"
-          search={webinar ? { webinar } : {}}
-          className="ml-auto inline-flex h-9 items-center gap-2 rounded-sm px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-chip hover:text-foreground"
-        >
-          <Radio className="size-4" />
-          Vista ao vivo
-        </Link>
+        <Button variant="ghost" className="ml-auto" asChild>
+          <Link to="/live-view" search={webinar ? { webinar } : {}}>
+            <Radio />
+            Vista ao vivo
+          </Link>
+        </Button>
       </div>
 
       <div className="mb-28 md:mb-0">

@@ -376,46 +376,6 @@ export const simulateAgentReply = createServerFn({ method: "POST" })
     };
   });
 
-export type LearnSuggestions = {
-  ok: boolean;
-  error?: string;
-  faqs: { question: string; answer: string }[];
-  objections: { objection: string; response: string }[];
-};
-
-/** "Aprender com este webinar": sugestões que o vendedor tem de aprovar. */
-export const learnFromWebinar = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) => z.object({ webinarId: uuid }).parse(data))
-  .handler(async ({ data, context }): Promise<LearnSuggestions> => {
-    const organizationId = await assertWebinarAccess(context.supabase, data.webinarId);
-    const [{ latestReadyVersion }, { chatJson }] = await Promise.all([
-      import("@/lib/temporal/engine.server"),
-      import("@/lib/ai/gateway.server"),
-    ]);
-    const version = await latestReadyVersion(data.webinarId);
-    if (!version || !version.rawText) {
-      return { ok: false, error: "Ainda não há transcrição deste webinar.", faqs: [], objections: [] };
-    }
-    const text = version.rawText.slice(0, 24000);
-    const result = await runBilled({ organizationId, action: "agent_content" }, () =>
-      chatJson({
-        task: "generation",
-        system:
-          "És um assistente que prepara conhecimento de apoio a vendas a partir da transcrição de um webinar. Português de Portugal. Nunca inventes preços, garantias ou bónus que não apareçam no texto.",
-        user: `Transcrição do webinar:\n${text}\n\nSugere até 12 perguntas frequentes e até 8 objeções com resposta, apenas com base no que foi dito.`,
-        schema: CONTENT_SCHEMAS.learn,
-      }),
-    );
-    if (!result.ok) return { ok: false, error: result.reason, faqs: [], objections: [] };
-    const parsed = result.json as Partial<LearnSuggestions>;
-    return {
-      ok: true,
-      faqs: (parsed.faqs ?? []).slice(0, 12),
-      objections: (parsed.objections ?? []).slice(0, 8),
-    };
-  });
-
 export type GeneratedContent = {
   ok: boolean;
   error?: string;
@@ -436,10 +396,6 @@ const FAQ = s.object({ question: s.string(), answer: s.string() });
 
 /** Forma da resposta de cada pedido de conteúdo do agente. */
 export const CONTENT_SCHEMAS = {
-  learn: schema("agent_learn", {
-    faqs: s.array(FAQ),
-    objections: s.array(s.object({ objection: s.string(), response: s.string() })),
-  }),
   knowledge: schema("agent_knowledge", {
     knowledge: s.array(
       s.object({ field: s.string(KNOWLEDGE_FIELDS.map((f) => f.field)), value: s.string() }),
@@ -571,49 +527,6 @@ export const generateAgentContent = createServerFn({ method: "POST" })
     };
   });
 
-
-export type AgentSuggestion = {
-  id: string;
-  conversationId: string | null;
-  participantId: string | null;
-  inboundText: string;
-  classification: string;
-  decision: string;
-  answer: string;
-  confidence: number;
-  sources: AgentSource[];
-  escalationReason: string | null;
-  status: string;
-  createdAt: string;
-};
-
-export const listAgentSuggestions = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) => z.object({ webinarId: uuid }).parse(data))
-  .handler(async ({ data, context }): Promise<AgentSuggestion[]> => {
-    const { data: rows } = await (context.supabase as never as any)
-      .from("ai_agent_messages")
-      .select("*")
-      .eq("webinar_id", data.webinarId)
-      .eq("status", "suggested")
-      .order("created_at", { ascending: false })
-      .limit(50);
-    return ((rows ?? []) as Row[]).map((row) => ({
-      id: row["id"],
-      conversationId: row["conversation_id"],
-      participantId: row["participant_id"],
-      inboundText: row["inbound_text"],
-      classification: row["classification"],
-      decision: row["decision"],
-      answer: row["answer"],
-      confidence: Number(row["confidence"] ?? 0),
-      sources: (row["sources"] ?? []) as AgentSource[],
-      escalationReason: row["escalation_reason"],
-      status: row["status"],
-      createdAt: row["created_at"],
-    }));
-  });
-
 /** A equipa aprova (com ou sem edição) e a resposta segue para o participante. */
 export const sendAgentSuggestion = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -678,59 +591,4 @@ export const discardAgentSuggestion = createServerFn({ method: "POST" })
       .update({ status: "discarded", updated_at: new Date().toISOString() })
       .eq("id", data.id);
     return { ok: true };
-  });
-
-export const rateAgentMessage = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) =>
-    z.object({ id: uuid, feedback: z.enum(["up", "down"]) }).parse(data),
-  )
-  .handler(async ({ data, context }) => {
-    await (context.supabase as never as any)
-      .from("ai_agent_messages")
-      .update({ feedback: data.feedback, updated_at: new Date().toISOString() })
-      .eq("id", data.id);
-    return { ok: true };
-  });
-
-export type AgentAnalytics = {
-  conversations: number;
-  answers: number;
-  suggestions: number;
-  approved: number;
-  edited: number;
-  escalations: number;
-  unanswered: number;
-  averageLatencyMs: number;
-  averageConfidence: number;
-};
-
-export const getAgentAnalytics = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) => z.object({ webinarId: uuid }).parse(data))
-  .handler(async ({ data, context }): Promise<AgentAnalytics> => {
-    const { data: rows } = await (context.supabase as never as any)
-      .from("ai_agent_messages")
-      .select("*")
-      .eq("webinar_id", data.webinarId)
-      .eq("is_simulation", false);
-    const list = (rows ?? []) as Row[];
-    const conversations = new Set(list.map((row) => row["conversation_id"]).filter(Boolean)).size;
-    const sent = list.filter((row) => row["status"] === "sent");
-    const edited = list.filter((row) => row["status"] === "edited");
-    const suggested = list.filter((row) => row["status"] === "suggested");
-    const escalated = list.filter((row) => row["decision"] === "ESCALATE");
-    const latency = list.reduce((sum, row) => sum + Number(row["latency_ms"] ?? 0), 0);
-    const confidence = list.reduce((sum, row) => sum + Number(row["confidence"] ?? 0), 0);
-    return {
-      conversations,
-      answers: sent.length + edited.length,
-      suggestions: suggested.length + sent.length + edited.length,
-      approved: sent.length,
-      edited: edited.length,
-      escalations: escalated.length,
-      unanswered: escalated.filter((row) => row["escalation_reason"]?.includes("não coberta")).length,
-      averageLatencyMs: list.length > 0 ? Math.round(latency / list.length) : 0,
-      averageConfidence: list.length > 0 ? confidence / list.length : 0,
-    };
   });

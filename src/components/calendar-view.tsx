@@ -45,8 +45,8 @@ function Card({
       className={cn("flex min-w-0 flex-col gap-4 rounded-card bg-card p-4 sm:p-5", className)}
     >
       <header className="flex items-center gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent text-brand">
-          <Icon className="size-5" strokeWidth={1.75} aria-hidden />
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent-50 text-accent-700">
+          <Icon className="size-5" strokeWidth={1.5} aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
           <h2 className="text-[15px] font-semibold tracking-[-0.01em]">{title}</h2>
@@ -188,7 +188,7 @@ export function AgendaMonth({
               )}
               <div className="hidden sm:block">{list.slice(0, 3).map((e) => chip(e, true))}</div>
               {list.length > 3 && (
-                <p className="mt-1 hidden px-1.5 text-[11px] text-muted-foreground sm:block">
+                <p className="mt-1 hidden px-1.5 text-xs text-muted-foreground sm:block">
                   +{list.length - 3}
                 </p>
               )}
@@ -207,7 +207,7 @@ export function AgendaMonth({
             <div key={day} className="grid grid-cols-[2.75rem_minmax(0,1fr)] gap-3">
               <div className="pt-1 text-center">
                 <span className="block text-xl leading-none font-semibold tabular-nums">{day}</span>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {WEEK[(new Date(year, month - 1, day).getDay() + 6) % 7]}
                 </span>
               </div>
@@ -233,7 +233,7 @@ function SlotRow({ slot, rank, bySales }: { slot: Slot; rank: number; bySales: b
       <span
         className={cn(
           "flex size-7 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold tabular-nums",
-          rank === 0 ? "bg-brand text-white" : "bg-white text-foreground",
+          rank === 0 ? "bg-accent-strong text-white" : "bg-white text-foreground",
         )}
       >
         {rank + 1}
@@ -256,7 +256,7 @@ function SlotRow({ slot, rank, bySales }: { slot: Slot; rank: number; bySales: b
         >
           {pct(bySales ? slot.sales : slot.attendance)}
         </p>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">
+        <p className="mt-0.5 text-xs text-muted-foreground">
           {bySales ? "compram" : "assistem"}
         </p>
       </div>
@@ -400,7 +400,7 @@ export function AgendaWebinars({ rows }: { rows: AgendaWebinarRow[] | null }) {
                 </span>
                 <span
                   className={cn(
-                    "shrink-0 rounded-pill px-2.5 py-1 text-[11px] font-medium",
+                    "shrink-0 rounded-pill px-2.5 py-1 text-xs font-medium",
                     r.tone === "live" && "bg-live text-white",
                     r.tone === "next" && "bg-accent text-accent-700",
                     r.tone === "muted" && "bg-chip text-muted-foreground",

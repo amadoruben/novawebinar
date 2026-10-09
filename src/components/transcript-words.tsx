@@ -10,10 +10,19 @@ import { Play } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { msClock } from "@/components/comment-inspector";
 import type { TranscriptInspection } from "@/lib/temporal/inspect.functions";
 import { mediaForTranscription } from "@/lib/temporal/media";
 import { PRECISION_LABEL } from "@/lib/temporal/types";
+
+function msClock(ms: number) {
+  const total = Math.max(0, Math.round(ms));
+  const h = Math.floor(total / 3_600_000);
+  const m = Math.floor((total % 3_600_000) / 60_000);
+  const s = Math.floor((total % 60_000) / 1000);
+  const millis = total % 1000;
+  const base = `${h > 0 ? `${String(h).padStart(2, "0")}:` : ""}${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${base}.${String(millis).padStart(3, "0")}`;
+}
 
 function shortClock(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));

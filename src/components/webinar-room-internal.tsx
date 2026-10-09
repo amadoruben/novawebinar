@@ -11,6 +11,7 @@ import {
 import { useSimulatedPurchases, useSocialProof } from "@/components/social-proof-editor";
 import { liveSettings, offerDeadlinePassed, parseExtraOffers, roomCountdown, roomFormat } from "@/lib/room-logic";
 import { preliveTitle } from "@/lib/prelive-templates";
+import { programmedAppearance, useRoomAppearance } from "@/lib/room-theme";
 
 /**
  * Vista interna da sala, usada pela equipa a partir do estúdio. Não cria
@@ -43,12 +44,12 @@ export function InternalWebinarRoom({
     }
   }, [notified]);
 
+  // O tema programado no editor (Automático segue o aparelho); o ⚙ experimenta sem guardar.
+  const { appearance, theme, choose } = useRoomAppearance(webinar ? programmedAppearance(webinar) : "dark", null);
   // Guardamos o tema para o esqueleto seguir o aspeto da sala.
-  const roomTheme =
-    (webinar as { room_theme?: string } | undefined)?.room_theme === "light" ? "light" : "dark";
   useEffect(() => {
-    if (webinar) cacheRoomTheme(webinarId, roomTheme);
-  }, [webinar, roomTheme, webinarId]);
+    if (webinar) cacheRoomTheme(webinarId, theme);
+  }, [webinar, theme, webinarId]);
 
 
   if (isLoading) return <RoomSkeleton theme={getCachedRoomTheme(webinarId)} />;
@@ -98,7 +99,9 @@ export function InternalWebinarRoom({
       preliveTemplate={countdown.style}
       preliveAppearance={w.prelive_appearance}
       preliveColor={countdown.color}
-      theme={(webinar as { room_theme?: string }).room_theme === "light" ? "light" : "dark"}
+      theme={theme}
+      appearance={appearance}
+      onAppearance={choose}
       format={roomFormat((webinar as { chat_settings?: unknown }).chat_settings)}
       live={live}
       offers={offers}

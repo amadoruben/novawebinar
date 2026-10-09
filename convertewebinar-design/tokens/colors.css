@@ -123,17 +123,43 @@
 --text-on-inverse:var(--white);
 --text-on-accent:var(--white);
 --text-on-accent-large:var(--white);
---text-accent:var(--orange);
+--text-accent:var(--accent-700); /* 9/10: #E8440C como texto só a partir de 24px (3.99:1); abaixo, #A82F05 (6.83:1) */
 --text-info:var(--ds-blue-900);
 
 --border-subtle:var(--ds-gray-alpha-200);
 --border-card:var(--ds-gray-alpha-400); /* aresta dos cartões e das janelas */
 --border-hairline:var(--ds-gray-400);
 --border-control:#8A8A8A; /* campos, caixas e interruptores: 3.45:1 (WCAG 1.4.11) */
---chart-line:var(--ds-gray-500);
 --chart-hatch:var(--ds-gray-900);
---chart-bar:var(--ds-gray-500);
---chart-marker:var(--ds-gray-900);
+
+/* Dados (9/10, ronda K, «muito cinzento, até os gráficos estão escuros»).
+   Cor com função, à Nubank: a marca à frente, com as suas variações claras e
+   escuras; o azul e o verde-água só quando há mais de uma série. Paleta
+   validada (validador da skill dataviz): todos os pares, claro em #FFFFFF e
+   escuro em #0A0A0A, daltonismo (deutan/protan ΔE ≥ 15) e marcas ≥ 3:1.
+   Sempre a mesma cor para a mesma coisa: Telemóvel, Ao vivo, Entradas e o
+   plano = 1; Computador, Replay, Oferta e créditos carregados = 2; Tablet e
+   Compras = 3. Os números e os rótulos ficam na tinta do texto. */
+--chart-1:var(--orange);           /* #E8440C 3.99:1: série única e 1.ª série */
+--chart-2:var(--ds-blue-700);      /* #0072F5 4.44:1 */
+--chart-3:#0D9488;                 /* verde-água 3.74:1 (não é o verde de sucesso) */
+--chart-other:var(--ds-gray-600);  /* «outros», chat: sem destaque */
+--chart-soft:var(--accent-200);    /* as barras atrás do destaque */
+--chart-emphasis:var(--accent-700);/* barra em destaque com texto e a etiqueta do valor */
+--chart-emphasis-ink:var(--white); /* 6.83:1 */
+--chart-track:var(--accent-100);   /* o resto da barra: um degrau claro da mesma família */
+
+/* Tintas: fundo claro com o ícone ou as iniciais na cor (Nubank: ícone num
+   círculo tingido). A da marca é a de omissão; azul e verde-água só para
+   distinguir pessoas (iniciais). Os estados usam --status-*-soft. */
+--tint-brand:var(--accent-50);
+--tint-brand-ink:var(--accent-700);  /* 6.32:1 */
+--tint-blue:var(--ds-blue-100);
+--tint-blue-ink:var(--ds-blue-900);  /* 4.92:1 */
+--tint-teal:#E6F6F4;
+--tint-teal-ink:#0F766E;             /* 4.91:1 */
+/* Mini-cartões dentro de um cartão (Na oferta, sessões): a areia do laranja. */
+--surface-tint:var(--warm-100);
 
 --hover-dark:var(--navy-soft);
 --hover-ghost:var(--ds-gray-alpha-100);

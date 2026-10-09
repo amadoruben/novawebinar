@@ -2,7 +2,7 @@ import { friendlyError } from "@/lib/friendly-error";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { MonitorPlay, Plus, Trash2 } from "lucide-react";
+import { Film, MonitorPlay, Plus, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Clock3, EmptySection } from "@/components/page-primitives";
 import { PageSkeleton } from "@/components/page-skeleton";
@@ -48,6 +48,7 @@ function LibraryPage() {
   const { data: videos = [], isLoading } = useVideoSources(workspace?.organizationId);
   const invalidate = useInvalidate();
   const [open, setOpen] = useState(false);
+  const [urlError, setUrlError] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "",
     provider: "hls" as Provider,
@@ -60,9 +61,10 @@ function LibraryPage() {
     if (!workspace) return;
     const url = form.source_url.trim();
     if (!/^https?:\/\/.+/i.test(url)) {
-      toast.error("Indique o link do vídeo, começado por https://");
+      setUrlError("Indique o link do vídeo, começado por https://");
       return;
     }
+    setUrlError(null);
     const { error } = await supabase.from("video_sources").insert({
       organization_id: workspace.organizationId,
       name: form.name.trim(),
@@ -93,14 +95,16 @@ function LibraryPage() {
     <AppShell
       title="Biblioteca"
       description="O mesmo vídeo serve a transmissão e o replay."
-      action={false}
+      action={
+        // Sem vídeos, a acção vive no estado vazio.
+        videos.length > 0 && (
+          <Button onClick={() => setOpen((v) => !v)}>
+            <Plus />
+            Adicionar vídeo
+          </Button>
+        )
+      }
     >
-      <div className="mb-5 flex justify-end">
-        <Button onClick={() => setOpen((v) => !v)}>
-          <Plus />
-          Adicionar vídeo
-        </Button>
-      </div>
 
       {open && (
         <form
@@ -108,8 +112,9 @@ function LibraryPage() {
           className="mb-6 grid gap-5 rounded-card bg-card p-5 sm:grid-cols-2 xl:grid-cols-4 xl:p-6"
         >
           <div>
-            <Label>Nome</Label>
+            <Label htmlFor="video-name">Nome</Label>
             <Input
+              id="video-name"
               className="mt-2"
               required
               value={form.name}
@@ -117,12 +122,12 @@ function LibraryPage() {
             />
           </div>
           <div>
-            <Label>Fornecedor</Label>
+            <Label htmlFor="video-provider">Fornecedor</Label>
             <Select
               value={form.provider}
               onValueChange={(v) => setForm({ ...form, provider: v as Provider })}
             >
-              <SelectTrigger className="mt-2">
+              <SelectTrigger id="video-provider" className="mt-2">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -135,17 +140,27 @@ function LibraryPage() {
             </Select>
           </div>
           <div>
-            <Label>URL</Label>
+            <Label htmlFor="video-url">Endereço do vídeo</Label>
             <Input
+              id="video-url"
               className="mt-2"
+              inputMode="url"
               value={form.source_url}
               onChange={(e) => setForm({ ...form, source_url: e.target.value })}
               placeholder="https://..."
+              aria-invalid={urlError ? true : undefined}
+              aria-describedby={urlError ? "video-url-error" : undefined}
             />
+            {urlError && (
+              <p id="video-url-error" role="alert" className="mt-1.5 text-[13px] text-destructive">
+                {urlError}
+              </p>
+            )}
           </div>
           <div>
-            <Label>Duração (min)</Label>
+            <Label htmlFor="video-minutes">Duração (min)</Label>
             <Input
+              id="video-minutes"
               className="mt-2"
               type="number"
               min={0}
@@ -162,10 +177,19 @@ function LibraryPage() {
       {isLoading ? (
         <PageSkeleton variant="cards" />
       ) : videos.length === 0 ? (
-        <EmptySection
-          title="Biblioteca vazia"
-          description="Adicione um upload ou uma fonte externa (Bunny, Panda, Vimeo ou URL/HLS)."
-        />
+        !open && (
+          <EmptySection
+            icon={Film}
+            title="Ainda não tem vídeos"
+            description="Ligue um vídeo do Bunny, do Panda, do Vimeo ou um endereço HLS."
+            action={
+              <Button onClick={() => setOpen(true)}>
+                <Plus />
+                Adicionar vídeo
+              </Button>
+            }
+          />
+        )
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {videos.map((v) => (
@@ -174,12 +198,17 @@ function LibraryPage() {
               <div className="p-4">
                 <h2 className="font-medium">{v.name}</h2>
                 <p className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-                  <Clock3 className="size-3" />
+                  <Clock3 className="size-3.5" aria-hidden />
                   {formatDuration(v.duration_seconds)} · {providerLabels[v.provider]}
                 </p>
                 <div className="mt-4 flex gap-2">
                   <Button variant="outline" className="flex-1" asChild>
-                    <a href={v.source_url ?? "#"} target="_blank" rel="noreferrer">
+                    <a
+                      href={v.source_url ?? "#"}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`Ver a fonte de ${v.name} (abre numa nova janela)`}
+                    >
                       <MonitorPlay />
                       Ver fonte
                     </a>
@@ -187,7 +216,7 @@ function LibraryPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    aria-label="Remover"
+                    aria-label={`Remover ${v.name}`}
                     onClick={() => remove(v.id)}
                   >
                     <Trash2 className="size-4" />

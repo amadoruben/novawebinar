@@ -140,8 +140,8 @@ export const openAiProvider: AIModelProvider = {
 
   /**
    * Com `stream`, a OpenAI emite SSE `data: { type: "image_generation.partial_image"
-   * | "image_generation.completed", b64_json }`, exactamente o que `stream-image.ts`
-   * lê; sem `stream`, devolve `{ data: [{ b64_json }] }`. O corpo é reencaminhado
+   * | "image_generation.completed", b64_json }`, que o browser lê tal e qual;
+   * sem `stream`, devolve `{ data: [{ b64_json }] }`. O corpo é reencaminhado
    * tal e qual: nada é descodificado no servidor.
    */
   async generateImage(input: ImageInput & { timeoutMs: number }): Promise<ImageResult> {

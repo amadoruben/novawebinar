@@ -94,8 +94,6 @@ export const FIELD_KINDS: Record<
 
 /** Os campos que só podem existir uma vez: são os dados do contacto. */
 export const BASE_KINDS: readonly EntryFieldKind[] = ["name", "email", "whatsapp"];
-/** Os campos novos que se podem acrescentar. */
-export const EXTRA_KINDS: readonly EntryFieldKind[] = ["text", "phone", "location", "company", "job", "instagram", "date"];
 
 export const MAX_FIELDS = 8;
 

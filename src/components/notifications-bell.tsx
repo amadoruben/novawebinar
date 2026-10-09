@@ -410,7 +410,7 @@ export function NotificationsBell({
         >
           <Bell strokeWidth={1.5} />
           {unread > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-white ring-2 ring-canvas">
+            <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-xs font-medium text-white ring-2 ring-canvas">
               {unread > 9 ? "9+" : unread}
             </span>
           )}
@@ -431,9 +431,11 @@ export function NotificationsBell({
         <div className="max-h-[min(420px,60dvh)] overflow-y-auto">
           {visible.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
-              <Bell className="size-8 text-muted-foreground/50" />
-              <p className="text-sm font-medium">Está tudo em dia</p>
-              <p className="text-xs text-muted-foreground">
+              <span className="mb-1 inline-flex size-12 items-center justify-center rounded-full bg-accent-50 text-accent-700">
+                <Bell className="size-6" strokeWidth={1.5} aria-hidden />
+              </span>
+              <p className="text-sm font-semibold">Está tudo em dia</p>
+              <p className="text-[13px] text-muted-foreground">
                 Quando houver novidades sobre os seus webinars, aparecem aqui.
               </p>
             </div>

@@ -573,18 +573,6 @@ export function missingLinks(texts: (string | undefined)[], vars: MessageVars): 
     .map((key) => `{{${key}}} (falta ${LINK_SOURCE[key]})`);
 }
 
-/* ---------- Etapas da jornada ---------- */
-
-export type Stage = "pre" | "event" | "post";
-export const STAGE_LABEL: Record<Stage, string> = { pre: "Pré-evento", event: "Evento", post: "Pós-evento" };
-
-export function stageOf(trigger: string): Stage {
-  if (trigger === "webinar_registered") return "pre";
-  if (["webinar_session_started", "webinar_attended", "offer_viewed", "offer_clicked", "checkout_started"].includes(trigger))
-    return "event";
-  return "post";
-}
-
 /* ---------- Nós do canvas que não se executam ---------- */
 
 export type PageType = "inscricao" | "confirmacao" | "vendas" | "checkout" | "upsell" | "downsell" | "obrigado" | "replay" | "outro";
@@ -1200,53 +1188,4 @@ export function nextAction(run: RunLike): { label: string; channels: string; at:
 
 export function triggerTitle(trigger: string) {
   return TRIGGER_LABEL[trigger as TriggerEvent] ?? trigger;
-}
-
-/* ---------- Contexto para o Atendimento ---------- */
-
-export type JourneyFacts = {
-  registered: boolean;
-  attended: boolean;
-  sawOffer: boolean;
-  clicked: boolean;
-  checkout: boolean;
-  paymentFailed: boolean;
-  purchased: boolean;
-  checkoutAbandoned?: boolean;
-  /** A compra foi reembolsada: deixa de ser uma compra activa. */
-  refunded?: boolean;
-};
-
-/**
- * Numa frase, o que a pessoa fez e onde está na jornada, para quem atende: factos
- * (Blocos 1–3) + automações em curso (execuções reais). Sem IA.
- */
-export function journeySentence(
-  f: JourneyFacts,
-  active: { name: string; next: { label: string; channels: string; at: string } | null }[],
-  formatTime: (iso: string) => string,
-) {
-  const did: string[] = [];
-  if (!f.registered) did.push("ainda não se inscreveu em nenhum webinar");
-  else if (f.attended) did.push("assistiu ao webinar");
-  else did.push("inscreveu-se e não assistiu");
-  if (f.clicked) did.push("clicou na oferta");
-  else if (f.sawOffer) did.push("viu a oferta");
-  if (f.checkout && !f.purchased) did.push("iniciou o checkout");
-  if (f.paymentFailed && !f.purchased) did.push("teve um pagamento falhado");
-  if (f.checkoutAbandoned && !f.purchased) did.push("abandonou o pagamento");
-  if (f.purchased) did.push("comprou");
-  else if (f.refunded) did.push("teve a compra reembolsada");
-  else if (f.attended || f.checkout) did.push("não comprou");
-  const list = did.length > 1 ? `${did.slice(0, -1).join(", ")} e ${did.at(-1)}` : did[0];
-  let text = `Este contacto ${list}.`;
-  if (active.length) {
-    text += ` Está actualmente em ${[...new Set(active.map((a) => a.name.toLowerCase()))].join(" e ")}.`;
-    const next = active
-      .map((a) => a.next)
-      .filter((n): n is NonNullable<typeof n> => Boolean(n))
-      .sort((a, b) => a.at.localeCompare(b.at))[0];
-    if (next) text += ` Próxima acção prevista: ${next.label} (${next.channels}) ${Date.parse(next.at) > Date.now() ? `às ${formatTime(next.at)}` : "agora"}.`;
-  } else text += " Não está em nenhuma automação neste momento.";
-  return text;
 }

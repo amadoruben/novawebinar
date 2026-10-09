@@ -24,16 +24,3 @@ export function mediaForTranscription(url: string): MediaForTranscription {
   }
   return { url, offsetMs: 0, source: "direct" };
 }
-
-/** Alternativas pela mesma origem temporal, por ordem de preferência. */
-export function mediaFallbacks(url: string): string[] {
-  const primary = mediaForTranscription(url);
-  if (primary.source !== "hls-direct-mp4") return [primary.url];
-  const base = primary.url.replace(/\/play_\d+p\.mp4$/, "");
-  return [
-    `${base}/play_720p.mp4`,
-    `${base}/play_480p.mp4`,
-    `${base}/play_360p.mp4`,
-    `${base}/original`,
-  ];
-}

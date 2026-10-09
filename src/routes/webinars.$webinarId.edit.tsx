@@ -15,7 +15,12 @@ import {
   Gift,
   Loader2,
   LogIn,
+  Menu,
   MessagesSquare,
+  PanelBottomClose,
+  PanelBottomOpen,
+  PanelLeftClose,
+  PanelLeftOpen,
   ShoppingBag,
   Users,
   Video,
@@ -24,7 +29,7 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
-import { AppShell } from "@/components/app-shell";
+import { AppShell, useShellMenu } from "@/components/app-shell";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { AiCommentsDialog } from "@/components/ai-comments-dialog";
 import { Button } from "@/components/ui/button";
@@ -33,6 +38,7 @@ import type { Json } from "@/integrations/supabase/types";
 import {
   AI_JOB_STAGES,
   defaultAiSettings,
+  markAiJobSeen,
   startAiJob,
   useAiJob,
   type AiSettings,
@@ -101,9 +107,11 @@ import {
 } from "@/lib/video-upload";
 import {
   EDITOR_STEPS,
+  editorLoading,
   isoFromLocalInput,
   localInputFromIso,
   offerTiming,
+  reviewToAnnounce,
   statusOnSave,
   stepFromSearch,
   webinarIssues,
@@ -136,7 +144,6 @@ import {
   type ScreenTab,
 } from "@/components/webinar-editor/preview";
 import { playPreviewWithSound, RoomPreview, type PreviewMine, type RoomTab } from "@/components/webinar-editor/room-preview";
-import type { RiskZone } from "@/components/webinar-editor/timeline-dock";
 import { PublishPage } from "@/components/webinar-editor/publish-page";
 import { StepInicio } from "@/components/webinar-editor/steps/inicio";
 import { StepEntrada } from "@/components/webinar-editor/steps/entrada";
@@ -222,11 +229,11 @@ function EditWebinar() {
   const { webinarId } = Route.useParams();
   const navigate = useNavigate();
   const invalidate = useInvalidate();
-  const { data: workspace } = useWorkspace();
+  const { data: workspace, isPending: workspacePending } = useWorkspace();
   const organizationId = workspace?.organizationId ?? null;
-  const { data: webinar, isLoading } = useWebinar(webinarId);
-  const { data: videoSources = [] } = useVideoSources(workspace?.organizationId);
-  const { data: comments = [] } = useScheduledComments(webinarId);
+  const { data: webinar, isPending: webinarPending } = useWebinar(webinarId);
+  const { data: videoSources = [], isPending: videosPending } = useVideoSources(workspace?.organizationId);
+  const { data: comments = [], isPending: commentsPending } = useScheduledComments(webinarId);
   const { data: audience } = useAudienceConfiguration(webinarId);
   const { data: simulatedPurchases = [] } = useSimulatedPurchases(webinarId);
   const { data: socialProof } = useSocialProof(webinarId);
@@ -355,6 +362,17 @@ function EditWebinar() {
     );
   }, [webinar]);
 
+  // A etapa só se desenha com o que mostra já lido (o vídeo, a duração e os comentários), nunca vazia a carregar.
+  const loading = editorLoading({
+    webinar: webinarPending,
+    // O formulário recebe o webinar num efeito: até lá, os campos estão vazios.
+    hydrated: !webinar || hydratedRef.current === webinar.id,
+    workspace: workspacePending,
+    organization: Boolean(organizationId),
+    videos: videosPending,
+    comments: commentsPending,
+  });
+
   const productLoadedRef = useRef(false);
   useEffect(() => {
     if (socialProof === undefined || productLoadedRef.current) return;
@@ -414,7 +432,7 @@ function EditWebinar() {
           from: segment.from,
           to: segment.to,
           kind: segment.kind,
-          risk: (/alt|high/i.test(risk) ? "alto" : /mod|med/i.test(risk) ? "moderado" : "baixo") as RiskZone["risk"],
+          risk: (/alt|high/i.test(risk) ? "alto" : /mod|med/i.test(risk) ? "moderado" : "baixo") as "alto" | "moderado" | "baixo",
           engagement: segment.engagement,
         };
       }),
@@ -486,6 +504,8 @@ function EditWebinar() {
   }, []);
   const [landscape, setLandscape] = useState(false);
   const [full, setFull] = useState(false);
+  // O painel de configuração minimiza-se: no computador fica uma tira à esquerda, num ecrã estreito fica o título.
+  const [panelOpen, setPanelOpen] = useState(true);
   const [roomTab, setRoomTab] = useState<RoomTab | null>(null);
   const [entryView, setEntryView] = useState<"page" | "room">("page");
   // A fase escolhida na barra da pré-visualização (Inscrição, Espera, Ao vivo, Fim); null = o ecrã da etapa.
@@ -499,6 +519,8 @@ function EditWebinar() {
   const [volume, setVolume] = useState(0);
   const soundChosen = useRef(false);
   const [zoom, setZoom] = useState<number | null>(null);
+  // O tamanho com que o aparelho cabe inteiro: o valor do zoom quando não há zoom.
+  const [fit, setFit] = useState<number | null>(null);
   /** Tocar ou pausar. O som liga-se no próprio toque, porque o iPhone não deixa ligá-lo depois. */
   function togglePlay() {
     if (!playing) {
@@ -1087,16 +1109,15 @@ function EditWebinar() {
   const [chatWay, setChatWay] = useState<ChatWay>("ai");
   const [aiOpen, setAiOpen] = useState(false);
 
-  // Quando a geração termina, abre a revisão no Chat.
-  const announcedJobRef = useRef<number | null>(null);
+  // Quando a geração termina, abre a revisão no Chat uma só vez e já com o editor carregado. O resultado fica
+  // guardado no browser: sem o «visto», cada abertura do editor (mesmo dias depois) saltava para o Chat.
   useEffect(() => {
-    if (aiJob?.status !== "ready" || !aiJob.drafts?.length) return;
-    if (announcedJobRef.current === aiJob.startedAt) return;
-    announcedJobRef.current = aiJob.startedAt;
+    if (loading || !reviewToAnnounce(aiJob)) return;
+    markAiJobSeen(webinarId);
     setStep("chat");
     setAiOpen(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiJob?.status, aiJob?.startedAt, aiJob?.drafts?.length]);
+  }, [loading, aiJob?.status, aiJob?.seen, aiJob?.drafts?.length]);
 
   // O gerador lê o vídeo gravado na base: grava-se tudo antes de começar.
   const generate = async () => {
@@ -1295,7 +1316,7 @@ function EditWebinar() {
 
   /* ---------- Desenho ---------- */
 
-  if (isLoading)
+  if (loading)
     return (
       <AppShell title="A carregar webinar" action={false}>
         <PageSkeleton variant="editor" />
@@ -1611,7 +1632,7 @@ function EditWebinar() {
   const tools = (
     <span className="flex shrink-0 items-center gap-2">
       {screenDevice !== "desktop" && screen === "room" ? <RotateButton landscape={landscape} onChange={setLandscape} /> : null}
-      {wide ? <ZoomControl zoom={zoom} onZoom={setZoom} /> : null}
+      {wide ? <ZoomControl zoom={zoom} fit={fit} onZoom={setZoom} /> : null}
       <ExpandButton onClick={() => setFull(true)} />
       {screen !== "whatsapp" ? <DeviceToggle device={device} onChange={setDevice} /> : null}
     </span>
@@ -1620,9 +1641,10 @@ function EditWebinar() {
   return (
     <AppShell action={false} bleed rail>
       {/* No computador, o editor ocupa o ecrã: a página não desliza, só o painel. */}
-      <div className="flex flex-1 flex-col bg-background lg:fixed lg:inset-y-0 lg:left-[72px] lg:right-0 lg:z-10">
+      <div className="flex flex-1 flex-col bg-background lg:fixed lg:inset-y-0 lg:left-[var(--shell-left,72px)] lg:right-0 lg:z-10 lg:transition-[left] lg:duration-300">
         <header className="grid shrink-0 border-b bg-background lg:grid-cols-[340px_minmax(0,1fr)]">
           <div className="flex h-12 min-w-0 items-center gap-1.5 border-b px-2.5 lg:border-r lg:border-b-0">
+            <PhoneMenuButton />
             <Button variant="ghost" size="icon" className="size-8 shrink-0" asChild>
               <Link to="/webinars" search={{ q: undefined }} aria-label="Voltar aos webinars">
                 <ArrowLeft />
@@ -1689,7 +1711,12 @@ function EditWebinar() {
         {published ? (
           <PublishPage issues={reviewList} roomLink={roomLink} onResolve={setStep} onBack={() => setPublished(false)} />
         ) : (
-          <div className="grid min-h-0 flex-1 lg:grid-cols-[340px_minmax(0,1fr)]">
+          <div
+            className={cn(
+              "grid min-h-0 flex-1 lg:transition-[grid-template-columns] lg:duration-300",
+              panelOpen ? "lg:grid-cols-[340px_minmax(0,1fr)]" : "lg:grid-cols-[56px_minmax(0,1fr)]",
+            )}
+          >
             <section data-editor-panel className="flex min-h-0 min-w-0 flex-col bg-background lg:border-r">
               {!wide ? (
                 <div className="shrink-0 border-b">
@@ -1700,7 +1727,7 @@ function EditWebinar() {
                         {tools}
                       </div>
                       <div className="flex justify-center px-4 pt-2">{phaseBar()}</div>
-                      <div className="h-[min(64dvh,600px)] px-2">
+                      <div className={cn("px-2", panelOpen ? "h-[min(64dvh,600px)]" : "h-[max(min(64dvh,600px),calc(100dvh-22rem))]")}>
                         <DeviceStage
                           device={screenDevice}
                           landscape={rotated}
@@ -1724,11 +1751,28 @@ function EditWebinar() {
                   </button>
                 </div>
               ) : null}
-              <div className="flex shrink-0 items-center gap-1 px-5 pb-1 pt-3.5">
-                <h1 className="text-[17px] font-semibold tracking-tight">{active.title}</h1>
+              {wide && !panelOpen ? (
+                <div className="flex flex-col items-center gap-2 pt-3">
+                  <PanelToggle open={false} wide onClick={() => setPanelOpen(true)} />
+                  <button
+                    type="button"
+                    onClick={() => setPanelOpen(true)}
+                    title={active.title}
+                    aria-label={`Abrir o painel: ${active.title}`}
+                    className="grid size-9 place-items-center rounded-lg bg-chip text-foreground"
+                  >
+                    <active.icon className="size-4" />
+                  </button>
+                </div>
+              ) : null}
+              <div className={cn("flex shrink-0 items-center gap-1 px-5 pb-1 pt-3.5", wide && !panelOpen && "hidden", !panelOpen && "pb-3")}>
+                <h1 className="min-w-0 truncate text-[17px] font-semibold tracking-tight">{active.title}</h1>
                 {active.help ? <HelpButton topic={active.help} /> : null}
+                <span className="flex-1" />
+                <PanelToggle open={panelOpen} wide={wide} onClick={() => setPanelOpen((v) => !v)} />
               </div>
-              <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-3.5">
+              {/* Minimizado, o painel só se esconde: o que se escreveu numa etapa não se perde. */}
+              <div className={cn("scrollbar-thin min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-3.5", !panelOpen && "hidden")}>
                 {needsVideo ? (
                   <div className="grid justify-items-start gap-3 rounded-xl border bg-white p-4">
                     <span className="grid size-10 place-items-center rounded-full bg-chip">
@@ -1956,7 +2000,13 @@ function EditWebinar() {
                   />
                 )}
               </div>
-              <footer className="sticky bottom-0 z-20 shrink-0 border-t bg-background px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2.5 lg:static">
+              <footer
+                className={cn(
+                  // No telemóvel, com o menu aberto, fica por cima da barra de baixo.
+                  "sticky bottom-[var(--shell-bottom,0px)] z-20 mt-auto shrink-0 border-t bg-background px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2.5 lg:static",
+                  wide && !panelOpen && "hidden",
+                )}
+              >
                 {/* Em que etapa está: um traço por etapa, cheio até à actual. */}
                 <div className="mb-2.5 flex items-center gap-2">
                   <div className="flex flex-1 gap-1" aria-hidden>
@@ -2012,6 +2062,7 @@ function EditWebinar() {
                   highlightUrl={focusKey === "url"}
                   light={stageLight}
                   zoom={zoom}
+                  onFit={full ? undefined : setFit}
                   dock={{ play, tabs: tabs.length ? <ScreenTabs tabs={tabs} /> : null }}
                 >
                   {screenBody}
@@ -2029,7 +2080,7 @@ function EditWebinar() {
           device={screenDevice}
           onDevice={setDevice}
           onClose={() => setFull(false)}
-          tools={<ZoomControl dark zoom={zoom} onZoom={setZoom} />}
+          tools={<ZoomControl dark zoom={zoom} fit={fit} onZoom={setZoom} />}
           phases={phaseBar(true)}
         >
           <DeviceStage
@@ -2039,6 +2090,7 @@ function EditWebinar() {
             light={stageLight}
             dark
             zoom={zoom}
+            onFit={setFit}
             dock={{
               play:
                 screen === "room" && duration > 0 && !needsVideo ? (
@@ -2066,5 +2118,42 @@ function EditWebinar() {
         onInsert={(drafts) => insertGenerated(drafts)}
       />
     </AppShell>
+  );
+}
+
+/** O botão do menu principal no telemóvel (no computador e no tablet está na barra lateral). */
+function PhoneMenuButton() {
+  const menu = useShellMenu();
+  if (!menu) return null;
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="size-8 shrink-0 md:hidden"
+      onClick={menu.toggle}
+      aria-expanded={menu.open}
+      aria-label={menu.open ? "Recolher o menu principal" : "Abrir o menu principal"}
+      title={menu.open ? "Recolher o menu" : "Abrir o menu"}
+    >
+      <Menu />
+    </Button>
+  );
+}
+
+/** Minimizar e abrir o painel de configuração: à esquerda no computador, por baixo da pré-visualização num ecrã estreito. */
+function PanelToggle({ open, wide, onClick }: { open: boolean; wide: boolean; onClick: () => void }) {
+  const Icon = wide ? (open ? PanelLeftClose : PanelLeftOpen) : open ? PanelBottomClose : PanelBottomOpen;
+  const label = open ? "Minimizar o painel de configuração" : "Abrir o painel de configuração";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      aria-label={label}
+      title={open ? "Minimizar o painel" : "Abrir o painel"}
+      className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-[var(--hover-ghost)] hover:text-foreground"
+    >
+      <Icon className="size-[18px]" />
+    </button>
   );
 }

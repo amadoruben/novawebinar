@@ -22,7 +22,6 @@ import {
   modelAutomations,
   renameGroupIn,
   toGroups,
-  journeySentence,
   executedNodes,
   lateReminder,
   mergeGuard,
@@ -36,7 +35,6 @@ import {
   renderMessage,
   sendLabel,
   sendMissing,
-  stageOf,
   timeLeft,
   unreachable,
   validateSteps,
@@ -47,6 +45,14 @@ import {
   type Steps,
   type WaitNode,
 } from "./workflow";
+
+/** Etapa da jornada de um gatilho (antes, durante ou depois do webinar). */
+function stageOf(trigger: string) {
+  if (trigger === "webinar_registered") return "pre";
+  if (["webinar_session_started", "webinar_attended", "offer_viewed", "offer_clicked", "checkout_started"].includes(trigger))
+    return "event";
+  return "post";
+}
 import { TRIGGER_GROUPS, TRIGGER_LABEL, type Condition } from "./automations";
 
 const now = new Date("2026-10-01T18:00:00Z");
@@ -258,29 +264,6 @@ describe("edição", () => {
       automations: { name: "Não acessou", trigger_event: "webinar_session_ended", steps: find("nao-acessou").steps },
     });
     expect(next).toEqual({ label: "Gravação: o que você perdeu", channels: "WhatsApp · individual", at: "2026-10-01T20:00:00Z" });
-  });
-});
-
-describe("contexto para o Atendimento", () => {
-  it("diz o que a pessoa fez e onde está, com a próxima acção", () => {
-    const text = journeySentence(
-      { registered: true, attended: true, sawOffer: true, clicked: false, checkout: true, paymentFailed: false, purchased: false },
-      [{ name: "Checkout abandonado", next: { label: "Recuperar checkout", channels: "WhatsApp · individual", at: "2999-01-01T20:00:00Z" } }],
-      () => "20:00",
-    );
-    expect(text).toBe(
-      "Este contacto assistiu ao webinar, viu a oferta, iniciou o checkout e não comprou. Está actualmente em checkout abandonado. Próxima acção prevista: Recuperar checkout (WhatsApp · individual) às 20:00.",
-    );
-  });
-
-  it("abandono e reembolso nunca passam por compra activa", () => {
-    const base = { registered: true, attended: true, sawOffer: true, clicked: true, checkout: true, paymentFailed: false };
-    expect(journeySentence({ ...base, purchased: false, checkoutAbandoned: true }, [], () => "")).toBe(
-      "Este contacto assistiu ao webinar, clicou na oferta, iniciou o checkout, abandonou o pagamento e não comprou. Não está em nenhuma automação neste momento.",
-    );
-    expect(journeySentence({ ...base, purchased: false, refunded: true }, [], () => "")).toBe(
-      "Este contacto assistiu ao webinar, clicou na oferta, iniciou o checkout e teve a compra reembolsada. Não está em nenhuma automação neste momento.",
-    );
   });
 });
 

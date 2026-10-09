@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   EDITOR_STEPS,
+  editorLoading,
   isoFromLocalInput,
   localInputFromIso,
   offerTiming,
+  reviewToAnnounce,
   statusOnSave,
   stepFromSearch,
   webinarIssues,
@@ -163,5 +165,34 @@ describe("etapas do editor", () => {
     expect(stepFromSearch(undefined)).toBe("inicio");
     expect(stepFromSearch("nada")).toBe("inicio");
     expect(stepFromSearch("chat")).toBe("chat");
+  });
+});
+
+describe("abrir um webinar já feito", () => {
+  const loaded = { webinar: false, hydrated: true, workspace: false, organization: true, videos: false, comments: false };
+
+  it("espera pelos vídeos da conta e pelos comentários antes de desenhar a etapa", () => {
+    // O webinar chega primeiro; os vídeos vêm depois da conta. Desenhar já mostrava o Chat sem vídeo nem comentários.
+    expect(editorLoading({ ...loaded, videos: true })).toBe(true);
+    expect(editorLoading({ ...loaded, comments: true })).toBe(true);
+    expect(editorLoading({ ...loaded, workspace: true, organization: false, videos: true })).toBe(true);
+    expect(editorLoading({ ...loaded, hydrated: false })).toBe(true);
+    expect(editorLoading(loaded)).toBe(false);
+  });
+
+  it("sem conta (leitura falhada) não espera para sempre pelos vídeos", () => {
+    expect(editorLoading({ ...loaded, organization: false, videos: true })).toBe(false);
+  });
+
+  it("um chat gerado leva ao Chat uma só vez, não a cada abertura", () => {
+    const ready = { status: "ready", drafts: [{}], seen: false };
+    expect(reviewToAnnounce(ready)).toBe(true);
+    expect(reviewToAnnounce({ ...ready, seen: true })).toBe(false);
+    expect(reviewToAnnounce({ ...ready, seen: undefined })).toBe(true);
+    expect(reviewToAnnounce({ ...ready, drafts: [] })).toBe(false);
+    expect(reviewToAnnounce({ ...ready, status: "running" })).toBe(false);
+    expect(reviewToAnnounce(undefined)).toBe(false);
+    // Sem nada por mostrar, abre o Início.
+    expect(stepFromSearch(undefined)).toBe("inicio");
   });
 });

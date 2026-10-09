@@ -123,7 +123,6 @@ export function triggerOfOccurrence(occurrenceKey: string): TriggerEvent | null 
   return name in TRIGGER_LABEL ? name : null;
 }
 
-export const ACTION_LABEL = { outgoing_webhook: "Enviar para o webhook de saída" } as const;
 /** Nome do evento que o webhook de saída recebe em cada execução. */
 export const AUTOMATION_EVENT = "automation.run";
 

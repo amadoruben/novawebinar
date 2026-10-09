@@ -272,7 +272,7 @@ export function ConversationPane({
             <div key={entry.kind === "message" ? entry.m.id : entry.n.id}>
               {newDay && (
                 <p className="my-3 text-center">
-                  <span className="rounded-pill bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-300)]">
+                  <span className="rounded-pill bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-300)]">
                     {day}
                   </span>
                 </p>
@@ -549,17 +549,17 @@ function Bubble({
           )}
         >
           {m.from === "ai" && (
-            <span className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-info">
+            <span className="mb-1 flex items-center gap-1 text-xs font-semibold text-info">
               <Bot className="size-3.5" aria-hidden /> Agente IA
             </span>
           )}
           {m.from === "team" && m.author && (
-            <span className="mb-1 block text-[11px] font-semibold opacity-80">{m.author}</span>
+            <span className="mb-1 block text-xs font-semibold opacity-80">{m.author}</span>
           )}
           <span className="whitespace-pre-line break-words">{m.body}</span>
           {m.offer && (
             <span className="mt-2.5 block overflow-hidden rounded-lg bg-card text-foreground shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-300)]">
-              <span className="block px-3 pt-2.5 text-[11px] text-muted-foreground">Oferta</span>
+              <span className="block px-3 pt-2.5 text-xs text-muted-foreground">Oferta</span>
               <span className="block px-3 pb-2 text-sm font-semibold">{m.offer.title}</span>
               <a
                 href={m.offer.href ?? undefined}
@@ -573,7 +573,7 @@ function Bubble({
           )}
         </div>
         <span
-          className={cn("mt-1 block px-1 text-[11px] text-muted-foreground", mine && "text-right")}
+          className={cn("mt-1 block px-1 text-xs text-muted-foreground", mine && "text-right")}
         >
           {hourLabel(m.at)}
           {m.from === "contact" && m.second != null ? ` · no minuto ${clockLabel(m.second)}` : ""}
@@ -598,7 +598,7 @@ function HandoffCard({ note }: { note: PaneNote }) {
         <Icon className="size-4" aria-hidden /> {note.title}
       </p>
       {note.detail && <p className="mt-0.5 text-muted-foreground">{note.detail}</p>}
-      <p className="mt-1 text-[11px] text-muted-foreground">{hourLabel(note.at)}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{hourLabel(note.at)}</p>
     </div>
   );
 }

@@ -13,7 +13,6 @@ import {
   PanelNavFooter,
   PanelNavGroup,
   PanelSection,
-  PanelTitle,
 } from "@/components/panel-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,7 +94,7 @@ export function SettingsModal({
               <Avatar workspace={workspace} />
               <span className="flex min-w-0 flex-col leading-tight">
                 <span className="truncate text-[14px] text-foreground">{workspace.fullName}</span>
-                <span className="truncate text-[11px] text-muted-foreground">
+                <span className="truncate text-xs text-muted-foreground">
                   {workspace.organizationName}
                 </span>
               </span>

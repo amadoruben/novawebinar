@@ -89,11 +89,22 @@
   --color-input: var(--gray-250);
   --color-ring: var(--ds-blue-700);
   --color-ring-offset-background: var(--bg-canvas);
-  --color-chart-1: var(--ds-gray-1000);
-  --color-chart-2: var(--orange);
-  --color-chart-3: var(--ds-gray-600);
-  --color-chart-4: var(--ds-blue-700);
-  --color-chart-5: var(--ds-gray-900);
+  /* Dados e tintas (tokens/colors.css): bg-chart-1, bg-chart-track, bg-tint-brand… */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-other: var(--chart-other);
+  --color-chart-soft: var(--chart-soft);
+  --color-chart-emphasis: var(--chart-emphasis);
+  --color-chart-emphasis-ink: var(--chart-emphasis-ink);
+  --color-chart-track: var(--chart-track);
+  --color-tint-brand: var(--tint-brand);
+  --color-tint-brand-ink: var(--tint-brand-ink);
+  --color-tint-blue: var(--tint-blue);
+  --color-tint-blue-ink: var(--tint-blue-ink);
+  --color-tint-teal: var(--tint-teal);
+  --color-tint-teal-ink: var(--tint-teal-ink);
+  --color-surface-tint: var(--surface-tint);
   --color-sidebar: var(--surface-sidebar);
   --color-sidebar-foreground: var(--navy);
   --color-sidebar-primary: var(--brand);
@@ -569,6 +580,21 @@ html:has(.live-room-shell.live-room-shell--stage) body {
 /* Foco dos campos do Geist: aresta mais escura e halo cinza. */
 @utility ring-field {
   box-shadow: var(--focus-field);
+}
+/* Alvo de toque de pelo menos 44px nos ecrãs de toque (9/10), sem mudar o desenho: uma
+   área invisível centrada no controlo. O controlo precisa de position (relative, absolute…). */
+@utility touch-hit {
+  @media (pointer: coarse) {
+    &::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      translate: -50% -50%;
+    }
+  }
 }
 
 /* Corações enviados na sala ao vivo */

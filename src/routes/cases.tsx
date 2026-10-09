@@ -1,7 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { MessageCircle, Search } from "lucide-react";
+import { Inbox, Lock, MessageCircle, Search, SearchX } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { EmptyState } from "@/components/ds/data";
+import { NavTabs } from "@/components/ds/navigation";
 import { EmptySection, Metric } from "@/components/page-primitives";
 import {
   Avatar,
@@ -33,7 +35,6 @@ import {
   type SupportCase,
 } from "@/lib/support/hooks";
 import { canAttend, isOpenStatus, priorityRank, slaState } from "@/lib/support/model";
-import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/cases")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -141,6 +142,7 @@ function CasesPage() {
     return (
       <AppShell title="Casos" action={false}>
         <EmptySection
+          icon={Lock}
           title="Sem acesso aos casos"
           description="Os casos são vistos pelo proprietário, pelos administradores e pela equipa de suporte."
         />
@@ -154,7 +156,8 @@ function CasesPage() {
       description="O que a IA passou à equipa: de quem é, em que estado está e até quando tem de ser respondido."
       action={false}
     >
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 sm:[&>*:last-child]:col-span-2 lg:grid-cols-5 lg:[&>*:last-child]:col-span-1">
+      {/* No telemóvel os números ficam numa só lista (uma linha cada), não em cinco cartões. */}
+      <div className="mb-6 grid gap-3 max-sm:gap-0 max-sm:divide-y max-sm:divide-[var(--border-subtle)] max-sm:overflow-hidden max-sm:rounded-card max-sm:bg-card max-sm:shadow-[inset_0_0_0_1px_var(--border-card)] max-sm:[&>*]:rounded-none max-sm:[&>*]:bg-transparent max-sm:[&>*]:shadow-none sm:grid-cols-2 sm:[&>*:last-child]:col-span-2 lg:grid-cols-5 lg:[&>*:last-child]:col-span-1">
         <Metric label="Abertos" value={String(stats.open)} />
         <Metric label="Sem responsável" value={String(stats.unassigned)} />
         <Metric label="Prazo em risco" value={String(stats.late)} />
@@ -166,24 +169,13 @@ function CasesPage() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="flex flex-1 flex-wrap gap-1">
-          {filters.map((f) => {
-            const count = cases.filter(f.test).length;
-            return (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => setFilter(f.id)}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-sm font-medium",
-                  filter === f.id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted",
-                )}
-              >
-                {f.label} <span className="tabular-nums opacity-70">{count}</span>
-              </button>
-            );
-          })}
-        </div>
+        <NavTabs
+          aria-label="Filtrar casos"
+          className="min-w-0 flex-1"
+          items={filters.map((f) => ({ id: f.id, label: f.label, count: cases.filter(f.test).length }))}
+          value={filter}
+          onChange={setFilter}
+        />
         <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" aria-hidden />
           <Input
@@ -200,13 +192,29 @@ function CasesPage() {
         <Skeleton className="h-64 w-full" />
       ) : cases.length === 0 ? (
         <EmptySection
+          icon={Inbox}
           title="Ainda não há casos"
-          description="Um caso abre-se sozinho quando a IA não consegue resolver um pedido, ou quando alguém da equipa assume uma conversa."
+          description="Um caso abre-se quando a IA não resolve um pedido ou alguém da equipa assume uma conversa."
+          actionLabel="Abrir o atendimento"
+          actionTo="/support"
         />
       ) : rows.length === 0 ? (
-        <p className="rounded-card bg-card px-6 py-10 text-center text-sm text-muted-foreground">
-          Nenhum caso neste filtro.
-        </p>
+        <EmptyState
+          icon={SearchX}
+          title="Nenhum caso neste filtro"
+          description="Experimente outro filtro ou limpe a pesquisa."
+          action={
+            <Button
+              variant="outline"
+              onClick={() => {
+                setFilter("open");
+                setSearch("");
+              }}
+            >
+              Ver todos os casos
+            </Button>
+          }
+        />
       ) : (
         <>
           <div className="hidden overflow-hidden rounded-card bg-card md:block">

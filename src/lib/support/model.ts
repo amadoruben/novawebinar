@@ -257,9 +257,6 @@ export const EVENT_LABEL: Record<string, string> = {
 // Pagamentos e fim da sessão também chegam ao rasto: o nome é o mesmo da linha do tempo.
 export const eventLabel = (name: string) => EVENT_LABEL[name] ?? TIMELINE_LABEL[name] ?? name;
 
-/** Eventos que pedem a atenção do supervisor. */
-export const ALERT_EVENTS = ["case_unassigned", "sla_warning", "sla_breached", "case_stalled", "case_escalated"];
-
 /* ---------- Quem vê o quê no painel ---------- */
 
 export type WorkspaceRole = Database["public"]["Enums"]["workspace_role"];

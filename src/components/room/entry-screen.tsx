@@ -399,7 +399,4 @@ export function entryLiveLabel(startMs: number | null, timezone: string | null |
 }
 
 /** O tema da sala que esta pessoa vê: o do organizador ou o que ela escolheu; «do dispositivo» segue o sistema. */
-export function resolveTheme(appearance: "system" | "dark" | "light", prefersDark: boolean): "dark" | "light" {
-  if (appearance === "system") return prefersDark ? "dark" : "light";
-  return appearance;
-}
+export { resolveTheme } from "@/lib/room-theme";

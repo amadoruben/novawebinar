@@ -179,7 +179,7 @@ export function ContactProfile({
             >
               {t.label}
               {t.count ? (
-                <span className="text-[11px] tabular-nums text-muted-foreground">{t.count}</span>
+                <span className="text-xs tabular-nums text-muted-foreground">{t.count}</span>
               ) : null}
             </button>
           ))}
@@ -228,7 +228,7 @@ export function ContactProfile({
                       key={q.label}
                       className={cn("min-w-0", q.label === "Próxima acção" && "col-span-2")}
                     >
-                      <dt className="text-[11px] text-muted-foreground">{q.label}</dt>
+                      <dt className="text-xs text-muted-foreground">{q.label}</dt>
                       <dd className="font-medium">{q.value}</dd>
                     </div>
                   ))}

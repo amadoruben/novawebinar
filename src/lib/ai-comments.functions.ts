@@ -183,8 +183,6 @@ export const SPEECH_SYNC = schema("speech_sync", {
   comments: s.array(s.object({ id: s.string(), at: s.integer() })),
 });
 
-const probeSchema = z.object({ webinarId: z.string().uuid() });
-
 const settingsSchema = z.object({
   variant: z.string().refine(isChatVariant).default("pt-PT"),
   level: z.enum(["low", "medium", "high", "very-high"]).default("medium"),
@@ -437,11 +435,6 @@ export async function probeWebinarVideoImpl(supabase: any, data: any) {
       };
     }
   }
-
-export const probeWebinarVideo = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) => probeSchema.parse(data))
-  .handler(async ({ data, context }) => probeWebinarVideoImpl(context.supabase, data));
 
 const levelPerMinute: Record<string, number> = {
   low: 1.2,
@@ -2334,23 +2327,6 @@ async function syncBatch(
   return map;
 }
 
-const syncCommentsSchema = z.object({
-  webinarId: z.string().uuid(),
-  transcript: transcriptSchema.optional().default([]),
-  comments: z
-    .array(
-      z.object({
-        id: z.string(),
-        at: z.number(),
-        author: z.string(),
-        message: z.string(),
-      }),
-    )
-    .min(1)
-    .max(40),
-  occupiedSeconds: z.array(z.number().int().min(0)).default([]),
-});
-
 /**
  * Realinha um lote de comentários programados com os momentos reais da
  * transcrição. O cliente pode chamar esta função várias vezes, passando os
@@ -2400,10 +2376,3 @@ export async function syncCommentsWithSpeechImpl(supabase: any, data: any) {
 
     return { updates, usedSeconds: Array.from(used) };
   }
-
-export const syncCommentsWithSpeech = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) => syncCommentsSchema.parse(data))
-  .handler(async ({ data, context }) =>
-    billed(context.supabase, data.webinarId, "chat_generation", () => syncCommentsWithSpeechImpl(context.supabase, data)),
-  );

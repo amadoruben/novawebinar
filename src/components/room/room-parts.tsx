@@ -5,9 +5,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
-  Eye,
   Headset,
   Heart,
+  MessageSquareOff,
+  MessagesSquare,
   Monitor,
   MonitorPlay,
   Moon,
@@ -23,8 +24,8 @@ import {
   Volume1,
   Volume2,
   VolumeX,
-  X,
   Zap,
+  type LucideIcon,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -35,14 +36,15 @@ import { clock, discountPercent, liveVideoPlace, offerColorVars, type EntryLook,
  * vêm dos tokens da sala (room-*), por isso o tema escuro e o claro servem as duas.
  */
 
-const ROOM_PARTS_CSS = `@keyframes cwRxUp{0%{opacity:0;transform:translate(0,0) scale(.6)}8%{opacity:1;transform:translate(0,-14px) scale(1)}28%{transform:translate(var(--sway),-62px)}50%{transform:translate(calc(var(--sway) * -1),-112px)}72%{opacity:.85;transform:translate(var(--sway),-160px)}100%{opacity:0;transform:translate(0,calc(-1 * var(--h,210px))) scale(.92)}}.cw-rx{animation:cwRxUp 2.4s linear forwards}@keyframes cwDot{50%{opacity:.35}}.cw-dot{animation:cwDot 1.4s ease-in-out infinite}@keyframes cwPop{0%{transform:scale(1)}40%{transform:scale(1.25)}100%{transform:scale(1)}}.cw-pop{animation:cwPop .3s ease}@media (prefers-reduced-motion:reduce){.cw-rx{display:none}.cw-dot,.cw-pop{animation:none}}.room-light .room-panel{--tw-ring-color:#CACACA}`;
+const ROOM_PARTS_CSS = `@keyframes cwRxUp{0%{opacity:0;transform:translate(0,0) scale(.6)}8%{opacity:1;transform:translate(0,-14px) scale(1)}28%{transform:translate(var(--sway),-62px)}50%{transform:translate(calc(var(--sway) * -1),-112px)}72%{opacity:.85;transform:translate(var(--sway),-160px)}100%{opacity:0;transform:translate(0,calc(-1 * var(--h,210px))) scale(.92)}}.cw-rx{animation:cwRxUp 2.4s linear forwards}@keyframes cwDot{50%{opacity:.35}}.cw-dot{animation:cwDot 1.4s ease-in-out infinite}@keyframes cwPop{0%{transform:scale(1)}40%{transform:scale(1.25)}100%{transform:scale(1)}}.cw-pop{animation:cwPop .3s ease}@media (prefers-reduced-motion:reduce){.cw-rx{display:none}.cw-dot,.cw-pop{animation:none}}`;
 
 export function RoomPartsStyle() {
   return <style>{ROOM_PARTS_CSS}</style>;
 }
 
 export type Reaction = { id: string | number; offset: number; size?: number };
-export type Appearance = "system" | "dark" | "light";
+import type { Appearance } from "@/lib/room-theme";
+export type { Appearance };
 
 /** O tamanho das legendas, que cada pessoa escolhe no ⚙ («Normal» por omissão). */
 export type CaptionSize = "sm" | "md" | "lg";
@@ -107,7 +109,7 @@ export function RoomTitle({
     .map((p) => p[0]?.toUpperCase())
     .join("");
   return (
-    <div className={compact ? "px-4 py-3" : "pt-5"}>
+    <div className={compact ? "px-5 pb-1 pt-4" : "pt-5"}>
       {!compact ? (
         <p className="text-[14.5px] font-bold uppercase tracking-[0.2em] text-primary">{kicker}</p>
       ) : null}
@@ -443,6 +445,65 @@ export const EMOJIS = ["😀", "😂", "😍", "🥰", "😮", "🤔", "👏", "
  * botão redondo. Vazio, é o coração das reacções; ao escrever, passa a enviar, cheio na cor do botão.
  * No Suporte (sem reacções) o enviar fica sempre lá.
  */
+/** Um separador do painel da sala (Chat, Suporte, Oferta); `extra` = o ponto ou o número ao lado do nome. */
+export type RoomTabItem<T extends string> = { value: T; label: string; Icon: LucideIcon; extra?: ReactNode };
+
+/**
+ * Os separadores do painel da sala (a sala e a pré-visualização do editor). `segmented` (telemóvel ao
+ * alto): um controlo segmentado com respiro à volta, como no exemplo do dono; senão, a linha por baixo.
+ */
+export function RoomTabs<T extends string>({
+  items,
+  active,
+  onTab,
+  segmented,
+  big,
+  trailing,
+}: {
+  items: readonly RoomTabItem<T>[];
+  active: T;
+  onTab: (value: T) => void;
+  segmented?: boolean | undefined;
+  /** Letra e altura maiores (pré-visualização no computador). */
+  big?: boolean | undefined;
+  /** À direita dos separadores (ex.: o X que fecha o chat deitado). */
+  trailing?: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 items-center",
+        segmented ? "mx-5 mb-1 mt-3 gap-1 rounded-xl bg-room-raised p-1" : "mx-3 gap-1 border-b border-room-line/60",
+      )}
+    >
+      {items.map(({ value, label, Icon, extra }) => {
+        const on = value === active;
+        return (
+          <button
+            key={value}
+            type="button"
+            onClick={() => onTab(value)}
+            aria-pressed={on}
+            className={cn(
+              "relative flex flex-1 items-center justify-center gap-2 font-semibold transition",
+              segmented ? "h-10 rounded-[9px] text-sm" : big ? "h-[54px] text-[15px]" : "h-12 text-sm",
+              on ? "text-primary" : "text-room-subtle hover:text-room-text",
+              // O segmento escolhido sobe da calha: branco no claro, um cinzento acima da calha no escuro.
+              segmented && on && "bg-room-line shadow-[0_1px_2px_rgb(0_0_0/0.12)] [.room-light_&]:bg-room-bg",
+            )}
+          >
+            <Icon className="size-4" strokeWidth={1.9} />
+            {label}
+            {extra}
+            {on && !segmented ? <span className="absolute inset-x-5 -bottom-px h-[3px] rounded-full bg-primary" /> : null}
+          </button>
+        );
+      })}
+      {trailing}
+    </div>
+  );
+}
+
 export function ChatComposer({
   value,
   onChange,
@@ -469,7 +530,7 @@ export function ChatComposer({
   const heart = withReactions && onHeart && !ready;
   return (
     <form
-      className="flex items-center gap-2 border-t border-room-line px-3 py-2.5"
+      className={cn("flex items-center gap-2 border-t border-room-line/60", compact ? "px-5 py-3" : "px-3 py-2.5")}
       onSubmit={(event) => {
         event.preventDefault();
         if (ready) onSubmit();
@@ -1081,6 +1142,9 @@ export function SaleToast({
  * Sala de teste: quem testa recua, avança e põe em pausa o vídeo (só no vídeo próprio; as plataformas
  * embebidas não deixam). Nunca aparece a quem vê a sala a sério.
  */
+/** Os passos para avançar e recuar na sala de teste; tocar no passo troca para o seguinte. */
+export const TEST_STEPS = [1, 2, 3, 5] as const;
+
 export function TestControls({
   seconds,
   paused,
@@ -1094,6 +1158,9 @@ export function TestControls({
   onToggle: () => void;
   className?: string | undefined;
 }) {
+  // Recuar e avançar pelo passo escolhido (1, 2, 3 ou 5 s); cada toque soma outro passo.
+  const [step, setStep] = useState<(typeof TEST_STEPS)[number]>(5);
+  const nextStep = TEST_STEPS[(TEST_STEPS.indexOf(step) + 1) % TEST_STEPS.length]!;
   const jump = "h-8 rounded-full px-2 text-[12px] font-bold tabular-nums transition hover:bg-white/15 active:scale-95";
   return (
     <div
@@ -1104,20 +1171,66 @@ export function TestControls({
       <button type="button" onClick={() => onSeek(-60)} aria-label="Recuar 1 minuto" className={jump}>
         −1m
       </button>
-      <button type="button" onClick={() => onSeek(-10)} aria-label="Recuar 10 segundos" className={jump}>
-        −10s
+      <button type="button" onClick={() => onSeek(-step)} aria-label={`Recuar ${step} s`} className={jump}>
+        −{step}s
       </button>
       <button type="button" onClick={onToggle} aria-label={paused ? "Continuar" : "Pausar"} className="grid size-8 place-items-center rounded-full bg-white text-black transition active:scale-95">
         {paused ? <Play className="size-3.5 translate-x-px" fill="currentColor" /> : <Pause className="size-3.5" fill="currentColor" />}
       </button>
-      <button type="button" onClick={() => onSeek(10)} aria-label="Avançar 10 segundos" className={jump}>
-        +10s
+      <button type="button" onClick={() => onSeek(step)} aria-label={`Avançar ${step} s`} className={jump}>
+        +{step}s
       </button>
       <button type="button" onClick={() => onSeek(60)} aria-label="Avançar 1 minuto" className={jump}>
         +1m
       </button>
-      <span className="pl-1 pr-2 font-mono text-[12px] tabular-nums text-white/80">{clock(seconds)}</span>
+      <button
+        type="button"
+        onClick={() => setStep(nextStep)}
+        aria-label={`Passo de ${step} s; tocar para ${nextStep} s`}
+        title="Mudar o passo (1, 2, 3 ou 5 s)"
+        className="ml-0.5 h-6 rounded-full px-2 text-[11px] font-semibold tabular-nums text-white/85 ring-1 ring-white/30 transition hover:bg-white/15 active:scale-95"
+      >
+        passo {step}s
+      </button>
+      <span className="pl-1.5 pr-2 font-mono text-[12px] tabular-nums text-white/80">{clock(seconds)}</span>
     </div>
+  );
+}
+
+/**
+ * Mostrar ou ocultar o chat com o aparelho deitado e no computador (Webinar e Live, a sala e a
+ * pré-visualização). `alert`: com o chat escondido, há oferta aberta ou resposta do Suporte por ver.
+ */
+export function ChatToggle({
+  open,
+  onToggle,
+  alert,
+  className,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  alert?: boolean | undefined;
+  className?: string | undefined;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={open}
+      aria-label={open ? "Ocultar o chat" : "Mostrar o chat"}
+      title={open ? "Ocultar o chat" : "Mostrar o chat"}
+      className={cn(
+        "relative grid size-10 shrink-0 place-items-center rounded-full bg-black/55 text-white ring-1 ring-white/15 backdrop-blur transition hover:bg-black/70 active:scale-95",
+        className,
+      )}
+    >
+      {open ? <MessageSquareOff className="size-5" /> : <MessagesSquare className="size-5" />}
+      {!open && alert ? (
+        <span className="absolute right-1 top-1 flex">
+          <PulseDot />
+        </span>
+      ) : null}
+    </button>
   );
 }
 

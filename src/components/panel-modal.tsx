@@ -208,7 +208,7 @@ export function PanelProfile({
       <Avatar workspace={workspace} />
       <span className="flex min-w-0 flex-1 flex-col leading-tight">
         <span className="truncate text-[14px] text-foreground">{name}</span>
-        <span className="truncate text-[11px] text-muted-foreground">
+        <span className="truncate text-xs text-muted-foreground">
           {workspace.organizationName}
         </span>
       </span>

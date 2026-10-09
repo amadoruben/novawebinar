@@ -102,7 +102,7 @@ export function SourceList({
               type="button"
               size="sm"
               variant="outline"
-              className="h-6 px-2 text-[11px]"
+              className="h-6 px-2 text-xs"
               onClick={() => onSeek?.(Math.floor((source.startMs ?? 0) / 1000))}
             >
               Ouvir trecho ({clock(source.startMs)})

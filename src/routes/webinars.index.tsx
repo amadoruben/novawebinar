@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Video } from "lucide-react";
 import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { EmptySection, WebinarTable } from "@/components/page-primitives";
@@ -51,21 +52,30 @@ function WebinarsPage() {
       )
     : byStatus;
 
+  const none = !isLoading && webinars.length === 0;
   return (
-    <AppShell title="Webinars" description="Crie, edite e acompanhe todas as suas experiências.">
-      <Tabs value={tab} onValueChange={setTab} className="mb-5">
-        <TabsList>
-          {filters.map((f) => (
-            <TabsTrigger key={f.value} value={f.value}>
-              {f.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-      {!isLoading && webinars.length === 0 ? (
+    // Sem webinars, a única acção é a do estado vazio.
+    <AppShell
+      title="Webinars"
+      description="Crie, edite e acompanhe todos os seus webinars."
+      action={!none}
+    >
+      {!none && (
+        <Tabs value={tab} onValueChange={setTab} className="mb-5">
+          <TabsList>
+            {filters.map((f) => (
+              <TabsTrigger key={f.value} value={f.value}>
+                {f.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      )}
+      {none ? (
         <EmptySection
+          icon={Video}
           title="Ainda não criou nenhum webinar"
-          description="Crie o primeiro webinar para configurar vídeo, agendamento, comentários programados e oferta."
+          description="O primeiro webinar junta o vídeo, o horário, o chat e a oferta."
           actionLabel="Criar webinar"
           actionTo="/webinars/new"
         />

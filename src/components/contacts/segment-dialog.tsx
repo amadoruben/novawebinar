@@ -141,7 +141,7 @@ export function SegmentDialog({
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span>Entram os contactos que cumprem</span>
             <Select value={rules.match} onValueChange={(match) => setRules({ ...rules, match: match as "all" | "any" })}>
-              <SelectTrigger className="h-8 w-auto" aria-label="Lógica das regras">
+              <SelectTrigger className="w-auto" aria-label="Lógica das regras">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -158,7 +158,7 @@ export function SegmentDialog({
                   {i === 0 ? "" : rules.match === "any" ? "OU" : "E"}
                 </span>
                 <Select value={c.fact} onValueChange={(fact) => setCondition(i, defaultCondition(fact, webinars))}>
-                  <SelectTrigger className="h-8 w-52" aria-label="Facto">
+                  <SelectTrigger className="w-52" aria-label="Facto">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -242,7 +242,7 @@ function ConditionValue({
     return (
       <>
         <Select value={c.op} onValueChange={(op) => onChange({ ...c, op: op as "gte" | "lt" })}>
-          <SelectTrigger className="h-8 w-36" aria-label="Comparação">
+          <SelectTrigger className="w-36" aria-label="Comparação">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -254,7 +254,7 @@ function ConditionValue({
           type="number"
           min={0}
           max={1440}
-          className="h-8 w-20"
+          className="w-20"
           aria-label="Minutos"
           value={Math.round(c.value / 60)}
           onChange={(e) => onChange({ ...c, value: Math.max(0, Number(e.target.value) || 0) * 60 })}
@@ -266,7 +266,7 @@ function ConditionValue({
   if (c.fact === "webinar") {
     return (
       <Select value={c.value} onValueChange={(value) => onChange({ ...c, value })}>
-        <SelectTrigger className="h-8 w-56" aria-label="Webinar">
+        <SelectTrigger className="w-56" aria-label="Webinar">
           <SelectValue placeholder="Escolher webinar" />
         </SelectTrigger>
         <SelectContent>
@@ -294,7 +294,7 @@ function ConditionValue({
             )
           }
         >
-          <SelectTrigger className="h-8 w-36" aria-label="Comparação">
+          <SelectTrigger className="w-36" aria-label="Comparação">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -305,7 +305,7 @@ function ConditionValue({
         </Select>
         {c.op !== "empty" && (
           <Input
-            className="h-8 min-w-40 flex-1"
+            className="min-w-40 flex-1"
             aria-label="Valor"
             placeholder={c.op === "in" ? "facebook, fb" : "black-friday"}
             value={c.op === "in" ? c.value.join(",") : c.value}
@@ -320,7 +320,7 @@ function ConditionValue({
   const b = c as Extract<SegmentCondition, { value: boolean }>;
   return (
     <Select value={b.value ? "yes" : "no"} onValueChange={(v) => onChange({ ...b, value: v === "yes" })}>
-      <SelectTrigger className="h-8 w-56" aria-label="Valor">
+      <SelectTrigger className="w-56" aria-label="Valor">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

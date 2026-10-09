@@ -191,7 +191,9 @@ export function AiCommentsDialog({
             <Wand2 className="size-4 text-primary" />
             {range
               ? "Gerar mais comentários neste trecho"
-              : replaceAll
+              : job?.status === "ready"
+                ? "Rever o chat gerado"
+                : replaceAll
                 ? "Regenerar tudo com IA"
                 : "Gerar com IA"}
           </DialogTitle>

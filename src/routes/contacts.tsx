@@ -316,7 +316,7 @@ function ContactsPage() {
         <EmptyState
           icon={Users}
           title="Ainda sem contactos"
-          description="Quem se inscrever num webinar aparece aqui, arrumado por lançamento, com o que viu, o que comprou e as conversas. Também pode importar uma folha com os contactos que já tem."
+          description="Quem se inscrever num webinar aparece aqui, com o que viu e o que comprou. Também pode importar os contactos que já tem."
           action={
             <div className="flex flex-wrap justify-center gap-2">
               <Button onClick={() => setImportOpen(true)}>

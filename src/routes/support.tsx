@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Eye, MessageCircle } from "lucide-react";
+import { Eye, Lock, MessageCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
@@ -196,6 +196,7 @@ function SupportPage() {
     return (
       <AppShell title="Atendimento" action={false}>
         <EmptySection
+          icon={Lock}
           title="Sem acesso ao atendimento"
           description="As conversas com os participantes são vistas pelo proprietário, pelos administradores e pela equipa de suporte."
         />
@@ -261,7 +262,7 @@ function SupportPage() {
         <EmptyState
           icon={MessageCircle}
           title="Ainda não há conversas"
-          description="Quando alguém escrever numa sala, a conversa aparece aqui. O agente responde ao que sabe e passa à equipa o que precisa de uma pessoa."
+          description="Quando alguém escrever numa sala, a conversa aparece aqui."
           action={
             <Button size="lg" onClick={() => setExample(true)}>
               <Eye /> Ver um exemplo

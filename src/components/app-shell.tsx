@@ -1,6 +1,6 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Check, ChevronRight, Ellipsis, LogOut, Plus, Search, X } from "lucide-react";
-import { lazy, Suspense, useEffect, useState, type ElementType, type ReactNode } from "react";
+import { Check, ChevronRight, Ellipsis, LogOut, LucideProvider, Plus, Search, X } from "lucide-react";
+import { createContext, lazy, Suspense, useContext, useEffect, useState, type CSSProperties, type ElementType, type ReactNode } from "react";
 import { toast } from "sonner";
 import iconAsset from "@/assets/brand/convertewebinar-icon.svg";
 import {
@@ -22,6 +22,13 @@ import { useCreditsRoute, useIntegrationsRoute, useSettingsRoute } from "@/lib/m
 import { cn } from "@/lib/utils";
 import { usePresence } from "@/lib/support/hooks";
 import { canAttend, canOpenPath } from "@/lib/support/model";
+
+/**
+ * O menu da plataforma numa página com `rail` (o editor): começa recolhido e abre-se sem mexer no resto. No
+ * computador e no tablet a barra lateral alarga; no telemóvel aparecem a barra de cima e a de baixo.
+ */
+const ShellMenu = createContext<{ open: boolean; toggle: () => void } | null>(null);
+export const useShellMenu = () => useContext(ShellMenu);
 
 export function AppShell({
   children,
@@ -56,6 +63,7 @@ export function AppShell({
   // A pesquisa (⌘K): no computador abre pela barra lateral, no telemóvel pela lupa de cima.
   const [searching, setSearching] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [railOpen, setRailOpen] = useState(false);
   const [mobileViewport, setMobileViewport] = useState(false);
   // Entre 768 e 1023 px a barra lateral fica recolhida (só ícones) para o conteúdo respirar.
   const [tabletViewport, setTabletViewport] = useState(false);
@@ -129,7 +137,13 @@ export function AppShell({
   }, [navigate]);
 
   const showLoader = useInitialPageLoader(!authorized);
-  const sidebarCollapsed = (rail || collapsed || tabletViewport) && !mobileViewport;
+  // Ícones das páginas e das janelas com o traço 1.75 (a Lucide traz 2), como os dos botões.
+  // O menu, o editor do webinar e o desenho do fluxo ficam como estavam.
+  const iconStroke = bleed || pathname.startsWith("/automations/workflows/") ? 2 : 1.75;
+  const sidebarCollapsed = (rail ? !railOpen : collapsed || tabletViewport) && !mobileViewport;
+  const toggleRail = () => setRailOpen((open) => !open);
+  // No telemóvel, com o menu recolhido, a página fica sem as barras de cima e de baixo.
+  const phoneBars = !rail || railOpen;
 
   const { tabs: tabItems, more: moreGroups } = phoneNav(role);
   const tabActive = (item: RailItem) =>
@@ -152,7 +166,16 @@ export function AppShell({
         : pathname === to || pathname.startsWith(`${to}/`);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div
+      className="min-h-screen bg-background"
+      // A largura do menu e a altura da barra de baixo, para o que fica fixo no ecrã (o editor) não ficar por baixo.
+      style={
+        {
+          "--shell-left": sidebarCollapsed ? "72px" : "260px",
+          "--shell-bottom": mobileViewport && phoneBars && !showLoader ? "calc(61px + max(10px, env(safe-area-inset-bottom)))" : "0px",
+        } as CSSProperties
+      }
+    >
       {showLoader && (
         <div className="fixed inset-0 z-[100] isolate flex h-[100dvh] w-screen items-center justify-center bg-card">
           <PageLoader className="min-h-0 h-full bg-card" label="A carregar o painel" />
@@ -167,7 +190,7 @@ export function AppShell({
         <SidebarNav
           className="h-full"
           collapsed={sidebarCollapsed}
-          onToggleCollapse={tabletViewport ? undefined : toggleCollapsed}
+          onToggleCollapse={rail ? toggleRail : tabletViewport ? undefined : toggleCollapsed}
           role={role}
           searching={searching}
           onSearchingChange={setSearching}
@@ -179,48 +202,52 @@ export function AppShell({
         // (o browser encolhia tudo e o menu de baixo ficava distorcido).
         className={`flex min-h-screen flex-col overflow-x-clip transition-all duration-300 ${showLoader ? "invisible" : "visible"} ${sidebarCollapsed ? "md:pl-[72px]" : "md:pl-[260px]"}`}
       >
-        <MobileHeader
-          home={supportOnly ? "/support" : "/dashboard"}
-          workspace={workspace}
-          onSearch={() => setSearching(true)}
-          onProfile={() => settings.go([])}
-        />
-        <main
-          className={
-            bleed
-              ? "flex w-full min-h-[calc(100dvh-3.5rem)] flex-1 flex-col pb-32 md:min-h-0 md:pb-0"
-              : `mx-auto flex w-full max-w-[1480px] min-h-[calc(100dvh-3.5rem)] min-w-0 flex-1 flex-col px-4 pt-4 pb-[calc(96px+env(safe-area-inset-bottom))] md:min-h-0 md:pb-10 ${compact ? "md:px-6 md:pt-6" : "md:px-8 md:pt-8"}`
-          }
-        >
-          {title && (
-            <PageHeader
-              title={title}
-              description={description}
-              crumbs={crumbs}
-              back={back}
-              compact={compact}
-              toolbar={
-                typeof action === "boolean"
-                  ? action &&
-                    !supportOnly && (
-                      <Button asChild>
-                        <Link to="/webinars/new">
-                          <Plus />
-                          Novo webinar
-                        </Link>
-                      </Button>
-                    )
-                  : action
-              }
-            />
-          )}
-          {blocked ? null : children}
-        </main>
+        {phoneBars && (
+          <MobileHeader
+            home={supportOnly ? "/support" : "/dashboard"}
+            workspace={workspace}
+            onSearch={() => setSearching(true)}
+            onProfile={() => settings.go([])}
+          />
+        )}
+        <LucideProvider strokeWidth={iconStroke}>
+          <main
+            className={
+              bleed
+                ? cn("flex w-full flex-1 flex-col pb-[var(--shell-bottom)] md:min-h-0 md:pb-0", phoneBars ? "min-h-[calc(100dvh-3.5rem)]" : "min-h-dvh")
+                : `mx-auto flex w-full max-w-[1480px] min-h-[calc(100dvh-3.5rem)] min-w-0 flex-1 flex-col px-4 pt-4 pb-[calc(96px+env(safe-area-inset-bottom))] md:min-h-0 md:pb-10 ${compact ? "md:px-6 md:pt-6" : "md:px-8 md:pt-8"}`
+            }
+          >
+            {title && (
+              <PageHeader
+                title={title}
+                description={description}
+                crumbs={crumbs}
+                back={back}
+                compact={compact}
+                toolbar={
+                  typeof action === "boolean"
+                    ? action &&
+                      !supportOnly && (
+                        <Button asChild>
+                          <Link to="/webinars/new">
+                            <Plus />
+                            Novo webinar
+                          </Link>
+                        </Button>
+                      )
+                    : action
+                }
+              />
+            )}
+            <ShellMenu.Provider value={rail ? { open: railOpen, toggle: toggleRail } : null}>{blocked ? null : children}</ShellMenu.Provider>
+          </main>
+        </LucideProvider>
       </div>
       <BottomNav
         items={tabItems}
         isActive={tabActive}
-        hidden={showLoader}
+        hidden={showLoader || !phoneBars}
         extra={{
           label: "Mais",
           icon: Ellipsis,
@@ -239,21 +266,23 @@ export function AppShell({
       />
       {/* Integrações, Definições e Créditos: pop-ups por cima da página onde se está
           (#integracoes, #definicoes, #creditos). */}
-      {authorized && integrations.open && (
-        <Suspense fallback={null}>
-          <IntegrationsModal />
-        </Suspense>
-      )}
-      {authorized && settings.open && (
-        <Suspense fallback={null}>
-          <SettingsModal />
-        </Suspense>
-      )}
-      {authorized && credits.open && (
-        <Suspense fallback={null}>
-          <CreditsModal />
-        </Suspense>
-      )}
+      <LucideProvider strokeWidth={1.75}>
+        {authorized && integrations.open && (
+          <Suspense fallback={null}>
+            <IntegrationsModal />
+          </Suspense>
+        )}
+        {authorized && settings.open && (
+          <Suspense fallback={null}>
+            <SettingsModal />
+          </Suspense>
+        )}
+        {authorized && credits.open && (
+          <Suspense fallback={null}>
+            <CreditsModal />
+          </Suspense>
+        )}
+      </LucideProvider>
     </div>
   );
 }
@@ -492,7 +521,7 @@ function MoreLabel({ first, children }: { first: boolean; children: ReactNode })
 function TestBadge() {
   return (
     <span
-      className="shrink-0 rounded-xs bg-warning-soft px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-warning uppercase"
+      className="shrink-0 rounded-xs bg-warning-soft px-1.5 py-0.5 text-xs font-medium text-warning uppercase"
       title="Conta de teste: dados fictícios, nada sai para destinos reais"
     >
       Teste

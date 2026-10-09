@@ -121,6 +121,8 @@ export type AiJob = {
   analysis?: WebinarAnalysis | null;
   /** Trabalho já feito, guardado para uma nova tentativa continuar daí. */
   partial?: AiJobPartial | null;
+  /** O editor já abriu a revisão deste resultado: não volta a saltar para o Chat ao abrir. */
+  seen?: boolean;
 };
 
 
@@ -233,6 +235,11 @@ export function dismissAiJob(webinarId: string) {
   hydrate();
   jobs.delete(webinarId);
   emit();
+}
+
+export function markAiJobSeen(webinarId: string) {
+  hydrate();
+  patch(webinarId, { seen: true });
 }
 
 export function setAiJobDrafts(webinarId: string, drafts: DraftComment[]) {

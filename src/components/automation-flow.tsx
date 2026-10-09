@@ -1,34 +1,6 @@
-import {
-  BadgeCheck,
-  CalendarCheck,
-  CircleX,
-  CreditCard,
-  Eye,
-  MonitorPlay,
-  MousePointerClick,
-  PlayCircle,
-  ShoppingCart,
-  Undo2,
-  UserPlus,
-  type LucideIcon,
-} from "lucide-react";
 import { TRIGGER_LABEL, type TriggerEvent } from "@/lib/automations";
 import { useIntegrations, useWorkspace } from "@/lib/data";
 import { whatsappReady } from "@/lib/integrations";
-
-export const TRIGGER_ICON: Record<TriggerEvent, LucideIcon> = {
-  webinar_registered: UserPlus,
-  webinar_session_started: PlayCircle,
-  webinar_session_ended: CalendarCheck,
-  webinar_attended: MonitorPlay,
-  offer_viewed: Eye,
-  offer_clicked: MousePointerClick,
-  checkout_started: CreditCard,
-  purchase_approved: BadgeCheck,
-  payment_failed: CircleX,
-  checkout_abandoned: ShoppingCart,
-  purchase_refunded: Undo2,
-};
 
 export const triggerLabel = (trigger: string) => TRIGGER_LABEL[trigger as TriggerEvent] ?? trigger;
 
