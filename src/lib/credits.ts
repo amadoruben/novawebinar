@@ -27,15 +27,15 @@ export const ACTION_LABEL: Record<BilledAction, string> = {
 
 /** Movimentos que não são gastos, para o histórico. */
 export const KIND_LABEL: Record<string, string> = {
-  grant: "Saldo incluído",
+  grant: "Créditos incluídos",
   purchase: "Recarga",
   usage: "Gasto",
   refund: "Devolução",
   adjustment: "Acerto",
-  expire: "Saldo do plano expirado",
+  expire: "Créditos do plano expirados",
 };
 
-/** O que nunca gasta saldo: regras e dados, não IA. */
+/** O que nunca gasta créditos: regras e dados, não IA. */
 export const ALWAYS_FREE = [
   "Contactos, jornada e temperatura de cada lead",
   "Origem dos leads e conversão por origem",

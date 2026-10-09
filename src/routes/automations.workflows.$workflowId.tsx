@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Archive, Check, ExternalLink, Trash2, TriangleAlert } from "lucide-react";
+import { Archive, Check, ExternalLink, Plus, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
@@ -9,18 +9,20 @@ import { useWebhookDestination } from "@/components/automation-flow";
 import { RunSheet, RunsTable } from "@/components/automation-runs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CanvasNodeSettings } from "@/components/workflow/canvas-node-settings";
 import { CapturePanel } from "@/components/workflow/capture-panel";
 import { FlowMap, type FlowComponent, type XY } from "@/components/workflow/flow-map";
-import { SettingsPanel } from "@/components/workflow/flow-tools";
+import { ModelDialog, ReadyStatus, SettingsPanel, type ReadyCheck } from "@/components/workflow/flow-tools";
 import { PALETTE } from "@/components/workflow/step-panel";
 import { AutomationSettings, StepSettings } from "@/components/workflow/step-settings";
 import type { Json } from "@/integrations/supabase/types";
 import {
+  addModelAutomations,
   addWorkflowAutomation,
   saveWorkflow,
+  setAutomationArchived,
   setWorkflowWebinar,
   updateAutomation,
   useAutomationRuns,
@@ -39,36 +41,35 @@ import { friendlyError } from "@/lib/friendly-error";
 import { cn } from "@/lib/utils";
 import {
   activationBlockers,
-  baseWorkflow,
   CHANNELS,
   channelStatus,
   endOfMain,
   executedNodes,
   insertAfter,
+  isModelAsIs,
+  MODEL_GROUP,
+  modelAutomations,
   newId,
   nodeMap,
   nodeTitle,
-  ORIGIN_LABEL,
-  ORIGIN_PLACEMENTS,
-  ORIGINS,
-  originParts,
   PAGE_TYPE_LABEL,
-  PAID_ORIGINS,
   readCanvas,
   readSteps,
+  renameGroupIn,
   triggerTitle,
+  usesGroup,
   validateSteps,
+  type BaseAutomation,
   type Canvas,
   type CanvasNode,
   type ChannelStatus,
-  type PageType,
 } from "@/lib/workflow";
 
 type Tab = "fluxo" | "execucoes" | "configuracao";
-const TEMPLATES = baseWorkflow();
 type Search = { a?: string | undefined; tab?: Tab | undefined; run?: string | undefined };
 /** O elemento com as definições abertas: um nó do canvas (página, grupo, origem) ou um passo de uma automação. */
 type Selected = { kind: "canvas"; node: CanvasNode } | { kind: "step"; automationId: string; nodeId: string };
+type GroupNode = Extract<CanvasNode, { kind: "group" }>;
 const TABS: { key: Tab; label: string }[] = [
   { key: "fluxo", label: "Fluxo" },
   { key: "execucoes", label: "Execuções" },
@@ -103,6 +104,8 @@ function WorkflowPage() {
   const { data: runs = [] } = useAutomationRuns({ automationIds: ids }, 500);
   const [open, setOpen] = useState<Selected | null>(null);
   const [full, setFull] = useState(false);
+  const [modelOpen, setModelOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
   // Esc sai do ecrã inteiro.
   useEffect(() => {
     if (!full) return;
@@ -133,7 +136,8 @@ function WorkflowPage() {
   const openRun = search.run ? (runs.find((r) => r.id === search.run) ?? null) : null;
   const statsOf = (id: string) =>
     stats.data?.get(id) ?? { contacts: 0, runs: 0, done: 0, pending: 0, failed: 0, cancelled: 0, lastRunAt: null, nextRunAt: null };
-  const group = canvas.nodes.find((n): n is Extract<CanvasNode, { kind: "group" }> => n.kind === "group");
+  const groups = canvas.nodes.filter((n): n is GroupNode => n.kind === "group");
+  const groupNames = groups.map((g) => g.name.trim()).filter(Boolean);
   const blocked = workflow.webinar_id ? [] : [NO_WEBINAR];
 
   const saveCanvas = async (next: Canvas) => {
@@ -148,17 +152,90 @@ function WorkflowPage() {
       toast.error(friendlyError(error, "Não foi possível guardar o fluxo."));
     }
   };
-  // O que vem do menu de componentes: automação, página, grupo, origem, ou um passo (disparo, espera, condição).
+  /** Grava onde a automação foi largada. `base`: o canvas acabado de gravar (ex.: com o grupo novo), para não o perder. */
+  const placed = (id: string, at?: XY, base = canvas) =>
+    at ? saveCanvas({ ...base, positions: { ...base.positions, [`auto:${id}`]: at } }) : undefined;
+  /** O modelo escreve para os grupos do fluxo; sem nenhum, põe o «Grupo do lançamento» no fluxo, para se ver e configurar. Devolve o canvas com que ficou. */
+  const withGroup = async (list: BaseAutomation[]): Promise<Canvas> => {
+    if (groups.length || !list.some((a) => usesGroup(a.steps))) return canvas;
+    const next: Canvas = { ...canvas, nodes: [...canvas.nodes, { id: `grupo-${Date.now().toString(36)}`, kind: "group", name: MODEL_GROUP, url: "" }] };
+    await saveCanvas(next);
+    return next;
+  };
+  // Fluxos de antes do fluxo vazio nasceram com o modelo: as automações do modelo desligadas, sem execuções e por mexer
+  // saem de uma vez com «Começar vazio» (arquivadas; «Desfazer» repõe-nas). Só depois de saber as execuções.
+  const leftovers = stats.data
+    ? automations.filter((a) => !a.active && !statsOf(a.id).runs && !runs.some((r) => r.automation_id === a.id) && isModelAsIs(a))
+    : [];
+  const startEmpty = async () => {
+    const gone = leftovers.map((a) => a.id);
+    const restore = () =>
+      Promise.all(gone.map((id) => setAutomationArchived(id, false)))
+        .catch((error) => toast.error(friendlyError(error, "Não foi possível repor o modelo.")))
+        .finally(() => invalidate(["workflows", "automations"]));
+    try {
+      await Promise.all(gone.map((id) => setAutomationArchived(id, true)));
+      setOpen(null);
+      go({ a: undefined });
+      toast.success(`${gone.length} ${gone.length === 1 ? "automação do modelo saiu" : "automações do modelo saíram"} do fluxo`, {
+        description: "Ficam arquivadas.",
+        duration: 10_000,
+        action: { label: "Desfazer", onClick: () => void restore() },
+      });
+    } catch (error) {
+      toast.error(friendlyError(error, "Não foi possível tirar o modelo."));
+    } finally {
+      invalidate(["workflows", "automations"]);
+    }
+  };
+  /** «Usar modelo»: as automações escolhidas entram juntas, desligadas. */
+  const applyModel = async (keys: string[]) => {
+    const list = modelAutomations(keys, groupNames);
+    setBusy(true);
+    try {
+      await withGroup(list);
+      await addModelAutomations(workflow, list);
+      invalidate(["workflows", "automations"]);
+      setModelOpen(false);
+      toast.success(`${list.length} ${list.length === 1 ? "automação entrou" : "automações entraram"} no fluxo, desligadas`, {
+        description: "Clique nas mensagens para as rever e depois ligue cada automação.",
+      });
+    } catch (error) {
+      toast.error(friendlyError(error, "Não foi possível usar o modelo."));
+    } finally {
+      setBusy(false);
+    }
+  };
+  /** Uma automação nova, vazia, a começar num gatilho: abre logo as definições dela. */
+  const addAutomation = async (trigger: string, at?: XY) => {
+    try {
+      const id = await addWorkflowAutomation(workflow, trigger, triggerTitle(trigger));
+      await placed(id, at);
+      invalidate(["workflows", "automations"]);
+      setOpen(null);
+      go({ a: id, tab: "fluxo" });
+    } catch (error) {
+      toast.error(friendlyError(error, "Não foi possível criar a automação."));
+    }
+  };
+  // O que vem do menu das peças: gatilho, automação do modelo, página, grupo, origem, ou um passo (mensagem, espera, condição).
   const addComponent = async (component: FlowComponent, at?: XY, automationId?: string) => {
+    if (component.kind === "trigger") return addAutomation(component.trigger, at);
     if (component.kind === "step") {
       const item = PALETTE.find((p) => p.key === component.key);
       const target = automations.find((a) => a.id === automationId);
       if (!item) return;
+      // Uma mensagem nos grupos com um só grupo no fluxo já vai para ele; com vários, escolhe-se ao abri-la.
+      const make = (id: string) => {
+        const node = item.make(id);
+        if (node.kind === "action" && groupNames.length === 1) node.sends = node.sends.map((s) => (s.target === "group" && !s.group ? { ...s, group: groupNames[0]! } : s));
+        return node;
+      };
       try {
         if (target) {
           // Entra no fim do caminho principal da automação onde foi largado.
           const steps = readSteps(target.steps) ?? { start: null, nodes: [] };
-          const node = item.make(newId(steps));
+          const node = make(newId(steps));
           const point = endOfMain(steps);
           const next = insertAfter(steps, point.after, node, point.branch ?? "yes");
           const problems = validateSteps(next);
@@ -171,12 +248,12 @@ function WorkflowPage() {
           setOpen({ kind: "step", automationId: target.id, nodeId: node.id });
         } else {
           // Largado fora de uma automação: nasce uma nova só com este passo.
-          const node = item.make("p1");
+          const node = make("p1");
           const id = await addWorkflowAutomation(workflow, "webinar_registered", "Nova automação", {
             conditions: [],
             steps: { start: node.id, nodes: [node] },
           });
-          if (at) await saveCanvas({ ...canvas, positions: { ...canvas.positions, [`auto:${id}`]: at } });
+          await placed(id, at);
           invalidate(["workflows", "automations"]);
           toast.success("Nova automação, em rascunho", { description: "Entra quando alguém se inscreve; mude o gatilho ao abri-la." });
           setOpen({ kind: "step", automationId: id, nodeId: node.id });
@@ -187,32 +264,33 @@ function WorkflowPage() {
       return;
     }
     if (component.kind === "automation") {
-      const template = TEMPLATES.find((t) => t.key === component.key);
+      const template = modelAutomations([component.key], groupNames)[0];
+      if (!template) return addAutomation("webinar_registered", at);
       try {
-        const id = await addWorkflowAutomation(
-          workflow,
-          template?.trigger_event ?? "webinar_registered",
-          template?.name ?? "Nova automação",
-          template,
-        );
-        if (at) await saveCanvas({ ...canvas, positions: { ...canvas.positions, [`auto:${id}`]: at } });
+        const base = await withGroup([template]);
+        const id = await addWorkflowAutomation(workflow, template.trigger_event, template.name, template);
+        await placed(id, at, base);
         invalidate(["workflows", "automations"]);
-        if (template) toast.success(`«${template.name}» está no fluxo, em rascunho`, { description: "Clique nas mensagens para as escrever." });
-        else {
-          setOpen(null);
-          go({ a: id });
-        }
+        toast.success(`«${template.name}» está no fluxo, em rascunho`, { description: "Clique nas mensagens para as rever." });
       } catch (error) {
         toast.error(friendlyError(error, "Não foi possível criar a automação."));
       }
       return;
     }
+    if (component.kind === "group" && component.id) {
+      const node = groups.find((g) => g.id === component.id);
+      if (node) setOpen({ kind: "canvas", node });
+      return;
+    }
     const id = `${component.kind === "page" ? "pagina" : component.kind === "group" ? "grupo" : "origem"}-${Date.now().toString(36)}`;
+    // O motor procura o grupo pelo nome: o nome novo nunca repete o de outro grupo.
+    let n = groups.length + 1;
+    while (groupNames.includes(`Grupo ${n}`)) n += 1;
     const node: CanvasNode =
       component.kind === "page"
         ? { id, kind: "page", name: component.pageType === "outro" ? "Página" : PAGE_TYPE_LABEL[component.pageType], url: "", pageType: component.pageType }
         : component.kind === "group"
-          ? { id, kind: "group", name: "Grupo do lançamento", url: "" }
+          ? { id, kind: "group", name: groups.length ? `Grupo ${n}` : MODEL_GROUP, url: "" }
           : { id, kind: "origin", source: component.source, ...(component.placement ? { placement: component.placement } : {}) };
     await saveCanvas({
       ...canvas,
@@ -224,10 +302,21 @@ function WorkflowPage() {
       setOpen({ kind: "canvas", node });
     }
   };
-  const saveNode = (node: CanvasNode) => {
-    const exists = canvas.nodes.some((n) => n.id === node.id);
-    void saveCanvas({ ...canvas, nodes: exists ? canvas.nodes.map((n) => (n.id === node.id ? node : n)) : [...canvas.nodes, node] });
+  const saveNode = async (node: CanvasNode) => {
+    const before = canvas.nodes.find((n) => n.id === node.id);
+    void saveCanvas({ ...canvas, nodes: before ? canvas.nodes.map((n) => (n.id === node.id ? node : n)) : [...canvas.nodes, node] });
     setOpen(null);
+    // Um grupo que muda de nome leva com ele as mensagens que eram para ele.
+    if (before?.kind !== "group" || node.kind !== "group" || before.name === node.name) return;
+    try {
+      for (const a of automations) {
+        const steps = renameGroupIn(readSteps(a.steps), before.name, node.name);
+        if (steps) await updateAutomation(a.id, { steps: steps as unknown as Json });
+      }
+      invalidate(["workflows", "automations"]);
+    } catch (error) {
+      toast.error(friendlyError(error, "O grupo mudou de nome, mas algumas mensagens ainda usam o nome antigo."));
+    }
   };
   const stepOpen = open?.kind === "step" ? automations.find((a) => a.id === open.automationId) : undefined;
   const stepNode = open?.kind === "step" && stepOpen ? nodeMap(readSteps(stepOpen.steps) ?? { start: null, nodes: [] }).get(open.nodeId) : undefined;
@@ -243,7 +332,8 @@ function WorkflowPage() {
         <CanvasNodeSettings
           key={open.node.id}
           node={open.node}
-          onSave={saveNode}
+          groups={groups}
+          onSave={(node) => void saveNode(node)}
           onRemove={(id) => {
             void saveCanvas({ ...canvas, nodes: canvas.nodes.filter((n) => n.id !== id) });
             setOpen(null);
@@ -262,6 +352,7 @@ function WorkflowPage() {
           automation={stepOpen}
           nodeId={open.nodeId}
           status={status}
+          groups={groupNames}
           executed={executedNodes(runs.filter((r) => r.automation_id === stepOpen.id)).has(open.nodeId)}
           onDone={() => setOpen(null)}
           onOpenStep={(nodeId) => setOpen({ kind: "step", automationId: stepOpen.id, nodeId })}
@@ -290,113 +381,86 @@ function WorkflowPage() {
       </SettingsPanel>
     ) : null;
 
-  const addAutomation = async (trigger: string) => {
-    try {
-      const id = await addWorkflowAutomation(workflow, trigger, triggerTitle(trigger));
-      invalidate(["workflows", "automations"]);
-      setOpen(null);
-      go({ a: id, tab: "fluxo" });
-    } catch (error) {
-      toast.error(friendlyError(error, "Não foi possível criar a automação."));
-    }
-  };
-
-  // «Pronto para ligar?»: o que ainda falta, numa linha, por cima do fluxo.
+  // «Pronto para ligar?»: o que ainda falta, num só botão na barra de cima.
   const incomplete = automations.filter((a) => activationBlockers(readSteps(a.steps), status).length > 0).length;
   const readyChannels = status.filter((s) => s.ready).map((s) => CHANNELS[s.channel].label);
-  const checks: { ok: boolean; label: string; config?: boolean }[] = [
-    { ok: Boolean(workflow.webinar_id), label: workflow.webinar_id ? webinarTitle : "Escolher o webinar", config: true },
-    { ok: Boolean(group?.url), label: group?.url ? "Grupo de WhatsApp" : "Link do grupo de WhatsApp", config: true },
+  const toConfig = () => go({ tab: "configuracao", a: undefined });
+  const noLink = groups.filter((g) => !g.url.trim()).length;
+  const checks: ReadyCheck[] = [
+    { ok: Boolean(workflow.webinar_id), label: workflow.webinar_id ? `Webinar «${webinarTitle}»` : "Escolher o webinar", onClick: toConfig },
+    {
+      ok: groups.length > 0 && noLink === 0,
+      label: !groups.length ? "Sem grupo de WhatsApp" : noLink ? `${noLink} ${noLink === 1 ? "grupo sem link" : "grupos sem link"} de convite` : `${groups.length} ${groups.length === 1 ? "grupo" : "grupos"} de WhatsApp`,
+      onClick: toConfig,
+    },
     {
       ok: readyChannels.length === status.length,
       label: readyChannels.length === status.length ? "Canais prontos" : readyChannels.length ? `Canais: só ${readyChannels.join(", ")}` : "Canais: nenhum ligado",
-      config: true,
+      onClick: toConfig,
     },
-    { ok: incomplete === 0, label: incomplete ? `${incomplete} ${incomplete === 1 ? "automação" : "automações"} por completar` : "Mensagens completas" },
-    { ok: active > 0, label: `${active} de ${automations.length} ligadas${pending ? ` · ${pending} em curso` : ""}` },
+    { ok: automations.length > 0 && incomplete === 0, label: !automations.length ? "Ainda sem automações" : incomplete ? `${incomplete} ${incomplete === 1 ? "automação" : "automações"} por completar` : "Mensagens completas" },
+    // Sem automações, «Ainda sem automações» já o diz.
+    ...(automations.length ? [{ ok: active > 0, label: `${active} de ${automations.length} ligadas${pending ? ` · ${pending} em curso` : ""}` }] : []),
   ];
 
   return (
     <AppShell
       back={{ to: "/automations", label: "Automações" }}
-      crumbs={[{ label: "Automações", to: "/automations" }, { label: "Fluxo" }]}
       title={workflow.name}
-      description={workflow.webinars ? `Webinar «${webinarTitle}»` : "Sem webinar: pode desenhar tudo, liga quando o escolher."}
-      action={false}
+      action={
+        <>
+          <NavTabs
+            aria-label="Secções do fluxo"
+            items={TABS.map((t) => ({ id: t.key, label: t.label, count: t.key === "execucoes" && runs.length ? runs.length : null }))}
+            value={tab}
+            onChange={(key) => go({ tab: key, a: undefined })}
+          />
+          <ReadyStatus checks={checks} />
+        </>
+      }
       compact
     >
-      <div className="mb-4">
-        <NavTabs
-          aria-label="Secções do fluxo"
-          items={TABS.map((t) => ({ id: t.key, label: t.label, count: t.key === "execucoes" ? runs.length : null }))}
-          value={tab}
-          onChange={(key) => go({ tab: key, a: undefined })}
-        />
-      </div>
-
       {tab === "fluxo" && (
-          <div>
-            <ul className="mb-3 flex flex-wrap gap-1.5" aria-label="Pronto para ligar?">
-              {checks.map((c) => {
-                const cls = cn(
-                  "inline-flex h-7 items-center gap-1.5 rounded-pill px-2.5 text-xs",
-                  c.ok ? "bg-card text-muted-foreground" : "bg-warning/10 text-warning",
-                );
-                const icon = c.ok ? <Check className="size-3.5" aria-hidden /> : <TriangleAlert className="size-3.5" aria-hidden />;
-                return (
-                  <li key={c.label}>
-                    {c.config ? (
-                      <button type="button" className={cn(cls, "hover:bg-white")} onClick={() => go({ tab: "configuracao" })}>
-                        {icon} {c.label}
-                      </button>
-                    ) : (
-                      <span className={cls}>
-                        {icon} {c.label}
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-            {/* A altura deixa o mapa inteiro dentro da janela: os botões de zoom ficam sempre à vista, sem scroll da página. */}
-            <div className={cn(full ? "fixed inset-0 z-50 bg-card p-3" : "relative h-[calc(100dvh-17.5rem)] min-h-[25rem] rounded-card bg-card")}>
-              <FlowMap
-                full={full}
-                onToggleFull={() => setFull((f) => !f)}
-                automations={automations}
-                canvas={canvas}
-                forms={forms}
-                webinar={workflow.webinars}
-                counts={counts.data ?? null}
-                stats={statsOf}
-                focusId={search.a ? `auto:${search.a}` : undefined}
-                onOpenAutomation={(id) => {
-                  setOpen(null);
-                  go({ a: id });
-                }}
-                onOpenStep={(automationId, nodeId) => {
-                  go({ a: undefined });
-                  setOpen({ kind: "step", automationId, nodeId });
-                }}
-                onAddAutomation={(trigger) => void addAutomation(trigger)}
-                onEditCanvasNode={(node) => {
-                  go({ a: undefined });
-                  setOpen({ kind: "canvas", node });
-                }}
-                onOpenCapture={() => go({ tab: "configuracao" })}
-                onPickWebinar={() => go({ tab: "configuracao" })}
-                onAddComponent={(component, at, automationId) => void addComponent(component, at, automationId)}
-                onMoveNodes={(moves) => void saveCanvas({ ...canvas, positions: { ...canvas.positions, ...moves } })}
-                onResetLayout={() => void saveCanvas({ ...canvas, positions: {} })}
-                // Mudar o sentido recomeça as posições: as arrastadas num sentido não servem no outro.
-                onSetOrientation={(orientation) => {
-                  if ((canvas.orientation ?? "vertical") !== orientation) void saveCanvas({ ...canvas, orientation, positions: {} });
-                }}
-              />
-              {settings}
-            </div>
-          </div>
-        )}
+        // A altura deixa o mapa inteiro dentro da janela: os botões de zoom ficam sempre à vista, sem scroll da página.
+        <div className={cn(full ? "fixed inset-0 z-50 bg-card p-3" : "relative h-[calc(100dvh-15.5rem)] min-h-[26rem] rounded-card bg-card md:h-[calc(100dvh-12rem)] lg:h-[calc(100dvh-8.5rem)]")}>
+          <FlowMap
+            full={full}
+            onToggleFull={() => setFull((f) => !f)}
+            automations={automations}
+            canvas={canvas}
+            forms={forms}
+            webinar={workflow.webinars}
+            counts={counts.data ?? null}
+            stats={statsOf}
+            focusId={search.a ? `auto:${search.a}` : undefined}
+            onOpenAutomation={(id) => {
+              setOpen(null);
+              go({ a: id });
+            }}
+            onOpenStep={(automationId, nodeId) => {
+              go({ a: undefined });
+              setOpen({ kind: "step", automationId, nodeId });
+            }}
+            onAddAutomation={(trigger) => void addAutomation(trigger)}
+            onEditCanvasNode={(node) => {
+              go({ a: undefined });
+              setOpen({ kind: "canvas", node });
+            }}
+            onOpenCapture={toConfig}
+            onPickWebinar={toConfig}
+            onUseModel={() => setModelOpen(true)}
+            startEmpty={leftovers.length ? { count: leftovers.length, onStart: () => void startEmpty() } : undefined}
+            onAddComponent={(component, at, automationId) => void addComponent(component, at, automationId)}
+            onMoveNodes={(moves) => void saveCanvas({ ...canvas, positions: { ...canvas.positions, ...moves } })}
+            onResetLayout={() => void saveCanvas({ ...canvas, positions: {} })}
+            // Mudar o sentido recomeça as posições: as arrastadas num sentido não servem no outro.
+            onSetOrientation={(orientation) => {
+              if ((canvas.orientation ?? "vertical") !== orientation) void saveCanvas({ ...canvas, orientation, positions: {} });
+            }}
+          />
+          {settings}
+        </div>
+      )}
 
       {tab === "execucoes" && (
         <RunsTable
@@ -411,118 +475,19 @@ function WorkflowPage() {
           workflow={workflow}
           forms={forms}
           status={status}
-          group={group}
-          onSaveGroup={(node) => void saveCanvas({ ...canvas, nodes: group ? canvas.nodes.map((n) => (n.id === node.id ? node : n)) : [...canvas.nodes, node] })}
+          groups={groups}
+          onOpenGroup={(node) => setOpen({ kind: "canvas", node })}
+          onAddGroup={() => void addComponent({ kind: "group" })}
           onArchived={() => void navigate({ to: "/automations" })}
         />
       )}
 
       {!onMap && settings}
+      {modelOpen && (
+        <ModelDialog open busy={busy} present={automations.map((a) => a.name)} onClose={() => setModelOpen(false)} onApply={(keys) => void applyModel(keys)} />
+      )}
       <RunSheet run={openRun} onClose={() => go({ run: undefined })} />
     </AppShell>
-  );
-}
-
-/** As definições de uma página, grupo ou origem: só representação, não se executam. Montar com `key` = id. */
-function CanvasNodeSettings({ node, onSave, onRemove }: { node: CanvasNode; onSave: (node: CanvasNode) => void; onRemove: (id: string) => void }) {
-  const [draft, setDraft] = useState<CanvasNode>(node);
-  return (
-      <div className="space-y-6">
-        {draft.kind === "page" ? (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Que página é esta?</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {(Object.keys(PAGE_TYPE_LABEL) as PageType[])
-                  .filter((t) => t !== "inscricao")
-                  .map((t) => {
-                    const on = draft.pageType === t;
-                    const defaults = new Set(["Página", ...Object.values(PAGE_TYPE_LABEL)]);
-                    return (
-                      <button
-                        key={t}
-                        type="button"
-                        aria-pressed={on}
-                        onClick={() => setDraft({ ...draft, pageType: t, name: defaults.has(draft.name) ? PAGE_TYPE_LABEL[t] : draft.name })}
-                        className={cn(
-                          "h-8 rounded-pill px-3 text-xs ring-1 transition-colors",
-                          on ? "bg-navy text-white ring-navy" : "bg-white ring-[var(--border-subtle)] hover:bg-gray-50",
-                        )}
-                      >
-                        {PAGE_TYPE_LABEL[t]}
-                      </button>
-                    );
-                  })}
-              </div>
-              <p className="text-xs text-muted-foreground">A página de inscrição é a do formulário (Configuração → Captura).</p>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="page-name">Nome</Label>
-              <Input id="page-name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="page-url">Endereço</Label>
-              <Input id="page-url" value={draft.url} placeholder="https://meusite.com/checkout" onChange={(e) => setDraft({ ...draft, url: e.target.value })} />
-              <p className="text-xs text-muted-foreground">A página vive fora da plataforma. O endereço entra nas mensagens e diz-nos quem lá chegou.</p>
-            </div>
-          </div>
-        ) : draft.kind === "group" ? (
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="group-name">Nome do grupo</Label>
-              <Input id="group-name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="group-url">Link de convite</Label>
-              <Input id="group-url" value={draft.url} placeholder="https://chat.whatsapp.com/…" onChange={(e) => setDraft({ ...draft, url: e.target.value })} />
-              <p className="text-xs text-muted-foreground">É o link que põe na página de obrigado. As mensagens para o grupo escrevem-se nas automações.</p>
-            </div>
-          </div>
-        ) : (
-          (() => {
-            const parts = originParts(draft);
-            const platform = parts.platform as (typeof ORIGINS)[number];
-            const placements = ORIGIN_PLACEMENTS[platform] ?? [];
-            const chip = (on: boolean) =>
-              cn("h-8 rounded-pill px-3 text-xs ring-1 transition-colors", on ? "bg-navy text-white ring-navy" : "bg-white ring-[var(--border-subtle)] hover:bg-gray-50");
-            return (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Plataforma</Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {ORIGINS.map((o) => (
-                      <button key={o} type="button" aria-pressed={platform === o} className={chip(platform === o)} onClick={() => setDraft({ ...draft, source: o, placement: undefined })}>
-                        {ORIGIN_LABEL[o]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {placements.length > 0 && (
-                  <div className="space-y-2">
-                    <Label>{PAID_ORIGINS.has(platform) ? "Onde anuncia?" : "Em que rede?"}</Label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {placements.map((p) => (
-                        <button key={p} type="button" aria-pressed={parts.placement === p} className={chip(parts.placement === p)} onClick={() => setDraft({ ...draft, source: platform, placement: p })}>
-                          {p}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  Só representa a origem no fluxo. Os dados reais de origem são as UTM de cada inscrição; não se gerem campanhas aqui.
-                </p>
-              </div>
-            );
-          })()
-        )}
-        <div className="flex flex-wrap justify-between gap-2">
-          <Button variant="ghost" className="text-destructive" onClick={() => onRemove(draft.id)}>
-            <Trash2 /> Retirar do fluxo
-          </Button>
-          <Button onClick={() => onSave(draft)}>Guardar</Button>
-        </div>
-      </div>
   );
 }
 
@@ -531,23 +496,24 @@ function WorkflowConfig({
   workflow,
   forms,
   status,
-  group,
-  onSaveGroup,
+  groups,
+  onOpenGroup,
+  onAddGroup,
   onArchived,
 }: {
   workflow: Workflow;
   forms: RegistrationForm[];
   status: ChannelStatus[];
-  group: Extract<CanvasNode, { kind: "group" }> | undefined;
-  onSaveGroup: (node: Extract<CanvasNode, { kind: "group" }>) => void;
+  groups: GroupNode[];
+  /** Os grupos são nós do fluxo: abrem as mesmas definições que no desenho. */
+  onOpenGroup: (node: GroupNode) => void;
+  onAddGroup: () => void;
   onArchived: () => void;
 }) {
   const invalidate = useInvalidate();
   const { data: webinars = [] } = useWebinars(workflow.organization_id);
   const { data: workflows = [] } = useWorkflows(workflow.organization_id);
   const [name, setName] = useState(workflow.name);
-  const [groupName, setGroupName] = useState(group?.name ?? "Grupo do lançamento");
-  const [groupUrl, setGroupUrl] = useState(group?.url ?? "");
   const w = workflow.webinars;
   const title = w ? w.public_title || w.internal_name : "";
   // Um fluxo por webinar: os que já estão noutro fluxo ficam indisponíveis.
@@ -584,15 +550,6 @@ function WorkflowConfig({
     } catch (error) {
       toast.error(friendlyError(error, "Não foi possível arquivar."));
     }
-  };
-  const saveGroup = () => {
-    onSaveGroup({
-      id: group?.id ?? `grupo-${Date.now().toString(36)}`,
-      kind: "group",
-      name: groupName.trim() || "Grupo do lançamento",
-      url: groupUrl.trim(),
-    });
-    toast.success("Grupo guardado");
   };
 
   return (
@@ -643,20 +600,25 @@ function WorkflowConfig({
       </section>
 
       <section className="space-y-3 rounded-card bg-card p-5">
-        <h2 className="font-semibold">Grupo de WhatsApp</h2>
-        <div className="space-y-1.5">
-          <Label htmlFor="cfg-group-name">Nome</Label>
-          <Input id="cfg-group-name" value={groupName} onChange={(e) => setGroupName(e.target.value)} />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="cfg-group-url">Link de convite</Label>
-          <Input id="cfg-group-url" value={groupUrl} placeholder="https://chat.whatsapp.com/…" onChange={(e) => setGroupUrl(e.target.value)} />
-        </div>
+        <h2 className="font-semibold">Grupos de WhatsApp</h2>
+        {groups.length > 0 && (
+          <ul className="divide-y divide-[var(--border-subtle)] rounded-md bg-white ring-1 ring-[var(--border-subtle)]">
+            {groups.map((g) => (
+              <li key={g.id}>
+                <button type="button" onClick={() => onOpenGroup(g)} className="flex min-h-11 w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-gray-50">
+                  {g.url.trim() ? <Check className="size-4 shrink-0 text-success" aria-hidden /> : <TriangleAlert className="size-4 shrink-0 text-warning" aria-hidden />}
+                  <span className="min-w-0 flex-1 truncate">{g.name}</span>
+                  <span className="text-xs text-muted-foreground">{g.url.trim() ? "Link pronto" : "Falta o link"}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <p className="text-xs text-muted-foreground">
-          Nas mensagens é {"{{link_grupo}}"}. O grupo não separa quem já comprou: serve para lembretes e replay.
+          Cada mensagem nos grupos escolhe um ou vários. O grupo não separa quem já comprou: serve para lembretes e replay.
         </p>
-        <Button size="sm" onClick={saveGroup} disabled={groupUrl.trim() === (group?.url ?? "") && groupName.trim() === (group?.name ?? "Grupo do lançamento")}>
-          Guardar
+        <Button variant="outline" onClick={onAddGroup}>
+          <Plus /> Adicionar grupo
         </Button>
       </section>
 

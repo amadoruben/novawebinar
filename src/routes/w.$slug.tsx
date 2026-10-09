@@ -13,7 +13,12 @@ import { RoomSkeleton, getCachedRoomTheme, cacheRoomTheme } from "@/components/r
 import { EntryScreen, entryLiveLabel, isDirectVideo, resolveTheme } from "@/components/room/entry-screen";
 import type { Appearance } from "@/components/room/room-parts";
 import { parseEntryFields, validateEntry } from "@/lib/entry-fields";
-import { offerDeadlinePassed, parseExtraOffers } from "@/lib/room-logic";
+import { offerDeadlinePassed, parseExtraOffers, roomCountdown } from "@/lib/room-logic";
+import { useRoomTeam, type TeamRole } from "@/lib/room-team";
+import { checkTeamRoomToken, getTeamRoomToken } from "@/lib/room-team.functions";
+import { TeamEntry, TeamNotice } from "@/components/room/team-entry";
+import { WaitingScreen } from "@/components/room/waiting-screen";
+import { preliveTitle } from "@/lib/prelive-templates";
 
 const APPEARANCE_KEY = "cw:room-appearance";
 import {
@@ -36,6 +41,8 @@ export const Route = createFileRoute("/w/$slug")({
     // Entrada com dados (links dos e-mails e do WhatsApp): abre já o cartão preenchido.
     nome: typeof search["nome"] === "string" ? search["nome"].slice(0, 80) : undefined,
     email: typeof search["email"] === "string" ? search["email"].slice(0, 160) : undefined,
+    // Link de equipa: «1» com sessão iniciada na organização, ou o código do link copiado na Vista ao vivo.
+    equipa: typeof search["equipa"] === "string" && search["equipa"] ? search["equipa"].slice(0, 200) : undefined,
     // Origem do lead: fica no endereço até à inscrição.
     ...Object.fromEntries(
       ["utm_source", "utm_medium", "utm_campaign", "utm_content", "fbclid", "gclid"]
@@ -82,12 +89,13 @@ export const Route = createFileRoute("/w/$slug")({
 
 function PublicRoomRoute() {
   const { slug } = Route.useParams();
-  const { replay, teste, nome, email, ...source } = Route.useSearch();
+  const { replay, teste, nome, email, equipa, ...source } = Route.useSearch();
   return (
     <PublicRoom
       slug={slug}
       replay={replay}
       teste={teste}
+      equipa={equipa}
       source={source}
       prefill={nome || email ? { name: nome ?? "", email: email ?? "" } : undefined}
     />
@@ -112,12 +120,15 @@ export function PublicRoom({
   slug,
   replay,
   teste,
+  equipa,
   source = {},
   prefill,
 }: {
   slug: string;
   replay?: boolean | undefined;
   teste?: boolean | undefined;
+  /** Entrar como equipa: «1» (sessão iniciada) ou o código do link de equipa. */
+  equipa?: string | undefined;
   /** Parâmetros de origem do endereço (utm_*, fbclid, gclid). */
   source?: Partial<Record<string, string>>;
   /** Nome e e-mail que vêm no link: o cartão abre já preenchido. */
@@ -213,11 +224,49 @@ export function PublicRoom({
       query.state.status === "error" ? 5000 : viewer ? false : 60_000,
   });
 
-  // Pixels de anúncios da organização; a sala de teste nunca os dispara.
+  // A equipa: confirma o link (ou a sessão iniciada na organização) e guarda o nome escolhido neste browser.
+  const getTeamToken = useServerFn(getTeamRoomToken);
+  const checkTeamToken = useServerFn(checkTeamRoomToken);
+  const [teamToken, setTeamToken] = useState<string | "checking" | "denied" | null>(equipa ? "checking" : null);
+  const [member, setMember] = useState<{ name: string; role: TeamRole } | null>(null);
+  const memberKey = `cw:equipa:${slug}`;
+  const teamWebinarId = data?.webinar.id;
+  useEffect(() => {
+    if (!equipa || !teamWebinarId) return;
+    let active = true;
+    const ask =
+      equipa === "1"
+        ? getTeamToken({ data: { webinarId: teamWebinarId } }).then((r) => r.token)
+        : checkTeamToken({ data: { webinarId: teamWebinarId, token: equipa } }).then((r) => (r.ok ? equipa : "denied"));
+    ask.then(
+      (token) => active && setTeamToken(token),
+      () => active && setTeamToken("denied"),
+    );
+    return () => {
+      active = false;
+    };
+  }, [equipa, teamWebinarId, getTeamToken, checkTeamToken]);
+  const savedMember = (() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = JSON.parse(window.localStorage.getItem(memberKey) ?? "null") as { name?: unknown; role?: unknown } | null;
+      return typeof raw?.name === "string" ? { name: raw.name, role: raw.role === "apresentador" ? ("apresentador" as const) : ("equipa" as const) } : null;
+    } catch {
+      return null;
+    }
+  })();
+  const teamReady = typeof teamToken === "string" && teamToken !== "checking" && teamToken !== "denied" && member !== null;
+  // Os comentários da equipa chegam a todos os que estão na sala, pelo canal da sala (só ao vivo).
+  const teamChat = useRoomTeam(
+    roomMode === "live" && teamWebinarId && (viewer || teamReady) ? teamWebinarId : null,
+    teamReady ? { token: teamToken, name: member.name, role: member.role } : null,
+  );
+
+  // Pixels de anúncios da organização; a sala de teste e a equipa nunca os disparam.
   const pixels = data?.pixels;
   useEffect(() => {
-    if (pixels && !testMode) loadPixels(pixels);
-  }, [pixels, testMode]);
+    if (pixels && !testMode && !equipa) loadPixels(pixels);
+  }, [pixels, testMode, equipa]);
 
   // Guardamos o tema da sala para o esqueleto seguir o mesmo aspeto. O tema
   // memorizado só é lido depois da hidratação: lê-lo durante a renderização
@@ -344,8 +393,9 @@ export function PublicRoom({
 
   // Acesso facilitado: entram logo na sala, sem formulário. A sala de teste
   // comporta-se exatamente como a real, por isso segue a configuração pública.
+  // A equipa nunca se inscreve: não conta na audiência.
   const easyAccess = Boolean(data?.webinar.easy_access);
-  const shouldAutoJoin = easyAccess;
+  const shouldAutoJoin = easyAccess && !equipa;
   const autoJoinRef = useRef(false);
   useEffect(() => {
     if (!data || !shouldAutoJoin || viewer || autoJoinRef.current) return;
@@ -449,7 +499,8 @@ export function PublicRoom({
   const startMs = webinar.session_start ? new Date(webinar.session_start).getTime() : null;
   // Com o temporizador de arranque ligado, a sala abre antes da hora: as pessoas
   // entram, o chat funciona e o lugar do vídeo mostra a contagem animada.
-  const preliveSeconds = webinar.prelive_enabled ? Math.max(0, webinar.prelive_seconds ?? 0) : 0;
+  const countdown = roomCountdown(webinar.live.countdown, webinar);
+  const preliveSeconds = countdown.seconds;
   const roomOpensMs = startMs === null ? null : startMs - preliveSeconds * 1000;
   const inWaitingRoom =
     roomMode === "live" &&
@@ -471,18 +522,43 @@ export function PublicRoom({
     startMs !== null &&
     startMs > Date.now();
 
-  if (inWaitingRoom)
+  // A equipa entra sempre (antes da hora, em rascunho, depois do fim): não passa pelo formulário nem conta.
+  if (equipa && (teamToken === "checking" || teamToken === "denied" || teamToken === null))
+    return <TeamNotice theme={theme} state={teamToken === "denied" ? "denied" : "checking"} loginHref={equipa === "1" ? "/auth/login" : undefined} />;
+  if (equipa && !member)
+    return (
+      <TeamEntry
+        title={webinar.public_title}
+        hostName={webinar.host_name}
+        theme={theme}
+        initial={savedMember}
+        onEnter={(next) => {
+          setMember(next);
+          try {
+            window.localStorage.setItem(memberKey, JSON.stringify(next));
+          } catch {
+            /* fica só nesta visita */
+          }
+        }}
+      />
+    );
+  const asTeam = equipa && member ? member : null;
+
+  if (inWaitingRoom && !asTeam)
     return (
       <WaitingScreen
         title={webinar.public_title}
-        startMs={roomOpensMs ?? startMs}
+        startMs={startMs ?? roomOpensMs}
+        opensMs={roomOpensMs}
         timezone={webinar.timezone}
         themeClass={themeClass}
+        style={countdown.style}
+        color={countdown.color}
         onZero={() => setWaiting(false)}
       />
     );
 
-  if (sessionClosed)
+  if (sessionClosed && !asTeam)
     return (
       <main
         className={`room-ambient flex min-h-dvh items-center justify-center px-6 text-center ${themeClass}`}
@@ -514,7 +590,7 @@ export function PublicRoom({
       </main>
     );
 
-  if (webinar.status === "draft" && !testMode)
+  if (webinar.status === "draft" && !testMode && !asTeam)
     return (
       <main
         className={`room-ambient flex min-h-dvh items-center justify-center px-6 text-center ${themeClass}`}
@@ -529,7 +605,7 @@ export function PublicRoom({
       </main>
     );
 
-  if (!viewer && shouldAutoJoin)
+  if (!viewer && shouldAutoJoin && !asTeam)
     return (
       <main
         className={`room-ambient flex min-h-dvh items-center justify-center text-sm text-room-subtle ${themeClass}`}
@@ -538,7 +614,7 @@ export function PublicRoom({
       </main>
     );
 
-  if (!viewer) {
+  if (!viewer && !asTeam) {
     const submit = async () => {
       setError("");
       setErrorField(undefined);
@@ -630,6 +706,7 @@ export function PublicRoom({
         closed: offerClosedByDeadline,
         closeAtZero: webinar.offer_countdown_end === "close",
         utm: webinar.offer_utm,
+        timezone: webinar.timezone,
       }}
       sales={{ where: webinar.sales_where === "chat" || webinar.sales_where === "video" ? webinar.sales_where : "both", real: webinar.sales_show_real }}
       audienceFormat={audience.format}
@@ -644,8 +721,11 @@ export function PublicRoom({
       }}
       mode={roomMode}
       startsAt={roomStartsAt}
-      viewerName={viewer.name}
-      organizationId={webinar.organization_id}
+      viewerName={asTeam?.name ?? viewer?.name ?? ""}
+      // A equipa não entra na presença: não conta na Vista ao vivo.
+      organizationId={asTeam ? null : webinar.organization_id}
+      team={asTeam}
+      teamMessages={teamChat.messages}
       comments={comments}
       audienceMode={audience.mode}
       curve={audience.curve}
@@ -655,23 +735,29 @@ export function PublicRoom({
       resumeSeconds={syncWithStart ? null : resumeSeconds}
       resumePeakSeconds={resumePeakSeconds}
       preliveSeconds={effectivePreliveSeconds}
-      preliveSound={webinar.prelive_sound !== false}
-      preliveMessage={webinar.prelive_message || "A transmissão começa já a seguir"}
-      preliveTemplate={(webinar as { prelive_template?: string | null }).prelive_template ?? null}
-      preliveAppearance={(webinar as { prelive_appearance?: unknown }).prelive_appearance}
-      onSend={onSend}
-      supportMessages={privateThread?.messages ?? []}
-      onProgress={onProgress}
+      preliveSound={countdown.sound}
+      preliveMessage={preliveTitle(webinar.prelive_message)}
+      preliveTemplate={countdown.style}
+      preliveAppearance={webinar.prelive_appearance}
+      preliveColor={countdown.color}
+      onSend={asTeam ? teamChat.send : onSend}
+      supportMessages={asTeam ? [] : (privateThread?.messages ?? [])}
+      onProgress={asTeam ? undefined : onProgress}
       checkoutOrigin={{
         source: source["utm_source"] ?? null,
         medium: source["utm_medium"] ?? null,
         campaign: source["utm_campaign"] ?? null,
       }}
-      onCtaView={() => sendCta("view")}
-      onCtaClick={() => {
-        if (!testMode) trackPixels("checkout");
-        sendCta("click");
-      }}
+      // A equipa não conta nas métricas da oferta.
+      onCtaView={asTeam ? undefined : () => sendCta("view")}
+      onCtaClick={
+        asTeam
+          ? undefined
+          : () => {
+              if (!testMode) trackPixels("checkout");
+              sendCta("click");
+            }
+      }
       webinar={{
         id: webinar.id,
         public_title: webinar.public_title,
@@ -697,81 +783,5 @@ export function PublicRoom({
         duration_seconds: webinar.duration_seconds,
       }}
     />
-  );
-}
-
-function WaitingScreen({
-  title,
-  startMs,
-  timezone,
-  themeClass,
-  onZero,
-}: {
-  title: string;
-  startMs: number;
-  timezone?: string | null;
-  themeClass?: string;
-  onZero: () => void;
-}) {
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  const remaining = Math.max(0, Math.floor((startMs - now) / 1000));
-
-  useEffect(() => {
-    if (remaining === 0) onZero();
-  }, [remaining, onZero]);
-
-  const days = Math.floor(remaining / 86400);
-  const hours = Math.floor((remaining % 86400) / 3600);
-  const minutes = Math.floor((remaining % 3600) / 60);
-  const seconds = remaining % 60;
-
-  const units = [
-    ...(days > 0 ? [{ value: days, label: days === 1 ? "dia" : "dias" }] : []),
-    { value: hours, label: hours === 1 ? "hora" : "horas" },
-    { value: minutes, label: "min" },
-    { value: seconds, label: "seg" },
-  ];
-
-  const startLabel = formatSessionStart(startMs, timezone);
-
-  return (
-    <main
-      className={`room-ambient flex min-h-dvh items-center justify-center px-4 py-10 ${themeClass ?? ""}`}
-    >
-      <div className="w-full max-w-lg text-center text-room-text">
-        <span className="inline-flex items-center rounded-full bg-room-surface px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-room-subtle ring-1 ring-room-line">
-          Sala de espera
-        </span>
-
-        <h1 className="mt-4 text-2xl font-black leading-tight">{title}</h1>
-        <p className="mt-2 text-xs text-room-subtle">Começa {startLabel}</p>
-
-        <div className="mt-6 flex items-stretch justify-center gap-2">
-          {units.map((unit) => (
-            <div
-              key={unit.label}
-              className="min-w-16 rounded-xl bg-room-surface px-3 py-3 ring-1 ring-room-line"
-            >
-              <p className="text-2xl font-black tabular-nums">
-                {String(unit.value).padStart(2, "0")}
-              </p>
-              <p className="mt-1 text-[9px] font-bold uppercase tracking-widest text-room-subtle">
-                {unit.label}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        <p className="mt-6 text-xs leading-relaxed text-room-subtle">
-          Fique por aqui — a entrada abre automaticamente quando chegar a hora.
-        </p>
-      </div>
-    </main>
   );
 }

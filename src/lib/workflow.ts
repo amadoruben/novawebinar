@@ -1028,18 +1028,89 @@ export function baseWorkflow(): BaseAutomation[] {
   ];
 }
 
-/** As páginas e a origem com que o workflow base nasce (a página de inscrição vem do formulário). */
-export function baseCanvas(): Canvas {
-  return {
-    nodes: [
-      { id: "origem", kind: "origin", source: "Meta" },
-      { id: "checkout", kind: "page", name: "Página de checkout", url: "", pageType: "checkout" },
-      { id: "obrigado", kind: "page", name: "Página de obrigado", url: "", pageType: "obrigado" },
-    ],
-    positions: {},
-    orientation: "vertical",
-  };
+/* ---------- O modelo: o fluxo nasce vazio e só o recebe com «Usar modelo» ---------- */
+
+/** As automações do modelo arrumadas como no menu do fluxo. */
+export const MODEL_GROUPS: { key: string; title: string; keys: string[] }[] = [
+  { key: "aquecimento", title: "Mensagens de aquecimento", keys: ["aquecimento", "lembretes", "sessao"] },
+  { key: "recuperacao", title: "Mensagens de recuperação", keys: ["nao-acessou", "saiu-antes", "assistiu", "clicou", "abandono", "falha"] },
+  { key: "clientes", title: "Depois da compra", keys: ["pos-compra", "reembolso"] },
+];
+
+/** O nome do grupo que o modelo usa quando o fluxo ainda não tem grupos. */
+export const MODEL_GROUP = "Grupo do lançamento";
+
+/**
+ * Um disparo para o grupo passa a um por grupo (a mesma mensagem em todos, como no mapa); os outros ficam.
+ * Devolve os disparos de cada mensagem: quando não cabem numa só (6, também na base de dados), os dos grupos
+ * passam para mensagens só deles, de 6 em 6. Nenhum grupo fica sem a sua.
+ */
+export function toGroups(sends: Send[], groups: string[]): Send[][] {
+  const all = groups.length ? sends.flatMap((s) => (s.target === "group" ? groups.map((group) => ({ ...s, group })) : [s])) : sends;
+  if (all.length <= MAX_SENDS) return [all];
+  const own = all.filter((s) => s.target !== "group");
+  const toGroup = all.filter((s) => s.target === "group");
+  const chunks = Array.from({ length: Math.ceil(toGroup.length / MAX_SENDS) }, (_, i) => toGroup.slice(i * MAX_SENDS, (i + 1) * MAX_SENDS));
+  return own.length ? [own, ...chunks] : chunks;
 }
+
+/** Uma mensagem do modelo com os grupos do fluxo: a original e, se for preciso, as dos grupos logo a seguir, sem espera. */
+function withGroups(node: ActionNode, groups: string[]): ActionNode[] {
+  const [first = [], ...more] = toGroups(node.sends, groups);
+  const ids = more.map((_, i) => `${node.id}g${i + 1}`);
+  return [
+    { ...node, sends: first, next: ids[0] ?? node.next },
+    ...more.map((sends, i): ActionNode => ({
+      id: ids[i]!,
+      kind: "action",
+      label: `${nodeTitle(node)} · grupos${more.length > 1 ? ` ${i + 1}` : ""}`,
+      sends,
+      next: ids[i + 1] ?? node.next,
+    })),
+  ];
+}
+
+/** As automações do modelo escolhidas, com as mensagens de grupo para os grupos do fluxo. */
+export function modelAutomations(keys: string[], groups: string[]): BaseAutomation[] {
+  return baseWorkflow()
+    .filter((a) => keys.includes(a.key))
+    .map((a) => ({ ...a, steps: { ...a.steps, nodes: a.steps.nodes.flatMap((n): StepNode[] => (n.kind === "action" ? withGroups(n, groups) : [n])) } }));
+}
+
+/** JSON com as chaves por ordem: o jsonb da base não guarda a ordem em que foram escritas. */
+const canon = (value: unknown) =>
+  JSON.stringify(value, (_, v: unknown) =>
+    v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v,
+  );
+/** Os passos sem os nomes dos grupos: um grupo renomeado ou repetido para cada grupo do fluxo não é uma mudança do cliente. */
+const withoutGroups = (steps: unknown) => {
+  const s = readSteps(steps);
+  if (!s) return null;
+  const nodes = s.nodes.map((n) => (n.kind === "action" ? { ...n, sends: [...new Set(n.sends.map(({ group: _, ...rest }) => canon(rest)))] } : n));
+  return canon({ ...s, nodes });
+};
+
+/**
+ * Uma automação do modelo tal como entrou (nome, gatilho, condições e passos iguais aos do modelo), para
+ * «Começar vazio» a poder tirar de um fluxo antigo. Se está ligada ou já correu, decide quem a chama.
+ */
+export function isModelAsIs(a: { name: string; trigger_event: string; conditions: unknown; steps: unknown }) {
+  const model = baseWorkflow().find((b) => b.name === a.name && b.trigger_event === a.trigger_event);
+  return Boolean(model && canon(model.conditions) === canon(a.conditions ?? []) && withoutGroups(model.steps) === withoutGroups(a.steps));
+}
+
+/**
+ * O grupo mudou de nome no fluxo: as mensagens que iam para ele passam a usar o nome novo (o motor procura o grupo
+ * pelo nome no WhatsApp). null quando a automação não escreve para esse grupo.
+ */
+export function renameGroupIn(steps: Steps | null, from: string, to: string): Steps | null {
+  const hit = (s: Send) => s.target === "group" && s.group === from;
+  if (!steps || from === to || !steps.nodes.some((n) => n.kind === "action" && n.sends.some(hit))) return null;
+  return { ...steps, nodes: steps.nodes.map((n) => (n.kind === "action" ? { ...n, sends: n.sends.map((s) => (hit(s) ? { ...s, group: to } : s)) } : n)) };
+}
+
+/** Se a automação escreve para um grupo (para o modelo pôr um grupo no fluxo, quando ainda não há). */
+export const usesGroup = (steps: Steps) => steps.nodes.some((n) => n.kind === "action" && n.sends.some((s) => s.target === "group"));
 
 /* ---------- Posição de uma pessoa no workflow ---------- */
 

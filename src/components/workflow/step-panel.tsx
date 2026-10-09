@@ -171,10 +171,13 @@ export function ProviderBadge({ status }: { status: ChannelStatus }) {
 export function NodeEditor({
   node,
   status,
+  groups = [],
   onChange,
 }: {
   node: StepNode;
   status: ChannelStatus[];
+  /** Os nomes dos grupos de WhatsApp do fluxo: a mensagem para os grupos escolhe um ou vários. */
+  groups?: string[];
   onChange: (node: StepNode) => void;
 }) {
   const style = KIND_STYLE[node.kind];
@@ -200,16 +203,20 @@ export function NodeEditor({
           onChange={(e) => onChange({ ...node, label: e.target.value })}
         />
       </div>
-      {node.kind === "action" && <ActionEditor node={node} status={status} onChange={onChange} />}
+      {node.kind === "action" && <ActionEditor node={node} status={status} groups={groups} onChange={onChange} />}
       {node.kind === "wait" && <WaitEditor node={node} onChange={onChange} />}
       {node.kind === "branch" && <BranchEditor node={node} onChange={onChange} />}
     </div>
   );
 }
 
-function ActionEditor({ node, status, onChange }: { node: ActionNode; status: ChannelStatus[]; onChange: (n: StepNode) => void }) {
+function ActionEditor({ node, status, groups, onChange }: { node: ActionNode; status: ChannelStatus[]; groups: string[]; onChange: (n: StepNode) => void }) {
   const update = (i: number, patch: Partial<Send>) =>
     onChange({ ...node, sends: node.sends.map((s, j) => (j === i ? { ...s, ...patch } : s)) });
+  // Cada grupo recebe o seu disparo (pode ter o seu texto). Os que ainda não recebem esta mensagem:
+  const toGroup = node.sends.filter((s) => s.target === "group");
+  const unused = groups.filter((g) => !toGroup.some((s) => s.group === g));
+  const room = MAX_SENDS - node.sends.length;
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
@@ -256,7 +263,7 @@ function ActionEditor({ node, status, onChange }: { node: ActionNode; status: Ch
                   <button
                     key={t}
                     type="button"
-                    onClick={() => update(i, { target: t })}
+                    onClick={() => update(i, t === "group" && !s.group && unused[0] ? { target: t, group: unused[0] } : { target: t })}
                     className={cn(
                       "flex-1 rounded-md px-2 py-1 text-xs font-medium",
                       s.target === t ? "bg-card shadow-sm" : "text-muted-foreground",
@@ -268,18 +275,41 @@ function ActionEditor({ node, status, onChange }: { node: ActionNode; status: Ch
               </div>
             )}
             <p className="text-xs text-muted-foreground">
-              Destino:{" "}
+              {s.target === "group" ? "Para o grupo:" : "Destino: "}
               {s.channel === "webhook"
                 ? "o webhook de saída da organização (Integrações), com o contacto, o webinar e o passo"
                 : s.target === "group"
-                  ? "o grupo indicado"
+                  ? ""
                   : s.channel === "email"
                     ? "o email do contacto"
                     : "o WhatsApp/telefone do contacto"}
             </p>
-            {s.target === "group" && (
-              <Input value={s.group ?? ""} maxLength={120} placeholder="Nome ou ID do grupo (ex.: Participantes Webinar IA)" onChange={(e) => update(i, { group: e.target.value })} />
-            )}
+            {s.target === "group" &&
+              (groups.length ? (
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Para o grupo">
+                  {/* Um nome que já não está no fluxo continua à vista, para não se perder. */}
+                  {[...new Set([...groups, ...(s.group?.trim() ? [s.group] : [])])].map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      aria-pressed={s.group === g}
+                      onClick={() => update(i, { group: g })}
+                      className={cn(
+                        "h-9 max-w-full truncate rounded-pill px-3.5 text-[13px] ring-1 transition-colors",
+                        s.group === g ? "bg-emerald-50 font-medium text-emerald-800 ring-emerald-300" : "bg-white ring-[var(--border-subtle)] hover:bg-gray-50",
+                        !groups.includes(g) && "line-through decoration-gray-400",
+                      )}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <Input value={s.group ?? ""} maxLength={120} placeholder="Nome do grupo no WhatsApp" onChange={(e) => update(i, { group: e.target.value })} />
+                  <p className="text-xs text-muted-foreground">Ou ponha os grupos no fluxo (menu «Grupos de WhatsApp») e escolha aqui.</p>
+                </div>
+              ))}
             {s.channel === "email" && (
               <Input value={s.subject ?? ""} maxLength={200} placeholder="Assunto" onChange={(e) => update(i, { subject: e.target.value })} />
             )}
@@ -311,10 +341,23 @@ function ActionEditor({ node, status, onChange }: { node: ActionNode; status: Ch
           </div>
         );
       })}
-      {node.sends.length < MAX_SENDS && (
-        <Button variant="outline" size="sm" onClick={() => onChange({ ...node, sends: [...node.sends, { channel: "whatsapp", target: "contact" }] })}>
-          <Plus /> Adicionar canal
-        </Button>
+      <div className="flex flex-wrap gap-2">
+        {node.sends.length < MAX_SENDS && (
+          <Button variant="outline" onClick={() => onChange({ ...node, sends: [...node.sends, { channel: "whatsapp", target: "contact" }] })}>
+            <Plus /> Adicionar canal
+          </Button>
+        )}
+        {toGroup[0] && unused.length > 0 && room > 0 && (
+          <Button
+            variant="outline"
+            onClick={() => onChange({ ...node, sends: [...node.sends, ...unused.slice(0, room).map((group) => ({ ...toGroup[0]!, group }))] })}
+          >
+            <Users /> {unused.length === 1 ? `Também no «${unused[0]}»` : `Também nos outros ${Math.min(unused.length, room)} grupos`}
+          </Button>
+        )}
+      </div>
+      {toGroup[0] && unused.length > room && (
+        <p className="text-xs text-muted-foreground">Cabem {MAX_SENDS} disparos por mensagem: para os restantes grupos, duplique a mensagem.</p>
       )}
     </div>
   );

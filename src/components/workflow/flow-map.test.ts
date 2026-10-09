@@ -4,9 +4,10 @@ import { buildFlow } from "./flow-map";
 
 const automations = baseWorkflow().map((a, i) => ({ id: `a${i}`, name: a.name, active: false, trigger_event: a.trigger_event, conditions: a.conditions, steps: a.steps })) as never;
 const noop = () => {};
-const build = (canvas: Canvas) =>
+const build = (canvas: Canvas, list = automations, onOpenTools?: () => void) =>
   buildFlow({
-    automations,
+    automations: list,
+    onOpenTools,
     canvas,
     forms: [],
     webinar: null,
@@ -69,5 +70,46 @@ describe("buildFlow", () => {
     const at = { x: 777, y: 333 };
     for (const orientation of ["vertical", "horizontal"] as const)
       expect(build({ nodes, positions: { "hub:webinar": at }, orientation }).nodes.find((n) => n.id === "hub:webinar")?.position).toEqual(at);
+  });
+
+  it("um fluxo vazio só tem a espinha e o cartão para começar, ao lado da inscrição", () => {
+    const { nodes: out, edges } = build({ nodes: [], positions: {}, orientation: "vertical" }, [] as never, noop);
+    expect(out.some((n) => n.type === "lane")).toBe(false);
+    const empty = out.find((n) => n.id === "empty")!;
+    expect(empty.position.y).toBe(out.find((n) => n.id === "hub:inscricao")!.position.y);
+    expect(edges.some((e) => e.source === "hub:inscricao" && e.target === "empty")).toBe(true);
+    // Com automações, o cartão sai.
+    expect(build({ nodes: [], positions: {}, orientation: "vertical" }, automations, noop).nodes.some((n) => n.id === "empty")).toBe(false);
+  });
+
+  it("as três partes do lançamento têm o seu rótulo antes do primeiro momento, e o «Quando» só aparece onde há vários gatilhos", () => {
+    for (const orientation of ["vertical", "horizontal"] as const) {
+      const out = build({ nodes, positions: {}, orientation }).nodes;
+      const at = (id: string) => out.find((n) => n.id === id)!.position;
+      expect(out.filter((n) => n.type === "phase").map((n) => n.id)).toEqual(["phase:Novas pessoas", "phase:No dia do evento", "phase:Depois do evento"]);
+      const axis = orientation === "vertical" ? "y" : "x";
+      expect(at("phase:Novas pessoas")[axis]).toBeLessThanOrEqual(at("page:inscricao")[axis]);
+      expect(at("phase:No dia do evento")[axis]).toBeLessThanOrEqual(at("hub:webinar")[axis]);
+      expect(at("phase:Depois do evento")[axis]).toBeLessThanOrEqual(at("hub:fim")[axis]);
+    }
+    const lanes = build({ nodes, positions: {}, orientation: "vertical" }).nodes.filter((n) => n.type === "lane");
+    const shows = (name: string) => (lanes.find((n) => (n.data as { automation: { name: string } }).automation.name === name)!.data as { showTrigger: boolean }).showTrigger;
+    expect(shows("Aquecimento")).toBe(false);
+    expect(shows("Sessão começou")).toBe(true);
+  });
+
+  it("os grupos de WhatsApp ficam lado a lado, todos ligados ao que vem antes e depois", () => {
+    const groups: Canvas["nodes"] = [
+      { id: "g1", kind: "group", name: "Grupo 1", url: "" },
+      { id: "g2", kind: "group", name: "Grupo 2", url: "" },
+    ];
+    const { nodes: out, edges } = build({ nodes: groups, positions: {}, orientation: "vertical" });
+    const [a, b] = out.filter((n) => n.type === "waGroup");
+    expect(a!.position.y).toBe(b!.position.y);
+    expect(a!.position.x).toBeLessThan(b!.position.x);
+    for (const g of [a!, b!]) {
+      expect(edges.some((e) => e.source === "page:inscricao" && e.target === g.id)).toBe(true);
+      expect(edges.some((e) => e.source === g.id && e.target === "hub:inscricao")).toBe(true);
+    }
   });
 });

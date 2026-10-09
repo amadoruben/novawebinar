@@ -13,6 +13,13 @@ import {
   duplicateNode,
   guardsHold,
   insertAfter,
+  isModelAsIs,
+  MAX_SENDS,
+  MODEL_GROUP,
+  MODEL_GROUPS,
+  modelAutomations,
+  renameGroupIn,
+  toGroups,
   journeySentence,
   executedNodes,
   lateReminder,
@@ -37,7 +44,7 @@ import {
   type Steps,
   type WaitNode,
 } from "./workflow";
-import type { Condition } from "./automations";
+import { TRIGGER_GROUPS, TRIGGER_LABEL, type Condition } from "./automations";
 
 const now = new Date("2026-10-01T18:00:00Z");
 const session = { startsAt: "2026-10-01T20:00:00Z", endsAt: "2026-10-01T21:00:00Z" };
@@ -573,5 +580,79 @@ describe("links nas mensagens", () => {
   it("links não usados ou preenchidos: nada falta", () => {
     expect(missingLinks(["Olá {{primeiro_nome}}", undefined], { link_oferta: "" })).toEqual([]);
     expect(renderMessage("{{link_oferta}} por {{preco}}", { link_oferta: "https://pay.x/1", preco: "97 €" })).toBe("https://pay.x/1 por 97 €");
+  });
+});
+
+describe("o modelo entra só quando se escolhe", () => {
+  it("cada automação do modelo está num só bloco do menu", () => {
+    const keys = MODEL_GROUPS.flatMap((g) => g.keys);
+    expect([...keys].sort()).toEqual(baseWorkflow().map((a) => a.key).sort());
+  });
+
+  it("cada gatilho está num só momento: novas pessoas, dia do evento, depois do evento", () => {
+    const triggers = TRIGGER_GROUPS.flatMap((g) => g.triggers);
+    expect([...triggers].sort()).toEqual(Object.keys(TRIGGER_LABEL).sort());
+    expect(TRIGGER_GROUPS.map((g) => g.title)).toEqual(["Novas pessoas", "No dia do evento", "Depois do evento"]);
+  });
+
+  it("só as escolhidas, e a mensagem do grupo sai para cada grupo do fluxo", () => {
+    const [sessao] = modelAutomations(["sessao"], ["Grupo A", "Grupo B"]);
+    expect(sessao!.name).toBe("Sessão começou");
+    const first = sessao!.steps.nodes.find((n): n is ActionNode => n.id === "p1")!;
+    expect(first.sends.filter((s) => s.target === "group").map((s) => s.group)).toEqual(["Grupo A", "Grupo B"]);
+    // O texto é o mesmo nos dois grupos, e os disparos individuais ficam.
+    expect(new Set(first.sends.filter((s) => s.target === "group").map((s) => s.message)).size).toBe(1);
+    expect(first.sends.filter((s) => s.target === "contact")).toHaveLength(2);
+    for (const a of modelAutomations(baseWorkflow().map((b) => b.key), ["A", "B", "C", "D", "E", "F", "G"])) expect(validateSteps(a.steps), a.name).toEqual([]);
+  });
+
+  it("sem grupos no fluxo fica o grupo do modelo; com demasiados, os grupos passam para mensagens só deles", () => {
+    const sends = [{ channel: "email" as const, target: "contact" as const }, { channel: "whatsapp" as const, target: "group" as const, group: MODEL_GROUP }];
+    expect(toGroups(sends, [])).toEqual([sends]);
+    const seven = toGroups(sends, ["1", "2", "3", "4", "5", "6", "7"]);
+    expect(seven.map((m) => m.length)).toEqual([1, 6, 1]);
+    expect(seven.every((m) => m.length <= MAX_SENDS)).toBe(true);
+    expect(seven.flat().map((s) => s.group ?? "email")).toEqual(["email", "1", "2", "3", "4", "5", "6", "7"]);
+  });
+
+  it("«Estamos ao vivo» com 5 e com 7 grupos: cada grupo recebe a sua, logo a seguir e sem espera", () => {
+    for (const n of [5, 7]) {
+      const groups = Array.from({ length: n }, (_, i) => `Grupo ${i + 1}`);
+      const [sessao] = modelAutomations(["sessao"], groups);
+      const steps = sessao!.steps;
+      expect(validateSteps(steps)).toEqual([]);
+      const map = new Map(steps.nodes.map((s) => [s.id, s]));
+      // Do «Estamos ao vivo» até à espera de 10 minutos, só mensagens.
+      const chain: ActionNode[] = [];
+      for (let id: string | null = "p1"; id && map.get(id)?.kind === "action"; id = (map.get(id) as ActionNode).next) chain.push(map.get(id) as ActionNode);
+      expect(chain.at(-1)!.next).toBe("p2");
+      const sends = chain.flatMap((m) => m.sends);
+      expect(sends.filter((s) => s.target === "group").map((s) => s.group)).toEqual(groups);
+      // Os disparos individuais ficam sempre na original.
+      expect(chain[0]!.sends.filter((s) => s.target === "contact")).toHaveLength(2);
+      expect(chain.slice(1).every((m) => m.sends.every((s) => s.target === "group"))).toBe(true);
+    }
+  });
+
+  it("«Começar vazio»: reconhece o modelo como entrou, com ou sem grupos, e deixa o que o cliente mexeu", () => {
+    const db = (a: { name: string; trigger_event: string; conditions: unknown; steps: unknown }) => JSON.parse(JSON.stringify(a)) as typeof a;
+    for (const a of baseWorkflow()) expect(isModelAsIs(db(a)), a.name).toBe(true);
+    for (const a of modelAutomations(["sessao", "lembretes"], ["A", "B"])) expect(isModelAsIs(db(a)), a.name).toBe(true);
+    const [aquecimento] = baseWorkflow();
+    const edited = structuredClone(aquecimento!);
+    (edited.steps.nodes[0] as ActionNode).sends[0]!.message = "Texto meu";
+    expect(isModelAsIs(edited)).toBe(false);
+    expect(isModelAsIs({ ...aquecimento!, name: "O meu aquecimento" })).toBe(false);
+    expect(isModelAsIs({ ...aquecimento!, trigger_event: "purchase_approved" })).toBe(false);
+  });
+
+  it("um grupo que muda de nome leva as mensagens com ele", () => {
+    const steps: Steps = {
+      start: "p1",
+      nodes: [{ id: "p1", kind: "action", sends: [{ channel: "whatsapp", target: "group", group: "Velho" }, { channel: "email", target: "contact" }], next: null }],
+    };
+    expect((renameGroupIn(steps, "Velho", "Novo")!.nodes[0] as ActionNode).sends.map((s) => s.group)).toEqual(["Novo", undefined]);
+    expect(renameGroupIn(steps, "Outro", "Novo")).toBeNull();
+    expect(renameGroupIn(steps, "Velho", "Velho")).toBeNull();
   });
 });

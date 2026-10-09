@@ -48,9 +48,9 @@ export function GroupJoinDialog({
           type="button"
           onClick={onClose}
           aria-label="Fechar"
-          className="absolute right-3 top-3 grid size-8 place-items-center rounded-full text-room-subtle hover:bg-room-raised hover:text-room-text"
+          className="absolute right-3 top-3 grid size-9 place-items-center rounded-full text-room-subtle hover:bg-room-raised hover:text-room-text"
         >
-          <X className="size-4" />
+          <X className="size-5" />
         </button>
         <div className="flex items-center gap-3 pr-8">
           <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#25D366]/15">
@@ -96,7 +96,8 @@ export function GroupJoinDialog({
         ) : null}
         <button
           type="submit"
-          className="flex h-[52px] items-center justify-center gap-2 rounded-xl bg-[#25D366] text-[16px] font-bold text-white transition hover:brightness-105"
+          // O texto escuro no verde do WhatsApp, como na própria app: o branco ficava sem contraste.
+          className="flex h-[52px] items-center justify-center gap-2 rounded-xl bg-[#25D366] text-[16px] font-bold text-[#0B141A] transition hover:brightness-105"
         >
           Entrar no grupo
         </button>

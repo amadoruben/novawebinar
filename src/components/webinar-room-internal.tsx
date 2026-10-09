@@ -9,7 +9,8 @@ import {
   useWorkspace,
 } from "@/lib/data";
 import { useSimulatedPurchases, useSocialProof } from "@/components/social-proof-editor";
-import { liveSettings, roomFormat } from "@/lib/room-logic";
+import { liveSettings, offerDeadlinePassed, parseExtraOffers, roomCountdown, roomFormat } from "@/lib/room-logic";
+import { preliveTitle } from "@/lib/prelive-templates";
 
 /**
  * Vista interna da sala, usada pela equipa a partir do estúdio. Não cria
@@ -69,8 +70,18 @@ export function InternalWebinarRoom({
     prelive_template?: string | null;
     prelive_appearance?: unknown;
   };
-  const preliveSeconds =
-    mode === "live" && w.prelive_enabled ? Math.max(0, w.prelive_seconds ?? 0) : 0;
+  const live = liveSettings((webinar as { chat_settings?: unknown }).chat_settings);
+  // As ofertas como na sala pública: as seguintes, o último dia e o que acontece no zero do cronómetro.
+  const timezone = webinar.timezone || "UTC";
+  const offers = {
+    extra: parseExtraOffers(webinar.extra_offers),
+    closed: offerDeadlinePassed(webinar.offer_deadline, timezone, Date.now()),
+    closeAtZero: webinar.offer_countdown_end === "close",
+    utm: webinar.offer_utm,
+    timezone,
+  };
+  const countdown = roomCountdown(live.countdown, w);
+  const preliveSeconds = mode === "live" ? countdown.seconds : 0;
 
   return (
     <WebinarRoom
@@ -82,13 +93,15 @@ export function InternalWebinarRoom({
       }
       syncWithStart={false}
       preliveSeconds={preliveSeconds}
-      preliveSound={w.prelive_sound !== false}
-      preliveMessage={w.prelive_message || "A transmissão começa já a seguir"}
-      preliveTemplate={w.prelive_template ?? null}
+      preliveSound={countdown.sound}
+      preliveMessage={preliveTitle(w.prelive_message)}
+      preliveTemplate={countdown.style}
       preliveAppearance={w.prelive_appearance}
+      preliveColor={countdown.color}
       theme={(webinar as { room_theme?: string }).room_theme === "light" ? "light" : "dark"}
       format={roomFormat((webinar as { chat_settings?: unknown }).chat_settings)}
-      live={liveSettings((webinar as { chat_settings?: unknown }).chat_settings)}
+      live={live}
+      offers={offers}
       viewerName={workspace?.fullName ?? "Equipa"}
       comments={comments}
       audienceMode={audience?.mode ?? "real"}

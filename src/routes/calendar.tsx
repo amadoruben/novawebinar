@@ -1,18 +1,30 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
-import { CalendarDays } from "@/components/page-primitives";
+import {
+  AgendaMonth,
+  AgendaPage,
+  AgendaSuggestions,
+  AgendaWebinars,
+  type AgendaWebinarRow,
+} from "@/components/calendar-view";
 import { PageSkeleton } from "@/components/page-skeleton";
-import { Button } from "@/components/ui/button";
-import { useWebinars, useWorkspace } from "@/lib/data";
+import { supabase } from "@/integrations/supabase/client";
+import { monthEntries, scheduleSummary, suggestSlots } from "@/lib/agenda";
+import { fetchAll } from "@/lib/fetch-all";
+import { lifecycleOf, useWebinars, useWorkspace, type Webinar } from "@/lib/data";
+import { lifecycleLabel } from "@/lib/schedule";
 
 export const Route = createFileRoute("/calendar")({
   head: () => ({
     meta: [
-      { title: "Calendário | Convertewebinar" },
-      { name: "description", content: "Agenda de webinars e sessões." },
-      { property: "og:title", content: "Calendário | Convertewebinar" },
+      { title: "Agenda | Convertewebinar" },
+      {
+        name: "description",
+        content: "Os dias de cada webinar e os melhores dias e horas para os marcar.",
+      },
+      { property: "og:title", content: "Agenda | Convertewebinar" },
       { property: "og:description", content: "Organize a agenda de webinars." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -21,143 +33,130 @@ export const Route = createFileRoute("/calendar")({
   component: CalendarPage,
 });
 
+const titleOf = (w: Pick<Webinar, "public_title" | "internal_name">) =>
+  w.public_title || w.internal_name;
+
+/** Um webinar na lista: a decorrer a vermelho, marcado ou sempre aberto a laranja, o resto a cinzento. */
+function agendaRow(
+  w: Webinar & { video_sources?: { duration_seconds: number | null } | null },
+  nowMs: number,
+): AgendaWebinarRow {
+  const lifecycle = lifecycleOf(w, nowMs);
+  const tone =
+    lifecycle.kind === "session"
+      ? lifecycle.state === "live"
+        ? "live"
+        : lifecycle.state === "scheduled"
+          ? "next"
+          : "muted"
+      : lifecycle.kind === "draft"
+        ? "muted"
+        : "next";
+  // No just in time a linha de baixo já diz «A cada 15 min».
+  const state = lifecycle.kind === "jit" ? "Activo" : lifecycleLabel(lifecycle);
+  return { id: w.id, title: titleOf(w), when: scheduleSummary(w), state, tone };
+}
+
 function CalendarPage() {
   const { data: workspace } = useWorkspace();
-  const { data: webinars = [], isLoading } = useWebinars(workspace?.organizationId);
-  const [cursor, setCursor] = useState<Date | null>(null);
+  const orgId = workspace?.organizationId;
+  const { data: webinars = [], isLoading } = useWebinars(orgId);
+  // Sessões reais e, de cada pessoa, a sessão, a presença e a compra: a base das sugestões.
+  const agenda = useQuery({
+    queryKey: ["agenda", orgId],
+    enabled: Boolean(orgId),
+    queryFn: async () => {
+      const [sessions, facts] = await Promise.all([
+        fetchAll((from, to) =>
+          supabase
+            .from("webinar_sessions")
+            .select("id, webinar_id, starts_at", { count: "exact" })
+            .eq("organization_id", orgId!)
+            .order("starts_at")
+            .order("id")
+            .range(from, to),
+        ),
+        fetchAll((from, to) =>
+          supabase
+            .from("participant_facts")
+            .select("person_id, webinar_session_id, attended, viewing_mode, purchased", {
+              count: "exact",
+            })
+            .eq("organization_id", orgId!)
+            .not("webinar_session_id", "is", null)
+            .order("participant_id")
+            .range(from, to),
+        ),
+      ]);
+      return { sessions, facts };
+    },
+  });
+
+  // O mês e "agora" só no browser: no servidor a data seria outra.
+  const [now, setNow] = useState<number | null>(null);
+  const [cursor, setCursor] = useState({ year: 0, month: 0 });
   useEffect(() => {
-    const now = new Date();
-    setCursor(new Date(now.getFullYear(), now.getMonth(), 1));
+    const d = new Date();
+    setNow(d.getTime());
+    setCursor({ year: d.getFullYear(), month: d.getMonth() + 1 });
   }, []);
 
-  if (!cursor)
-    return (
-      <AppShell title="Calendário" description="Planeie as próximas sessões e replays.">
-        <PageSkeleton variant="calendar" />
-      </AppShell>
-    );
+  const view = useMemo(() => {
+    if (now === null) return null;
+    const list = webinars.map((w) => ({ ...w, title: titleOf(w) }));
+    const zones = new Map(webinars.map((w) => [w.id, w.timezone]));
+    const titles = new Map(list.map((w) => [w.id, w.title]));
+    const sessions = agenda.data?.sessions ?? [];
+    return {
+      entries: monthEntries(list, sessions, cursor.year, cursor.month, now),
+      suggestions: agenda.data
+        ? suggestSlots(sessions, agenda.data.facts, (id) => zones.get(id), now)
+        : null,
+      titleOf: (id: string) => titles.get(id) ?? "Webinar apagado",
+      rows: webinars.map((w) => agendaRow(w, now)),
+    };
+  }, [webinars, agenda.data, cursor, now]);
 
-  const year = cursor.getFullYear();
-  const month = cursor.getMonth();
-  const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells = Array.from(
-    { length: Math.ceil((firstWeekday + daysInMonth) / 7) * 7 },
-    (_, i) => i - firstWeekday + 1,
-  );
+  // 0 volta ao mês de hoje.
+  const move = (step: -1 | 0 | 1) => {
+    const d = step ? new Date(cursor.year, cursor.month - 1 + step, 1) : new Date();
+    setCursor({ year: d.getFullYear(), month: d.getMonth() + 1 });
+  };
 
-  const eventsByDay = new Map<number, typeof webinars>();
-  for (const w of webinars) {
-    if (!w.scheduled_at) continue;
-    const date = new Date(w.scheduled_at);
-    if (date.getFullYear() !== year || date.getMonth() !== month) continue;
-    const day = date.getDate();
-    eventsByDay.set(day, [...(eventsByDay.get(day) ?? []), w]);
-  }
-
-  if (isLoading)
-    return (
-      <AppShell title="Calendário" description="Planeie as próximas sessões e replays.">
-        <PageSkeleton variant="calendar" />
-      </AppShell>
-    );
-
+  const today = now === null ? null : new Date(now);
   return (
-    <AppShell title="Calendário" description="Planeie as próximas sessões e replays.">
-      <div className="rounded-card bg-card p-4 sm:p-5">
-        <div className="mb-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <CalendarDays className="text-primary" />
-            <h2 className="font-semibold capitalize">
-              {cursor.toLocaleDateString("pt-PT", { month: "long", year: "numeric" })}
-            </h2>
-          </div>
-          <div className="flex gap-1">
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Mês anterior"
-              onClick={() => setCursor(new Date(year, month - 1, 1))}
-            >
-              <ChevronLeft />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Mês seguinte"
-              onClick={() => setCursor(new Date(year, month + 1, 1))}
-            >
-              <ChevronRight />
-            </Button>
-          </div>
-        </div>
-        <div className="hidden grid-cols-7 border-l border-t sm:grid">
-          {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((d) => (
-            <div
-              key={d}
-              className="border-b border-r bg-muted/50 p-2 text-xs font-medium text-muted-foreground"
-            >
-              {d}
-            </div>
-          ))}
-          {cells.map((day, i) => (
-            <div key={i} className="min-h-28 border-b border-r p-2 text-sm">
-              <span className="text-muted-foreground">
-                {day > 0 && day <= daysInMonth ? day : ""}
-              </span>
-              {(eventsByDay.get(day) ?? []).map((w) => (
-                <Link
-                  key={w.id}
-                  to="/webinars/$webinarId/edit"
-                  params={{ webinarId: w.id }}
-                  className="mt-2 block truncate rounded-md bg-primary p-2 text-xs text-primary-foreground"
-                >
-                  {new Date(w.scheduled_at ?? 0).toLocaleTimeString("pt-PT", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}{" "}
-                  · {w.public_title}
-                </Link>
-              ))}
-            </div>
-          ))}
-        </div>
-        <div className="divide-y sm:hidden">
-          {Array.from(eventsByDay.entries())
-            .sort(([a], [b]) => a - b)
-            .map(([day, events]) => (
-              <section key={day} className="grid grid-cols-[2.5rem_1fr] gap-3 py-4 first:pt-0">
-                <div>
-                  <span className="block text-xl font-semibold">{day}</span>
-                  <span className="text-[10px] uppercase text-muted-foreground">dia</span>
-                </div>
-                <div className="space-y-2">
-                  {events.map((w) => (
-                    <Link
-                      key={w.id}
-                      to="/webinars/$webinarId/edit"
-                      params={{ webinarId: w.id }}
-                      className="block rounded-md border bg-background p-3"
-                    >
-                      <span className="text-xs font-medium text-primary">
-                        {new Date(w.scheduled_at ?? 0).toLocaleTimeString("pt-PT", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                      <span className="mt-1 block text-sm font-medium">{w.public_title}</span>
-                    </Link>
-                  ))}
-                </div>
-              </section>
-            ))}
-          {eventsByDay.size === 0 && (
-            <p className="py-10 text-center text-sm text-muted-foreground">
-              Nenhum webinar agendado neste mês.
-            </p>
-          )}
-        </div>
-      </div>
+    <AppShell
+      title="Agenda"
+      description="Os dias de cada webinar e os melhores para marcar o próximo."
+    >
+      {!view || isLoading || !orgId ? (
+        <PageSkeleton variant="calendar" />
+      ) : (
+        <AgendaPage
+          month={
+            <AgendaMonth
+              year={cursor.year}
+              month={cursor.month}
+              today={
+                today &&
+                today.getFullYear() === cursor.year &&
+                today.getMonth() + 1 === cursor.month
+                  ? today.getDate()
+                  : null
+              }
+              entries={view.entries}
+              nowMs={now!}
+              onMove={move}
+            />
+          }
+          suggestions={
+            !agenda.isError && (
+              <AgendaSuggestions suggestions={view.suggestions} titleOf={view.titleOf} />
+            )
+          }
+          webinars={<AgendaWebinars rows={view.rows} />}
+        />
+      )}
     </AppShell>
   );
 }

@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { Check, ChevronDown, ChevronUp, Clock, Eye, Headset, Plus, SendHorizontal, ShoppingBag, ShoppingCart, Smile, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Clock, Eye, Headset, Plus, SendHorizontal, ShoppingBag, ShoppingCart, Smile, Users, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { entryPalette, offerColor, type FollowNetwork } from "@/lib/room-logic";
-import { EMOJIS, HeartButton, saleColor, type Reaction } from "./room-parts";
+import { entryPalette, offerColor, type FollowNetwork, type OfferLook } from "@/lib/room-logic";
+import { EMOJIS, HeartButton, OfferThumb, ReactionPill, saleColor, type Reaction } from "./room-parts";
 
 /**
  * Peças da sala em formato Live (vídeo com o chat por cima, como no Instagram). A sala pública e a
@@ -284,8 +284,17 @@ export function LivePanelHead({
 /* ---------- Chat ---------- */
 
 export type LiveFeedItem =
-  | { key: string; kind: "msg"; author: string; text: string }
-  | { key: string; kind: "mine"; text: string; note?: ReactNode }
+  /** `badge`: o selo da equipa; `reaction`: a reacção do chat simulado, quando já chegou. */
+  | { key: string; kind: "msg"; author: string; text: string; badge?: string | undefined; reaction?: string | undefined }
+  | {
+      key: string;
+      kind: "mine";
+      text: string;
+      note?: ReactNode;
+      reaction?: string | undefined;
+      /** Quem está como equipa: o nome e o selo, em vez de «Você» e «só você vê». */
+      team?: { name: string; badge: string } | undefined;
+    }
   | { key: string; kind: "sale"; text: string; color?: string | null | undefined }
   | { key: string; kind: "notice" };
 
@@ -341,21 +350,34 @@ export function LiveFeed({
           ) : item.kind === "mine" ? (
             <div key={item.key} className="lv-in">
               <p className="min-w-0 break-words">
-                <b className="mr-1.5 font-bold">Você</b>
+                <b className="mr-1.5 font-bold">{item.team?.name ?? "Você"}</b>
+                {item.team ? <TeamBadge text={item.team.badge} /> : null}
                 <span className="font-medium">{item.text}</span>
-                <OnlyYou panel={panel} />
+                {item.team ? null : <OnlyYou panel={panel} />}
+                {item.reaction ? <ReactionPill text={item.reaction} onVideo={!panel} /> : null}
               </p>
               {item.note}
             </div>
           ) : (
             <p key={item.key} className="lv-in min-w-0 break-words">
               <b className="mr-1.5 font-bold">{item.author}</b>
+              {item.badge ? <TeamBadge text={item.badge} /> : null}
               <span className="font-medium">{item.text}</span>
+              {item.reaction ? <ReactionPill text={item.reaction} onVideo={!panel} /> : null}
             </p>
           ),
         )}
       </div>
     </div>
+  );
+}
+
+/** O selo de quem é da equipa, na cor do botão. */
+function TeamBadge({ text }: { text: string }) {
+  return (
+    <em className="mr-1.5 rounded bg-[var(--of,#E8440C)] px-1.5 py-px align-[1px] text-[11px] font-bold not-italic text-[var(--of-on,#fff)] [text-shadow:none]">
+      {text}
+    </em>
   );
 }
 
@@ -393,13 +415,35 @@ export type LiveOffer = {
   priceFrom: string;
   priceNow: string;
   button: string;
+  /** Os segundos do cronómetro; null sem cronómetro (ou depois do zero). */
   countdown: number | null;
+  /** O botão fechou: o cronómetro chegou a zero com «O botão fecha», ou passou o último dia. */
   closed: boolean;
+  /** A imagem do produto (só a oferta principal a tem). */
+  image?: string | null | undefined;
+  /** «Quadrada» (o produto num quadrado grande, ao lado do nome) ou «Compacta» (uma linha com a miniatura). */
+  look?: OfferLook | undefined;
+  /** O botão leva a um grupo (WhatsApp ou Telegram): o ícone das pessoas em vez do carrinho, como no separador Oferta. */
+  group?: boolean | undefined;
 };
+
+/** O tempo que falta, ou «Encerrada» quando o botão fechou. */
+function OfferClock({ offer, className }: { offer: LiveOffer; className?: string | undefined }) {
+  if (offer.closed) return <span className={cn("shrink-0 rounded-full bg-room-raised px-2.5 py-1 text-[12px] font-bold text-room-subtle", className)}>Encerrada</span>;
+  if (offer.countdown === null) return null;
+  return (
+    <span className={cn("inline-flex shrink-0 items-center gap-1 font-extrabold tabular-nums text-[var(--of-ink)]", className)}>
+      <Clock className="size-3.5" strokeWidth={2.4} />
+      {clockOf(offer.countdown)}
+    </span>
+  );
+}
 
 /**
  * O cartão da oferta quando abre: nome, preços, o tempo e o botão. Tem uma pega como as folhas:
- * tocar ou puxar para baixo reduz à barra; puxar para cima abre a oferta inteira.
+ * tocar ou puxar para baixo reduz à barra; puxar para cima abre a oferta inteira. O botão ⌄ no canto
+ * também reduz, para quem não sabe que a pega se puxa. Serve o Live e o Webinar no telemóvel, onde
+ * sobe por cima do chat.
  */
 export function LiveOfferCard({
   offer,
@@ -415,6 +459,38 @@ export function LiveOfferCard({
   panel?: boolean | undefined;
 }) {
   const drag = useDrag(onMinimize, onExpand);
+  const compact = offer.look === "compact";
+  const off = offer.closed ? null : priceDiscount(offer.priceFrom, offer.priceNow);
+  const BuyIcon = offer.group ? Users : ShoppingCart;
+  const buy = (
+    <button
+      type="button"
+      onClick={onBuy}
+      disabled={offer.closed}
+      className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--of)] text-[15px] font-extrabold text-[var(--of-on)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-room-raised disabled:text-room-subtle"
+    >
+      <BuyIcon className="size-[17px]" />
+      {offer.closed ? "Oferta encerrada" : offer.button}
+    </button>
+  );
+  const reduce = (
+    <button
+      type="button"
+      onClick={onMinimize}
+      aria-label="Reduzir a oferta"
+      title="Reduzir"
+      className="-mr-1 -mt-1 grid size-8 shrink-0 place-items-center self-start rounded-full bg-room-raised text-room-subtle transition hover:text-room-text"
+    >
+      <ChevronDown className="size-[18px]" strokeWidth={2.4} />
+    </button>
+  );
+  const prices =
+    offer.priceFrom || offer.priceNow ? (
+      <span className="flex flex-wrap items-baseline gap-x-1.5 text-[14px] leading-snug">
+        {offer.priceFrom ? <s className="text-room-subtle">{offer.priceFrom}</s> : null}
+        {offer.priceNow ? <b className="font-extrabold">{offer.priceNow}</b> : null}
+      </span>
+    ) : null;
   return (
     <div
       className="lv-up mt-2"
@@ -432,33 +508,42 @@ export function LiveOfferCard({
       >
         <span className={cn("block h-[5px] w-10 rounded-full", panel ? "bg-room-subtle/50" : "bg-white/80 shadow-[0_1px_4px_rgba(0,0,0,.4)]")} />
       </button>
-      <div className="lv-sheet mt-1 overflow-hidden rounded-2xl bg-room-surface text-room-text shadow-[0_18px_40px_rgba(0,0,0,.45)] ring-1 ring-room-line">
-        <div className="bg-[linear-gradient(110deg,var(--of-dark)_0%,var(--of-mid)_52%,var(--of)_100%)] px-4 pb-3.5 pt-3 text-white">
-          <p className="text-[10.5px] font-extrabold uppercase tracking-[0.2em] text-white/85">Inscrições abertas</p>
-          <p className="mt-1 text-[22px] font-extrabold leading-tight tracking-[-0.01em]">{offer.product || "A oferta"}</p>
-        </div>
-        <div className="px-3.5 pb-3.5 pt-3">
-          <div className="flex items-center gap-2 text-[14.5px]">
-            {offer.priceFrom ? <s className="text-room-subtle">De {offer.priceFrom}</s> : null}
-            {offer.priceNow ? <b className="font-extrabold">Por {offer.priceNow}</b> : null}
-            {offer.countdown !== null ? (
-              <span className="ml-auto inline-flex items-center gap-1 font-extrabold tabular-nums text-[var(--of-ink)]">
-                <Clock className="size-3.5" strokeWidth={2.4} />
-                {clockOf(offer.countdown)}
-              </span>
-            ) : null}
+      {compact ? (
+        <div className="lv-sheet mt-1 overflow-hidden rounded-2xl bg-room-surface p-3 text-room-text shadow-[0_18px_40px_rgba(0,0,0,.45)] ring-1 ring-room-line">
+          <div className="flex items-center gap-3">
+            <OfferThumb imageUrl={offer.image} className="size-12" />
+            <span className="flex min-w-0 flex-1 flex-col leading-tight">
+              <b className="line-clamp-2 break-words text-[15.5px] font-extrabold">{offer.product || "A oferta"}</b>
+              <span className="mt-1">{prices}</span>
+            </span>
+            <OfferClock offer={offer} className="text-[14.5px]" />
+            {reduce}
           </div>
-          <button
-            type="button"
-            onClick={onBuy}
-            disabled={offer.closed}
-            className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--of)] text-[15px] font-extrabold text-[var(--of-on)] transition hover:brightness-110 disabled:bg-room-raised disabled:text-room-subtle"
-          >
-            <ShoppingCart className="size-[17px]" />
-            {offer.closed ? "Oferta encerrada" : offer.button}
-          </button>
+          {buy}
         </div>
-      </div>
+      ) : (
+        <div className="lv-sheet mt-1 overflow-hidden rounded-2xl bg-room-surface p-3 text-room-text shadow-[0_18px_40px_rgba(0,0,0,.45)] ring-1 ring-room-line">
+          {/* O produto num quadrado grande (a imagem, ou o saco na cor da oferta), com o nome ao lado. */}
+          <div className="flex gap-3">
+            <span className="relative shrink-0">
+              <OfferThumb imageUrl={offer.image} className="size-24 rounded-[14px]" />
+              {off ? (
+                <em className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-px text-[11.5px] font-extrabold not-italic text-white">{off}</em>
+              ) : null}
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col gap-1 leading-tight">
+              <span className="text-[10.5px] font-extrabold uppercase tracking-[0.16em] text-[var(--of-ink)]">
+                {offer.closed ? "Inscrições encerradas" : "Inscrições abertas"}
+              </span>
+              <b className="line-clamp-2 break-words text-[17px] font-extrabold tracking-[-0.01em]">{offer.product || "A oferta"}</b>
+              {prices}
+              <OfferClock offer={offer} className="self-start text-[14px]" />
+            </span>
+            {reduce}
+          </div>
+          {buy}
+        </div>
+      )}
     </div>
   );
 }
@@ -473,18 +558,20 @@ export function LiveOfferSlim({ offer, onOpen }: { offer: LiveOffer; onOpen: () 
       aria-label="Ver a oferta"
       className="lv-up mt-3 flex h-[52px] w-full items-center gap-2.5 rounded-[14px] bg-[linear-gradient(100deg,var(--of-mid),var(--of))] pl-2 pr-2.5 text-left text-white"
     >
-      <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-black/25">
-        <ShoppingBag className="size-[18px]" />
+      <span className="relative grid size-9 shrink-0 place-items-center overflow-hidden rounded-[10px] bg-black/25">
+        {offer.image ? <img src={offer.image} alt="" className="absolute inset-0 size-full object-cover" /> : <ShoppingBag className="size-[18px]" />}
       </span>
       <span className="flex min-w-0 flex-1 flex-col leading-tight">
         <b className="truncate text-[14px] font-extrabold">{offer.product || "A oferta"}</b>
         <span className="truncate text-[12.5px] font-bold">
           {offer.priceFrom ? <s className="mr-1 font-medium opacity-70">{offer.priceFrom}</s> : null}
           {offer.priceNow}
-          {off ? <em className="ml-1.5 rounded-full bg-black/30 px-1.5 py-px text-[11px] not-italic">{off}</em> : null}
+          {off && !offer.closed ? <em className="ml-1.5 rounded-full bg-black/30 px-1.5 py-px text-[11px] not-italic">{off}</em> : null}
         </span>
       </span>
-      {offer.countdown !== null ? (
+      {offer.closed ? (
+        <span className="inline-flex h-[30px] shrink-0 items-center rounded-full bg-black/30 px-2.5 text-[12.5px] font-extrabold">Encerrada</span>
+      ) : offer.countdown !== null ? (
         <span className="inline-flex h-[30px] shrink-0 items-center gap-1 rounded-full bg-black/30 px-2.5 text-[13.5px] font-extrabold tabular-nums">
           <Clock className="size-[13px]" strokeWidth={2.4} />
           {clockOf(offer.countdown)}
@@ -542,7 +629,8 @@ export function LiveComposer({
   onSubmit: () => void;
   inputProps?: React.InputHTMLAttributes<HTMLInputElement> | undefined;
   bag: { blink: boolean; onClick: () => void } | null;
-  support: { unread: number; open: boolean; onClick: () => void };
+  /** null: sem Suporte (quem está na sala como equipa). */
+  support: { unread: number; open: boolean; onClick: () => void } | null;
   onHeart: () => void;
   reactions: readonly Reaction[];
   /** No painel do computador: as cores seguem o tema em vez do branco por cima do vídeo. */
@@ -612,19 +700,21 @@ export function LiveComposer({
           {bag.blink ? <CountBadge panel={panel}>1</CountBadge> : null}
         </button>
       ) : null}
-      <button
-        type="button"
-        onClick={support.onClick}
-        aria-label="Suporte"
-        className={cn(
-          "relative grid size-[38px] shrink-0 place-items-center rounded-full",
-          ink,
-          support.open && (panel ? "ring-2 ring-inset ring-room-text" : "ring-2 ring-inset ring-white"),
-        )}
-      >
-        <Headset className="size-[22px]" strokeWidth={1.8} />
-        {support.unread > 0 ? <CountBadge panel={panel}>{support.unread}</CountBadge> : null}
-      </button>
+      {support ? (
+        <button
+          type="button"
+          onClick={support.onClick}
+          aria-label="Suporte"
+          className={cn(
+            "relative grid size-[38px] shrink-0 place-items-center rounded-full",
+            ink,
+            support.open && (panel ? "ring-2 ring-inset ring-room-text" : "ring-2 ring-inset ring-white"),
+          )}
+        >
+          <Headset className="size-[22px]" strokeWidth={1.8} />
+          {support.unread > 0 ? <CountBadge panel={panel}>{support.unread}</CountBadge> : null}
+        </button>
+      ) : null}
       <LiveHeartButton onHeart={onHeart} reactions={reactions} panel={panel} />
     </form>
   );
@@ -853,39 +943,47 @@ export function LiveFollowSheet({
  */
 export function LiveOfferSheet({
   countdown,
+  closed,
   onClose,
   onSupport,
   children,
 }: {
   countdown: number | null;
+  closed?: boolean | undefined;
   onClose: () => void;
-  onSupport: () => void;
+  /** Sem ele (a equipa na sala), não há «Falar com o Suporte». */
+  onSupport?: (() => void) | undefined;
   children: ReactNode;
 }) {
+  // Os botões de cima alinham com as margens da oferta (16 px), como o botão de compra por baixo.
   return (
     <LiveSheet onClose={onClose} label="Oferta" className="max-h-[66%] overflow-hidden rounded-t-[18px]">
-      <div className="flex shrink-0 items-center gap-2 pb-2.5 pl-3 pr-2">
-        <button type="button" onClick={onClose} className="inline-flex h-8 items-center gap-1 rounded-full pl-2 pr-3 text-[13px] font-bold ring-1 ring-room-line">
+      <div className="flex shrink-0 items-center gap-2 px-4 pb-1">
+        <button type="button" onClick={onClose} className="inline-flex h-9 items-center gap-1 rounded-full pl-2.5 pr-3.5 text-[13.5px] font-bold ring-1 ring-room-line">
           <ChevronDown className="size-4" strokeWidth={2.4} />
           Reduzir
         </button>
-        {countdown !== null ? (
-          <span className="ml-auto inline-flex h-7 items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--of)_18%,transparent)] px-2.5 text-[12.5px] font-extrabold tabular-nums text-[var(--of-ink)]">
+        {closed ? (
+          <span className="ml-auto inline-flex h-8 items-center rounded-full bg-room-raised px-3 text-[12.5px] font-extrabold text-room-subtle">Encerrada</span>
+        ) : countdown !== null ? (
+          <span className="ml-auto inline-flex h-8 items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--of)_18%,transparent)] px-3 text-[12.5px] font-extrabold tabular-nums text-[var(--of-ink)]">
             <Clock className="size-[13px]" strokeWidth={2.4} />
             Termina em {clockOf(countdown)}
           </span>
         ) : (
           <span className="ml-auto" />
         )}
-        <button type="button" onClick={onClose} aria-label="Fechar" className="grid size-9 place-items-center rounded-full text-room-subtle">
+        <button type="button" onClick={onClose} aria-label="Fechar" className="-mr-2 grid size-9 place-items-center rounded-full text-room-subtle">
           <X className="size-5" />
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
-      <button type="button" onClick={onSupport} className="flex h-11 shrink-0 items-center justify-center gap-2 border-t border-room-line text-[13.5px] font-semibold">
-        <Headset className="size-4" />
-        Dúvidas? Falar com o Suporte
-      </button>
+      {onSupport ? (
+        <button type="button" onClick={onSupport} className="flex h-12 shrink-0 items-center justify-center gap-2 border-t border-room-line text-[14px] font-semibold">
+          <Headset className="size-4" />
+          Dúvidas? Falar com o Suporte
+        </button>
+      ) : null}
     </LiveSheet>
   );
 }

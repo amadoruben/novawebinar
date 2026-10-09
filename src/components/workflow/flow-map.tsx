@@ -62,33 +62,38 @@ import {
   type Send,
   type Stage,
 } from "@/lib/workflow";
-import { DND, ToolsPanel } from "./flow-tools";
+import { DND, StartEmptyCard, ToolsPanel, type StartEmpty } from "./flow-tools";
 import { Glyph, LOOK, lookOf } from "./flow-look";
 
 /* ---------- Eixos: os eventos canónicos por onde a jornada passa ---------- */
 
 export type HubKey = "inscricao" | "webinar" | "fim" | "checkout" | "compra";
 
-export const HUBS: { key: HubKey; label: string; icon: LucideIcon; triggers: string[]; addTrigger: string; tone: string }[] = [
-  { key: "inscricao", label: "Inscrição", icon: UserPlus, triggers: ["webinar_registered"], addTrigger: "webinar_registered", tone: "bg-navy" },
+/** As partes do lançamento (GLOSSARY): quem chega, o dia do evento, o depois. Cada momento pertence a uma. */
+export const PHASES = ["Novas pessoas", "No dia do evento", "Depois do evento"] as const;
+/** A cor de cada parte, a mesma das etapas da jornada: antes (cinza), evento (azul-noite), depois (laranja). */
+const PHASE_DOT = ["bg-gray-400", "bg-navy", "bg-primary"];
+
+export const HUBS: { key: HubKey; label: string; phase: (typeof PHASES)[number]; icon: LucideIcon; triggers: string[]; addTrigger: string }[] = [
+  { key: "inscricao", label: "Inscrição", phase: "Novas pessoas", icon: UserPlus, triggers: ["webinar_registered"], addTrigger: "webinar_registered" },
   {
     key: "webinar",
     label: "Webinar ao vivo",
+    phase: "No dia do evento",
     icon: PlayCircle,
     triggers: ["webinar_session_started", "webinar_attended", "offer_viewed", "offer_clicked"],
     addTrigger: "webinar_session_started",
-    tone: "bg-navy",
   },
-  { key: "fim", label: "Fim da sessão", icon: CalendarCheck, triggers: ["webinar_session_ended"], addTrigger: "webinar_session_ended", tone: "bg-navy" },
+  { key: "fim", label: "Fim da sessão", phase: "Depois do evento", icon: CalendarCheck, triggers: ["webinar_session_ended"], addTrigger: "webinar_session_ended" },
   {
     key: "checkout",
     label: "Checkout",
+    phase: "Depois do evento",
     icon: CreditCard,
     triggers: ["checkout_started", "checkout_abandoned", "payment_failed"],
     addTrigger: "checkout_abandoned",
-    tone: "bg-navy",
   },
-  { key: "compra", label: "Compra", icon: ShoppingCart, triggers: ["purchase_approved", "purchase_refunded"], addTrigger: "purchase_approved", tone: "bg-navy" },
+  { key: "compra", label: "Compra", phase: "Depois do evento", icon: ShoppingCart, triggers: ["purchase_approved", "purchase_refunded"], addTrigger: "purchase_approved" },
 ];
 
 export const CHANNEL_ICON: Record<Channel, LucideIcon> = {
@@ -157,12 +162,12 @@ function Card({ children, className, onClick, dim }: { children: ReactNode; clas
   );
 }
 
-function Header({ tile, icon, kicker, title, right }: { tile: string; icon: ReactNode; kicker: string; title: string; right?: ReactNode }) {
+function Header({ tile, icon, kicker, title, right }: { tile: string; icon: ReactNode; kicker?: string | undefined; title: string; right?: ReactNode }) {
   return (
     <div className="flex items-center gap-2.5 px-3.5" style={{ height: HEADER_H }}>
       <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-lg", tile)}>{icon}</span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[11px] leading-tight text-muted-foreground">{kicker}</span>
+        {kicker && <span className="block truncate text-[11px] leading-tight text-muted-foreground">{kicker}</span>}
         <span className="block truncate text-[14px] leading-tight font-medium">{title}</span>
       </span>
       {right}
@@ -302,7 +307,6 @@ function HubNode({ data }: NodeProps<Node<HubData>>) {
       <Header
         tile="overflow-hidden bg-navy text-white"
         icon={data.logo ? <img src={data.logo} alt="" className="size-full" /> : <Icon className="size-4" strokeWidth={1.75} aria-hidden />}
-        kicker="Momento"
         title={data.label}
       />
       {(data.detail || data.count || data.pick) && (
@@ -323,9 +327,51 @@ function HubNode({ data }: NodeProps<Node<HubData>>) {
   );
 }
 
+/** O rótulo de uma parte do lançamento, na espinha, antes do seu primeiro momento. */
+function PhaseNode({ data }: NodeProps<Node<{ label: string }>>) {
+  const i = PHASES.indexOf(data.label as (typeof PHASES)[number]);
+  return (
+    <span className="inline-flex h-10 items-center gap-2 rounded-pill bg-white px-4 text-[17px] font-semibold whitespace-nowrap shadow-[0_1px_2px_rgba(16,24,40,0.06)] ring-1 ring-gray-200">
+      <span className={cn("size-2.5 rounded-full", PHASE_DOT[i])} aria-hidden />
+      {data.label}
+    </span>
+  );
+}
+
+/** O fluxo sem automações: começa-se por um gatilho do menu ou pelo modelo. Nada entra sozinho. */
+function EmptyStart({ onOpenTools, onUseModel, className }: { onOpenTools: () => void; onUseModel?: (() => void) | undefined; className?: string }) {
+  return (
+    <div className={cn("rounded-2xl border border-dashed border-gray-300 bg-white p-4 text-center", className)}>
+      <p className="text-[15px] font-semibold">O fluxo está vazio</p>
+      <p className="mt-1 text-[13px] text-muted-foreground">Junte um gatilho e as mensagens, ou comece pelo modelo.</p>
+      <div className="mt-3 grid gap-2">
+        <button type="button" onClick={onOpenTools} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-navy text-sm font-medium text-white hover:bg-navy/90">
+          <Zap className="size-4" aria-hidden /> Escolher um gatilho
+        </button>
+        {onUseModel && (
+          <button type="button" onClick={onUseModel} className="h-10 rounded-xl bg-white text-sm font-medium ring-1 ring-gray-200 hover:bg-gray-50">
+            Usar modelo
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type EmptyData = { onOpenTools: () => void; onUseModel?: (() => void) | undefined };
+function EmptyNode({ data }: NodeProps<Node<EmptyData>>) {
+  return (
+    <div className="w-[280px]">
+      <Side id="l" type="target" position={Position.Left} top={HEADER_H / 2} />
+      <Handle type="target" position={Position.Top} className={handleClass} isConnectable={false} />
+      <EmptyStart onOpenTools={data.onOpenTools} onUseModel={data.onUseModel} />
+    </div>
+  );
+}
+
 /* ---------- A automação no mapa: início, mensagens por canal, condições ---------- */
 
-type LaneData = { automation: Automation; stats: AutomationStats; onOpen: () => void };
+type LaneData = { automation: Automation; stats: AutomationStats; showTrigger: boolean; onOpen: () => void };
 type StepData = { node: LaidStep["node"]; wait?: string | undefined; onOpen: () => void };
 
 /** O início de cada automação (como o «Starting step» do ManyChat): quando entra e em que estado está. */
@@ -340,7 +386,7 @@ function LaneNode({ data }: NodeProps<Node<LaneData>>) {
         <Header
           tile="bg-accent text-accent-700"
           icon={<Zap className="size-4" strokeWidth={1.75} aria-hidden />}
-          kicker={`Quando: ${triggerTitle(a.trigger_event)}`}
+          kicker={data.showTrigger ? `Quando: ${triggerTitle(a.trigger_event)}` : undefined}
           title={a.name}
         />
         <div className="flex items-center justify-between gap-2 px-3.5">
@@ -448,8 +494,10 @@ const nodeTypes = {
   origin: OriginNode,
   addOrigin: AddOriginNode,
   page: PageNode,
-  group: GroupNode,
+  waGroup: GroupNode,
   hub: HubNode,
+  phase: PhaseNode,
+  empty: EmptyNode,
   lane: LaneNode,
   message: MessageNode,
   condition: ConditionNode,
@@ -466,7 +514,9 @@ const LANE_TOP = 230;
 /** Desenho vertical: as automações à direita da espinha, e a altura prevista de cada nó da espinha. */
 const LANE_X = 300;
 const SPINE_GAP = 56;
-const NODE_H: Record<string, number> = { origin: 60, page: 206, group: 60, hub: 100 };
+/** O espaço do rótulo de cada parte do lançamento, antes do seu primeiro momento. */
+const PHASE_H = 56;
+const NODE_H: Record<string, number> = { origin: 60, page: 206, waGroup: 60, hub: 100 };
 
 /** O que se mostra no momento: as pessoas que lá chegaram. */
 function hubCount(key: HubKey, c: JourneyCounts | null) {
@@ -496,6 +546,9 @@ export function buildFlow(input: {
   onOpenCapture: () => void;
   /** Sem webinar: o momento «Webinar ao vivo» leva à configuração. */
   onPickWebinar?: (() => void) | undefined;
+  /** Fluxo vazio: abrir os gatilhos no menu, ou usar o modelo. */
+  onOpenTools?: (() => void) | undefined;
+  onUseModel?: (() => void) | undefined;
 }) {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -515,13 +568,17 @@ export function buildFlow(input: {
   const pos = (id: string, x: number, y: number) => input.canvas.positions[id] ?? { x, y };
 
   // A espinha, pela ordem de um lançamento, e as automações penduradas em cada momento. As posições calculam-se no fim, conforme o sentido.
-  type Lane = { a: Automation; layout: ReturnType<typeof stepLayout>; waits: Map<string, string>; rowY: number[]; height: number; cols: number };
-  const spine: { node: Node; lanes: Lane[] }[] = [];
-  const place = (node: Node) => {
-    const entry = { node, lanes: [] as Lane[] };
+  type Lane = { a: Automation; layout: ReturnType<typeof stepLayout>; waits: Map<string, string>; rowY: number[]; height: number; cols: number; showTrigger: boolean };
+  // `row`: nós lado a lado no mesmo ponto da espinha (os grupos de WhatsApp correm em paralelo, não um depois do outro).
+  // `phase`: a parte do lançamento que começa neste ponto da espinha.
+  const spine: { node: Node; row: Node[]; lanes: Lane[]; phase?: string | undefined }[] = [];
+  const place = (node: Node, row = [node], phase?: string) => {
+    const entry = { node, row, lanes: [] as Lane[], phase };
     spine.push(entry);
     return entry;
   };
+  /** Os nós lado a lado à volta do eixo da espinha: em x no desenho vertical, em y no horizontal. */
+  const spread = (i: number, n: number, gap: number) => (i - (n - 1) / 2) * gap;
 
   // Origens: todas a convergir na página de inscrição; o "+" no fim.
   const originNodes: Node[] = origins.map((o) => ({
@@ -539,49 +596,61 @@ export function buildFlow(input: {
 
   // A página de inscrição: a do formulário ou, sem página própria, a do webinar na plataforma.
   const inscription = input.forms[0];
-  place({
-    id: "page:inscricao",
-    type: "page",
-    position: { x: 0, y: 0 },
-    data: {
-      name: inscription?.page_name || "Página de inscrição",
-      url: inscription?.page_url || (w ? `/w/${w.slug}` : ""),
-      pageType: "inscricao",
-      image: cover,
-      stat: c ? `${c.registered} inscritos` : undefined,
-      onClick: input.onOpenCapture,
-    } satisfies PageData,
-  });
+  place(
+    {
+      id: "page:inscricao",
+      type: "page",
+      position: { x: 0, y: 0 },
+      data: {
+        name: inscription?.page_name || "Página de inscrição",
+        url: inscription?.page_url || (w ? `/w/${w.slug}` : ""),
+        pageType: "inscricao",
+        image: cover,
+        stat: c ? `${c.registered} inscritos` : undefined,
+        onClick: input.onOpenCapture,
+      } satisfies PageData,
+    },
+    undefined,
+    PHASES[0],
+  );
 
   const pageNode = (p: Extract<CanvasNode, { kind: "page" }>) =>
     place({ id: `page:${p.id}`, type: "page", position: { x: 0, y: 0 }, data: { name: p.name, url: p.url, pageType: p.pageType, onClick: () => input.onEditCanvasNode(p) } satisfies PageData });
   const pagesOf = (type: PageType) => pages.filter((p) => p.pageType === type);
 
   pagesOf("confirmacao").forEach(pageNode);
-  for (const g of groups) place({ id: `group:${g.id}`, type: "group", position: { x: 0, y: 0 }, data: { name: g.name, onClick: () => input.onEditCanvasNode(g) } satisfies GroupData });
+  const groupNodes: Node[] = groups.map((g) => ({ id: `group:${g.id}`, type: "waGroup", position: { x: 0, y: 0 }, data: { name: g.name, onClick: () => input.onEditCanvasNode(g) } satisfies GroupData }));
+  if (groupNodes.length) place(groupNodes[0]!, groupNodes);
 
+  let phase: string = PHASES[0];
   for (const hub of HUBS) {
     if (hub.key === "checkout") [...pagesOf("vendas"), ...pagesOf("checkout")].forEach(pageNode);
     // O webinar configurado vê-se no momento: o ícone da plataforma, o título e a data.
     const live = hub.key === "webinar" && w;
-    const entry = place({
-      id: `hub:${hub.key}`,
-      type: "hub",
-      position: { x: 0, y: 0 },
-      data: {
-        label: hub.label,
-        icon: hub.icon,
-        logo: live ? platformIcon : undefined,
-        detail: live
-          ? [w.public_title || w.internal_name, w.scheduled_at && formatDateTime(w.scheduled_at)].filter(Boolean).join(" · ")
-          : hub.key === "webinar" && !w
-            ? "Por escolher: as horas contam a partir dele"
-            : undefined,
-        count: hubCount(hub.key, c),
-        highlighted: hub.key === "webinar",
-        pick: hub.key === "webinar" && !w ? input.onPickWebinar : undefined,
-      } satisfies HubData,
-    });
+    const starts = hub.phase !== phase;
+    phase = hub.phase;
+    const entry = place(
+      {
+        id: `hub:${hub.key}`,
+        type: "hub",
+        position: { x: 0, y: 0 },
+        data: {
+          label: hub.label,
+          icon: hub.icon,
+          logo: live ? platformIcon : undefined,
+          detail: live
+            ? [w.public_title || w.internal_name, w.scheduled_at && formatDateTime(w.scheduled_at)].filter(Boolean).join(" · ")
+            : hub.key === "webinar" && !w
+              ? "Por escolher: as horas contam a partir dele"
+              : undefined,
+          count: hubCount(hub.key, c),
+          highlighted: hub.key === "webinar",
+          pick: hub.key === "webinar" && !w ? input.onPickWebinar : undefined,
+        } satisfies HubData,
+      },
+      undefined,
+      starts ? hub.phase : undefined,
+    );
 
     // As automações deste momento: o início e, à direita, os passos em colunas; cada ramo numa linha.
     for (const a of input.automations.filter((a) => hub.triggers.includes(a.trigger_event))) {
@@ -592,7 +661,8 @@ export function buildFlow(input: {
       for (const it of layout.items) rowH[it.row] = Math.max(rowH[it.row]!, stepHeight(it.node, waits.has(it.node.id)));
       const rowY = rowH.map((_, r) => rowH.slice(0, r).reduce((sum, h) => sum + h + ROW_GAP, 0));
       const cols = layout.items.length ? Math.max(...layout.items.map((i) => i.col)) + 1 : 0;
-      entry.lanes.push({ a, layout, waits, rowY, height: rowY.at(-1)! + rowH.at(-1)!, cols });
+      // Num momento com um só gatilho, o «Quando» repete o momento: não se mostra.
+      entry.lanes.push({ a, layout, waits, rowY, height: rowY.at(-1)! + rowH.at(-1)!, cols, showTrigger: hub.triggers.length > 1 });
     }
 
     if (hub.key === "fim") {
@@ -622,7 +692,7 @@ export function buildFlow(input: {
     const { a } = lane;
     const at = pos(`auto:${a.id}`, x, y);
     const onOpen = () => input.onOpenAutomation(a.id);
-    nodes.push({ id: `auto:${a.id}`, type: "lane", position: at, data: { automation: a, stats: input.stats(a.id), onOpen } satisfies LaneData });
+    nodes.push({ id: `auto:${a.id}`, type: "lane", position: at, data: { automation: a, stats: input.stats(a.id), showTrigger: lane.showTrigger, onOpen } satisfies LaneData });
     edge(hubId, `auto:${a.id}`, { ...(vertical ? { targetHandle: "l" } : { sourceHandle: "down" }), type: "smoothstep", animated: a.active, style: line(a.active) });
     for (const it of lane.layout.items)
       nodes.push({
@@ -643,6 +713,8 @@ export function buildFlow(input: {
       });
   };
 
+  const phaseNode = (label: string, x: number, y: number) =>
+    nodes.push({ id: `phase:${label}`, type: "phase", position: { x, y }, draggable: false, selectable: false, data: { label } });
   const column = originNodes.length;
   if (!vertical) {
     // Da esquerda para a direita: origens empilhadas, a espinha numa linha, as automações penduradas por baixo de cada momento.
@@ -665,7 +737,8 @@ export function buildFlow(input: {
     };
     spine.forEach((entry, i) => {
       const x = COL * (i + 1);
-      nodes.push({ ...entry.node, position: pos(entry.node.id, x, 0) });
+      if (entry.phase) phaseNode(entry.phase, x, spread(0, entry.row.length, 80) - PHASE_H);
+      entry.row.forEach((n, j) => nodes.push({ ...n, position: pos(n.id, x, spread(j, entry.row.length, 80)) }));
       for (const lane of entry.lanes) {
         const x0 = x - (CARD_W - 220) / 2;
         laneNodes(lane, x0, fitLane(x0, x0 + STEP_COL * (lane.cols + 1), lane.height), entry.node.id);
@@ -676,7 +749,11 @@ export function buildFlow(input: {
     originNodes.forEach((n, i) => nodes.push({ ...n, position: pos(n.id, (i - (column - 1) / 2) * 240, 0) }));
     let y = 140;
     for (const entry of spine) {
-      nodes.push({ ...entry.node, position: pos(entry.node.id, 0, y) });
+      if (entry.phase) {
+        phaseNode(entry.phase, 0, y);
+        y += PHASE_H;
+      }
+      entry.row.forEach((n, j) => nodes.push({ ...n, position: pos(n.id, spread(j, entry.row.length, 240), y) }));
       let laneY = y;
       for (const lane of entry.lanes) {
         laneNodes(lane, LANE_X, laneY, entry.node.id);
@@ -686,8 +763,17 @@ export function buildFlow(input: {
     }
   }
 
+  // Sem automações: o cartão para começar fica onde a primeira automação da inscrição ficaria.
+  const inscricao = nodes.find((n) => n.id === "hub:inscricao");
+  if (!input.automations.length && inscricao && input.onOpenTools) {
+    const at = vertical ? { x: inscricao.position.x + LANE_X, y: inscricao.position.y } : { x: inscricao.position.x - 30, y: inscricao.position.y + LANE_TOP };
+    nodes.push({ id: "empty", type: "empty", position: at, draggable: false, selectable: false, data: { onOpenTools: input.onOpenTools, onUseModel: input.onUseModel } satisfies EmptyData });
+    edge("hub:inscricao", "empty", { ...(vertical ? { targetHandle: "l" } : { sourceHandle: "down" }), type: "smoothstep", style: line(false) });
+  }
+
   for (const o of originNodes) if (o.id !== "origin:add") edge(o.id, "page:inscricao", vertical ? { sourceHandle: "b", targetHandle: "t" } : {});
-  for (let i = 0; i < spine.length - 1; i += 1) edge(spine[i]!.node.id, spine[i + 1]!.node.id, down(spine[i]!.node));
+  for (let i = 0; i < spine.length - 1; i += 1)
+    for (const from of spine[i]!.row) for (const to of spine[i + 1]!.row) edge(from.id, to.id, down(from));
   return { nodes, edges };
 }
 
@@ -703,10 +789,28 @@ function ChannelIcon({ channel }: { channel: Channel }) {
 const MAX_PATHS = 3;
 
 /** A automação em cartão: quando entra, quem recebe o quê (um caminho por linha) e o estado das execuções. */
-function AutomationCard({ automation: a, paths, stats, onOpen }: { automation: Automation; paths: Audience[]; stats: AutomationStats; onOpen: () => void }) {
+function AutomationCard({
+  automation: a,
+  showTrigger,
+  paths,
+  stats,
+  onOpen,
+}: {
+  automation: Automation;
+  showTrigger: boolean;
+  paths: Audience[];
+  stats: AutomationStats;
+  onOpen: () => void;
+}) {
   return (
     <Card onClick={onOpen} dim={!a.active} className="w-full">
-      <Header tile="bg-accent text-accent-700" icon={<Zap className="size-4" strokeWidth={1.75} aria-hidden />} kicker={`Quando: ${triggerTitle(a.trigger_event)}`} title={a.name} right={<RunState active={a.active} />} />
+      <Header
+        tile="bg-accent text-accent-700"
+        icon={<Zap className="size-4" strokeWidth={1.75} aria-hidden />}
+        kicker={showTrigger ? `Quando: ${triggerTitle(a.trigger_event)}` : undefined}
+        title={a.name}
+        right={<RunState active={a.active} />}
+      />
       <div className="space-y-1 px-3 pb-3">
         {paths.length === 0 && <p className="text-[11px] text-muted-foreground">Sem mensagens</p>}
         {paths.slice(0, MAX_PATHS).map((p, i) => (
@@ -730,37 +834,84 @@ function AutomationCard({ automation: a, paths, stats, onOpen }: { automation: A
   );
 }
 
-function JourneyList(props: Parameters<typeof buildFlow>[0]) {
+/**
+ * Telemóvel e tablet: as três partes do lançamento de cima para baixo, cada momento da jornada com as suas
+ * automações e um botão claro para acrescentar outra. As peças abrem-se no botão «Juntar peças».
+ */
+function JourneyList(
+  props: Omit<Parameters<typeof buildFlow>[0], "onOpenTools"> & { onOpenTools: (section?: string | null) => void; startEmpty?: StartEmpty | undefined },
+) {
+  const groups = props.canvas.nodes.filter((n): n is Extract<CanvasNode, { kind: "group" }> => n.kind === "group");
   return (
-    <div className="h-full space-y-5 overflow-auto p-3 lg:hidden">
-      {HUBS.map((hub) => {
-        const Icon = hub.icon;
-        return (
-          <section key={hub.key} className="space-y-2">
-            <div className="flex items-center gap-2.5">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-navy text-white">
-                <Icon className="size-4" strokeWidth={1.5} aria-hidden />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm">{hub.label}</span>
-                <span className="block truncate text-[11px] tabular-nums text-muted-foreground">{hubCount(hub.key, props.counts)}</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => props.onAddAutomation(hub.addTrigger)}
-                className="inline-flex h-8 shrink-0 items-center gap-1 rounded-pill bg-white px-3 text-xs ring-1 ring-gray-200"
-              >
-                <Plus className="size-3" aria-hidden /> Automação
-              </button>
-            </div>
-            {props.automations
-              .filter((a) => hub.triggers.includes(a.trigger_event))
-              .map((a) => (
-                <AutomationCard key={a.id} automation={a} paths={pathsOf(a)} stats={props.stats(a.id)} onOpen={() => props.onOpenAutomation(a.id)} />
+    <div className="h-full space-y-6 overflow-auto p-3 sm:p-4 lg:hidden">
+      {props.startEmpty && <StartEmptyCard {...props.startEmpty} />}
+      {props.automations.length ? (
+        <button
+          type="button"
+          onClick={() => props.onOpenTools()}
+          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-navy text-sm font-medium text-white hover:bg-navy/90"
+        >
+          <Plus className="size-4" aria-hidden /> Juntar peças
+        </button>
+      ) : (
+        <EmptyStart onOpenTools={() => props.onOpenTools("gatilhos")} onUseModel={props.onUseModel} className="mx-auto max-w-sm" />
+      )}
+      {PHASES.map((phase) => (
+        <section key={phase} className="space-y-3">
+          <h3 className="text-[12px] font-semibold tracking-wide text-muted-foreground uppercase">{phase}</h3>
+          {HUBS.filter((h) => h.phase === phase).map((hub) => {
+            const Icon = hub.icon;
+            const list = props.automations.filter((a) => hub.triggers.includes(a.trigger_event));
+            return (
+              <div key={hub.key} className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-navy text-white">
+                    <Icon className="size-[18px]" strokeWidth={1.5} aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[15px] leading-5 font-medium">{hub.label}</span>
+                    <span className="block truncate text-[12px] tabular-nums text-muted-foreground">{hubCount(hub.key, props.counts) || "\u00a0"}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => props.onAddAutomation(hub.addTrigger)}
+                    aria-label={`Nova automação: ${hub.label}`}
+                    className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-white px-3.5 text-[13px] font-medium ring-1 ring-gray-200 hover:bg-gray-50"
+                  >
+                    <Plus className="size-4" aria-hidden /> Automação
+                  </button>
+                </div>
+                {list.map((a) => (
+                  <AutomationCard
+                    key={a.id}
+                    automation={a}
+                    // Num momento com um só gatilho, o «Quando» repete o momento: não se mostra.
+                    showTrigger={hub.triggers.length > 1}
+                    paths={pathsOf(a)}
+                    stats={props.stats(a.id)}
+                    onOpen={() => props.onOpenAutomation(a.id)}
+                  />
+                ))}
+              </div>
+            );
+          })}
+          {phase === PHASES[0] && groups.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {groups.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => props.onEditCanvasNode(g)}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-pill bg-white px-3 text-[13px] ring-1 ring-gray-200"
+                >
+                  <Glyph look="whatsapp_group" className="size-3.5 text-emerald-700" />
+                  {g.name}
+                </button>
               ))}
-          </section>
-        );
-      })}
+            </div>
+          )}
+        </section>
+      ))}
     </div>
   );
 }
@@ -771,18 +922,24 @@ export type XY = { x: number; y: number };
 export type FlowComponent =
   | { kind: "automation"; key: string }
   | { kind: "page"; pageType: PageType }
-  | { kind: "group" }
+  /** Com `id`: um grupo que já está no fluxo (abre as definições dele). */
+  | { kind: "group"; id?: string | undefined }
   | { kind: "origin"; source: string; placement?: string | undefined }
   /** Um disparo, espera ou condição (chave da paleta): entra no fim de uma automação. */
-  | { kind: "step"; key: string };
+  | { kind: "step"; key: string }
+  /** Uma automação nova, vazia, que começa neste gatilho. */
+  | { kind: "trigger"; trigger: string };
 
 /* ---------- O mapa ---------- */
 
-/** Vista inicial: legível, com o início da jornada à direita do menu de componentes. */
+/** Vista inicial: legível, com o início da jornada à direita do menu das peças. */
 const HOME_ZOOM = 0.8;
-const HOME_LEFT = 388;
+const HOME_LEFT = 360;
+/** Com o menu recolhido, a barra de ícones ocupa menos. */
+const HOME_LEFT_SLIM = 110;
 const HOME_TOP = 76;
-const BTN = "inline-flex h-9 items-center gap-1.5 rounded-pill bg-white px-4 text-sm shadow-pop ring-1 ring-gray-200 hover:bg-gray-50";
+const TOOL = "inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-lg px-2 text-[13px] text-gray-700 hover:bg-gray-100 hover:text-foreground";
+const wide = () => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
 
 export function FlowMap(
   props: Parameters<typeof buildFlow>[0] & {
@@ -796,12 +953,37 @@ export function FlowMap(
     focusId?: string | undefined;
     /** Sentido do desenho: de cima para baixo ou da esquerda para a direita. As posições arrastadas recomeçam. */
     onSetOrientation?: ((orientation: Orientation) => void) | undefined;
+    /** Secção do menu aberta ao entrar (verificação visual). */
+    initialSection?: string | undefined;
+    /** Um fluxo antigo com automações do modelo por mexer: «Começar vazio» tira-as. */
+    startEmpty?: StartEmpty | undefined;
   },
 ) {
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  const built = useMemo(() => buildFlow(props), [props]);
+  // O menu das peças: aberto no computador, recolhido no telemóvel e no tablet (abre por cima da lista).
+  const [toolsOpen, setToolsOpen] = useState(false);
+  // Abre com as secções fechadas: vêem-se todas as peças de uma vez (grupos, aquecimento, recuperação…).
+  const [section, setSection] = useState<string | null>(props.initialSection ?? null);
+  useEffect(() => {
+    setMounted(true);
+    setToolsOpen(wide() || Boolean(props.initialSection));
+  }, [props.initialSection]);
+  const openTools = (key: string | null = null) => {
+    setSection(key);
+    setToolsOpen(true);
+  };
+  const built = useMemo(
+    () => buildFlow({ ...props, onOpenTools: () => openTools("gatilhos") }),
+    // openTools só usa setters estáveis.
+    [props],
+  );
   const vertical = props.canvas.orientation !== "horizontal";
+  const groups = useMemo(
+    () => props.canvas.nodes.filter((n): n is Extract<CanvasNode, { kind: "group" }> => n.kind === "group"),
+    [props.canvas.nodes],
+  );
+  // As automações que já estão no fluxo, pelo nome: o menu e o modelo não as repetem.
+  const present = useMemo(() => new Set(props.automations.map((a) => a.name)), [props.automations]);
   // Os nós movem-se com o rato; ao largar, a posição grava-se e volta pelo canvas.
   const [nodes, setNodes, onNodesChange] = useNodesState(built.nodes);
   const dragging = useRef(false);
@@ -809,19 +991,29 @@ export function FlowMap(
     if (!dragging.current) setNodes(built.nodes);
   }, [built, setNodes]);
   const flow = useRef<ReactFlowInstance | null>(null);
-  // A última automação onde se clicou: um disparo clicado no menu entra nela.
+  // A última automação onde se clicou: uma mensagem clicada no menu entra nela.
   const lastAutomation = useRef<string | undefined>(undefined);
   const automationOf = (nodeId: string | undefined) => (nodeId && /^(auto|step):/.test(nodeId) ? nodeId.split(":")[1] : undefined);
   // Abre legível no início da jornada, ao lado do menu; o resto vê-se a deslizar (roda do rato) ou a arrastar o fundo.
   const builtRef = useRef(built);
   builtRef.current = built;
+  // Com o menu aberto ou recolhido em mente está a vista agora: abrir ou recolher desliza o desenho na mesma medida.
+  const laidFor = useRef(false);
   const home = (duration = 300) => {
     const all = builtRef.current.nodes;
     if (!flow.current || !all.length) return;
     const left = Math.min(...all.map((n) => n.position.x));
     const top = Math.min(...all.map((n) => n.position.y));
-    void flow.current.setViewport({ x: HOME_LEFT - left * HOME_ZOOM, y: HOME_TOP - top * HOME_ZOOM, zoom: HOME_ZOOM }, { duration });
+    laidFor.current = toolsOpen;
+    void flow.current.setViewport({ x: (toolsOpen ? HOME_LEFT : HOME_LEFT_SLIM) - left * HOME_ZOOM, y: HOME_TOP - top * HOME_ZOOM, zoom: HOME_ZOOM }, { duration });
   };
+  // Recolher o menu no computador não deixa uma faixa vazia à esquerda, e abri-lo não tapa o desenho; o sítio onde se estava fica.
+  useEffect(() => {
+    if (!flow.current || laidFor.current === toolsOpen || !wide()) return;
+    laidFor.current = toolsOpen;
+    const vp = flow.current.getViewport();
+    void flow.current.setViewport({ ...vp, x: vp.x + (toolsOpen ? 1 : -1) * (HOME_LEFT - HOME_LEFT_SLIM) }, { duration: 200 });
+  }, [toolsOpen]);
   /** Volta ao início da jornada; com atraso quando as posições ainda estão a mudar. */
   const fit = (delay = 0) => window.setTimeout(() => home(), delay);
   // Um elemento novo (clicado no menu ou largado) fica à vista: o mapa desliza até ele.
@@ -831,10 +1023,15 @@ export function FlowMap(
     const before = seen.current;
     seen.current = ids;
     if (!before) return;
-    const added = built.nodes.filter((n) => !before.has(n.id) && n.id !== "origin:add").map((n) => ({ id: n.id }));
+    const added = built.nodes.filter((n) => !before.has(n.id) && n.id !== "origin:add" && n.id !== "empty").map((n) => ({ id: n.id }));
     if (!added.length) return;
     window.setTimeout(() => void flow.current?.fitView({ nodes: added, padding: 0.4, maxZoom: Math.max(0.9, flow.current?.getZoom() ?? 0), duration: 400 }), 120);
   }, [built]);
+  // No telemóvel o menu tapa a lista: fecha-se depois de escolher, para se ver o que entrou.
+  const add = (c: FlowComponent) => {
+    props.onAddComponent(c, undefined, lastAutomation.current);
+    if (!wide()) setToolsOpen(false);
+  };
   if (!mounted) return <div className="h-full w-full animate-pulse rounded-card bg-chip/60" />;
   return (
     <>
@@ -887,41 +1084,33 @@ export function FlowMap(
           <Background variant={BackgroundVariant.Dots} gap={22} size={1.4} color="#D5D9E0" />
           <Controls showInteractive={false} position="bottom-right" className="!overflow-hidden !rounded-xl !border-0 !shadow-pop" />
         </ReactFlow>
-        <ToolsPanel onAdd={(c) => props.onAddComponent(c, undefined, lastAutomation.current)} />
-        <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
-          {props.onSetOrientation && (
-            <div className="inline-flex h-9 overflow-hidden rounded-pill bg-white shadow-pop ring-1 ring-gray-200" role="group" aria-label="Sentido do desenho">
+        {/* As ferramentas do desenho numa só barra: sentido, centrar, organizar e ecrã inteiro. */}
+        <div role="toolbar" aria-label="Desenho" className="absolute top-3 right-3 z-10 flex h-10 items-center gap-0.5 rounded-xl bg-white p-1 shadow-pop ring-1 ring-gray-200">
+          {props.onSetOrientation &&
+            (
+              [
+                ["vertical", MoveVertical, "De cima para baixo"],
+                ["horizontal", MoveHorizontal, "Da esquerda para a direita"],
+              ] as const
+            ).map(([o, Icon, label]) => (
               <button
+                key={o}
                 type="button"
-                aria-pressed={vertical}
-                title="De cima para baixo"
+                aria-pressed={vertical === (o === "vertical")}
+                title={label}
+                aria-label={label}
                 onClick={() => {
-                  props.onSetOrientation?.("vertical");
+                  props.onSetOrientation?.(o);
                   fit(350);
                 }}
-                className={cn("px-3", vertical ? "bg-navy text-white" : "hover:bg-gray-50")}
+                className={cn(TOOL, vertical === (o === "vertical") && "bg-gray-100 text-foreground")}
               >
-                <MoveVertical className="size-4" aria-hidden />
-                <span className="sr-only">De cima para baixo</span>
+                <Icon className="size-4" aria-hidden />
               </button>
-              <button
-                type="button"
-                aria-pressed={!vertical}
-                title="Da esquerda para a direita"
-                onClick={() => {
-                  props.onSetOrientation?.("horizontal");
-                  fit(350);
-                }}
-                className={cn("px-3", !vertical ? "bg-navy text-white" : "hover:bg-gray-50")}
-              >
-                <MoveHorizontal className="size-4" aria-hidden />
-                <span className="sr-only">Da esquerda para a direita</span>
-              </button>
-            </div>
-          )}
-          <button type="button" onClick={() => fit()} title="Centrar o desenho" className={cn(BTN, "w-9 justify-center px-0")}>
+            ))}
+          <span className="mx-1 h-5 w-px bg-gray-200" aria-hidden />
+          <button type="button" onClick={() => fit()} title="Centrar o desenho" aria-label="Centrar o desenho" className={TOOL}>
             <Focus className="size-4" aria-hidden />
-            <span className="sr-only">Centrar</span>
           </button>
           <button
             type="button"
@@ -930,19 +1119,41 @@ export function FlowMap(
               fit(350);
             }}
             title="Volta a pôr tudo no sítio automático"
-            className={BTN}
+            className={cn(TOOL, "px-2.5")}
           >
             Organizar
           </button>
           {props.onToggleFull && (
-            <button type="button" onClick={props.onToggleFull} title={props.full ? "Sair do ecrã inteiro (Esc)" : "Trabalhar em ecrã inteiro"} className={BTN}>
+            <button
+              type="button"
+              onClick={props.onToggleFull}
+              title={props.full ? "Sair do ecrã inteiro (Esc)" : "Ecrã inteiro"}
+              aria-label={props.full ? "Sair do ecrã inteiro" : "Ecrã inteiro"}
+              className={TOOL}
+            >
               {props.full ? <Minimize2 className="size-4" aria-hidden /> : <Maximize2 className="size-4" aria-hidden />}
-              {props.full ? "Sair" : "Ecrã inteiro"}
             </button>
           )}
         </div>
       </div>
-      <JourneyList {...props} />
+      <JourneyList
+        {...props}
+        onOpenTools={openTools}
+        onOpenAutomation={(id) => {
+          lastAutomation.current = id;
+          props.onOpenAutomation(id);
+        }}
+      />
+      <ToolsPanel
+        onAdd={add}
+        groups={groups}
+        present={present}
+        startEmpty={props.startEmpty}
+        open={toolsOpen}
+        onOpenChange={setToolsOpen}
+        section={section}
+        onSection={setSection}
+      />
     </>
   );
 }

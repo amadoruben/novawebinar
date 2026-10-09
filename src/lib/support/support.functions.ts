@@ -10,7 +10,7 @@ import { z } from "zod";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
-import { effectiveStatus, INTENTS, PRIORITIES, type CaseRow } from "./model";
+import { effectiveStatus, INTENTS, PRIORITIES, TEAM_TOOK_REASON, type CaseRow } from "./model";
 
 type Client = SupabaseClient<Database>;
 const uuid = z.string().uuid();
@@ -95,7 +95,7 @@ async function ensureCase(
     text: last?.body ?? "",
     actor: "human",
     actorUserId: userId,
-    reason: "Assumido pela equipa",
+    reason: TEAM_TOOK_REASON,
     assignStaffId: staff.id,
   });
   return opened.caseId;
@@ -310,7 +310,7 @@ function requestOrigin() {
 }
 
 /**
- * Convida um funcionário já registado na equipa. Quem ainda não tem conta
+ * Convida uma pessoa já registada na equipa. Quem ainda não tem conta
  * recebe um link para definir a palavra-passe; quem já tem conta passa a ver
  * este espaço de trabalho e entra como sempre entrou — o link de acesso de uma
  * conta que já existe nunca é entregue a outra pessoa.
@@ -324,7 +324,7 @@ export const inviteStaff = createServerFn({ method: "POST" })
       .select("id, organization_id, name, email, user_id")
       .eq("id", data.staffId)
       .maybeSingle();
-    if (!staff) throw new Error("Funcionário não encontrado.");
+    if (!staff) throw new Error("Pessoa não encontrada.");
     await assertTeamManager(context.supabase, staff.organization_id);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -408,7 +408,7 @@ export const deleteSkill = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-/** Tira o acesso de um funcionário: sai da organização e deixa de receber casos. */
+/** Tira o acesso a uma pessoa da equipa: sai da organização e deixa de receber casos. */
 export const removeStaffAccess = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => z.object({ staffId: uuid }).parse(data))
@@ -418,7 +418,7 @@ export const removeStaffAccess = createServerFn({ method: "POST" })
       .select("id, organization_id, user_id")
       .eq("id", data.staffId)
       .maybeSingle();
-    if (!staff) throw new Error("Funcionário não encontrado.");
+    if (!staff) throw new Error("Pessoa não encontrada.");
     await assertTeamManager(context.supabase, staff.organization_id);
     if (staff.user_id === context.userId) throw new Error("Não pode remover o seu próprio acesso.");
 

@@ -26,6 +26,10 @@ _Avoid_: Envio, notificação
 Um ponto fixo da jornada de quem se inscreve, onde as automações se penduram: inscrição, webinar ao vivo, fim da sessão, checkout e compra.
 _Avoid_: Hub, eixo, fase
 
+**Parte do lançamento**:
+Cada um dos três blocos em que os momentos e os gatilhos se arrumam no ecrã: novas pessoas (inscrição), no dia do evento (webinar ao vivo) e depois do evento (fim da sessão, checkout e compra).
+_Avoid_: Momento (são os cinco pontos), etapa, fase
+
 **Origem**:
 De onde vem o tráfego: a plataforma (Meta Ads, Google Ads, TikTok Ads, orgânico) e o sítio dentro dela (Instagram, pesquisa, YouTube).
 _Avoid_: Fonte, canal de tráfego

@@ -1,5 +1,5 @@
 /**
- * Classificação de um pedido: o que a pessoa quer, para que departamento vai,
+ * Classificação de um pedido: o que a pessoa quer, para que equipa vai,
  * com que urgência. Por regras que o dono lê e edita — a IA ajuda a perceber a
  * intenção, mas quem decide o encaminhamento são as regras da organização.
  */

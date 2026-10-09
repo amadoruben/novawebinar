@@ -798,18 +798,17 @@ async function ensureRegistrationForm(organizationId: string, webinarId: string)
 }
 
 /**
- * "Novo fluxo": o workflow (com ou sem webinar), o grupo de WhatsApp se houver link, as automações
- * prontas (desligadas) e o formulário de inscrição. Sem webinar fica em rascunho até o escolher.
+ * "Novo fluxo": o workflow (com ou sem webinar), o grupo de WhatsApp se houver link, e o formulário de inscrição.
+ * Nasce vazio: nenhuma automação é criada sozinha; o modelo entra no desenho com «Usar modelo» (addModelAutomations).
+ * Sem webinar fica em rascunho até o escolher.
  */
 export async function createBaseWorkflow(
   organizationId: string,
   webinar: { id: string; title: string } | null,
-  options: { name?: string | undefined; groupUrl?: string | undefined; withBase?: boolean | undefined } = {},
+  options: { name?: string | undefined; groupUrl?: string | undefined } = {},
 ) {
-  const { baseCanvas, baseWorkflow } = await import("@/lib/workflow");
-  const canvas = baseCanvas();
   const groupUrl = options.groupUrl?.trim();
-  if (groupUrl) canvas.nodes.splice(1, 0, { id: "grupo", kind: "group", name: "Grupo do lançamento", url: groupUrl });
+  const canvas = { nodes: groupUrl ? [{ id: "grupo", kind: "group", name: "Grupo do lançamento", url: groupUrl }] : [], positions: {}, orientation: "vertical" };
   const name = (options.name?.trim() || (webinar ? `Fluxo · ${webinar.title}` : "Novo fluxo")).slice(0, 120);
   const { data: workflow, error } = await supabase
     .from("automation_workflows")
@@ -817,24 +816,30 @@ export async function createBaseWorkflow(
     .select("id")
     .single();
   if (error) throw error;
-  if (options.withBase !== false) {
-    const { error: automationsError } = await supabase.from("automations").insert(
-      baseWorkflow().map((a) => ({
-        organization_id: organizationId,
-        webinar_id: webinar?.id ?? null,
-        workflow_id: workflow.id,
-        name: a.name,
-        active: false,
-        trigger_event: a.trigger_event,
-        conditions: a.conditions as unknown as Json,
-        wait_minutes: 0,
-        steps: a.steps as unknown as Json,
-      })),
-    );
-    if (automationsError) throw automationsError;
-  }
   if (webinar) await ensureRegistrationForm(organizationId, webinar.id);
   return workflow.id;
+}
+
+/** As automações do modelo escolhidas em «Usar modelo», todas de uma vez e desligadas. */
+export async function addModelAutomations(
+  workflow: { id: string; organization_id: string; webinar_id: string | null },
+  list: { name: string; trigger_event: string; conditions: unknown; steps: unknown }[],
+) {
+  if (!list.length) return;
+  const { error } = await supabase.from("automations").insert(
+    list.map((a) => ({
+      organization_id: workflow.organization_id,
+      webinar_id: workflow.webinar_id,
+      workflow_id: workflow.id,
+      name: a.name,
+      active: false,
+      trigger_event: a.trigger_event,
+      conditions: a.conditions as Json,
+      wait_minutes: 0,
+      steps: a.steps as Json,
+    })),
+  );
+  if (error) throw error;
 }
 
 /** Trocar (ou escolher) o webinar de um fluxo: o workflow e todas as suas automações passam a contar a partir dele. */

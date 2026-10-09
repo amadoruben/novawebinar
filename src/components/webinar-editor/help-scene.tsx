@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ArrowRight, BadgeCheck, Eye, LayoutTemplate, MessageCircle, MonitorPlay, ShoppingCart, Timer, type LucideIcon } from "lucide-react";
+import { ArrowRight, BadgeCheck, ChevronDown, Eye, LayoutTemplate, MessageCircle, MonitorPlay, ShoppingBag, ShoppingCart, Timer, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROOM_FORMATS } from "@/lib/room-logic";
 import type { HelpTopic } from "./help";
@@ -54,6 +54,7 @@ const SCENES: Record<HelpTopic, Spot> = {
   transcricao: "caption",
   aparencia: "theme",
   corBotao: "color",
+  contagem: "waiting",
   seguir: "follow",
   seguirMomentos: "follow",
   chat: "chat",
@@ -69,6 +70,7 @@ const SCENES: Record<HelpTopic, Spot> = {
   audienciaFormato: "viewers",
   audienciaCurva: "viewers",
   oferta: "offer",
+  aparenciaOferta: "offer",
   urgencia: "countdown",
   depoisVideo: "end",
   utm: "color",
@@ -333,25 +335,63 @@ function Chat() {
   );
 }
 
+/**
+ * O cartão da oferta como está na sala («Quadrada»): o produto num quadrado com o desconto, o nome, os
+ * preços, o tempo e o botão na cor da oferta. Na ajuda da Oferta aparece por cima do chat, como no
+ * telemóvel; no cronómetro e na cor, no separador Oferta.
+ */
 function Offer({ spot }: { spot: Spot }) {
+  const overChat = spot === "offer";
   return (
     <Room>
-      <Tabs on="Oferta" />
-      <Hi on={spot === "offer"} className="grid gap-1.5 rounded-[10px] bg-white/[.07] p-2.5">
-        <b className="text-[12.5px] font-semibold">Mentoria Vendas no Instagram</b>
-        <span className="flex items-baseline gap-1.5 tabular-nums">
-          <s className="text-[10.5px] text-white/45">100 000 Kz</s>
-          <b className="text-[14px] font-bold">25 000 Kz</b>
+      <Tabs on={overChat ? "Chat" : "Oferta"} />
+      {overChat ? (
+        <div className="mb-2 grid gap-1 opacity-50">
+          {[
+            ["Kátia", "Boa noite, a ver de Luanda"],
+            ["Inês", "Quanto custa?"],
+          ].map(([who, text]) => (
+            <span key={who} className="flex items-center gap-1.5 text-[10.5px]">
+              <i className="size-3.5 shrink-0 rounded-full bg-white/20" />
+              <b className="font-semibold text-white/60">{who}</b>
+              {text}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <Hi on={overChat} className="grid gap-2 rounded-[12px] bg-[#212121] p-2.5 ring-1 ring-white/10">
+        <span className="flex gap-2">
+          <span
+            className="relative grid size-12 shrink-0 place-items-center rounded-[9px]"
+            style={{ background: `linear-gradient(140deg, ${ORANGE}, color-mix(in srgb, ${ORANGE} 35%, #000))` }}
+          >
+            <ShoppingBag className="size-4 opacity-80" />
+            <em className="absolute left-1 top-1 rounded-full bg-black/60 px-1 text-[8.5px] font-extrabold not-italic">-75%</em>
+          </span>
+          <span className="grid min-w-0 flex-1 content-start gap-0.5 leading-tight">
+            <small className="text-[8px] font-extrabold uppercase tracking-[0.14em] text-[#FF9A6B]">Inscrições abertas</small>
+            <b className="text-[11.5px] font-extrabold">Mentoria Vendas no Instagram</b>
+            <span className="flex items-baseline gap-1 text-[10.5px] tabular-nums">
+              <s className="text-white/45">100 000 Kz</s>
+              <b className="font-extrabold">25 000 Kz</b>
+            </span>
+            {overChat ? <span className="flex items-center gap-0.5 text-[10.5px] font-extrabold tabular-nums text-[#FF9A6B]"><Timer className="size-3" />09:59</span> : null}
+          </span>
+          {overChat ? <ChevronDown className="size-4 shrink-0 text-white/50" /> : null}
         </span>
-        <Hi on={spot === "countdown"} className="justify-self-start rounded-[6px]">
-          <span className="block rounded-[5px] bg-[#E8440C]/20 px-1.5 py-0.5 text-[10.5px] font-semibold tabular-nums text-[#FF9A6B]">A oferta acaba em 09:59</span>
-        </Hi>
-        <Hi on={spot === "color"}>
-          <span className="block rounded-lg py-2 text-center text-[12px] font-bold" style={{ background: ORANGE }}>
+        {/* No separador Oferta, o cronómetro diz a frase inteira, como na sala. */}
+        {overChat ? null : (
+          <Hi on={spot === "countdown"} className="justify-self-start rounded-[6px]">
+            <span className="block rounded-[5px] bg-[#E8440C]/20 px-1.5 py-0.5 text-[10.5px] font-semibold tabular-nums text-[#FF9A6B]">A oferta termina em 09:59</span>
+          </Hi>
+        )}
+        <Hi on={spot === "color"} className="rounded-full">
+          <span className="block rounded-full py-1.5 text-center text-[11.5px] font-extrabold" style={{ background: ORANGE }}>
             Quero minha vaga
           </span>
         </Hi>
       </Hi>
+      {overChat ? <span className="mt-2 block rounded-full bg-white/[.08] px-3 py-1.5 text-[10.5px] text-white/40">Comentar…</span> : null}
     </Room>
   );
 }

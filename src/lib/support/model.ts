@@ -208,6 +208,21 @@ export function availableActions(
   return actions;
 }
 
+/** O motivo com que fica um caso aberto à mão por quem atende (Assumir, Responder, Transferir). */
+export const TEAM_TOOK_REASON = "Assumido pela equipa";
+
+/**
+ * Quem abriu o caso: o agente (deixa a sua leitura, com confiança), uma pessoa
+ * da equipa, ou uma regra (agente em pausa, webinar sem agente, pedidos que são
+ * sempre de uma pessoa). Só a primeira é uma passagem do agente.
+ */
+export function caseOpenedBy(
+  c: Pick<CaseRow, "confidence" | "reason_for_escalation">,
+): "agent" | "team" | "rule" {
+  if (c.confidence !== null) return "agent";
+  return c.reason_for_escalation === TEAM_TOOK_REASON ? "team" : "rule";
+}
+
 /* ---------- Rasto ---------- */
 
 export const EVENT_LABEL: Record<string, string> = {
@@ -221,7 +236,7 @@ export const EVENT_LABEL: Record<string, string> = {
   case_created: "Caso criado",
   case_classified: "Caso classificado",
   case_assigned: "Caso atribuído",
-  case_unassigned: "Sem responsável: na fila do departamento",
+  case_unassigned: "Sem responsável: na fila da equipa",
   case_transferred: "Caso transferido",
   case_escalated: "Escalado para o supervisor",
   case_reviewing: "Em análise pelo supervisor",

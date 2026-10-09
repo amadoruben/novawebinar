@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { CHAT_COUNTRIES, chatVariant, isChatVariant, variantCountries, variantText } from "./chat-variants";
+import { CHAT_COUNTRIES, chatVariant, isChatVariant, variantCountries, variantLaunch, variantText } from "./chat-variants";
 
 describe("variantes do chat", () => {
   it("dos países à variante: nenhum, um ou vários (pela ordem do ecrã, sem repetidos)", () => {
@@ -26,6 +26,17 @@ describe("variantes do chat", () => {
   it("a validação aceita as antigas e as novas e recusa o resto", () => {
     for (const v of ["pt-PT", "pt-BR", "mixed", "pt-AO", "pt-MZ", "mix:ao,mz"]) expect(isChatVariant(v)).toBe(true);
     for (const v of ["en-US", "mix:", "mix:xx"]) expect(isChatVariant(v)).toBe(false);
+  });
+
+  it("o país do lançamento vai no fim da variante e chega à frase", () => {
+    expect(chatVariant(["br"], "ao")).toBe("pt-BR@ao");
+    expect(chatVariant(["ao", "br"], null)).toBe("mix:ao,br");
+    expect(variantCountries("pt-BR@ao")).toEqual(["br"]);
+    expect(variantLaunch("pt-BR@ao")).toBe("ao");
+    expect(variantLaunch("pt-BR")).toBeNull();
+    expect(isChatVariant("mix:ao,br@mz")).toBe(true);
+    for (const v of ["pt-BR@", "pt-BR@xx", "mixed@ao"]) expect(isChatVariant(v)).toBe(false);
+    expect(variantText("pt-BR@ao")).toContain("Luanda");
   });
 
   it("a frase de uma mistura fala de todos os países", () => {

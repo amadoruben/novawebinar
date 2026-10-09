@@ -20,6 +20,8 @@ import {
   entryPalette,
   inferAudienceFormat,
   offerCountdownLeft,
+  offerTimer,
+  roomCountdown,
 } from "@/lib/room-logic";
 
 const ctx = { durationSeconds: 329, pitchSeconds: 311 };
@@ -126,6 +128,22 @@ describe("oferta", () => {
     expect(offerCountdownLeft(300, 100, 160)).toBe(240);
     expect(offerCountdownLeft(300, 100, 500)).toBe(0);
     expect(offerCountdownLeft(0, 100, 160)).toBe(0);
+  });
+
+  it("no zero: «O botão continua» tira o cronómetro; «O botão fecha» fecha o botão", () => {
+    expect(offerTimer(300, 120, false)).toEqual({ left: 120, closed: false });
+    expect(offerTimer(300, 0, false)).toEqual({ left: null, closed: false });
+    expect(offerTimer(300, 120, true)).toEqual({ left: 120, closed: false });
+    expect(offerTimer(300, 0, true)).toEqual({ left: null, closed: true });
+    // Sem cronómetro, nada fecha no zero; o último dia fecha sempre.
+    expect(offerTimer(0, 0, true)).toEqual({ left: null, closed: false });
+    expect(offerTimer(300, 120, false, true)).toEqual({ left: null, closed: true });
+  });
+
+  it("o cartão da oferta é quadrado, a não ser que se escolha o compacto", () => {
+    expect(liveSettings(null).offerLook).toBe("square");
+    expect(liveSettings({ live: { offerLook: "compact" } }).offerLook).toBe("compact");
+    expect(liveSettings({ live: { offerLook: "redondo" } }).offerLook).toBe("square");
   });
 
   it("o link leva a origem, onde clicou, o minuto e quem é", () => {
@@ -261,5 +279,50 @@ describe("opções da sala", () => {
       { start: 95, end: 140 },
       { start: 400, end: 430 },
     ]);
+  });
+});
+
+describe("contagem antes de começar", () => {
+  it("lê a escolha gravada e corrige o que vier estragado", () => {
+    expect(liveSettings(null).countdown).toBeNull();
+    expect(liveSettings({ live: { countdown: { on: true, minutes: 10, style: "dark", color: "#16a34a", sound: false } } }).countdown).toEqual({
+      on: true,
+      minutes: 10,
+      style: "dark",
+      color: "#16A34A",
+      sound: false,
+    });
+    expect(liveSettings({ live: { countdown: { on: "sim", minutes: 999, style: "glass", color: "x" } } }).countdown).toEqual({
+      on: false,
+      minutes: 30,
+      style: "minimal",
+      color: "#E8440C",
+      sound: true,
+    });
+  });
+
+  it("a escolha nova manda; sem ela, valem as colunas antigas", () => {
+    const legacy = { prelive_enabled: true, prelive_seconds: 300, prelive_template: "glass", prelive_sound: false };
+    expect(roomCountdown({ on: true, minutes: 3, style: "urgency", color: "#2563EB", sound: true }, legacy)).toEqual({
+      seconds: 180,
+      style: "urgency",
+      color: "#2563EB",
+      sound: true,
+    });
+    expect(roomCountdown({ on: false, minutes: 3, style: "urgency", color: "#2563EB", sound: true }, legacy).seconds).toBe(0);
+    expect(roomCountdown(null, legacy)).toMatchObject({ seconds: 300, style: "premium", sound: false });
+    expect(roomCountdown(null, { prelive_enabled: false, prelive_seconds: 300 }).seconds).toBe(0);
+  });
+
+  it("um webinar antigo com a contagem ligada abre no editor com ela ligada, igual à sala", () => {
+    const legacy = { prelive_enabled: true, prelive_seconds: 600, prelive_template: "glass", prelive_sound: false };
+    expect(liveSettings(null, legacy).countdown).toEqual({ on: true, minutes: 10, style: "premium", color: "#E8440C", sound: false });
+    expect(liveSettings({ live: { desk: "vertical" } }, legacy).countdown?.on).toBe(true);
+    // A escolha nova ganha às colunas antigas; desligada, as antigas não contam.
+    expect(liveSettings({ live: { countdown: { on: false, minutes: 3 } } }, legacy).countdown?.on).toBe(false);
+    expect(liveSettings(null, { prelive_enabled: false, prelive_seconds: 600 }).countdown).toBeNull();
+    expect(liveSettings(null, { prelive_enabled: true, prelive_seconds: 0 }).countdown).toBeNull();
+    expect(liveSettings(null).countdown).toBeNull();
+    expect(roomCountdown(liveSettings(null, legacy).countdown, legacy).seconds).toBe(roomCountdown(null, legacy).seconds);
   });
 });

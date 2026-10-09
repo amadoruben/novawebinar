@@ -6,6 +6,7 @@ import {
   Clock,
   Eye,
   FileSpreadsheet,
+  Gauge,
   GraduationCap,
   Loader2,
   Lock,
@@ -16,7 +17,6 @@ import {
   Pin,
   Play,
   Plus,
-  Globe,
   X,
   ShieldCheck,
   Headset,
@@ -28,20 +28,44 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { clock } from "@/lib/room-logic";
 import { CHAT_COUNTRIES, type ChatCountryCode } from "@/lib/chat-variants";
-import { alunoExample, chatPace, chatTagLabel, lateExample, namePool, type ChatRules } from "@/lib/chat-realism";
-import { Field, HelpButton, MinuteWheel, Note, PickerButton, Seg, Stepper, SwitchRow, Tag, TimeChip } from "../ui";
+import {
+  alunoExample,
+  chatPace,
+  chatTagLabel,
+  lateExample,
+  MAX_ALUNOS,
+  MAX_ANSWERS,
+  namePool,
+  placeLine,
+  type ChatRules,
+} from "@/lib/chat-realism";
+import { Field, HelpButton, MinuteWheel, PanelPopoverContent, PickerButton, Quantity, Seg, SwitchRow, Tag, TimeChip } from "../ui";
 import type { HelpTopic } from "../help";
 import type { EditorClock } from "./video";
 import type { EditorForm, FocusProps, SetForm } from "../form";
 
 export type ChatWay = "ai" | "file" | "one";
 export type ChatComment = { id: string; at: number; author: string; message: string; type: string | null };
-type Part = "quem" | "escrita" | "real" | "perguntas" | "gerar" | "ficou" | "suporte";
+type Part = "quem" | "volume" | "escrita" | "real" | "perguntas" | "gerar" | "ficou" | "suporte";
+
+/** Quem são, pela nacionalidade (no ecrã: «Angolanos», «Brasileiros»…). */
+const PEOPLE: Record<ChatCountryCode, string> = { ao: "Angolanos", mz: "Moçambicanos", br: "Brasileiros", pt: "Portugueses" };
+/** Atalhos pelo tamanho do lançamento: alunos e quem responde às perguntas. */
+const ALUNOS_PRESETS = [
+  { label: "Pequeno", value: 3 },
+  { label: "Médio", value: 8 },
+  { label: "Grande", value: 20 },
+];
+const ANSWERS_PRESETS = [
+  { label: "Pequeno", value: 3 },
+  { label: "Médio", value: 5 },
+  { label: "Grande", value: 10 },
+];
 
 const TONES: { value: ChatRules["tone"]; label: string; lines: string[] }[] = [
   { value: "natural", label: "Natural", lines: ["Faz sentido, nunca tinha pensado nisso assim", "Isso acontece comigo também", "Boa noite a todos!"] },
@@ -118,6 +142,7 @@ export function StepChat({
   const people = new Set(comments.map((x) => x.author)).size;
   const pace = chatPace(audience ?? 100, rules.volume, rules.perMinute);
   const chosen = CHAT_COUNTRIES.filter((x) => rules.countries.includes(x.code));
+  const launch = CHAT_COUNTRIES.find((x) => x.code === rules.launch);
   const names = namePool(rules.countries);
   const tone = TONES.find((t) => t.value === rules.tone)!;
   const activeRules = [rules.delay, rules.mobile, rules.late, rules.talk, rules.follow].filter(Boolean).length;
@@ -129,62 +154,71 @@ export function StepChat({
     <div className="grid gap-2.5">
       <Part
         icon={Users}
-        help="chatQuem"
-        title="Quem está no chat"
-        summary={`${chosen.length ? chosen.map((x) => `${x.flag} ${x.name}`).join(" + ") : "Escolha os países"} · ~${pace.perMinute} por minuto`}
+        help="paises"
+        title="Pessoas do chat"
+        // Curto, para caber fechado: o país do lançamento e as bandeiras das nacionalidades.
+        summary={
+          !launch && !chosen.length
+            ? "Por escolher"
+            : `${launch ? `${launch.flag} ${launch.name}` : "País por escolher"} · ${chosen.length ? chosen.map((x) => x.flag).join(" ") : "sem nacionalidade"}`
+        }
         open={open === "quem"}
         onToggle={() => toggle("quem")}
       >
         <Field
-          label={
-            <>
-              Países
-              <HelpButton topic="paises" />
-            </>
-          }
-          hint="Cada pessoa escreve no português do seu país, com nome e apelido de lá. Vários países misturam-se."
+          label="País do lançamento"
+          hint={launch ? `Dizem no chat: «${lateExample(rules.countries, rules.launch).replace("Já começou? ", "")}».` : "Onde é o webinar: a cidade que dizem no chat."}
         >
-          <CountryPicker value={rules.countries} onChange={(countries) => onRules({ countries })} />
+          <LaunchPicker
+            value={rules.launch}
+            // Com o primeiro país, quem escreve fica logo dessa nacionalidade (junta-se outras a seguir).
+            onChange={(code) => onRules(rules.countries.length ? { launch: code } : { launch: code, countries: [code] })}
+          />
         </Field>
-        {chosen.length ? (
-          <div className="rounded-xl bg-gray-50 px-3 py-2.5 text-[12.5px] text-muted-foreground">
-            <span className="font-medium text-foreground">Nomes: </span>
-            {names.slice(0, 4).join(", ")}…
+        <Field label="Nacionalidades" hint="Mudam os nomes e a forma de escrever.">
+          <CountryPicker value={rules.countries} launch={rules.launch} onChange={(countries) => onRules({ countries })} />
+        </Field>
+        <Done onClick={() => setOpen("volume")} label="Seguinte" />
+      </Part>
+
+      <Part
+        icon={Gauge}
+        help="chatQuem"
+        title="Volume do chat"
+        summary={`~${pace.perMinute} por minuto${rules.volume === "escolher" ? " · fixo" : ""}`}
+        open={open === "volume"}
+        onToggle={() => toggle("volume")}
+      >
+        {rules.volume !== "escolher" ? (
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-sm">
+              <b className="font-mono text-[26px] font-semibold tabular-nums">~{pace.perMinute}</b> por minuto
+            </span>
+            <span className="text-[12.5px] text-muted-foreground">{pace.people.toLocaleString("pt-PT")} pessoas a escrever</span>
           </div>
         ) : null}
-        <Field label="Volume do chat">
-          <div className="grid gap-2 rounded-xl border bg-white p-3">
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-sm">
-                <b className="font-mono text-xl font-semibold tabular-nums">~{pace.perMinute}</b> comentários por minuto
-              </span>
-              <span className="text-[12px] text-muted-foreground">{pace.people} pessoas a escrever</span>
-            </div>
-            <Seg
-              full
-              small
-              value={rules.volume}
-              onChange={(volume) => onRules({ volume, ...(volume === "escolher" ? { perMinute: pace.perMinute } : {}) })}
-              options={[
-                { value: "menos", label: "Menos" },
-                { value: "normal", label: "Normal" },
-                { value: "mais", label: "Mais" },
-                { value: "escolher", label: "Escolher" },
-              ]}
-            />
-            {rules.volume === "escolher" ? (
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[12.5px] leading-snug text-muted-foreground">Para lançamentos grandes: até 60 por minuto.</span>
-                <Stepper value={rules.perMinute} min={1} max={60} onChange={(perMinute) => onRules({ perMinute })} unit="/min" />
-              </div>
-            ) : null}
-            <p className="text-[12px] leading-snug text-muted-foreground">
-              {audience !== null
-                ? `Segue a Audiência: uma sala com cerca de ${audience.toLocaleString("pt-PT")} pessoas. Quando a audiência desce, o chat acalma.`
-                : "A sala não mostra número de pessoas: o ritmo é o de uma sala com 100."}
-            </p>
-          </div>
-        </Field>
+        <Seg
+          full
+          label="Volume do chat"
+          value={rules.volume}
+          onChange={(volume) => onRules({ volume, ...(volume === "escolher" ? { perMinute: pace.perMinute } : {}) })}
+          options={[
+            { value: "menos", label: "Menos" },
+            { value: "normal", label: "Normal" },
+            { value: "mais", label: "Mais" },
+            { value: "escolher", label: "Escolher" },
+          ]}
+        />
+        {rules.volume === "escolher" ? (
+          <Quantity value={rules.perMinute} min={1} max={60} unit="por minuto" onChange={(perMinute) => onRules({ perMinute })} />
+        ) : null}
+        <p className="text-[12.5px] leading-snug text-muted-foreground">
+          {rules.volume === "escolher"
+            ? "Sempre este número, até 60 por minuto."
+            : audience !== null
+              ? `Segue a Audiência (cerca de ${audience.toLocaleString("pt-PT")} pessoas): quando desce, o chat acalma.`
+              : "A sala não mostra número de pessoas: o ritmo é o de uma sala com 100."}
+        </p>
         <Done onClick={() => setOpen("escrita")} label="Seguinte" />
       </Part>
 
@@ -237,7 +271,7 @@ export function StepChat({
           <RuleRow
             title="Há quem chegue atrasado"
             description="Nos primeiros minutos."
-            example={lateExample(rules.countries)}
+            example={lateExample(rules.countries, rules.launch)}
             checked={rules.late}
             onChange={(late) => onRules({ late })}
           />
@@ -280,24 +314,24 @@ export function StepChat({
                   placeholder={product.trim() || "Ex.: Mentoria Grupo Primo"}
                 />
               </Field>
-              {/* Quantos e quando, um por linha: o nome à esquerda e a escolha à direita, alinhados. */}
-              <div className="flex items-center justify-between gap-3">
-                <span className="min-w-0">
-                  <b className="block text-[13px] font-medium">Quantos alunos</b>
-                  <span className="block text-[12px] text-muted-foreground">De 1 a 15, espaçados.</span>
-                </span>
-                <Stepper value={rules.alunos.count} min={1} max={15} onChange={(count) => onRules({ alunos: { ...rules.alunos, count } })} />
-              </div>
+              <Field label="Quantos alunos" hint={`Até ${MAX_ALUNOS}. Atalhos pelo tamanho do lançamento.`}>
+                <Quantity
+                  value={rules.alunos.count}
+                  max={MAX_ALUNOS}
+                  unit={rules.alunos.count === 1 ? "aluno" : "alunos"}
+                  presets={ALUNOS_PRESETS}
+                  onChange={(count) => onRules({ alunos: { ...rules.alunos, count } })}
+                />
+              </Field>
               <Field label="Quando aparecem">
                 <Seg
                   full
-                  small
                   label="Quando aparecem"
                   value={rules.alunos.when}
                   onChange={(when) => onRules({ alunos: { ...rules.alunos, when } })}
                   options={[
-                    { value: "oferta", label: "Depois da oferta abrir" },
-                    { value: "aula", label: "Ao longo da aula" },
+                    { value: "oferta", label: "Depois da oferta" },
+                    { value: "aula", label: "Durante a aula" },
                   ]}
                 />
               </Field>
@@ -323,7 +357,7 @@ export function StepChat({
         title="Perguntas do apresentador"
         summary={
           questions.length
-            ? `${questions.length} ${questions.length === 1 ? "pergunta" : "perguntas"} no vídeo · ${rules.answersOn ? `${{ 2: "2 a 3", 4: "3 a 5", 6: "5 a 8" }[rules.answers]} respondem` : "sem respostas"}`
+            ? `${questions.length} ${questions.length === 1 ? "pergunta" : "perguntas"} no vídeo · ${rules.answersOn ? `${rules.answers} respondem a cada` : "sem respostas"}`
             : "Encontradas depois de transcrever o vídeo"
         }
         open={open === "perguntas"}
@@ -336,17 +370,13 @@ export function StepChat({
           onChange={(answersOn) => onRules({ answersOn })}
         />
         {rules.answersOn ? (
-          <Field label="Quantas pessoas respondem a cada pergunta">
-            <Seg
-              full
-              small
-              value={String(rules.answers) as "2" | "4" | "6"}
-              onChange={(v) => onRules({ answers: Number(v) as 2 | 4 | 6 })}
-              options={[
-                { value: "2", label: "2 a 3" },
-                { value: "4", label: "3 a 5" },
-                { value: "6", label: "5 a 8" },
-              ]}
+          <Field label="Quantas pessoas respondem">
+            <Quantity
+              value={rules.answers}
+              max={MAX_ANSWERS}
+              unit={rules.answers === 1 ? "pessoa" : "pessoas"}
+              presets={ANSWERS_PRESETS}
+              onChange={(answers) => onRules({ answers })}
             />
           </Field>
         ) : null}
@@ -398,7 +428,7 @@ export function StepChat({
             <div className="grid gap-1.5 rounded-xl bg-gray-50 px-3.5 py-3 text-[12.5px] text-muted-foreground">
               <span className="flex items-center gap-2">
                 <Check className="size-3.5 text-[#1D8A5E]" />~{pace.perMinute} por minuto, de {pace.people} pessoas
-                {chosen.length ? ` de ${chosen.map((x) => x.name).join(", ")}` : " (escolha os países em «Quem está no chat»)"}
+                {chosen.length ? `: ${chosen.map((x) => PEOPLE[x.code].toLowerCase()).join(", ")}` : " (escolha as nacionalidades em «Pessoas do chat»)"}
               </span>
               <span className="flex items-center gap-2">
                 <Check className="size-3.5 text-[#1D8A5E]" />
@@ -800,64 +830,110 @@ function CommentEditor({
   );
 }
 
-/** Os países do chat, um por linha: escolhem-se na lista e tiram-se no X. Não vem nenhum escolhido. */
-function CountryPicker({ value, onChange }: { value: readonly ChatCountryCode[]; onChange: (countries: ChatCountryCode[]) => void }) {
+/** O país do lançamento: um de quatro, com a bandeira; é a cidade que as pessoas dizem. */
+function LaunchPicker({ value, onChange }: { value: ChatCountryCode | null; onChange: (code: ChatCountryCode) => void }) {
+  return (
+    <div role="radiogroup" aria-label="País do lançamento" className="grid grid-cols-2 gap-1.5">
+      {CHAT_COUNTRIES.map((x) => {
+        const on = value === x.code;
+        return (
+          <button
+            key={x.code}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            onClick={() => onChange(x.code)}
+            className={cn(
+              "grid h-[60px] min-w-0 place-content-center justify-items-center gap-1 rounded-xl border bg-white px-1.5 text-[13.5px] font-medium transition hover:bg-gray-50",
+              on && "border-foreground font-semibold shadow-[inset_0_0_0_1px_var(--foreground)]",
+            )}
+          >
+            <span className="text-[20px] leading-none">{x.flag}</span>
+            <span className="max-w-full truncate">{x.name}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * As nacionalidades de quem escreve, uma por linha (bandeira, quem são e como dizem de onde estão):
+ * juntam-se em «Adicionar» e tiram-se no X. Não vem nenhuma escolhida.
+ */
+function CountryPicker({
+  value,
+  launch,
+  onChange,
+}: {
+  value: readonly ChatCountryCode[];
+  launch: ChatCountryCode | null;
+  onChange: (countries: ChatCountryCode[]) => void;
+}) {
+  const [adding, setAdding] = useState(false);
   const chosen = CHAT_COUNTRIES.filter((x) => value.includes(x.code));
+  const missing = CHAT_COUNTRIES.filter((x) => !value.includes(x.code));
   const toggle = (code: ChatCountryCode) =>
     onChange(CHAT_COUNTRIES.map((x) => x.code).filter((x) => (x === code ? !value.includes(x) : value.includes(x))));
   return (
-    <div className="grid gap-2">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5">
       {chosen.length ? (
-        <ul className="grid gap-1.5">
+        <ul className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5">
           {chosen.map((x) => (
-            <li key={x.code} className="flex h-12 items-center gap-3 rounded-xl border bg-white pl-3 pr-1.5">
-              <span className="text-[22px] leading-none">{x.flag}</span>
+            <li key={x.code} className="flex items-center gap-3 rounded-xl border bg-white py-2 pl-2.5 pr-1">
+              <span className="grid size-9 shrink-0 place-items-center rounded-full bg-chip text-[20px] leading-none">{x.flag}</span>
               <span className="min-w-0 flex-1">
-                <b className="block text-[13.5px] font-semibold">{x.name}</b>
-                <span className="block truncate text-[12px] text-muted-foreground">Português de {x.name}, com nomes de lá</span>
+                <b className="block text-[14px] font-semibold">{PEOPLE[x.code]}</b>
+                <span className="block truncate text-[12.5px] text-muted-foreground">«{placeLine(x.code, launch)}»</span>
               </span>
               <button
                 type="button"
                 onClick={() => toggle(x.code)}
-                aria-label={`Tirar ${x.name}`}
-                className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-chip hover:text-foreground"
+                aria-label={`Tirar ${PEOPLE[x.code]}`}
+                title="Tirar"
+                className="grid size-10 shrink-0 place-items-center rounded-lg text-muted-foreground transition hover:bg-chip hover:text-foreground"
               >
-                <X className="size-4" />
+                <X className="size-[18px]" />
               </button>
             </li>
           ))}
         </ul>
-      ) : (
-        <Note icon={Globe}>Ainda nenhum país. Escolha de onde são as pessoas que escrevem no chat.</Note>
-      )}
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button variant="outline" size="sm" className="justify-self-start">
-            <Plus />
-            {chosen.length ? "Adicionar país" : "Escolher países"}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-[240px] p-1">
-          {CHAT_COUNTRIES.map((x) => {
-            const on = value.includes(x.code);
-            return (
+      ) : null}
+      {missing.length ? (
+        <Popover open={adding} onOpenChange={setAdding}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-foreground/25 bg-white text-[14px] font-medium transition hover:border-foreground/50 hover:bg-gray-50 data-[state=open]:border-solid data-[state=open]:border-foreground"
+            >
+              <Plus className="size-4" />
+              {chosen.length ? "Adicionar nacionalidade" : "Escolher nacionalidades"}
+            </button>
+          </PopoverTrigger>
+          {/* Com a largura do botão de onde abre, alinhado com ele (no tablet, a coluna inteira). */}
+          <PanelPopoverContent className="p-1.5" style={{ width: "var(--radix-popover-trigger-width)" }}>
+            {missing.map((x) => (
               <button
                 key={x.code}
                 type="button"
-                role="menuitemcheckbox"
-                aria-checked={on}
-                onClick={() => toggle(x.code)}
-                className="flex h-10 w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium hover:bg-chip"
+                onClick={() => {
+                  toggle(x.code);
+                  setAdding(false);
+                }}
+                className="flex h-12 w-full items-center gap-3 rounded-lg px-2.5 text-left transition hover:bg-chip"
               >
-                <span className="text-lg leading-none">{x.flag}</span>
-                <span className="flex-1 text-left">{x.name}</span>
-                {on ? <Check className="size-4" /> : null}
+                <span className="text-[22px] leading-none">{x.flag}</span>
+                <span className="min-w-0 flex-1">
+                  <b className="block text-[14px] font-semibold">{PEOPLE[x.code]}</b>
+                  <span className="block truncate text-[12px] text-muted-foreground">Nomes e escrita de {x.name}</span>
+                </span>
+                <Plus className="size-4 shrink-0 text-muted-foreground" />
               </button>
-            );
-          })}
-          <p className="px-2.5 pb-1.5 pt-1 text-[12px] text-muted-foreground">Outros países: em breve.</p>
-        </PopoverContent>
-      </Popover>
+            ))}
+            <p className="px-2.5 pb-1 pt-1.5 text-[12px] text-muted-foreground">Outros países: em breve.</p>
+          </PanelPopoverContent>
+        </Popover>
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { Headset, MessagesSquare, Pin, Play, ShoppingCart, X } from "lucide-react";
 import { VideoPlayer } from "@/components/video-player";
+import { PreliveCountdown } from "@/components/prelive-countdown";
+import { chatEcho, placeOf, type ChatPerson } from "@/lib/chat-reactions";
 import { cn } from "@/lib/utils";
 import {
   activeOffer,
@@ -11,6 +13,8 @@ import {
   isGroupLink,
   LIVE_DEFAULTS,
   offerCountdownLeft,
+  offerDeadlinePassed,
+  offerTimer,
   profileHandle,
   type FollowNetwork,
   type LiveSettings,
@@ -43,6 +47,7 @@ import {
   CaptionLine,
   ChatComposer,
   ChatLine,
+  ENTRY_DIM,
   EntryPlay,
   LIVE_COLUMN_BG,
   LIVE_CONTAIN,
@@ -102,7 +107,12 @@ export type RoomPreviewProps = {
   saleColor?: string | null | undefined;
   offers: readonly OfferSlot[];
   offerImageUrl?: string | undefined;
+  /** O último dia da oferta principal já passou. */
   offerClosed: boolean;
+  /** «O botão fecha» no zero do cronómetro (senão, no zero só o cronómetro sai). */
+  offerCloseAtZero?: boolean | undefined;
+  /** O fuso do webinar: o último dia de cada oferta seguinte acaba à meia-noite dele, como na sala. */
+  offerTimezone?: string | undefined;
   agent: { on: boolean; name: string };
   tab: RoomTab;
   onTab: (tab: RoomTab) => void;
@@ -125,12 +135,62 @@ export type RoomPreviewProps = {
 };
 
 /**
+ * A contagem antes de começar, na pré-visualização: o passo Vídeo mostra-a no lugar do vídeo enquanto
+ * se escolhe o estilo, a cor e os minutos (`peekCountdown`), e esconde-a ao sair.
+ */
+let countdownPeek = false;
+const peekListeners = new Set<() => void>();
+export function peekCountdown(on: boolean) {
+  if (countdownPeek === on) return;
+  countdownPeek = on;
+  peekListeners.forEach((listener) => listener());
+}
+export function useCountdownPeek() {
+  return useSyncExternalStore(
+    (listener) => {
+      peekListeners.add(listener);
+      return () => peekListeners.delete(listener);
+    },
+    () => countdownPeek,
+    () => false,
+  );
+}
+
+/** A contagem a descer na pré-visualização, a partir dos minutos escolhidos (sem som). */
+function PeekCountdown({ live, fill }: { live: LiveSettings; fill?: boolean }) {
+  const total = (live.countdown?.minutes ?? 5) * 60;
+  const [left, setLeft] = useState(total - 8);
+  useEffect(() => setLeft(total - 8), [total]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setLeft((n) => (n > 1 ? n - 1 : total)), 1000);
+    return () => window.clearInterval(timer);
+  }, [total]);
+  return (
+    <div className={cn("absolute inset-0 z-[6] bg-black", !fill && "grid place-items-center")}>
+      <PreliveCountdown
+        remaining={left}
+        total={total}
+        message=""
+        soundOn={false}
+        soundEnabled={false}
+        template={live.countdown?.style}
+        color={live.countdown?.color}
+        fill={fill}
+      />
+    </div>
+  );
+}
+
+/** Na pré-visualização, o botão de entrar aparece no passo onde se escolhe ou no início do vídeo. */
+const showsEntry = (props: RoomPreviewProps) => Boolean(props.entryShown) || props.t < 1;
+
+/**
  * Em pausa: o botão de entrar só no passo onde se escolhe, ou no início do vídeo (é aí que as pessoas o
  * vêem); a meio da sessão, um play discreto, porque na sala esse botão nunca aparece a meio.
  */
 function PausedPlay({ props, compact, big }: { props: RoomPreviewProps; compact: boolean; big?: boolean }) {
   const live = props.liveSettings ?? LIVE_DEFAULTS;
-  if (props.entryShown || props.t < 1) return <EntryPlay look={live.entry} kicker="Aula ao vivo" compact={compact} />;
+  if (showsEntry(props)) return <EntryPlay look={live.entry} kicker="Aula ao vivo" compact={compact} />;
   return (
     <span className={cn("grid place-items-center rounded-full bg-black/55 backdrop-blur", big ? "size-[76px]" : compact ? "size-12" : "size-14")}>
       <Play className={cn("fill-white text-white", big ? "size-8" : compact ? "size-5" : "size-6")} />
@@ -187,6 +247,36 @@ function roomMoment(props: RoomPreviewProps) {
   return { open, afterVideo, shown, tab, lastSale, said };
 }
 
+/**
+ * A oferta mostrada no segundo t, como na sala (`offerTimer`): o tempo que falta, se o cronómetro ainda
+ * se vê e se o botão já fechou, no zero ou no último dia (o da principal ou o de cada oferta seguinte).
+ */
+type OfferProps = Pick<RoomPreviewProps, "t" | "offerClosed" | "offerCloseAtZero" | "offerTimezone" | "offerImageUrl" | "liveSettings">;
+function offerNow(props: OfferProps, shown: OfferSlot | null) {
+  if (!shown) return { seconds: 0, left: null, closed: false };
+  const seconds = offerCountdownLeft(shown.countdown, shown.start, props.t);
+  const zone = props.offerTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const deadline = shown.id === "main" ? props.offerClosed : offerDeadlinePassed(shown.deadline, zone, Date.now());
+  return { seconds, ...offerTimer(shown.countdown, seconds, Boolean(props.offerCloseAtZero), deadline) };
+}
+
+/** O cartão da oferta (Live, e Webinar no telemóvel ao alto), na forma escolhida. */
+function cardOffer(props: OfferProps, shown: OfferSlot | null): LiveOffer | null {
+  if (!shown) return null;
+  const now = offerNow(props, shown);
+  return {
+    product: shown.product,
+    priceFrom: shown.priceFrom,
+    priceNow: shown.priceNow,
+    button: shown.button || "Quero minha vaga",
+    countdown: now.left,
+    closed: now.closed,
+    image: shown.id === "main" ? props.offerImageUrl : null,
+    look: (props.liveSettings ?? LIVE_DEFAULTS).offerLook,
+    group: isGroupLink(shown.url),
+  };
+}
+
 /** No editor, o Suporte mostra um exemplo: a pergunta de uma pessoa, a resposta do Agente e o que se escreveu. */
 function supportExample(props: Pick<RoomPreviewProps, "agent" | "mine">, offer: OfferSlot | null): LiveSupportMessage[] {
   return [
@@ -206,17 +296,35 @@ function supportExample(props: Pick<RoomPreviewProps, "agent" | "mine">, offer: 
   ];
 }
 
-/** As últimas mensagens do chat no segundo t: comentários, compras e o que se escreveu. */
+/**
+ * As últimas mensagens do chat no segundo t: comentários, compras e o que se escreveu. Ao que se escreve,
+ * o chat simulado reage e às vezes responde, como na sala (`chatEcho`).
+ */
 function chatItemsAt(props: Pick<RoomPreviewProps, "comments" | "sales" | "salesWhere" | "mine" | "t">, limit: number) {
+  const crowd: ChatPerson[] = [...new Set(props.comments.filter((c) => !c.agent).map((c) => c.author))].map((name) => ({
+    name,
+    place: props.comments.map((c) => (c.author === name ? placeOf(c.message) : "")).find(Boolean) ?? "",
+  }));
+  const mine = props.mine
+    .map((m, i) => ({ m, i, echo: chatEcho({ id: `previa-${i}-${m.at}`, text: m.text, author: "" }, crowd) }))
+    .filter(({ m }) => m.tab === "chat" && m.at <= props.t + 1);
   return [
     ...props.comments.filter((c) => c.at <= props.t).map((c) => ({ key: c.id, at: c.at, kind: "msg" as const, c })),
     ...(props.salesWhere === "video" ? [] : props.sales)
       .filter((s) => s.at <= props.t)
       .map((s) => ({ key: `s-${s.id}`, at: s.at, kind: "sale" as const, s })),
-    ...props.mine
-      .map((m, i) => ({ m, i }))
-      .filter(({ m }) => m.tab === "chat" && m.at <= props.t + 1)
-      .map(({ m, i }) => ({ key: `m-${i}`, at: m.at, kind: "mine" as const, m })),
+    ...mine.map(({ m, i, echo }) => ({
+      key: `m-${i}`,
+      at: m.at,
+      kind: "mine" as const,
+      m,
+      reaction: echo.reaction && props.t >= m.at + echo.reaction.after ? `${echo.reaction.emoji} ${echo.reaction.count}` : undefined,
+    })),
+    ...mine.flatMap(({ m, i, echo }) =>
+      echo.replies
+        .filter((r) => props.t >= m.at + r.after)
+        .map((r, j) => ({ key: `m-${i}-r${j}`, at: m.at + r.after, kind: "msg" as const, c: { id: `m-${i}-r${j}`, at: m.at + r.after, author: r.author, message: r.text, agent: false } })),
+    ),
   ]
     .sort((a, b) => a.at - b.at)
     .slice(-limit);
@@ -239,6 +347,7 @@ function WebinarPreview(props: RoomPreviewProps) {
     props.highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
   const { open, afterVideo, shown, tab, lastSale, said } = roomMoment(props);
   const live = props.liveSettings ?? LIVE_DEFAULTS;
+  const peek = useCountdownPeek() && Boolean(live.countdown?.on);
   const social = useFollow(props, Boolean(open));
   // Deitado, o chat recolhido: abre com a oferta ou quando o editor mostra outro separador.
   const [side, setSide] = useState(false);
@@ -313,11 +422,12 @@ function WebinarPreview(props: RoomPreviewProps) {
         className="absolute inset-0"
       >
         {!props.playing && props.video.url ? (
-          <span className="absolute inset-0 grid place-items-center">
+          <span className={cn("absolute inset-0 grid place-items-center", showsEntry(props) && ENTRY_DIM)}>
             <PausedPlay props={props} compact={phone} big={!phone} />
           </span>
         ) : null}
       </button>
+      {peek ? <PeekCountdown live={live} /> : null}
       <div className={cn("absolute", phone ? "bottom-2 right-2" : "bottom-3 right-3")}>
         <VideoSettings
           compact={phone}
@@ -437,6 +547,7 @@ function LivePreview(props: RoomPreviewProps) {
   const hl = (key: string) =>
     props.highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
   const { open, afterVideo, shown, lastSale, said } = roomMoment(props);
+  const peek = useCountdownPeek() && Boolean(live.countdown?.on);
   const supportOpen = props.tab === "support";
   const { follow, onHost: openFollow, sheet: followSheet, host } = useFollow(props, Boolean(open));
   useEffect(() => {
@@ -444,17 +555,7 @@ function LivePreview(props: RoomPreviewProps) {
     setOfferOpen(false);
   }, [shown?.id]);
 
-  const countdownLeft = shown ? offerCountdownLeft(shown.countdown, shown.start, props.t) : 0;
-  const offer: LiveOffer | null = shown
-    ? {
-        product: shown.product,
-        priceFrom: shown.priceFrom,
-        priceNow: shown.priceNow,
-        button: shown.button || "Quero minha vaga",
-        countdown: shown.countdown > 0 ? countdownLeft : null,
-        closed: shown.id === "main" && props.offerClosed,
-      }
-    : null;
+  const offer = cardOffer(props, shown);
   const cardOpen = Boolean(offer) && !offerMin && !offerOpen;
 
   const teamName = props.host.name ? `Equipa de ${props.host.name}` : "Equipa";
@@ -463,7 +564,7 @@ function LivePreview(props: RoomPreviewProps) {
     item.kind === "sale"
       ? { key: item.key, kind: "sale", text: `${item.s.buyer} comprou ${item.s.product}`, color: props.saleColor }
       : item.kind === "mine"
-        ? { key: item.key, kind: "mine", text: item.m.text }
+        ? { key: item.key, kind: "mine", text: item.m.text, reaction: item.reaction }
         : { key: item.key, kind: "msg", author: item.c.author, text: item.c.message },
   );
   // O aviso «já respondemos», como exemplo, quando está ligado e o Agente responde.
@@ -520,6 +621,7 @@ function LivePreview(props: RoomPreviewProps) {
       {offerOpen && shown ? (
         <LiveOfferSheet
           countdown={offer?.countdown ?? null}
+          closed={offer?.closed}
           onClose={() => setOfferOpen(false)}
           onSupport={() => {
             setOfferOpen(false);
@@ -533,11 +635,12 @@ function LivePreview(props: RoomPreviewProps) {
             priceNow={shown.priceNow}
             buttonText={shown.button || "Quero minha vaga"}
             onBuy={props.onBuy}
-            countdownSeconds={countdownLeft}
+            countdownSeconds={0}
             showCountdown={false}
-            closed={shown.id === "main" && props.offerClosed}
+            closed={offer?.closed}
             group={isGroupLink(shown.url)}
             compact
+            look="compact"
             stickyBuy
           />
         </LiveOfferSheet>
@@ -564,8 +667,8 @@ function LivePreview(props: RoomPreviewProps) {
           <PreviewPlayer url={props.video.url} provider={props.video.provider} t={props.t} playing={props.playing} volume={props.volume} fit={frame.fit} />
           {props.captionsOn && inVideoCaption ? <CaptionLine text={said} compact={phone} /> : null}
           {!props.playing ? (
-            <span className="absolute inset-0 grid place-items-center">
-              <PausedPlay props={props} compact={phone} />
+            <span className={cn("absolute inset-0 grid place-items-center", showsEntry(props) && ENTRY_DIM)}>
+              <PausedPlay props={props} compact={phone && !tablet} />
             </span>
           ) : null}
         </div>
@@ -576,6 +679,7 @@ function LivePreview(props: RoomPreviewProps) {
         </div>
       )}
       <button type="button" onClick={props.onTogglePlay} aria-label={props.playing ? "Pausar" : "Tocar"} className="absolute inset-0" />
+      {peek ? <PeekCountdown live={live} fill /> : null}
       {props.captionsOn && !inVideoCaption ? (
         <div className="pointer-events-none absolute inset-x-0 top-0 h-[55%]">
           <CaptionLine text={said} compact />
@@ -735,7 +839,11 @@ function Panel({
     ...(shown ? ([["offer", "Oferta", ShoppingCart]] as [RoomTab, string, typeof MessagesSquare][]) : []),
   ];
   const chatItems = chatItemsAt(props, phone ? 6 : 9);
-  const countdownLeft = shown ? offerCountdownLeft(shown.countdown, shown.start, props.t) : 0;
+  const now = offerNow(props, shown);
+  // No telemóvel ao alto, a oferta sobe por cima do chat como na sala; reduzida, fica uma barra.
+  const [offerMin, setOfferMin] = useState(false);
+  useEffect(() => setOfferMin(false), [shown?.id]);
+  const card = props.device === "phone" && !sheet && tab === "chat" ? cardOffer(props, shown) : null;
 
   return (
     <div
@@ -772,7 +880,7 @@ function Panel({
       </div>
 
       {tab === "offer" && shown ? (
-        <div className={cn("min-h-0 flex-1 overflow-hidden", hl("pitch"))}>
+        <div className={cn("min-h-0 flex-1 overflow-y-auto", hl("pitch"))}>
           <OfferCard
             productName={shown.product}
             imageUrl={shown.id === "main" ? props.offerImageUrl : undefined}
@@ -780,10 +888,11 @@ function Panel({
             priceNow={shown.priceNow}
             buttonText={shown.button || "Quero entrar"}
             onBuy={props.onBuy}
-            countdownSeconds={countdownLeft}
-            showCountdown={shown.countdown > 0}
-            closed={shown.id === "main" && props.offerClosed}
+            countdownSeconds={now.seconds}
+            showCountdown={now.left !== null}
+            closed={now.closed}
             group={isGroupLink(shown.url)}
+            look={(props.liveSettings ?? LIVE_DEFAULTS).offerLook}
             banner={
               afterVideo ? (
                 <>
@@ -816,7 +925,7 @@ function Panel({
                   item.kind === "sale" ? (
                     <SaleLine key={item.key} text={`${item.s.buyer} comprou ${item.s.product}`} color={props.saleColor} />
                   ) : item.kind === "mine" ? (
-                    <ChatLine key={item.key} author="Você" text={item.m.text} badge="Só você vê" tone="mine" big={!phone} />
+                    <ChatLine key={item.key} author="Você" text={item.m.text} badge="Só você vê" tone="mine" reaction={item.reaction} big={!phone} />
                   ) : (
                     <div key={item.key} className={cn(props.highlight === `comment:${item.c.id}` && "-mx-2 rounded-lg bg-primary/15 px-2 py-1")}>
                       <ChatLine author={item.c.author} text={item.c.message} tone={item.c.agent ? "agent" : "people"} big={!phone} />
@@ -836,6 +945,15 @@ function Panel({
               </div>
             )}
           </div>
+          {card ? (
+            <div className={cn("shrink-0 px-3 pb-2.5", hl("pitch"))}>
+              {offerMin ? (
+                <LiveOfferSlim offer={card} onOpen={() => props.onTab("offer")} />
+              ) : (
+                <LiveOfferCard offer={card} onBuy={() => props.onBuy?.()} onMinimize={() => setOfferMin(true)} onExpand={() => props.onTab("offer")} panel />
+              )}
+            </div>
+          ) : null}
           <ChatComposer
             compact={phone}
             value={text}

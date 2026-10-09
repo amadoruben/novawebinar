@@ -12,6 +12,7 @@ import {
   RotateCcw,
   ShieldAlert,
   UserCheck,
+  Users,
   XCircle,
 } from "lucide-react";
 import { useState, type ComponentProps } from "react";
@@ -30,11 +31,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { friendlyError } from "@/lib/friendly-error";
 import { useSupportInvalidate, type StaffMember } from "@/lib/support/hooks";
@@ -52,6 +53,7 @@ import {
   type EventRow,
   type SkillRow,
 } from "@/lib/support/model";
+import { routingReasonLabel } from "@/lib/support/routing";
 import { runCaseAction, type CaseActionInput } from "@/lib/support/support.functions";
 import { Avatar, CallBadge, CaseStatusBadge, dateTimeLabel, PriorityBadge, SlaBadge } from "./badges";
 
@@ -110,67 +112,149 @@ const ICON: Record<CaseAction, typeof Bot> = {
   request_call: PhoneCall,
 };
 
-/** Para quem transferir: pessoas agrupadas por departamento, ou a fila do departamento. */
+export type TransferPerson = Pick<
+  StaffMember,
+  "id" | "name" | "department_id" | "presence" | "openCases" | "capacity" | "active" | "job_title"
+>;
+
+/**
+ * Para quem passar a conversa: procurar uma pessoa ou uma equipa; as pessoas
+ * vêm agrupadas por equipa, com o estado de cada uma. No fim, o supervisor e
+ * a devolução ao agente.
+ */
 export function TransferMenu({
   c,
   staff,
   departments,
   onTransfer,
+  onEscalate,
+  onReturnToAi,
   disabled,
   ...button
 }: {
-  c: Pick<CaseRow, "id" | "assigned_staff_id">;
-  staff: StaffMember[];
-  departments: DepartmentRow[];
+  c: Pick<CaseRow, "assigned_staff_id">;
+  staff: TransferPerson[];
+  departments: Pick<DepartmentRow, "id" | "name">[];
   onTransfer: (target: { staffId?: string; departmentId?: string }) => void;
+  onEscalate?: (() => void) | undefined;
+  onReturnToAi?: (() => void) | undefined;
   disabled?: boolean;
-} & Pick<ComponentProps<typeof Button>, "size" | "variant">) {
+} & Pick<ComponentProps<typeof Button>, "size" | "variant" | "className">) {
+  const [open, setOpen] = useState(false);
+  const [term, setTerm] = useState("");
+  const clean = term.trim().toLowerCase();
   const people = staff.filter((s) => s.active && s.id !== c.assigned_staff_id);
   const groups = [
-    ...departments.map((d) => ({ id: d.id, name: d.name, people: people.filter((s) => s.department_id === d.id) })),
-    { id: null, name: "Sem departamento", people: people.filter((s) => !s.department_id) },
-  ].filter((group) => group.id !== null || group.people.length > 0);
+    ...departments.map((d) => ({
+      id: d.id,
+      name: d.name,
+      people: people.filter((s) => s.department_id === d.id),
+    })),
+    { id: null, name: "Sem equipa", people: people.filter((s) => !s.department_id) },
+  ]
+    .map((group) =>
+      !clean || group.name.toLowerCase().includes(clean)
+        ? group
+        : { ...group, people: group.people.filter((s) => s.name.toLowerCase().includes(clean)) },
+    )
+    .filter(
+      (group) =>
+        group.people.length > 0 ||
+        (group.id !== null && (!clean || group.name.toLowerCase().includes(clean))),
+    );
+  const pick = (run: () => void) => {
+    setOpen(false);
+    setTerm("");
+    run();
+  };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
         <Button variant="outline" size="sm" disabled={disabled} {...button}>
           <ArrowRightLeft /> Transferir <ChevronDown className="size-3.5" />
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="max-h-[26rem] w-72 overflow-y-auto">
-        {groups.map((group) => (
-          <div key={group.id ?? "none"}>
-            <DropdownMenuLabel className="text-xs text-muted-foreground">{group.name}</DropdownMenuLabel>
-            {group.people.map((person) => (
-              <DropdownMenuItem
-                key={person.id}
-                onSelect={() => onTransfer({ staffId: person.id })}
-                className="gap-2.5"
-              >
-                <Avatar name={person.name} presence={person.presence} className="size-8" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{person.name}</span>
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {person.job_title || "Atendimento"} · {staffStatusLabel(person.presence)} ·{" "}
-                    {person.openCases}/{person.capacity}
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[min(20rem,calc(100vw-2rem))] p-0">
+        <div className="border-b p-2">
+          <Input
+            autoFocus
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+            placeholder="Procurar pessoa ou equipa"
+            aria-label="Procurar pessoa ou equipa"
+            className="h-9"
+          />
+        </div>
+        <div className="max-h-[min(22rem,50dvh)] overflow-y-auto p-1.5">
+          {groups.length === 0 && (
+            <p className="px-2 py-4 text-center text-sm text-muted-foreground">
+              Ninguém com esse nome.
+            </p>
+          )}
+          {groups.map((group) => (
+            <div key={group.id ?? "none"} className="pb-1">
+              <div className="flex min-h-10 items-center justify-between gap-2 px-2 pt-1.5">
+                <p className="min-w-0 truncate text-[12px] font-semibold text-muted-foreground">
+                  {group.name}
+                </p>
+                {group.id && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0"
+                    onClick={() => pick(() => onTransfer({ departmentId: group.id! }))}
+                  >
+                    <Users /> Passar à equipa
+                  </Button>
+                )}
+              </div>
+              {group.people.map((person) => (
+                <button
+                  key={person.id}
+                  type="button"
+                  onClick={() => pick(() => onTransfer({ staffId: person.id }))}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left hover:bg-gray-100"
+                >
+                  <Avatar name={person.name} presence={person.presence} className="size-8" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{person.name}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {staffStatusLabel(person.presence)}
+                      {person.openCases > 0 ? ` · ${person.openCases} em atendimento` : ""}
+                    </span>
                   </span>
-                </span>
-              </DropdownMenuItem>
-            ))}
-            {group.id && (
-              <DropdownMenuItem
-                onSelect={() => onTransfer({ departmentId: group.id! })}
-                className="text-muted-foreground"
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+        {(onEscalate || onReturnToAi) && (
+          <div className="border-t p-1.5">
+            {onEscalate && (
+              <button
+                type="button"
+                onClick={() => pick(onEscalate)}
+                className="flex w-full items-center gap-2.5 rounded-md px-2 py-2.5 text-left text-sm hover:bg-gray-100"
               >
-                Pôr na fila de {group.name}
-              </DropdownMenuItem>
+                <ShieldAlert className="size-4 text-muted-foreground" aria-hidden /> Transferir para
+                o supervisor
+              </button>
             )}
-            <DropdownMenuSeparator />
+            {onReturnToAi && (
+              <button
+                type="button"
+                onClick={() => pick(onReturnToAi)}
+                className="flex w-full items-center gap-2.5 rounded-md px-2 py-2.5 text-left text-sm hover:bg-gray-100"
+              >
+                <Bot className="size-4 text-muted-foreground" aria-hidden /> Devolver ao Agente IA
+              </button>
+            )}
           </div>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -246,12 +330,14 @@ export function CaseActions({
   staff,
   departments,
   onDone,
+  size = "sm",
 }: {
   c: CaseRow;
   myStaffId: string | null;
   staff: StaffMember[];
   departments: DepartmentRow[];
   onDone?: () => void;
+  size?: "sm" | "default";
 }) {
   const { run, busy } = useRunCase();
   const [resolving, setResolving] = useState(false);
@@ -264,17 +350,19 @@ export function CaseActions({
     if (action === "transfer") return undefined;
     return void go({ action, caseId: c.id } as ActionInput);
   };
-  const menu = actions.filter((a) => !["assume", "transfer", "resolve", "reopen"].includes(a));
+  // Supervisor e devolução ao agente vivem dentro de «Transferir».
+  const folded = actions.includes("transfer") ? ["escalate", "return_to_ai"] : [];
+  const menu = actions.filter((a) => !["assume", "transfer", "resolve", "reopen", ...folded].includes(a));
 
   return (
     <div className="flex flex-wrap items-center gap-2">
       {actions.includes("assume") && (
-        <Button size="sm" disabled={busy} onClick={() => simple("assume")}>
+        <Button size={size} disabled={busy} onClick={() => simple("assume")}>
           <UserCheck /> Assumir
         </Button>
       )}
       {actions.includes("reopen") && (
-        <Button size="sm" variant="outline" disabled={busy} onClick={() => simple("reopen")}>
+        <Button size={size} variant="outline" disabled={busy} onClick={() => simple("reopen")}>
           <RotateCcw /> Reabrir
         </Button>
       )}
@@ -284,18 +372,21 @@ export function CaseActions({
           staff={staff}
           departments={departments}
           disabled={busy}
+          size={size}
           onTransfer={(target) => void go({ action: "transfer", caseId: c.id, ...target })}
+          onEscalate={actions.includes("escalate") ? () => simple("escalate") : undefined}
+          onReturnToAi={actions.includes("return_to_ai") ? () => simple("return_to_ai") : undefined}
         />
       )}
       {actions.includes("resolve") && (
-        <Button size="sm" variant="outline" disabled={busy} onClick={() => simple("resolve")}>
+        <Button size={size} variant="outline" disabled={busy} onClick={() => simple("resolve")}>
           <CheckCircle2 /> Resolver
         </Button>
       )}
       {menu.length > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="sm" variant="ghost" className="px-2" aria-label="Mais acções" disabled={busy}>
+            <Button size={size} variant="ghost" className="px-2" aria-label="Mais acções" disabled={busy}>
               <MoreHorizontal />
             </Button>
           </DropdownMenuTrigger>
@@ -374,7 +465,7 @@ export function CaseSummary({
         <Line label="Intenção">{intentLabel(c.intent)}</Line>
         <Line label="Categoria">{categoryLabel(c.category)}</Line>
         <Line label="Motivo">{c.reason_for_escalation || "—"}</Line>
-        <Line label="Departamento">{department?.name ?? "—"}</Line>
+        <Line label="Equipa">{department?.name ?? "—"}</Line>
         <Line label="Responsável">
           {owner ? (
             <span className="inline-flex items-center gap-1.5">
@@ -403,7 +494,8 @@ export function CaseSummary({
       )}
       {c.routing_reason && (
         <p className="text-xs leading-relaxed text-muted-foreground">
-          <span className="font-medium text-foreground">Encaminhamento:</span> {c.routing_reason}
+          <span className="font-medium text-foreground">Encaminhamento:</span>{" "}
+          {routingReasonLabel(c.routing_reason)}
         </p>
       )}
       {c.resolution && (
@@ -417,7 +509,7 @@ export function CaseSummary({
 
 const ACTOR: Record<string, string> = { ai: "IA", system: "Sistema", contact: "Cliente" };
 
-function eventDetail(event: EventRow, staff: StaffMember[], departments: DepartmentRow[]) {
+export function eventDetail(event: EventRow, staff: StaffMember[], departments: DepartmentRow[]) {
   const data = (event.data ?? {}) as Record<string, unknown>;
   const person = (id: unknown) => staff.find((s) => s.id === id)?.name;
   const text = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null);

@@ -4,6 +4,7 @@
  * no mesmo segundo.
  */
 import { buildAudienceCurve, curveBounds } from "@/lib/audience-curve";
+import { templateById } from "@/lib/prelive-templates";
 
 /** 65 → «01:05»; a partir de uma hora, «1:01:05». */
 export function clock(seconds: number) {
@@ -212,6 +213,17 @@ export function offerCountdownLeft(countdownSeconds: number, startSeconds: numbe
 }
 
 /**
+ * O cronómetro e o botão da oferta aberta, iguais na sala e na pré-visualização. No zero, com «O botão
+ * continua» o cronómetro sai e o botão fica; com «O botão fecha» o botão passa a «Oferta encerrada».
+ * O último dia da oferta fecha sempre o botão. `left` é null quando não há cronómetro à vista.
+ */
+export function offerTimer(countdownSeconds: number, remaining: number, closeAtZero: boolean, deadlinePassed = false) {
+  const zero = countdownSeconds > 0 && remaining <= 0;
+  const closed = deadlinePassed || (zero && closeAtZero);
+  return { left: countdownSeconds > 0 && !zero && !closed ? Math.round(remaining) : null, closed };
+}
+
+/**
  * Uma oferta no tempo do vídeo. A principal vem das colunas `cta_*`; as seguintes ficam em
  * `extra_offers` (por exemplo, uma oferta especial até ao minuto 10 e depois a geral).
  */
@@ -276,9 +288,74 @@ export type LiveSettings = {
   notify: boolean;
   /** A cor do botão e do cartão da oferta, em código hex. */
   offerColor: string;
+  /** O cartão da oferta: quadrado (grande, com a imagem) ou compacto (uma linha). */
+  offerLook: OfferLook;
+  /** A contagem antes de começar; null nos webinars gravados antes dela (valem as colunas prelive_*). */
+  countdown: RoomCountdown | null;
 };
 
 export type EntryLook = "pulse" | "info";
+
+export type OfferLook = "square" | "compact";
+export const OFFER_LOOKS: readonly { id: OfferLook; name: string }[] = [
+  { id: "square", name: "Quadrada" },
+  { id: "compact", name: "Compacta" },
+];
+
+/**
+ * A contagem antes de a sessão começar: a sala abre uns minutos antes, o chat já funciona e o lugar
+ * do vídeo mostra o relógio no estilo e na cor escolhidos. Os estilos são os ids dos modelos
+ * (`prelive-templates`), para os dados antigos continuarem a ler-se.
+ */
+export type CountdownStyle = "minimal" | "premium" | "dark" | "urgency";
+export type RoomCountdown = { on: boolean; minutes: number; style: CountdownStyle; color: string; sound: boolean };
+
+export const COUNTDOWN_STYLES: readonly { id: CountdownStyle; name: string }[] = [
+  { id: "minimal", name: "Anel" },
+  { id: "premium", name: "Blocos" },
+  { id: "dark", name: "Grande" },
+  { id: "urgency", name: "Barra" },
+];
+export const COUNTDOWN_MINUTES = [1, 3, 5, 10, 15] as const;
+export const COUNTDOWN_OFF: RoomCountdown = { on: false, minutes: 5, style: "minimal", color: "#E8440C", sound: true };
+
+function parseCountdown(raw: unknown): RoomCountdown | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const minutes = Math.round(Number(r["minutes"]));
+  return {
+    on: r["on"] === true,
+    minutes: Number.isFinite(minutes) ? Math.min(30, Math.max(1, minutes)) : COUNTDOWN_OFF.minutes,
+    style: COUNTDOWN_STYLES.some((s) => s.id === r["style"]) ? (r["style"] as CountdownStyle) : COUNTDOWN_OFF.style,
+    color: offerColor(r["color"]),
+    sound: r["sound"] !== false,
+  };
+}
+
+/** As colunas prelive_* que o editor antigo (antes da versão 13) gravava. */
+export type LegacyCountdown = { prelive_enabled?: boolean | null; prelive_seconds?: number | null; prelive_template?: string | null; prelive_sound?: boolean | null };
+
+/** A contagem de um webinar antigo, lida das colunas prelive_*; desligada, null. */
+export function countdownFromLegacy(legacy: LegacyCountdown | null | undefined): RoomCountdown | null {
+  const seconds = legacy?.prelive_seconds ?? 0;
+  if (!legacy?.prelive_enabled || seconds <= 0) return null;
+  return {
+    on: true,
+    minutes: Math.min(30, Math.max(1, Math.round(seconds / 60))),
+    style: templateById(legacy.prelive_template).id,
+    color: OFFER_COLOR_DEFAULT,
+    sound: legacy.prelive_sound !== false,
+  };
+}
+
+/**
+ * O que a sala usa da contagem: os segundos (0 desliga), o estilo, a cor e o som. Sem a escolha nova
+ * (webinars antigos), valem as colunas prelive_*, lidas como o editor as mostra.
+ */
+export function roomCountdown(countdown: RoomCountdown | null | undefined, legacy: LegacyCountdown) {
+  const c = countdown ?? countdownFromLegacy(legacy) ?? COUNTDOWN_OFF;
+  return { seconds: c.on ? c.minutes * 60 : 0, style: c.style as string, color: c.color, sound: c.sound };
+}
 
 export const OFFER_COLOR_DEFAULT = "#E8440C";
 /** As sugestões ao lado do seletor: laranja da marca, vermelho, verde, azul e roxo. */
@@ -300,6 +377,8 @@ export const LIVE_DEFAULTS: LiveSettings = {
   hideFollowed: true,
   notify: true,
   offerColor: OFFER_COLOR_DEFAULT,
+  offerLook: "square",
+  countdown: null,
 };
 
 export const FOLLOW_NETWORKS: readonly { id: FollowNetwork; name: string; example: string; android: string }[] = [
@@ -320,10 +399,14 @@ export function liveVideoPlace(shape: "horizontal" | "vertical" | null | undefin
   return where === "phone" ? "top" : "wide";
 }
 
-/** Lê as opções da sala; o que faltar ou vier estragado fica com o valor por omissão. */
-export function liveSettings(chatSettings: unknown): LiveSettings {
+/**
+ * Lê as opções da sala; o que faltar ou vier estragado fica com o valor por omissão. Com `legacy` (o
+ * editor), a contagem de um webinar antigo vem das colunas prelive_*: o editor mostra o que a sala faz.
+ */
+export function liveSettings(chatSettings: unknown, legacy?: LegacyCountdown): LiveSettings {
   const raw = (chatSettings as { live?: unknown } | null)?.live;
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return { ...LIVE_DEFAULTS, links: {}, moments: [] };
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw))
+    return { ...LIVE_DEFAULTS, links: {}, moments: [], countdown: countdownFromLegacy(legacy) };
   const r = raw as Record<string, unknown>;
   const linksRaw = typeof r["links"] === "object" && r["links"] !== null ? (r["links"] as Record<string, unknown>) : {};
   const links: LiveSettings["links"] = {};
@@ -346,6 +429,8 @@ export function liveSettings(chatSettings: unknown): LiveSettings {
     hideFollowed: r["hideFollowed"] !== false,
     notify: r["notify"] !== false,
     offerColor: offerColor(r["offerColor"]),
+    offerLook: r["offerLook"] === "compact" ? "compact" : "square",
+    countdown: parseCountdown(r["countdown"]) ?? countdownFromLegacy(legacy),
   };
 }
 

@@ -4,6 +4,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Clock,
   Eye,
   Headset,
   Heart,
@@ -13,6 +14,7 @@ import {
   Play,
   SendHorizontal,
   Settings,
+  ShoppingBag,
   ShoppingCart,
   Smile,
   Sun,
@@ -25,7 +27,7 @@ import {
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { liveVideoPlace, type EntryLook, type LiveVideoPlace } from "@/lib/room-logic";
+import { clock, discountPercent, liveVideoPlace, type EntryLook, type LiveVideoPlace, type OfferLook } from "@/lib/room-logic";
 
 /**
  * Peças da sala que a sala pública e a pré-visualização do editor desenham iguais. As cores
@@ -492,6 +494,20 @@ export function HeartButton({
   );
 }
 
+/** A reacção do chat simulado a uma mensagem real («❤️ 3»), no fim da linha. */
+export function ReactionPill({ text, onVideo }: { text: string; onVideo?: boolean | undefined }) {
+  return (
+    <span
+      className={cn(
+        "lv-in ml-1.5 inline-flex h-[22px] items-center rounded-full px-2 align-[1px] text-[12.5px] font-semibold tabular-nums [text-shadow:none]",
+        onVideo ? "bg-white/20 text-white" : "bg-room-raised text-room-text ring-1 ring-room-line",
+      )}
+    >
+      {text}
+    </span>
+  );
+}
+
 /** Uma mensagem do chat, como no YouTube: avatar, nome e texto na mesma linha. */
 export function ChatLine({
   author,
@@ -499,14 +515,18 @@ export function ChatLine({
   avatarUrl,
   tone = "people",
   badge,
+  reaction,
   big,
   onVideo,
 }: {
   author: string;
   text: string;
   avatarUrl?: string | null | undefined;
-  tone?: "people" | "mine" | "agent" | undefined;
+  /** «team»: alguém da equipa, com o nome e o selo na cor do botão. */
+  tone?: "people" | "mine" | "agent" | "team" | undefined;
   badge?: string | undefined;
+  /** A reacção do chat simulado, quando já chegou. */
+  reaction?: string | undefined;
   /** Letra maior (sala no computador). */
   big?: boolean | undefined;
   /** Por cima do vídeo (formato Live): letra branca com sombra, como no Instagram. */
@@ -530,7 +550,9 @@ export function ChatLine({
             big ? "size-8 text-[11.5px]" : "size-7 text-[10.5px]",
             tone === "agent"
               ? "bg-primary text-white"
-              : onVideo
+              : tone === "team"
+                ? "bg-[var(--of,#E8440C)] text-[var(--of-on,#fff)]"
+                : onVideo
                 ? "bg-white/20 text-white ring-1 ring-white/30 backdrop-blur"
                 : "bg-room-raised text-room-text ring-1 ring-room-line",
           )}
@@ -548,7 +570,7 @@ export function ChatLine({
         <span
           className={cn(
             "mr-2 font-semibold",
-            tone === "agent" ? "text-primary" : onVideo ? "text-white/80" : "text-room-subtle",
+            tone === "agent" || tone === "team" ? "text-[var(--of-ink,#E8440C)]" : onVideo ? "text-white/80" : "text-room-subtle",
           )}
         >
           {author}
@@ -557,14 +579,19 @@ export function ChatLine({
         {badge ? (
           <span
             className={cn(
-              "mr-2 rounded px-1.5 py-px align-[1px] text-[11px] font-medium [text-shadow:none]",
-              onVideo ? "bg-white/20 text-white" : "bg-room-raised text-room-subtle",
+              "mr-2 rounded px-1.5 py-px align-[1px] text-[11px] [text-shadow:none]",
+              tone === "team"
+                ? "bg-[var(--of,#E8440C)] font-bold text-[var(--of-on,#fff)]"
+                : onVideo
+                  ? "bg-white/20 font-medium text-white"
+                  : "bg-room-raised font-medium text-room-subtle",
             )}
           >
             {badge}
           </span>
         ) : null}
         {text}
+        {reaction ? <ReactionPill text={reaction} onVideo={onVideo} /> : null}
       </p>
     </div>
   );
@@ -603,7 +630,7 @@ export const saleColor = (name: string | null | undefined) => SALE_COLORS[name ?
 
 /* ---------- Oferta ---------- */
 
-/** «A oferta termina em» com os minutos e os segundos em blocos. */
+/** «A oferta termina em» com os minutos e os segundos em blocos, na cor da oferta. */
 export function CountdownBlocks({ seconds, compact }: { seconds: number; compact?: boolean | undefined }) {
   const s = Math.max(0, Math.round(seconds));
   const mm = String(Math.min(99, Math.floor(s / 60))).padStart(2, "0");
@@ -625,10 +652,8 @@ export function CountdownBlocks({ seconds, compact }: { seconds: number; compact
     </span>
   );
   return (
-    <div className="grid justify-items-center gap-2 rounded-[14px] bg-primary/10 px-3 pb-3 pt-3.5 ring-1 ring-primary/25">
-      <small className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
-        {s > 0 ? "A oferta termina em" : "Tempo esgotado"}
-      </small>
+    <div className="grid justify-items-center gap-2 rounded-[14px] bg-[color-mix(in_srgb,var(--of,#E8440C)_10%,transparent)] px-3 pb-3 pt-3.5 ring-1 ring-[color-mix(in_srgb,var(--of,#E8440C)_25%,transparent)]">
+      <small className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--of-ink,#E8440C)]">A oferta termina em</small>
       <div className="flex items-start gap-1.5">
         {group(mm, "min")}
         <i className={cn("font-extrabold not-italic text-room-subtle", compact ? "text-2xl leading-[44px]" : "text-[30px] leading-[52px]")}>
@@ -640,7 +665,32 @@ export function CountdownBlocks({ seconds, compact }: { seconds: number; compact
   );
 }
 
-/** O separador Oferta: produto, preços, botão e cronómetro. */
+/** A imagem do produto em pequeno; sem imagem, o saco na cor da oferta. */
+export function OfferThumb({ imageUrl, className }: { imageUrl?: string | null | undefined; className?: string | undefined }) {
+  return (
+    <span
+      className={cn(
+        "relative grid shrink-0 place-items-center overflow-hidden rounded-xl bg-[linear-gradient(140deg,var(--of,#E8440C),color-mix(in_srgb,var(--of,#E8440C)_35%,#000))] text-white",
+        className,
+      )}
+    >
+      {imageUrl ? <img src={imageUrl} alt="" className="absolute inset-0 size-full object-cover" /> : <ShoppingBag className="size-[42%]" />}
+    </span>
+  );
+}
+
+/** «-86%» na cor da oferta ou, com a oferta fechada, «Encerrada» a cinzento. */
+function OfferBadge({ discount, closed, className }: { discount: number | null; closed?: boolean | undefined; className?: string | undefined }) {
+  if (closed)
+    return <span className={cn("rounded-full bg-room-raised px-2.5 py-1 text-[12px] font-bold text-room-subtle ring-1 ring-room-line", className)}>Encerrada</span>;
+  if (discount === null) return null;
+  return <span className={cn("rounded-full bg-[var(--of,#E8440C)] px-2.5 py-1 text-[12.5px] font-extrabold text-[var(--of-on,#fff)]", className)}>-{discount}%</span>;
+}
+
+/**
+ * O separador Oferta (e a folha da oferta no Live): produto, preços, botão e cronómetro. Duas formas,
+ * escolhidas no editor: «Quadrada», com o produto num quadrado grande, e «Compacta», numa linha.
+ */
 export function OfferCard({
   productName,
   imageUrl,
@@ -655,6 +705,7 @@ export function OfferCard({
   banner,
   group,
   compact,
+  look = "square",
   highlight,
   stickyBuy,
 }: {
@@ -675,67 +726,109 @@ export function OfferCard({
   /** O botão leva a um grupo (WhatsApp ou Telegram): pede os dados e abre o grupo. */
   group?: boolean | undefined;
   compact?: boolean | undefined;
+  look?: OfferLook | undefined;
   highlight?: string | null | undefined;
   /** Numa folha que rola: o botão fica preso ao fundo, sempre à vista. */
   stickyBuy?: boolean | undefined;
 }) {
   const hl = (key: string) =>
     highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
-  return (
-    <div className="grid content-start gap-4 p-4">
+  const discount = discountPercent(priceFrom ?? "", priceNow ?? "");
+  const name = productName ? (
+    <span className={cn("font-extrabold leading-tight", look === "compact" ? "line-clamp-2 text-[17px]" : "relative text-[22px] drop-shadow")}>{productName}</span>
+  ) : productName === "" ? (
+    <em className="relative justify-self-start rounded-lg border-[1.5px] border-dashed border-[#F2C77B] px-2.5 py-1 text-[15px] font-bold not-italic text-[#F2C77B]">
+      Nome do produto
+    </em>
+  ) : null;
+  const buy = (
+    // A folha rola por baixo do botão: um esbatido por cima dele, para nada ficar cortado a meio.
+    <div
+      className={
+        stickyBuy
+          ? "sticky bottom-0 z-[1] -mx-4 -mb-4 bg-room-surface px-4 pb-4 pt-1 before:pointer-events-none before:absolute before:inset-x-0 before:-top-5 before:h-5 before:bg-gradient-to-t before:from-room-surface before:to-transparent"
+          : "contents"
+      }
+    >
+      <button
+        type="button"
+        onClick={onBuy}
+        disabled={closed}
+        className={cn(
+          "flex w-full items-center justify-center gap-2.5 rounded-xl bg-[var(--of,#E8440C)] font-black uppercase tracking-[0.03em] text-[var(--of-on,#FFFFFF)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-room-raised disabled:text-room-subtle",
+          compact || look === "compact" ? "h-[54px] text-[15px]" : "h-[60px] text-[17px]",
+          hl("cta"),
+        )}
+      >
+        {group ? <Users className="size-5" /> : <ShoppingCart className="size-5" />}
+        {closed ? "Oferta encerrada" : buttonText}
+      </button>
+    </div>
+  );
+  const top = (
+    <>
       {note ? <p className="rounded-[10px] bg-amber-500/15 px-3 py-2.5 text-[13px] font-medium text-amber-500">{note}</p> : null}
       {banner ? (
-        <div className="rounded-[12px] bg-primary/10 px-3.5 py-3 text-[13.5px] leading-snug text-room-text ring-1 ring-primary/25">
-          {banner}
-        </div>
+        <div className="rounded-[12px] bg-primary/10 px-3.5 py-3 text-[13.5px] leading-snug text-room-text ring-1 ring-primary/25">{banner}</div>
       ) : null}
-      {imageUrl || productName !== undefined ? (
-        <div
-          className={cn(
-            "relative grid content-end overflow-hidden rounded-xl p-4 text-white ring-1 ring-room-line",
-            compact ? "h-[110px]" : "h-[150px]",
-            !imageUrl &&
-              "bg-[radial-gradient(100%_120%_at_100%_0%,color-mix(in_srgb,var(--of,#E8440C)_45%,transparent),transparent_60%),linear-gradient(160deg,#2a2f38,#15171b)]",
-            hl("product"),
-          )}
-        >
-          {imageUrl ? (
-            <img src={imageUrl} alt={productName || "Oferta"} className="absolute inset-0 size-full object-cover" />
-          ) : null}
-          {productName ? (
-            <span className="relative text-[22px] font-extrabold leading-tight drop-shadow">{productName}</span>
-          ) : productName === "" ? (
-            <em className="relative justify-self-start rounded-lg border-[1.5px] border-dashed border-[#F2C77B] px-2.5 py-1 text-lg font-bold not-italic text-[#F2C77B]">
-              Nome do produto
-            </em>
-          ) : null}
+    </>
+  );
+
+  if (look === "compact") {
+    return (
+      <div className="grid content-start gap-3.5 p-4">
+        {top}
+        <div className={cn("flex items-center gap-3", hl("product"))}>
+          <OfferThumb imageUrl={imageUrl} className="size-[68px]" />
+          <div className="grid min-w-0 flex-1 gap-1">
+            {name}
+            {priceFrom || priceNow ? (
+              <p className={cn("flex flex-wrap items-baseline gap-x-2 leading-tight", hl("price"))}>
+                {priceFrom ? <s className="text-[13.5px] font-semibold text-room-subtle">{priceFrom}</s> : null}
+                {priceNow ? <b className="text-[22px] font-black tracking-tight">{priceNow}</b> : null}
+              </p>
+            ) : null}
+          </div>
+          <OfferBadge discount={discount} closed={closed} className="shrink-0 self-start" />
         </div>
-      ) : null}
-      {priceFrom || priceNow ? (
-        <div className={cn("border-t border-room-line pt-4", hl("price"))}>
-          {priceFrom ? <p className="text-[15px] font-bold text-room-subtle line-through">De {priceFrom}</p> : null}
-          {priceNow ? (
-            <p className={cn("font-black tracking-tight text-room-text", compact ? "text-[28px]" : "text-[34px]")}>
-              Por {priceNow}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-      <div className={stickyBuy ? "sticky bottom-0 z-[1] -mx-4 -mb-4 bg-room-surface px-4 pb-4 pt-1" : "contents"}>
-        <button
-          type="button"
-          onClick={onBuy}
-          disabled={closed}
-          className={cn(
-            "flex w-full items-center justify-center gap-2.5 rounded-xl bg-[var(--of,#E8440C)] font-black uppercase tracking-[0.03em] text-[var(--of-on,#FFFFFF)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-room-raised disabled:text-room-subtle",
-            compact ? "h-[54px] text-[15px]" : "h-[60px] text-[17px]",
-            hl("cta"),
-          )}
-        >
-          {group ? <Users className="size-5" /> : <ShoppingCart className="size-5" />}
-          {closed ? "Oferta encerrada" : buttonText}
-        </button>
+        {buy}
+        {showCountdown ? (
+          <p className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[color-mix(in_srgb,var(--of,#E8440C)_10%,transparent)] text-[14px] font-bold text-[var(--of-ink,#E8440C)]">
+            <Clock className="size-4" strokeWidth={2.4} />
+            A oferta termina em <span className="tabular-nums">{clock(Math.max(0, countdownSeconds))}</span>
+          </p>
+        ) : null}
       </div>
+    );
+  }
+
+  // «Quadrada»: o produto num quadrado grande (a imagem, ou o saco na cor da oferta), com o nome e os
+  // preços ao lado; o botão e o cronómetro cabem por baixo, à vista, mesmo no telemóvel.
+  return (
+    <div className="grid content-start gap-4 p-4">
+      {top}
+      <div className={cn("flex items-start gap-3.5", hl("product"))}>
+        <span className={cn("relative aspect-square shrink-0", compact ? "w-[38%] max-w-[132px]" : "w-[42%] max-w-[168px]")}>
+          <OfferThumb imageUrl={imageUrl} className="size-full rounded-2xl ring-1 ring-room-line" />
+          <OfferBadge discount={discount} closed={closed} className="absolute left-2 top-2" />
+        </span>
+        <div className="grid min-w-0 flex-1 content-start gap-2 pt-0.5">
+          {productName ? (
+            <span className={cn("line-clamp-3 break-words font-extrabold leading-tight", compact ? "text-[17px]" : "text-[19px]")}>{productName}</span>
+          ) : (
+            name
+          )}
+          {priceFrom || priceNow ? (
+            <div className={cn("grid", hl("price"))}>
+              {priceFrom ? <s className="text-[14px] font-bold text-room-subtle">De {priceFrom}</s> : null}
+              {priceNow ? (
+                <b className={cn("font-black leading-tight tracking-tight text-room-text", compact ? "text-[22px]" : "text-[26px]")}>Por {priceNow}</b>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      {buy}
       {showCountdown ? <CountdownBlocks seconds={countdownSeconds} compact={compact} /> : null}
     </div>
   );
@@ -781,12 +874,13 @@ export const LIVE_COVER =
 export const LIVE_WIDE =
   "absolute left-1/2 top-1/2 aspect-video w-[min(calc(100cqw-64px),calc((100cqh-112px)*16/9))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl";
 /**
- * O vídeo deitado no telemóvel ao alto (Live): à largura do ecrã, encostado em cima (logo abaixo da
- * zona da câmara, `--live-top`), com a barra de cima por dentro. Só um esbatido preto curto nas
- * bordas; o vídeo nunca fica desfocado.
+ * O vídeo deitado no telemóvel ao alto (Live): à largura do ecrã, centrado na parte de cima do palco
+ * (o centro a 37% da altura), logo abaixo da barra de cima e longe do chat, como no Instagram. Por cima
+ * e por baixo fica o preto do palco, com uma passagem curta de 10 px nas bordas; o vídeo nunca fica
+ * desfocado nem escurecido. As unidades cq medem o palco; `--live-top` é a zona da câmara.
  */
 export const LIVE_TOP =
-  "absolute inset-x-0 top-[var(--live-top,0px)] aspect-video w-full [mask-image:linear-gradient(180deg,rgba(0,0,0,.7),#000_4%,#000_93%,transparent)]";
+  "absolute inset-x-0 top-[max(calc(var(--live-top,0px)_+_58px),calc(37cqh_-_28.125cqw))] aspect-video w-full [mask-image:linear-gradient(180deg,transparent,#000_10px,#000_calc(100%_-_10px),transparent)]";
 /** O vídeo ao alto no computador (Live): uma coluna 9:16 ao centro, quase da altura do palco. */
 export const LIVE_COLUMN =
   "absolute left-1/2 top-1/2 aspect-[9/16] h-[calc(100cqh-48px)] max-w-[calc(100cqw-48px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl shadow-[0_0_0_1px_rgba(255,255,255,.06),0_30px_80px_rgba(0,0,0,.6)]";
@@ -809,7 +903,8 @@ export const LIVE_CONTAIN = "absolute left-1/2 top-1/2 h-full w-[56.25cqh] -tran
 
 /**
  * O botão para começar a ver (o navegador só deixa tocar com som depois de um toque), ao centro do
- * vídeo e sem o tapar: só o botão a pulsar, ou o botão com uma linha de informação.
+ * vídeo, na cor do botão escolhida no editor (`--of`): só o botão a pulsar, ou o botão com uma linha de
+ * informação. O escurecido do vídeo por trás é `ENTRY_DIM`, posto por quem o desenha.
  */
 export function EntryPlay({ look, kicker, compact }: { look: EntryLook; kicker: string; compact?: boolean | undefined }) {
   const big = look === "pulse";
@@ -817,25 +912,28 @@ export function EntryPlay({ look, kicker, compact }: { look: EntryLook; kicker: 
     <span
       className={cn(
         "pointer-events-none flex items-center text-white",
-        !big && "gap-3 rounded-full bg-black/60 py-1.5 pl-1.5 pr-5 text-left ring-1 ring-white/15 backdrop-blur-md",
-        !big && compact && "gap-2 py-1 pl-1 pr-3.5",
+        !big && "gap-3.5 rounded-full bg-black/60 py-2 pl-2 pr-6 text-left shadow-[0_12px_32px_rgba(0,0,0,.35)] ring-1 ring-white/15 backdrop-blur-md",
+        !big && compact && "gap-2.5 py-1.5 pl-1.5 pr-4",
       )}
     >
       <span
         className={cn(
-          "relative grid shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-[0_8px_24px_rgba(0,0,0,.35)]",
-          big ? (compact ? "size-14" : "size-[72px]") : compact ? "size-9" : "size-11",
+          "relative grid shrink-0 place-items-center rounded-full bg-[var(--of,#E8440C)] text-[var(--of-on,#fff)] shadow-[0_8px_28px_color-mix(in_srgb,var(--of,#E8440C)_45%,transparent)]",
+          big ? (compact ? "size-16" : "size-[86px]") : compact ? "size-10" : "size-[52px]",
         )}
       >
-        <span className="absolute inset-0 animate-ping rounded-full bg-primary/50 motion-reduce:animate-none" />
-        <Play className={cn("relative translate-x-px", big ? (compact ? "size-6" : "size-8") : compact ? "size-4" : "size-[18px]")} fill="currentColor" />
+        <span className="absolute inset-0 animate-ping rounded-full bg-[var(--of,#E8440C)] opacity-50 motion-reduce:animate-none" />
+        <Play className={cn("relative translate-x-px", big ? (compact ? "size-7" : "size-9") : compact ? "size-[18px]" : "size-[22px]")} fill="currentColor" />
       </span>
       {big ? null : (
         <span className="leading-tight">
-          <small className={cn("block font-bold uppercase tracking-[0.16em] text-white/70", compact ? "text-[9.5px]" : "text-[11px]")}>{kicker}</small>
-          <b className={cn("block font-semibold", compact ? "text-[13px]" : "text-[15px]")}>Assistir agora</b>
+          <small className={cn("block font-bold uppercase tracking-[0.16em] text-white/75", compact ? "text-[10px]" : "text-[11.5px]")}>{kicker}</small>
+          <b className={cn("block font-semibold", compact ? "text-[14.5px]" : "text-[17px]")}>Assistir agora</b>
         </span>
       )}
     </span>
   );
 }
+
+/** O escurecido do vídeo por trás do botão de entrar: o vídeo continua à vista, como num Live em pausa. */
+export const ENTRY_DIM = "bg-black/45";

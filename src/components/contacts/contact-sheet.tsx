@@ -11,6 +11,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ContactAutomations } from "@/components/automation-runs";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,8 @@ import {
 } from "@/lib/contacts";
 import { formatDateTime, useContactDetail, useInvalidate, watchLabel, type RegistrationOrigin } from "@/lib/data";
 import { segmentSentence, type SegmentRules } from "@/lib/segments";
+import { useContactConversations } from "@/lib/support/hooks";
+import { intentLabel, statusLabel } from "@/lib/support/model";
 import { cn } from "@/lib/utils";
 import { clockLabel } from "@/lib/webinar-metrics";
 
@@ -303,6 +306,8 @@ export function ContactSheet({
             )}
           </Block>
 
+          <ContactConversations contactId={contact.id} participantIds={detail?.origins.map((o) => o.id) ?? []} />
+
           {detail && detail.lastMessages.length > 0 && (
             <Block title="Últimas mensagens no chat">
               <ul className="space-y-2">
@@ -321,6 +326,51 @@ export function ContactSheet({
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/** As conversas do Atendimento e os casos desta pessoa, com ligação para abrir cada uma. */
+function ContactConversations({
+  contactId,
+  participantIds,
+}: {
+  contactId: string | null;
+  participantIds: string[];
+}) {
+  const { data } = useContactConversations(contactId, participantIds);
+  if (!data || data.talks.length === 0) return null;
+  return (
+    <Block title="Conversas">
+      <ul className="space-y-2">
+        {data.talks.map((t) => {
+          const linked = data.cases.filter((c) => c.conversation_id === t.id);
+          return (
+            <li key={t.id}>
+              <Link
+                to="/support"
+                search={{ c: t.id }}
+                className="block rounded-md bg-gray-100 px-4 py-2.5 transition-colors hover:bg-gray-150"
+              >
+                <p className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span className="truncate">{t.webinars?.public_title ?? "Conversa"}</span>
+                  <span className="shrink-0">{relativeDays(t.last_message_at)}</span>
+                </p>
+                <p className="truncate">{t.last_message_preview || "Sem mensagens"}</p>
+                {linked.length > 0 && (
+                  <p className="mt-1 flex flex-wrap gap-1">
+                    {linked.map((c) => (
+                      <Badge key={c.id} variant="outline">
+                        Caso {c.number} · {intentLabel(c.intent)} · {statusLabel(c.status)}
+                      </Badge>
+                    ))}
+                  </p>
+                )}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </Block>
   );
 }
 

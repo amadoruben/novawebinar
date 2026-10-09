@@ -8,11 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { createBaseWorkflow, formatDateTime, useInvalidate, useWebinars, useWorkflows, useWorkspace } from "@/lib/data";
 import { friendlyError } from "@/lib/friendly-error";
 import { cn } from "@/lib/utils";
-import { baseWorkflow, CHANNELS, channelStatus } from "@/lib/workflow";
+import { CHANNELS, channelStatus } from "@/lib/workflow";
 
 export const Route = createFileRoute("/automations/new")({
   head: () => ({ meta: [{ title: "Novo fluxo | Convertewebinar" }] }),
@@ -33,7 +32,6 @@ function NewFlowPage() {
   const [chosen, setWebinarId] = useState<string>();
   const [name, setName] = useState("");
   const [groupUrl, setGroupUrl] = useState("");
-  const [withBase, setWithBase] = useState(true);
   const [busy, setBusy] = useState(false);
 
   // Um fluxo por webinar: os que já têm fluxo não aparecem. Sem escolha, fica o mais recente ainda livre.
@@ -42,7 +40,6 @@ function NewFlowPage() {
   const webinar = webinars.find((w) => w.id === webinarId);
   const title = webinar ? webinar.public_title || webinar.internal_name : "";
   const status = channelStatus(Boolean(workspace?.isTest), destination.ready, destination.whatsappReady);
-  const ready = baseWorkflow();
 
   const create = async () => {
     if (!orgId) return;
@@ -51,7 +48,6 @@ function NewFlowPage() {
       const id = await createBaseWorkflow(orgId, webinar ? { id: webinar.id, title } : null, {
         name: name.trim() || undefined,
         groupUrl: groupUrl.trim() || undefined,
-        withBase,
       });
       invalidate(["workflows", "automations"]);
       void navigate({ to: "/automations/workflows/$workflowId", params: { workflowId: id } });
@@ -66,7 +62,7 @@ function NewFlowPage() {
     <AppShell
       back={{ to: "/automations", label: "Automações" }}
       title="Novo fluxo"
-      description="Primeiro configura-se; depois desenha-se o fluxo."
+      description="Primeiro configura-se; depois desenha-se. O fluxo começa vazio."
       action={false}
       compact
     >
@@ -171,16 +167,6 @@ function NewFlowPage() {
           <Link to="/integrations" className="text-sm font-medium text-primary hover:underline">
             Abrir Integrações
           </Link>
-        </Section>
-
-        <Section n={4} title="Começar com as automações prontas">
-          <label className="flex items-start gap-3">
-            <Switch checked={withBase} onCheckedChange={setWithBase} aria-label="Automações prontas" className="mt-0.5" />
-            <span className="text-sm">
-              <span className="block font-medium">{ready.length} automações desligadas, com as mensagens por escrever</span>
-              <span className="block text-muted-foreground">{ready.map((a) => a.name).join(" · ")}</span>
-            </span>
-          </label>
         </Section>
 
         <div className="flex flex-wrap justify-end gap-2 pt-2">

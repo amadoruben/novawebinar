@@ -397,3 +397,33 @@ export function useSupportInvalidate() {
     for (const key of keys) void queryClient.invalidateQueries({ queryKey: ["support", key] });
   };
 }
+
+/**
+ * As conversas desta pessoa em todos os webinars (pelas inscrições dela), cada
+ * uma com os seus casos. A ficha dos Contactos e o perfil do Atendimento leem o mesmo.
+ */
+export function useContactConversations(contactId: string | null, participantIds: string[]) {
+  return useQuery({
+    queryKey: ["support", "conversations", "contact", contactId, participantIds],
+    enabled: Boolean(contactId),
+    queryFn: async () => {
+      const [talks, cases] = await Promise.all([
+        participantIds.length
+          ? supabase
+              .from("private_conversations")
+              .select("id, last_message_preview, last_message_at, webinars(public_title)")
+              .in("participant_id", participantIds)
+              .order("last_message_at", { ascending: false })
+              .limit(20)
+          : Promise.resolve({ data: [] }),
+        supabase
+          .from("support_cases")
+          .select("id, number, intent, status, conversation_id, created_at")
+          .eq("contact_id", contactId!)
+          .order("created_at", { ascending: false })
+          .limit(20),
+      ]);
+      return { talks: talks.data ?? [], cases: cases.data ?? [] };
+    },
+  });
+}

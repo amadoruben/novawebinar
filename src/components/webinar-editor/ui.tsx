@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import { ArrowRight, ChevronDown, Info, Lightbulb, Minus, Plus, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -215,7 +215,7 @@ export function Seg<T extends string>({
             className={cn(
               "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition",
               // Cheia, cada opção cabe na sua parte mesmo no telemóvel (até 5 opções numa linha).
-              small ? (full ? "h-7 min-w-0 px-1 text-[12.5px]" : "h-7 px-2.5 text-[12.5px]") : full ? "h-8 min-w-0 px-1.5 text-[13px]" : "h-8 px-3.5 text-[13px]",
+              small ? (full ? "h-8 min-w-0 px-1 text-[12.5px]" : "h-8 px-2.5 text-[12.5px]") : full ? "h-9 min-w-0 px-1.5 text-[13px]" : "h-9 px-3.5 text-[13px]",
               on ? "bg-white text-foreground shadow-[0_1px_2px_rgba(0,0,0,.1)]" : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -450,6 +450,33 @@ export function WheelColumn({
   );
 }
 
+/** Margem entre o pop-up e a borda do painel: a mesma do conteúdo do painel (px-5). */
+const PANEL_GUTTER = 20;
+
+/**
+ * O pop-up de uma escolha do painel da esquerda: abre junto do botão mas nunca sai do painel (nem
+ * tapa a pré-visualização), com a largura da coluna do painel e alinhado com ela. O painel marca-se
+ * com `data-editor-panel`; sem ele (fora do editor) é um pop-up normal. Use-o com o Popover
+ * controlado (`open`), para a largura ser medida ao abrir.
+ */
+export function PanelPopoverContent({
+  width = 360,
+  style,
+  ...props
+}: ComponentPropsWithoutRef<typeof PopoverContent> & { width?: number }) {
+  const panel = typeof document === "undefined" ? null : document.querySelector<HTMLElement>("[data-editor-panel]");
+  const room = panel ? panel.clientWidth - 2 * PANEL_GUTTER : width;
+  return (
+    <PopoverContent
+      align="start"
+      collisionBoundary={panel}
+      collisionPadding={PANEL_GUTTER}
+      style={{ width: Math.min(width, room), ...style }}
+      {...props}
+    />
+  );
+}
+
 /**
  * Um botão com o valor que abre a roda num pop-up, como o relógio do iPhone: clica-se, roda-se
  * e fica. Serve para minutos, pessoas e quantidades.
@@ -485,14 +512,14 @@ export function PickerButton({
           <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-[296px] p-3" onOpenAutoFocus={(event) => event.preventDefault()}>
+      <PanelPopoverContent className="p-3" onOpenAutoFocus={(event) => event.preventDefault()}>
         <p className="text-[13.5px] font-semibold">{title}</p>
         {hint ? <p className="mt-0.5 text-[12.5px] leading-snug text-muted-foreground">{hint}</p> : null}
         <div className="mt-2.5">{children}</div>
-        <Button size="sm" variant="dark" className="mt-3 w-full" onClick={() => setOpen(false)}>
+        <Button variant="dark" className="mt-3 w-full" onClick={() => setOpen(false)}>
           Feito
         </Button>
-      </PopoverContent>
+      </PanelPopoverContent>
     </Popover>
   );
 }
@@ -540,43 +567,82 @@ export function TimeWindow({
   );
 }
 
-/** Menos e mais, com o número ao meio (escreve-se também). */
-export function Stepper({
+/**
+ * Um número livre: escreve-se, ou − e +; por baixo, atalhos pelo tamanho do lançamento (pequeno,
+ * médio, grande). Serve as compras de demonstração, os alunos e quem responde às perguntas.
+ */
+export function Quantity({
   value,
-  min,
+  min = 1,
   max,
   onChange,
   unit,
-  className,
+  presets,
 }: {
   value: number;
-  min: number;
+  min?: number | undefined;
   max: number;
   onChange: (value: number) => void;
-  unit?: string | undefined;
-  className?: string | undefined;
+  unit: string;
+  presets?: readonly { label: string; value: number }[] | undefined;
 }) {
-  const set = (v: number) => onChange(Math.min(max, Math.max(min, Math.round(v) || min)));
+  // O que se está a escrever: pode ficar vazio enquanto se escreve; ao sair, volta ao número.
+  const [draft, setDraft] = useState<string | null>(null);
+  const set = (v: number) => onChange(Math.min(max, Math.max(min, Math.round(v))));
+  const shown = draft ?? String(value);
   const btn =
-    "grid size-9 shrink-0 place-items-center rounded-md text-foreground transition hover:bg-[var(--ds-gray-alpha-200)] disabled:opacity-40";
+    "grid size-11 shrink-0 place-items-center rounded-lg text-foreground transition hover:bg-[var(--ds-gray-alpha-200)] active:scale-95 disabled:opacity-30";
   return (
-    <div className={cn("inline-flex h-11 items-center gap-1 rounded-lg bg-white px-1 shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-400)]", className)}>
-      <button type="button" className={btn} onClick={() => set(value - 1)} disabled={value <= min} aria-label="Menos">
-        <Minus className="size-4" />
-      </button>
-      <label className="flex items-baseline gap-1 px-1">
-        <input
-          inputMode="numeric"
-          value={value}
-          onChange={(e) => set(Number(e.target.value.replace(/\D/g, "")))}
-          aria-label={unit ?? "Quantidade"}
-          className="w-10 bg-transparent text-center font-mono text-[17px] font-semibold tabular-nums outline-none"
-        />
-        {unit ? <span className="text-[12.5px] text-muted-foreground">{unit}</span> : null}
-      </label>
-      <button type="button" className={btn} onClick={() => set(value + 1)} disabled={value >= max} aria-label="Mais">
-        <Plus className="size-4" />
-      </button>
+    <div className="grid gap-2">
+      <div className="flex h-14 items-center gap-1 rounded-xl bg-white px-1.5 shadow-[inset_0_0_0_1px_var(--ds-gray-alpha-400)] focus-within:shadow-[inset_0_0_0_1.5px_var(--foreground)]">
+        <button type="button" className={btn} onClick={() => set(value - 1)} disabled={value <= min} aria-label="Menos">
+          <Minus className="size-5" />
+        </button>
+        <label className="flex min-w-0 flex-1 cursor-text items-baseline justify-center gap-1.5">
+          <input
+            inputMode="numeric"
+            value={shown}
+            onChange={(e) => {
+              const digits = e.target.value.replace(/\D/g, "").slice(0, String(max).length);
+              setDraft(digits);
+              if (digits) set(Number(digits));
+            }}
+            onFocus={(e) => e.target.select()}
+            onBlur={() => setDraft(null)}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            aria-label={unit}
+            style={{ width: `${Math.max(1, shown.length) + 0.6}ch` }}
+            className="bg-transparent text-right font-mono text-[26px] font-semibold tabular-nums outline-none"
+          />
+          <span className="truncate text-[13.5px] text-muted-foreground">{unit}</span>
+        </label>
+        <button type="button" className={btn} onClick={() => set(value + 1)} disabled={value >= max} aria-label="Mais">
+          <Plus className="size-5" />
+        </button>
+      </div>
+      {presets?.length ? (
+        <div role="radiogroup" aria-label="Atalhos" className="grid auto-cols-fr grid-flow-col gap-1.5">
+          {presets.map((p) => {
+            const on = p.value === value;
+            return (
+              <button
+                key={p.label}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => set(p.value)}
+                className={cn(
+                  "grid h-[52px] min-w-0 place-content-center gap-0.5 rounded-xl border bg-white text-center transition hover:bg-gray-50",
+                  on && "border-foreground shadow-[inset_0_0_0_1px_var(--foreground)]",
+                )}
+              >
+                <b className="font-mono text-[16px] font-semibold leading-none tabular-nums">{p.value}</b>
+                <span className={cn("truncate text-[12px] leading-tight", on ? "text-foreground" : "text-muted-foreground")}>{p.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }

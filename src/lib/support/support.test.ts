@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { adjustPriority, classifyCase, keywordIntents, looksLikeRequest, resolveIntent, type Rule } from "./classify";
 import { buildCommercialContext, contextFacts, customerLabel } from "./context";
-import { availableActions, canOpenPath, effectiveStatus, slaState } from "./model";
-import { chooseStaff, type Candidate } from "./routing";
+import { availableActions, canOpenPath, caseOpenedBy, effectiveStatus, slaState, TEAM_TOOK_REASON } from "./model";
+import { chooseStaff, routingReasonLabel, type Candidate } from "./routing";
 
 const rules: Rule[] = [
   { intent: "purchase", department_id: "vendas", required_skills: ["vendas", "negociacao"], priority: "high", sla_minutes: 10, always_human: false, call_required: false },
@@ -155,11 +155,11 @@ describe("encaminhamento", () => {
   it("sem pessoa adequada fica na fila, com o motivo", () => {
     const refund = route({ departmentId: "financeiro", requiredSkills: ["reembolso"], departmentName: "Financeiro" });
     expect(refund).toMatchObject({ staffId: null, tier: null });
-    expect(refund.reason).toBe("Na fila de Financeiro: ninguém disponível tem reembolso.");
+    expect(refund.reason).toBe("Na fila da equipa Financeiro: ninguém disponível tem reembolso.");
 
     const busy = team.map((c) => ({ ...c, status: "busy" as const }));
     expect(route({ candidates: busy }).reason).toContain("ninguém está disponível");
-    expect(route({ candidates: [] }).reason).toContain("ainda não há funcionários");
+    expect(route({ candidates: [] }).reason).toContain("ainda não há pessoas");
     expect(route({ channel: "whatsapp" }).reason).toContain("ninguém disponível atende este canal");
     const full = team.map((c) => ({ ...c, openCases: c.capacity }));
     expect(route({ candidates: full }).reason).toContain("capacidade cheia");
@@ -209,6 +209,23 @@ describe("acções e acessos", () => {
     expect(mine).toContain("resolve");
     expect(availableActions({ ...c, status: "in_progress" }, "outro")).toContain("assume");
     expect(availableActions({ ...c, status: "waiting_customer" }, "eu")).toContain("resume");
+  });
+
+  it("só é passagem do agente o caso que o agente abriu", () => {
+    expect(caseOpenedBy({ confidence: 0.4, reason_for_escalation: "Pediu desconto" })).toBe("agent");
+    expect(caseOpenedBy({ confidence: null, reason_for_escalation: TEAM_TOOK_REASON })).toBe("team");
+    expect(caseOpenedBy({ confidence: null, reason_for_escalation: "Webinar sem assistente IA" })).toBe("rule");
+  });
+
+  it("os motivos antigos leem-se com «equipa»", () => {
+    expect(routingReasonLabel("Na fila do departamento")).toBe("Na fila da equipa");
+    expect(routingReasonLabel("Na fila de departamento: ninguém disponível pertence a este departamento.")).toBe(
+      "Na fila da equipa: ninguém disponível pertence a esta equipa.",
+    );
+    expect(routingReasonLabel("Na fila de Financeiro: ninguém disponível tem reembolso.")).toBe(
+      "Na fila da equipa Financeiro: ninguém disponível tem reembolso.",
+    );
+    expect(routingReasonLabel("Transferido à mão")).toBe("Transferido à mão");
   });
 
   it("a função suporte só abre o atendimento", () => {

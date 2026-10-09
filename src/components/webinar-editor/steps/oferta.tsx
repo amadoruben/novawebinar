@@ -1,22 +1,36 @@
 import { useRef, useState } from "react";
 import {
   BarChart3,
+  Check,
   ChevronDown,
   Clock,
   DoorOpen,
   Gift,
+  Loader2,
+  Palette,
   Play,
   Plus,
   Target,
   Trash2,
+  Upload,
   Users,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { clock, discountPercent, isGroupLink, type OfferSlot } from "@/lib/room-logic";
-import { Field, Note, Section, Seg, SwitchRow, Tag, TimeWindow } from "../ui";
+import {
+  clock,
+  discountPercent,
+  entryPalette,
+  isGroupLink,
+  OFFER_COLOR_SUGGESTIONS,
+  OFFER_LOOKS,
+  type OfferLook,
+  type OfferSlot,
+} from "@/lib/room-logic";
+import { OfferThumb } from "@/components/room/room-parts";
+import { Field, Note, Section, Seg, SwitchRow, Swatches, Tag, TimeWindow } from "../ui";
 import type { EditorClock } from "./video";
 import type { EditorForm, FocusProps, SetForm } from "../form";
 
@@ -59,6 +73,7 @@ export function StepOferta({
   clock: c,
   onWatch,
   onAfter,
+  upload,
 }: {
   form: EditorForm;
   set: SetForm;
@@ -73,12 +88,16 @@ export function StepOferta({
   onWatch: (seconds: number) => void;
   /** Mostra a sala no fim do vídeo, com a oferta ainda aberta. */
   onAfter: () => void;
+  /** Carregar a imagem do produto (a oferta principal); sem isto, o campo não aparece. */
+  upload?: { uploading: boolean; onFile: (file: File) => void } | undefined;
 }) {
   const visible = Boolean(form.cta_text.trim());
   const lastText = useRef(form.cta_text || "Quero minha vaga");
   const d = Math.max(1, c.duration);
   const [open, setOpen] = useState<string | null>("main");
   const start = form.cta_start_seconds.trim() === "" ? null : Number(form.cta_start_seconds) || 0;
+  // Sem minuto escolhido, a sala abre a oferta no início do vídeo (`cta_start_seconds ?? 0`).
+  const opensAt = start ?? 0;
   const end = form.cta_end_seconds.trim() === "" ? null : Number(form.cta_end_seconds) || null;
   const countdown = Number(form.cta_countdown_seconds) || 0;
   const countdownOptions = [
@@ -147,7 +166,7 @@ export function StepOferta({
         <SwitchRow
           icon={Gift}
           title="Mostrar a oferta na sala"
-          description="Abre o separador Oferta na sala, no minuto que escolher."
+          description="O cartão da oferta aparece na sala no minuto que escolher."
           checked={visible}
           onChange={(on) => {
             if (!on) lastText.current = form.cta_text || lastText.current;
@@ -172,6 +191,11 @@ export function StepOferta({
               onWatch={onWatch}
               focus={focus}
               required
+              image={
+                upload
+                  ? { url: form.cta_image_url, uploading: upload.uploading, onFile: upload.onFile, onRemove: () => set({ cta_image_url: "" }) }
+                  : undefined
+              }
             />
             {extras.map((x, i) => (
               <OfferCardEditor
@@ -216,10 +240,53 @@ export function StepOferta({
             ) : null}
           </Section>
 
+          <Section icon={Palette} title="Aparência" help="aparenciaOferta">
+            <div className="grid grid-cols-2 gap-2.5" role="radiogroup" aria-label="Forma da oferta">
+              {OFFER_LOOKS.map(({ id, name }) => {
+                const on = form.live.offerLook === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => set({ live: { ...form.live, offerLook: id } })}
+                    className="group grid gap-2 text-left"
+                  >
+                    <span
+                      className={cn(
+                        "relative block overflow-hidden rounded-xl ring-1 ring-black/10 transition",
+                        on ? "ring-2 ring-foreground ring-offset-2" : "group-hover:ring-black/25",
+                      )}
+                    >
+                      <OfferLookThumb look={id} color={form.live.offerColor} />
+                      {on ? (
+                        <span className="absolute right-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-foreground text-background">
+                          <Check className="size-3" />
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="grid">
+                      <span className={cn("text-[13px]", on ? "font-semibold" : "font-medium text-muted-foreground")}>{name}</span>
+                      <span className="text-[12px] leading-snug text-muted-foreground">{id === "square" ? "O produto num quadrado grande" : "Numa linha, ocupa pouco"}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <Swatches
+              label="Cor do botão e do cartão"
+              value={form.live.offerColor}
+              onChange={(offerColor) => set({ live: { ...form.live, offerColor } })}
+              options={OFFER_COLOR_SUGGESTIONS}
+            />
+            <p className="text-[12.5px] leading-snug text-muted-foreground">É a mesma cor do botão de entrar. No telemóvel, o cartão sobe por cima do chat.</p>
+          </Section>
+
           <Section icon={Clock} title="Cronómetro e prazo" help="urgencia">
             <p className="text-[12.5px] leading-snug text-muted-foreground">
-              Duas formas de dar pressa: o <b className="font-medium text-foreground">cronómetro</b> conta minutos na sala, desde que a oferta
-              abre; o <b className="font-medium text-foreground">prazo</b> é um dia do calendário, e fecha a oferta também no replay.
+              O <b className="font-medium text-foreground">cronómetro</b> conta desde que a oferta abre; o{" "}
+              <b className="font-medium text-foreground">último dia</b> fecha a oferta também no replay.
             </p>
             <Field label="1. Cronómetro na oferta">
               <Seg
@@ -239,16 +306,16 @@ export function StepOferta({
                 <p className="-mt-1 flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted-foreground">
                   Na sala:
                   <span className="inline-flex items-center gap-1 rounded-md bg-[#FDE4D9] px-1.5 py-0.5 font-mono text-[12px] font-semibold text-[#A82F05]">
-                    <Clock className="size-3" />A oferta acaba em {clock(Math.max(0, countdown - 1))}
+                    <Clock className="size-3" />A oferta termina em {clock(Math.max(0, countdown - 1))}
                   </span>
-                  {start !== null ? <span>(de {clock(start)} a {clock(start + countdown)} do vídeo)</span> : null}
+                  <span>(de {clock(opensAt)} a {clock(opensAt + countdown)} do vídeo)</span>
                 </p>
                 <Field label="2. Quando o cronómetro chega a zero">
                   <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Quando o cronómetro chega a zero">
                     {(
                       [
-                        ["keep", "O botão continua", "O cronómetro some e quem decide tarde ainda compra.", false],
-                        ["close", "O botão fecha", "O botão passa a «Oferta encerrada».", true],
+                        ["keep", "O botão continua", "O cronómetro sai e quem decide tarde ainda compra.", false],
+                        ["close", "O botão fecha", "O botão passa a «Oferta encerrada» e deixa de abrir.", true],
                       ] as const
                     ).map(([value, title, text, closed]) => {
                       const on = form.offer_countdown_end === value;
@@ -264,12 +331,10 @@ export function StepOferta({
                             on && "border-foreground shadow-[inset_0_0_0_1px_var(--foreground)]",
                           )}
                         >
-                          {/* Como o botão fica na sala, em pequeno. */}
+                          {/* Como o botão fica na sala no zero, em pequeno, na cor escolhida. */}
                           <span
-                            className={cn(
-                              "block truncate rounded-md py-1.5 text-center text-[11.5px] font-bold",
-                              closed ? "bg-chip text-muted-foreground" : "bg-[#E8440C] text-white",
-                            )}
+                            className={cn("block truncate rounded-md py-1.5 text-center text-[11.5px] font-bold", closed && "bg-chip text-muted-foreground")}
+                            style={closed ? undefined : { background: form.live.offerColor, color: entryPalette(null, form.live.offerColor).buttonText }}
                           >
                             {closed ? "Oferta encerrada" : form.cta_text || "Quero minha vaga"}
                           </span>
@@ -282,6 +347,15 @@ export function StepOferta({
                     })}
                   </div>
                 </Field>
+                {/* Leva a sala a 4 segundos do zero, para ver o que acontece ao botão e ao cronómetro. */}
+                {opensAt + countdown < d ? (
+                  <Button variant="outline" size="sm" className="justify-self-start" onClick={() => onWatch(opensAt + countdown)}>
+                    <Play className="fill-current" />
+                    Ver o zero na sala
+                  </Button>
+                ) : (
+                  <p className="text-[12.5px] leading-snug text-muted-foreground">O zero chega depois do fim do vídeo: na sala, o cronómetro continua.</p>
+                )}
               </>
             ) : null}
             <Field
@@ -350,6 +424,7 @@ function OfferCardEditor({
   required,
   deadline,
   onRemove,
+  image,
 }: {
   index: number;
   label: string;
@@ -365,7 +440,10 @@ function OfferCardEditor({
   required?: boolean | undefined;
   deadline?: { value: string; onChange: (value: string) => void } | undefined;
   onRemove?: (() => void) | undefined;
+  /** A imagem do produto (só a oferta principal). */
+  image?: { url: string; uploading: boolean; onFile: (file: File) => void; onRemove: () => void } | undefined;
 }) {
+  const imageRef = useRef<HTMLInputElement>(null);
   const [target, setTargetState] = useState<Target>(targetOf(offer.url));
   // Ao mudar o destino, o texto do botão acompanha (se ainda for um dos textos de origem).
   const setTarget = (next: Target) => {
@@ -423,6 +501,38 @@ function OfferCardEditor({
               {...f("product")}
             />
           </Field>
+          {image ? (
+            <Field label="Imagem do produto" hint="Opcional. Aparece no cartão da oferta.">
+              <div className="flex items-center gap-2.5">
+                <OfferThumb imageUrl={image.url || null} className="size-12 [--of:#A1A1A1]" />
+                <input
+                  ref={imageRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) image.onFile(file);
+                    e.target.value = "";
+                  }}
+                />
+                <Button variant="outline" size="sm" onClick={() => imageRef.current?.click()} disabled={image.uploading}>
+                  {image.uploading ? <Loader2 className="animate-spin" /> : <Upload />}
+                  {image.url ? "Trocar" : "Carregar"}
+                </Button>
+                {image.url ? (
+                  <button
+                    type="button"
+                    onClick={image.onRemove}
+                    aria-label="Tirar a imagem"
+                    className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-chip hover:text-foreground"
+                  >
+                    <X className="size-4" />
+                  </button>
+                ) : null}
+              </div>
+            </Field>
+          ) : null}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Preço inicial">
               <Input value={offer.priceFrom} onChange={(e) => onChange({ priceFrom: e.target.value })} placeholder="100 000 Kz" {...f("price")} />
@@ -541,6 +651,29 @@ function OfferCardEditor({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** O cartão da oferta em miniatura, na cor escolhida: «Quadrada» (o produto num quadrado grande) ou «Compacta» (uma linha). */
+function OfferLookThumb({ look, color }: { look: OfferLook; color: string }) {
+  const bar = (width: string, tone = "bg-white/25") => <i className={cn("block h-1.5 rounded-full", tone)} style={{ width }} />;
+  const square = look === "square";
+  return (
+    <span className="grid aspect-[16/10] content-center bg-[#141414] px-[14%]">
+      <span className="grid gap-1.5 rounded-lg bg-[#212121] p-2 ring-1 ring-white/10">
+        <span className="flex items-center gap-1.5">
+          <span
+            className={cn("shrink-0", square ? "size-8 rounded-[5px]" : "size-4 rounded-[3px]")}
+            style={{ background: `linear-gradient(140deg, ${color}, color-mix(in srgb, ${color} 30%, #000))` }}
+          />
+          <span className="grid flex-1 gap-1">
+            {bar("85%", "bg-white/70")}
+            {bar("50%")}
+          </span>
+        </span>
+        <i className="block h-3 rounded-[4px]" style={{ background: color }} />
+      </span>
+    </span>
   );
 }
 

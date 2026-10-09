@@ -4,19 +4,12 @@ import { toast } from "sonner";
 import { ArrowUpRight, Loader2, Mail, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TRIGGER_GROUPS } from "@/lib/automations";
 import { createBaseWorkflow, useInvalidate, useWebinarAutomations } from "@/lib/data";
 import { friendlyError } from "@/lib/friendly-error";
 import { cn } from "@/lib/utils";
 import whatsappIcon from "@/assets/local/whatsapp-icon.webp";
 import { Section } from "../ui";
-
-/** Os momentos da jornada e os gatilhos de cada um (docs/automacao/correspondencia-motor). */
-const MOMENTS: { label: string; triggers: string[] }[] = [
-  { label: "Inscrição", triggers: ["webinar_registered"] },
-  { label: "Ao vivo", triggers: ["webinar_session_started"] },
-  { label: "Fim da sessão", triggers: ["webinar_session_ended"] },
-  { label: "Checkout e compra", triggers: ["offer_clicked", "checkout_started", "payment_failed", "purchase_approved", "purchase_refunded"] },
-];
 
 type Step = { kind?: string; sends?: { channel?: string }[] };
 
@@ -52,9 +45,9 @@ export function StepAutomacoes({
     try {
       await createBaseWorkflow(organizationId, { id: webinarId, title });
       invalidate(["workflows", "automations"]);
-      toast.success("Automações base criadas no fluxo do webinar. Nascem desligadas: escreva e ligue no fluxo.");
+      toast.success("Fluxo criado, vazio. Abra-o para juntar as peças ou usar o modelo.");
     } catch (error) {
-      toast.error(friendlyError(error, "Não foi possível criar as automações."));
+      toast.error(friendlyError(error, "Não foi possível criar o fluxo."));
     } finally {
       setBusy(false);
     }
@@ -87,23 +80,21 @@ export function StepAutomacoes({
       {!workflow ? (
         <Section>
           <div className="grid justify-items-start gap-2 rounded-xl border bg-white p-4">
-            <b className="text-[15px] font-semibold">Ainda sem automações</b>
-            <p className="text-[13px] text-muted-foreground">
-              As automações base deste webinar: inscrição, sessão, fim e compra. Nascem desligadas, para escrever e ligar
-              no fluxo.
-            </p>
+            <b className="text-[15px] font-semibold">Ainda sem fluxo</b>
+            <p className="text-[13px] text-muted-foreground">Começa vazio. No desenho, junte as peças ou use o modelo.</p>
             <Button variant="dark" size="sm" onClick={() => void create()} disabled={busy || !organizationId}>
               {busy ? <Loader2 className="animate-spin" /> : null}
-              Criar as automações base
+              Criar o fluxo
             </Button>
           </div>
         </Section>
       ) : (
-        MOMENTS.map((moment) => {
-          const list = data.automations.filter((a) => moment.triggers.includes(a.trigger_event));
+        // As três partes do lançamento, como no fluxo: todos os gatilhos têm o seu sítio.
+        TRIGGER_GROUPS.map((part) => {
+          const list = data.automations.filter((a) => (part.triggers as string[]).includes(a.trigger_event));
           if (list.length === 0) return null;
           return (
-            <Section key={moment.label} title={moment.label}>
+            <Section key={part.title} title={part.title}>
               <div className="divide-y overflow-hidden rounded-xl border bg-white">
                 {list.map((a) => {
                   const s = summary(a.steps);

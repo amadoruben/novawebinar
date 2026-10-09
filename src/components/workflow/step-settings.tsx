@@ -57,6 +57,7 @@ export function StepSettings({
   automation,
   nodeId,
   status,
+  groups,
   executed,
   onDone,
   onOpenStep,
@@ -65,6 +66,8 @@ export function StepSettings({
   automation: Automation;
   nodeId: string;
   status: ChannelStatus[];
+  /** Os grupos de WhatsApp do fluxo, para as mensagens nos grupos. */
+  groups: string[];
   /** Já houve disparos ou esperas neste passo: não se remove, para o histórico continuar a fazer sentido. */
   executed: boolean;
   onDone: () => void;
@@ -129,7 +132,7 @@ export function StepSettings({
 
   return (
     <div className="space-y-6">
-      <NodeEditor node={draft} status={status} onChange={setDraft} />
+      <NodeEditor node={draft} status={status} groups={groups} onChange={setDraft} />
 
       <div className="space-y-2">
         {outputs.map(([handle, label, target]) => (
@@ -261,7 +264,7 @@ export function AutomationSettings({
         onToggle={toggle}
       />
       <p className="text-xs text-muted-foreground">
-        Para acrescentar um passo, clique nele no menu «Disparos» ou «Lógica»: entra no fim desta automação. Para mexer num passo, clique nele no desenho.
+        Para acrescentar um passo, clique nele no menu «Mensagens» ou «Condições e esperas»: entra no fim desta automação. Para mexer num passo, clique nele no desenho.
       </p>
       <div className="flex flex-wrap gap-2">
         <Button disabled={saving || !name.trim()} onClick={() => void save(() => updateAutomation(automation.id, fields), "Guardado", onDone)}>

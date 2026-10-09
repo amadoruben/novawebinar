@@ -2,8 +2,18 @@ import { useMemo, useRef } from "react";
 import { CheckCircle2, Palette, Radio, ShoppingBag, ShoppingCart, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clock } from "@/lib/room-logic";
+import { buyerNames, type ChatCountryCode } from "@/lib/chat-realism";
 import { SALE_COLORS, saleColor } from "@/components/room/room-parts";
-import { Field, Note, Section, Seg, Stepper, SwitchRow } from "../ui";
+import { Field, Note, Quantity, Section, Seg, SwitchRow } from "../ui";
+
+/** Até quantas compras de demonstração (lançamentos grandes). */
+const MAX_SALES = 500;
+/** Atalhos pelo tamanho do lançamento. */
+const SALES_PRESETS = [
+  { label: "Pequeno", value: 5 },
+  { label: "Médio", value: 15 },
+  { label: "Grande", value: 40 },
+];
 import type { EditorClock } from "./video";
 
 /** Vendas: as compras que aparecem na sala, de demonstração e reais. */
@@ -50,6 +60,15 @@ export function StepVendas({
   busy: boolean;
 }) {
   const tone = saleColor(color);
+  // De quanto em quanto tempo aparece uma, como demoSales as espalha.
+  const each = Math.max(12, c.duration - (pitch ?? 0) - 6) / Math.max(1, count);
+  // Abaixo de 10 s entre compras, conta-se por minuto (com várias por segundo, «uma a cada 1 s» enganava).
+  const every =
+    each >= 90
+      ? `uma a cada ${Math.round(each / 60)} min`
+      : each >= 10
+        ? `uma a cada ${Math.round(each)} s`
+        : `${Math.round(60 / each).toLocaleString("pt-PT")} por minuto`;
   return (
     <>
       {offerVisible && pitch === null ? (
@@ -72,22 +91,23 @@ export function StepVendas({
           disabled={busy}
         />
         {enabled ? (
-          <Field label="Quantas compras" hint="Espalham-se do pitch até ao fim do vídeo. Escolha uma rápida ou acerte com − e +.">
-            {/* Uma só caixa: o número ao centro e, por baixo, as quantidades rápidas. */}
-            <div className="grid gap-2 rounded-xl border bg-white p-2">
-              <Stepper value={count} min={1} max={50} onChange={onCount} unit="compras" className="w-full justify-between shadow-none" />
-              <Seg
-                full
-                small
-                label="Quantidades rápidas"
-                value={String(count)}
-                onChange={(v) => {
-                  if (!busy) onCount(Number(v));
-                }}
-                options={[3, 6, 10, 20, 30].map((n) => ({ value: String(n), label: String(n) }))}
-              />
-            </div>
+          <Field label="Quantas compras" hint={`Do pitch ao fim do vídeo, ${every}. As compras reais juntam-se a estas.`}>
+            {/* O número livre (até 500) e, por baixo, atalhos pelo tamanho do lançamento. */}
+            <Quantity
+              value={count}
+              max={MAX_SALES}
+              unit={count === 1 ? "compra" : "compras"}
+              presets={SALES_PRESETS}
+              onChange={(n) => {
+                if (!busy) onCount(n);
+              }}
+            />
           </Field>
+        ) : null}
+        {enabled && each < 3 ? (
+          <Note icon={TriangleAlert} tone="warn">
+            Muitas para o tempo depois do pitch. Baixe o número ou abra a oferta mais cedo.
+          </Note>
         ) : null}
       </Section>
 
@@ -103,7 +123,7 @@ export function StepVendas({
       <Section icon={Radio} title="Onde aparecem" help="vendasOnde">
         <Seg
           full
-          small
+          label="Onde aparecem"
           value={where}
           onChange={onWhere}
           options={[
@@ -276,15 +296,17 @@ function SalesChart({
   );
 }
 
-const BUYERS = ["Helena", "Bruno", "Inês", "Carla", "Tomás", "Sofia", "Rui", "Marta", "Diogo", "Paula", "Edson", "Kátia", "Nelson", "Yola", "Célia", "Hélio"];
-
-/** As compras de demonstração: depois do pitch, espalhadas até ao fim do vídeo. */
-export function demoSales(count: number, pitch: number | null, duration: number) {
+/**
+ * As compras de demonstração: depois do pitch, espalhadas até ao fim do vídeo, com nomes das
+ * nacionalidades do chat (sem nenhuma escolhida, de Angola).
+ */
+export function demoSales(count: number, pitch: number | null, duration: number, countries: readonly ChatCountryCode[] = []) {
   const p = pitch ?? 0;
   const d = Math.max(duration, p + 20);
   const span = Math.max(12, d - p - 6);
+  const buyers = buyerNames(countries, count);
   return Array.from({ length: count }, (_, i) => ({
-    buyer: BUYERS[i % BUYERS.length]!,
+    buyer: buyers[i]!,
     at: Math.min(d - 1, Math.round(p + 4 + ((i + 0.5) * span) / count)),
   }));
 }

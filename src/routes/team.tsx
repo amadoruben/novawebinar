@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Check, Copy, MessageCircle, Pencil, Plus, Trash2, UserPlus, UserX } from "lucide-react";
+import { TeamBoard } from "@/components/support/team-board";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
@@ -56,7 +57,7 @@ export const Route = createFileRoute("/team")({
   head: () => ({
     meta: [
       { title: "Equipas | Convertewebinar" },
-      { name: "description", content: "Quem atende, em que departamento, com que competências e por que regras." },
+      { name: "description", content: "As equipas, quem está em cada uma e que temas recebe." },
     ],
   }),
   component: TeamPage,
@@ -81,7 +82,7 @@ function TeamPage() {
   return (
     <AppShell
       title="Equipas"
-      description="Quem atende, em que departamento e com que competências. É por aqui que cada caso chega à pessoa certa."
+      description="As equipas que quiser, com os nomes que quiser. É por aqui que cada conversa chega à pessoa certa."
       action={false}
     >
       {!manager && workspace && (
@@ -92,10 +93,10 @@ function TeamPage() {
       {isLoading || !organizationId ? (
         <Skeleton className="h-64 w-full" />
       ) : (
-        <Tabs defaultValue="staff">
+        <Tabs defaultValue="teams">
           <TabsList className="mb-5 flex h-auto flex-wrap justify-start">
-            <TabsTrigger value="staff">Funcionários · {staff.filter((s) => s.active).length}</TabsTrigger>
-            <TabsTrigger value="departments">Departamentos · {departments.length}</TabsTrigger>
+            <TabsTrigger value="teams">Equipas · {departments.length}</TabsTrigger>
+            <TabsTrigger value="staff">Pessoas · {staff.filter((s) => s.active).length}</TabsTrigger>
             <TabsTrigger value="skills">Competências · {skills.length}</TabsTrigger>
             <TabsTrigger value="rules">Regras de encaminhamento</TabsTrigger>
           </TabsList>
@@ -109,11 +110,12 @@ function TeamPage() {
               myUserId={workspace?.userId ?? ""}
             />
           </TabsContent>
-          <TabsContent value="departments">
-            <DepartmentsTab
+          <TabsContent value="teams">
+            <TeamsTab
               organizationId={organizationId}
               departments={departments}
               staff={staff}
+              rules={rules}
               openByDepartment={countBy(
                 cases.filter((c) => isOpenStatus(c.status)),
                 (c) => c.department_id,
@@ -142,7 +144,7 @@ function countBy<T>(rows: T[], key: (row: T) => string | null) {
   return map;
 }
 
-/* ---------- Funcionários ---------- */
+/* ---------- Pessoas ---------- */
 
 type StaffForm = {
   id: string | null;
@@ -234,23 +236,23 @@ function StaffTab({
         </p>
         {manager && (
           <Button onClick={() => setForm(EMPTY_STAFF)}>
-            <Plus /> Novo funcionário
+            <Plus /> Nova pessoa
           </Button>
         )}
       </div>
 
       {staff.length === 0 ? (
         <EmptySection
-          title="Ainda não há funcionários"
-          description="Registe a primeira pessoa da equipa. Enquanto não houver ninguém, os casos ficam na fila do departamento."
+          title="Ainda não há pessoas"
+          description="Registe a primeira pessoa da equipa. Enquanto não houver ninguém, os casos ficam na fila da equipa."
         />
       ) : (
         <div className="overflow-x-auto rounded-card bg-card">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Funcionário</TableHead>
-                <TableHead>Departamento</TableHead>
+                <TableHead>Pessoa</TableHead>
+                <TableHead>Equipa</TableHead>
                 <TableHead>Competências</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Casos</TableHead>
@@ -417,13 +419,13 @@ function StaffDialog({
     if (error) {
       toast.error(
         error.code === "23505"
-          ? "Já existe um funcionário com este email."
+          ? "Já existe uma pessoa com este email."
           : friendlyError(error, "Não foi possível guardar."),
       );
       return;
     }
     invalidate("staff");
-    toast.success(draft.id ? "Funcionário actualizado." : "Funcionário registado. Falta convidá-lo a entrar.");
+    toast.success(draft.id ? "Pessoa actualizada." : "Pessoa registada. Falta convidá-la a entrar.");
     onClose();
   };
 
@@ -431,9 +433,9 @@ function StaffDialog({
     <Dialog open={form !== null} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>{draft.id ? "Editar funcionário" : "Novo funcionário"}</DialogTitle>
+          <DialogTitle>{draft.id ? "Editar pessoa" : "Nova pessoa"}</DialogTitle>
           <DialogDescription>
-            O departamento e as competências decidem que casos chegam a esta pessoa.
+            A equipa e as competências decidem que conversas chegam a esta pessoa.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={save} className="space-y-4">
@@ -469,7 +471,7 @@ function StaffDialog({
                 placeholder="+244 923 000 000"
               />
             </Field>
-            <Field label="Departamento" id="staff-department">
+            <Field label="Equipa" id="staff-department">
               <Select
                 value={draft.department_id ?? NONE}
                 onValueChange={(value) => set("department_id", value === NONE ? null : value)}
@@ -478,7 +480,7 @@ function StaffDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={NONE}>Sem departamento</SelectItem>
+                  <SelectItem value={NONE}>Sem equipa</SelectItem>
                   {departments.map((d) => (
                     <SelectItem key={d.id} value={d.id}>
                       {d.name}
@@ -612,129 +614,117 @@ function InviteDialog({
   );
 }
 
-/* ---------- Departamentos ---------- */
+/* ---------- Equipas ---------- */
 
-function DepartmentsTab({
+/** As equipas em cartões (`TeamBoard`); aqui só as gravações. */
+function TeamsTab({
   organizationId,
   departments,
   staff,
+  rules,
   openByDepartment,
   manager,
 }: {
   organizationId: string;
   departments: DepartmentRow[];
   staff: StaffMember[];
+  rules: RuleRow[];
   openByDepartment: Map<string, number>;
   manager: boolean;
 }) {
   const invalidate = useSupportInvalidate();
-  const [name, setName] = useState("");
+  const done = (error: { message: string } | null, ...keys: string[]) => {
+    if (error) toast.error(friendlyError(error, "Não foi possível guardar."));
+    invalidate(...keys);
+  };
 
-  const add = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const clean = name.trim();
-    if (!clean) return;
+  const create = async (name: string) => {
     const { error } = await supabase.from("support_departments").insert({
       organization_id: organizationId,
-      name: clean,
-      slug: slugify(clean),
+      name,
+      slug: slugify(name) || `equipa-${departments.length + 1}`,
       position: departments.length + 1,
     });
     if (error) {
-      toast.error(error.code === "23505" ? "Já existe um departamento com este nome." : friendlyError(error));
-      return;
+      toast.error(
+        error.code === "23505" ? "Já existe uma equipa com este nome." : friendlyError(error),
+      );
+      return false;
     }
-    setName("");
     invalidate("departments");
+    return true;
   };
 
-  const rename = async (department: DepartmentRow, value: string) => {
-    const clean = value.trim();
-    if (!clean || clean === department.name) return;
-    const { error } = await supabase.from("support_departments").update({ name: clean }).eq("id", department.id);
-    if (error) toast.error(friendlyError(error));
-    invalidate("departments");
+  const remove = async (id: string, name: string) => {
+    const people = staff.filter((s) => s.department_id === id).length;
+    const open = openByDepartment.get(id) ?? 0;
+    const warning =
+      people || open
+        ? `${name} tem ${people} pessoa(s) e ${open} caso(s) aberto(s), que ficam sem equipa. Apagar?`
+        : `Apagar ${name}?`;
+    if (!window.confirm(warning)) return;
+    const { error } = await supabase.from("support_departments").delete().eq("id", id);
+    done(error, "departments", "staff", "rules", "cases");
   };
 
-  const makeFallback = async (department: DepartmentRow) => {
-    // Só pode haver um: primeiro sai o actual, depois entra o novo.
+  const makeFallback = async (id: string) => {
+    // Só pode haver uma: primeiro sai a actual, depois entra a nova.
     const current = departments.find((d) => d.is_fallback);
-    if (current) await supabase.from("support_departments").update({ is_fallback: false }).eq("id", current.id);
+    if (current)
+      await supabase
+        .from("support_departments")
+        .update({ is_fallback: false })
+        .eq("id", current.id);
     const { error } = await supabase
       .from("support_departments")
       .update({ is_fallback: true })
-      .eq("id", department.id);
-    if (error) toast.error(friendlyError(error));
-    invalidate("departments");
-  };
-
-  const remove = async (department: DepartmentRow) => {
-    const people = staff.filter((s) => s.department_id === department.id).length;
-    const open = openByDepartment.get(department.id) ?? 0;
-    const warning =
-      people || open
-        ? `${department.name} tem ${people} funcionário(s) e ${open} caso(s) aberto(s), que ficam sem departamento. Apagar?`
-        : `Apagar ${department.name}?`;
-    if (!window.confirm(warning)) return;
-    const { error } = await supabase.from("support_departments").delete().eq("id", department.id);
-    if (error) toast.error(friendlyError(error));
-    invalidate("departments", "staff", "rules", "cases");
+      .eq("id", id);
+    done(error, "departments");
   };
 
   return (
-    <div className="space-y-4">
-      <p className="max-w-2xl text-sm text-muted-foreground">
-        Cada pedido vai para um departamento. O departamento geral recebe o que não cabe em mais nenhum.
-      </p>
-      <ul className="divide-y rounded-card bg-card">
-        {departments.map((department) => (
-          <li key={department.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-            <Input
-              defaultValue={department.name}
-              disabled={!manager}
-              onBlur={(e) => void rename(department, e.target.value)}
-              aria-label={`Nome de ${department.name}`}
-              className="h-9 max-w-xs"
-            />
-            {department.is_fallback && <Badge variant="info">Departamento geral</Badge>}
-            <span className="ml-auto text-sm text-muted-foreground">
-              {staff.filter((s) => s.department_id === department.id && s.active).length} funcionário(s) ·{" "}
-              {openByDepartment.get(department.id) ?? 0} caso(s) aberto(s)
-            </span>
-            {manager && !department.is_fallback && (
-              <>
-                <Button size="sm" variant="ghost" onClick={() => void makeFallback(department)}>
-                  Tornar geral
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-8 text-destructive"
-                  onClick={() => void remove(department)}
-                  aria-label={`Apagar ${department.name}`}
-                >
-                  <Trash2 />
-                </Button>
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
-      {manager && (
-        <form onSubmit={add} className="flex max-w-md gap-2">
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Novo departamento"
-            maxLength={60}
-            aria-label="Nome do novo departamento"
-          />
-          <Button type="submit" variant="outline" disabled={!name.trim()}>
-            <Plus /> Adicionar
-          </Button>
-        </form>
-      )}
-    </div>
+    <TeamBoard
+      teams={departments.map((d) => ({ id: d.id, name: d.name, isFallback: d.is_fallback }))}
+      people={staff.map((s) => ({
+        id: s.id,
+        name: s.name,
+        teamId: s.department_id,
+        presence: s.presence,
+        active: s.active,
+        supervisor: s.is_supervisor,
+      }))}
+      rules={rules.map((r) => ({
+        id: r.id,
+        intent: r.intent,
+        teamId: r.department_id,
+        slaMinutes: r.sla_minutes,
+      }))}
+      manager={manager}
+      onCreate={create}
+      onRename={async (team, name) => {
+        const { error } = await supabase
+          .from("support_departments")
+          .update({ name })
+          .eq("id", team.id);
+        done(error, "departments");
+      }}
+      onDelete={(team) => void remove(team.id, team.name)}
+      onMakeFallback={(team) => void makeFallback(team.id)}
+      onMove={async (personId, teamId) => {
+        const { error } = await supabase
+          .from("support_staff")
+          .update({ department_id: teamId, updated_at: new Date().toISOString() })
+          .eq("id", personId);
+        done(error, "staff");
+      }}
+      onRoute={async (ruleId, teamId) => {
+        const { error } = await supabase
+          .from("support_routing_rules")
+          .update({ department_id: teamId, updated_at: new Date().toISOString() })
+          .eq("id", ruleId);
+        done(error, "rules");
+      }}
+    />
   );
 }
 
@@ -775,7 +765,7 @@ function SkillsTab({
     if (
       !window.confirm(
         people
-          ? `${people} funcionário(s) têm “${skill.name}”. Apagar tira-a a todos e às regras que a pedem. Apagar?`
+          ? `${people} pessoa(s) têm “${skill.name}”. Apagar tira-a a todos e às regras que a pedem. Apagar?`
           : `Apagar “${skill.name}”?`,
       )
     )
@@ -865,11 +855,11 @@ function RulesTab({
     <div className="space-y-4">
       <div className="max-w-3xl space-y-1 text-sm text-muted-foreground">
         <p>
-          Para cada tipo de pedido: o departamento, as competências que pede, a urgência e o prazo para a
+          Para cada tipo de pedido: a equipa, as competências que pede, a urgência e o prazo para a
           primeira resposta de uma pessoa.
         </p>
         <p>
-          A pessoa é escolhida por esta ordem: departamento e competências, quem está disponível, quem tem
+          A pessoa é escolhida por esta ordem: equipa e competências, quem está disponível, quem tem
           capacidade, quem já atendeu o contacto, quem tem menos casos.
         </p>
       </div>
@@ -878,7 +868,7 @@ function RulesTab({
           <TableHeader>
             <TableRow>
               <TableHead>Pedido</TableHead>
-              <TableHead>Departamento</TableHead>
+              <TableHead>Equipa</TableHead>
               <TableHead>Competências</TableHead>
               <TableHead>Prioridade</TableHead>
               <TableHead>Prazo (min)</TableHead>
@@ -898,11 +888,11 @@ function RulesTab({
                       void update(rule, { department_id: value === NONE ? null : value })
                     }
                   >
-                    <SelectTrigger className="h-9 w-44" aria-label={`Departamento de ${intent.label}`}>
+                    <SelectTrigger className="h-9 w-44" aria-label={`Equipa de ${intent.label}`}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={NONE}>Departamento geral</SelectItem>
+                      <SelectItem value={NONE}>Equipa que recebe o resto</SelectItem>
                       {departments.map((d) => (
                         <SelectItem key={d.id} value={d.id}>
                           {d.name}

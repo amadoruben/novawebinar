@@ -1,6 +1,6 @@
 /**
  * Encaminhamento: escolhe a pessoa certa para um caso e explica porquê.
- * Sem pessoa adequada, o caso fica na fila do departamento e o supervisor é avisado.
+ * Sem pessoa adequada, o caso fica na fila da equipa e o supervisor é avisado.
  */
 import { staffStatusLabel, type StaffStatus } from "./model";
 
@@ -39,16 +39,17 @@ export function chooseStaff(input: {
   skillNames?: Record<string, string> | undefined;
 }): RoutingResult {
   const { departmentId, requiredSkills: required } = input;
-  const department = input.departmentName ?? "departamento";
+  const team = input.departmentName;
+  const department = team ? `equipa ${team}` : "a equipa";
   const skillName = (slug: string) => input.skillNames?.[slug] ?? slug;
   const queue = (why: string): RoutingResult => ({
     staffId: null,
     tier: null,
-    reason: `Na fila de ${department}: ${why}`,
+    reason: `Na fila da equipa${team ? ` ${team}` : ""}: ${why}`,
   });
 
   const active = input.candidates.filter((c) => c.active);
-  if (active.length === 0) return queue("ainda não há funcionários registados.");
+  if (active.length === 0) return queue("ainda não há pessoas registadas.");
   const present = active.filter((c) => c.status === "available" || c.status === "online");
   if (present.length === 0) return queue("ninguém está disponível neste momento.");
   const onChannel = present.filter((c) => c.channels.includes(input.channel));
@@ -93,7 +94,7 @@ export function chooseStaff(input: {
     return queue(
       required.length > 0
         ? `ninguém disponível tem ${list(required.map(skillName))}.`
-        : "ninguém disponível pertence a este departamento.",
+        : "ninguém disponível pertence a esta equipa.",
     );
   }
 
@@ -116,4 +117,36 @@ export function chooseStaff(input: {
     staffStatusLabel(best.c.status).toLowerCase(),
   ].filter(Boolean);
   return { staffId: best.c.id, tier: best.tier, reason: `${best.c.name}: ${parts.join("; ")}.` };
+}
+
+/**
+ * O motivo do encaminhamento como se lê hoje. Os casos antigos guardaram
+ * «departamento» (a base ainda escreve «Na fila do departamento» ao transferir).
+ */
+export function routingReasonLabel(reason: string) {
+  return reason
+    .replace(/Na fila d[oe] departamento/g, "Na fila da equipa")
+    .replace(/Na fila de ([^:]+):/g, "Na fila da equipa $1:")
+    .replace("pertence a este departamento", "pertence a esta equipa")
+    .replace("ainda não há funcionários registados", "ainda não há pessoas registadas");
+}
+
+/** O que o agente diz por omissão ao passar a conversa (o mesmo texto do passo Agente). */
+export const HANDOFF_DEFAULT = "Vou chamar alguém da equipa para confirmar isso para si.";
+
+/**
+ * A frase com que o agente termina a sua parte: a mensagem da organização e,
+ * quando se sabe, quem continua o atendimento (a pessoa e a equipa).
+ */
+export function handoffMessage(
+  base: string,
+  next: { team?: string | null | undefined; person?: string | null | undefined },
+) {
+  const text = base.trim();
+  const person = (next.person ?? "").trim().split(/\s+/)[0] ?? "";
+  const team = (next.team ?? "").trim();
+  const who =
+    person && team ? `${person}, da equipa ${team}` : person || (team ? `a equipa ${team}` : "");
+  if (!who) return text;
+  return [text, `Quem continua: ${who}.`].filter(Boolean).join(" ");
 }

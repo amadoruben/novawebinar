@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   applyChatRealism,
+  buyerNames,
   chatPace,
   chatTagLabel,
   DEFAULT_CHAT_RULES,
   hostQuestions,
+  lateExample,
+  MAX_ALUNOS,
+  MAX_ANSWERS,
   mobileText,
   namePool,
   parseChatRules,
@@ -74,6 +78,49 @@ describe("regras do chat simulado", () => {
     expect(late.some((c) => c.message.includes("Maputo"))).toBe(true);
   });
 
+  it("o país do lançamento dá a cidade; a nacionalidade, a forma de dizer", () => {
+    const rules = { ...DEFAULT_CHAT_RULES, countries: ["br" as const], launch: "ao" as const };
+    const late = applyChatRealism([], rules, { durationSeconds: 300, pitchSeconds: null }).filter((c) => c.tag === "late");
+    expect(late.some((c) => c.message.includes("Assistindo de Luanda"))).toBe(true);
+    expect(late.every((c) => namePool(["br"]).includes(c.author))).toBe(true);
+    expect(lateExample(["pt"], "mz")).toBe("Já começou? A ver de Maputo");
+    expect(lateExample(["pt"])).toBe("Já começou? A ver de Lisboa");
+  });
+
+  it("alunos e respostas em número livre, sem nenhuma mensagem repetida", () => {
+    const long: ChatDraft[] = Array.from({ length: 10 }, (_, i) => ({ at: 10 + i * 60, author: "Gerado", message: `Mensagem ${i}` }));
+    const rules = {
+      ...DEFAULT_CHAT_RULES,
+      late: false,
+      talk: false,
+      alunos: { on: true, product: "Mentoria Primo", count: MAX_ALUNOS, when: "aula" as const },
+      answers: 12,
+    };
+    const out = applyChatRealism(long, rules, { durationSeconds: 3600, pitchSeconds: 2400, questions: [300, 900] });
+    expect(out.filter((c) => c.tag === "aluno")).toHaveLength(MAX_ALUNOS);
+    expect(out.filter((c) => c.tag === "answer")).toHaveLength(24);
+    const keys = out.map((c) => stripEmoji(c.message).toLowerCase());
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("cada pergunta recebe as respostas prometidas, mesmo com muitas perguntas", () => {
+    const perQuestion = (questions: number[], answers: number) => {
+      const out = applyChatRealism([], { ...DEFAULT_CHAT_RULES, late: false, alunos: { ...DEFAULT_CHAT_RULES.alunos, on: false }, answers }, {
+        durationSeconds: 3600,
+        pitchSeconds: null,
+        questions,
+      }).filter((c) => c.tag === "answer");
+      return questions.map((tq, q) => out.filter((c) => c.at >= tq && (q + 1 === questions.length || c.at < questions[q + 1]!)).length);
+    };
+    const eight = Array.from({ length: 8 }, (_, q) => 200 + q * 300);
+    expect(perQuestion(eight, 10)).toEqual(Array(8).fill(10));
+    expect(perQuestion(eight, MAX_ANSWERS)).toEqual(Array(8).fill(MAX_ANSWERS));
+    // Com mais de 10 perguntas no máximo, repartem-se por igual: nenhuma fica sem resposta.
+    const many = perQuestion(Array.from({ length: 12 }, (_, q) => 100 + q * 280), MAX_ANSWERS);
+    expect(new Set(many).size).toBe(1);
+    expect(many[0]).toBeGreaterThan(0);
+  });
+
   it("sem emojis, as mensagens saem sem emojis; no tom formal, os emojis são escolha de quem apresenta", () => {
     const none = applyChatRealism(drafts, { ...DEFAULT_CHAT_RULES, emoji: false }, ctx);
     expect(none.every((c) => stripEmoji(c.message) === c.message)).toBe(true);
@@ -124,6 +171,9 @@ describe("países, volume e regras antigas", () => {
 
   it("um webinar novo não tem nenhum país escolhido", () => {
     expect(parseChatRules(null).countries).toEqual([]);
+    expect(parseChatRules(null).launch).toBeNull();
+    expect(parseChatRules({ launch: "mz" }).launch).toBe("mz");
+    expect(parseChatRules({ launch: "xx" }).launch).toBeNull();
     expect(parseChatRules({ countries: [] }).countries).toEqual([]);
     expect(parseChatRules({ countries: ["br", "ao"] }).countries).toEqual(["ao", "br"]);
   });
@@ -135,6 +185,24 @@ describe("países, volume e regras antigas", () => {
     expect(rules.alunos).toMatchObject({ on: true, count: 2, when: "oferta" });
     expect(rules.tone).toBe("vendas");
     expect(parseChatRules(null)).toEqual(DEFAULT_CHAT_RULES);
+    // Números livres, dentro dos limites.
+    expect(parseChatRules({ alunos: { on: true, count: 40 }, answers: 6 })).toMatchObject({ alunos: { count: 40 }, answers: 6 });
+    expect(parseChatRules({ alunos: { on: true, count: 9999 }, answers: 0 })).toMatchObject({ alunos: { count: MAX_ALUNOS }, answers: 4 });
+  });
+
+  it("quem compra: primeiro nome das nacionalidades, e com inicial quando os nomes voltam", () => {
+    const names = buyerNames(["mz"], 60);
+    expect(names).toHaveLength(60);
+    expect(names[0]).toBe("Célia");
+    expect(new Set(names).size).toBe(60);
+    expect(names.at(-1)).toMatch(/^\p{L}+ \p{Lu}\.$/u);
+  });
+
+  it("até 500 compras (o máximo das Vendas), nenhum nome compra duas vezes", () => {
+    for (const c of ["ao", "mz", "br", "pt"] as const) expect(new Set(buyerNames([c], 500)).size).toBe(500);
+    // Nomes que existem em dois países (Osvaldo, Elsa, Teresa) também não se repetem.
+    expect(new Set(buyerNames(["ao", "mz", "pt"], 500)).size).toBe(500);
+    expect(buyerNames(["pt"], 500).at(-1)).toMatch(/^\p{L}+ \p{L}{2,}$/u);
   });
 });
 

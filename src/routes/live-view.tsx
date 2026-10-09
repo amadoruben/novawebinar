@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   Clapperboard,
+  Copy,
   Eye,
   MapPin,
   Monitor,
@@ -12,8 +13,11 @@ import {
   Radio,
   Smartphone,
   Sun,
+  UserRoundCog,
   Users,
 } from "lucide-react";
+import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
 import worldMapDark from "@/assets/world-map.jpg";
 import worldMapLight from "@/assets/world-map-light.jpg";
 import { AppShell } from "@/components/app-shell";
@@ -25,6 +29,7 @@ import { fetchAll } from "@/lib/fetch-all";
 import { FACT_COLUMNS, funnelSummary } from "@/lib/participant-facts";
 import { useLiveViewers, type LiveViewer } from "@/lib/live-presence";
 import { cn } from "@/lib/utils";
+import { getTeamRoomToken } from "@/lib/room-team.functions";
 
 export const Route = createFileRoute("/live-view")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -219,15 +224,18 @@ function LiveViewPage() {
             : "Quem está nas suas salas neste momento, de onde assiste e quem clicou na oferta."
       }
       action={
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-          className="gap-2"
-        >
-          {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
-          {theme === "dark" ? "Modo claro" : "Modo escuro"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {selected ? <TeamLink webinarId={selected.id} slug={selected.slug} /> : null}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+            className="gap-2"
+          >
+            {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+            {theme === "dark" ? "Modo claro" : "Modo escuro"}
+          </Button>
+        </div>
       }
     >
       <div
@@ -518,6 +526,43 @@ function LiveViewPage() {
         </Panel>
       </div>
     </AppShell>
+  );
+}
+
+/**
+ * A equipa na sala: entra a ver e comenta com o seu nome e o selo «Equipa» ou «Apresentador», sem contar na
+ * audiência. «Copiar link» dá o link para quem não tem conta (moderadores, convidados).
+ */
+function TeamLink({ webinarId, slug }: { webinarId: string; slug: string }) {
+  const getToken = useServerFn(getTeamRoomToken);
+  // O código pede-se antes do clique: o Safari só deixa copiar no próprio gesto, sem esperar pelo servidor.
+  const { data: token } = useQuery({
+    queryKey: ["team-room-token", webinarId],
+    queryFn: () => getToken({ data: { webinarId } }).then((r) => r.token),
+    staleTime: Infinity,
+  });
+  const copy = () => {
+    if (!token) return;
+    const link = `${window.location.origin}/w/${slug}?equipa=${encodeURIComponent(token)}`;
+    // Sem endereço seguro (http) o browser não dá a área de transferência.
+    (navigator.clipboard?.writeText(link) ?? Promise.reject(new Error("sem clipboard"))).then(
+      () => toast.success("Link de equipa copiado. Quem o abrir comenta com o selo da equipa."),
+      () => toast.error("Não foi possível copiar o link de equipa."),
+    );
+  };
+  return (
+    <>
+      <Button asChild size="sm" className="gap-2">
+        <a href={`/w/${slug}?equipa=1`} target="_blank" rel="noopener">
+          <UserRoundCog className="size-4" />
+          Entrar como equipa
+        </a>
+      </Button>
+      <Button variant="outline" size="sm" className="gap-2" disabled={!token} onClick={copy}>
+        <Copy className="size-4" />
+        Copiar link de equipa
+      </Button>
+    </>
   );
 }
 

@@ -18,7 +18,9 @@ import {
   logConversationEvent,
   noteInbound,
   type AgentReading,
+  type EscalationResult,
 } from "@/lib/support/cases.server";
+import { handoffMessage, HANDOFF_DEFAULT } from "@/lib/support/routing";
 import { classifyCase, looksLikeRequest } from "@/lib/support/classify";
 import { contextFacts } from "@/lib/support/context";
 import { loadContactContext } from "@/lib/support/context.server";
@@ -454,12 +456,16 @@ export async function handleParticipantMessage(input: {
       team,
     });
 
-  /** A pessoa fica a saber que alguém da equipa vai responder. */
-  const announceHandoff = async () => {
-    const message = String(
-      ((agent?.["escalation"] ?? {}) as { message?: string }).message ?? "",
-    ).trim();
-    if (!agentOn || !message) return;
+  /** A pessoa fica a saber que a conversa passa a uma pessoa, e a quem: a equipa e o nome. */
+  const announceHandoff = async (opened: EscalationResult) => {
+    const configured = ((agent?.["escalation"] ?? {}) as { message?: string | null }).message;
+    // Sem mensagem gravada vale a que o passo Agente mostra; apagada de propósito, o agente cala-se.
+    const base = configured == null ? HANDOFF_DEFAULT : String(configured).trim();
+    if (!agentOn || !base) return;
+    const message = handoffMessage(base, {
+      team: team.departments.find((d) => d.id === opened.classification.departmentId)?.name,
+      person: team.staff.find((s) => s.id === opened.assignedStaffId)?.name,
+    });
     await db.from("private_messages").insert({
       conversation_id: input.conversationId,
       organization_id: input.organizationId,
@@ -495,7 +501,7 @@ export async function handleParticipantMessage(input: {
     detail: string,
   ): Promise<AgentDecision | null> => {
     const opened = await escalate(reason, actor);
-    if (opened.created || opened.reopened) await announceHandoff();
+    if (opened.created || opened.reopened) await announceHandoff(opened);
     const messageId = agentOn
       ? await record({
           classification: "UNKNOWN",
@@ -697,7 +703,7 @@ export async function handleParticipantMessage(input: {
   } else if (toCase) {
     const opened = await escalate(escalationReason, "ai", reading);
     caseId = opened.caseId;
-    if (opened.created || opened.reopened) await announceHandoff();
+    if (opened.created || opened.reopened) await announceHandoff(opened);
   } else if (classified.purchaseIntent) {
     await logConversationEvent(input.conversationId, "purchase_intent_detected", "ai", {
       intent: classified.intent,

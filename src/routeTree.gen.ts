@@ -17,7 +17,6 @@ import { Route as ChatRouteImport } from './routes/chat'
 import { Route as ContactsRouteImport } from './routes/contacts'
 import { Route as CreditsRouteImport } from './routes/credits'
 import { Route as DashboardRouteImport } from './routes/dashboard'
-import { Route as DevEditorPreviewRouteImport } from './routes/dev-editor-preview'
 import { Route as IntegrationsRouteImport } from './routes/integrations'
 import { Route as LibraryRouteImport } from './routes/library'
 import { Route as LiveViewRouteImport } from './routes/live-view'
@@ -89,11 +88,6 @@ const CreditsRoute = CreditsRouteImport.update({
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DevEditorPreviewRoute = DevEditorPreviewRouteImport.update({
-  id: '/dev-editor-preview',
-  path: '/dev-editor-preview',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IntegrationsRoute = IntegrationsRouteImport.update({
@@ -270,7 +264,6 @@ export interface FileRoutesByFullPath {
   '/contacts': typeof ContactsRoute
   '/credits': typeof CreditsRoute
   '/dashboard': typeof DashboardRoute
-  '/dev-editor-preview': typeof DevEditorPreviewRoute
   '/integrations': typeof IntegrationsRoute
   '/library': typeof LibraryRoute
   '/live-view': typeof LiveViewRoute
@@ -313,7 +306,6 @@ export interface FileRoutesByTo {
   '/contacts': typeof ContactsRoute
   '/credits': typeof CreditsRoute
   '/dashboard': typeof DashboardRoute
-  '/dev-editor-preview': typeof DevEditorPreviewRoute
   '/integrations': typeof IntegrationsRoute
   '/library': typeof LibraryRoute
   '/live-view': typeof LiveViewRoute
@@ -357,7 +349,6 @@ export interface FileRoutesById {
   '/contacts': typeof ContactsRoute
   '/credits': typeof CreditsRoute
   '/dashboard': typeof DashboardRoute
-  '/dev-editor-preview': typeof DevEditorPreviewRoute
   '/integrations': typeof IntegrationsRoute
   '/library': typeof LibraryRoute
   '/live-view': typeof LiveViewRoute
@@ -402,7 +393,6 @@ export interface FileRouteTypes {
     | '/contacts'
     | '/credits'
     | '/dashboard'
-    | '/dev-editor-preview'
     | '/integrations'
     | '/library'
     | '/live-view'
@@ -445,7 +435,6 @@ export interface FileRouteTypes {
     | '/contacts'
     | '/credits'
     | '/dashboard'
-    | '/dev-editor-preview'
     | '/integrations'
     | '/library'
     | '/live-view'
@@ -488,7 +477,6 @@ export interface FileRouteTypes {
     | '/contacts'
     | '/credits'
     | '/dashboard'
-    | '/dev-editor-preview'
     | '/integrations'
     | '/library'
     | '/live-view'
@@ -532,7 +520,6 @@ export interface RootRouteChildren {
   ContactsRoute: typeof ContactsRoute
   CreditsRoute: typeof CreditsRoute
   DashboardRoute: typeof DashboardRoute
-  DevEditorPreviewRoute: typeof DevEditorPreviewRoute
   IntegrationsRoute: typeof IntegrationsRoute
   LibraryRoute: typeof LibraryRoute
   LiveViewRoute: typeof LiveViewRoute
@@ -623,13 +610,6 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/dev-editor-preview': {
-      id: '/dev-editor-preview'
-      path: '/dev-editor-preview'
-      fullPath: '/dev-editor-preview'
-      preLoaderRoute: typeof DevEditorPreviewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/integrations': {
@@ -868,7 +848,6 @@ const rootRouteChildren: RootRouteChildren = {
   ContactsRoute: ContactsRoute,
   CreditsRoute: CreditsRoute,
   DashboardRoute: DashboardRoute,
-  DevEditorPreviewRoute: DevEditorPreviewRoute,
   IntegrationsRoute: IntegrationsRoute,
   LibraryRoute: LibraryRoute,
   LiveViewRoute: LiveViewRoute,

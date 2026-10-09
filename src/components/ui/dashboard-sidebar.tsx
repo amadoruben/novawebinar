@@ -20,7 +20,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import iconAsset from "@/assets/brand/convertewebinar-icon.svg";
@@ -42,7 +42,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { switchWorkspace, useWorkspace } from "@/lib/data";
-import { useIntegrationsRoute, useSettingsRoute } from "@/lib/modal-route";
+import { useCreditsRoute, useIntegrationsRoute, useSettingsRoute } from "@/lib/modal-route";
 import { canAttend, canManageTeam, canOpenPath, type WorkspaceRole } from "@/lib/support/model";
 import { cn } from "@/lib/utils";
 
@@ -105,7 +105,15 @@ const ACCOUNT: NavItem[] = [
   { to: "/credits", title: "Créditos", icon: NAV_ICON.credits },
 ];
 
-const roleLabels: Record<WorkspaceRole, string> = {
+/** As entradas que esta função vê, por grupo; o «Mais» do menu de baixo (telemóvel) usa-as. */
+export function navGroups(role: WorkspaceRole | undefined) {
+  const visible = (item: NavItem) => canOpenPath(role, item.to) && (item.show?.(role) ?? true);
+  return [{ heading: "Principal", items: MAIN }, ...SECTIONS, { heading: "Conta", items: ACCOUNT }]
+    .map((g) => ({ heading: g.heading, items: g.items.filter(visible) }))
+    .filter((g) => g.items.length);
+}
+
+export const roleLabels: Record<WorkspaceRole, string> = {
   owner: "Proprietário",
   admin: "Administrador",
   member: "Membro",
@@ -118,9 +126,14 @@ export function SidebarNav({
   onToggleCollapse,
   onClose,
   role,
+  searching,
+  onSearchingChange,
 }: {
   /** Função de quem está a ver: decide as entradas do menu. */
   role?: WorkspaceRole | undefined;
+  /** A pesquisa (⌘K) aberta. Vive na página: no telemóvel abre-se pela lupa da barra de cima. */
+  searching: boolean;
+  onSearchingChange: (open: boolean) => void;
   className?: string | undefined;
   collapsed?: boolean | undefined;
   onToggleCollapse?: (() => void) | undefined;
@@ -130,8 +143,8 @@ export function SidebarNav({
   const navigate = useNavigate();
   const integrations = useIntegrationsRoute();
   const settings = useSettingsRoute();
+  const credits = useCreditsRoute();
   const { data: workspace } = useWorkspace();
-  const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
 
   const visible = (item: NavItem) => canOpenPath(role, item.to) && (item.show?.(role) ?? true);
@@ -144,24 +157,13 @@ export function SidebarNav({
   const account = ACCOUNT.filter(visible);
   const everything = [...main, ...sections.flatMap((s) => s.items), ...account];
 
-  // ⌘K / Ctrl+K abre a pesquisa em qualquer página do painel.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setSearching((open) => !open);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
   const go = (to: string, search?: Record<string, string | undefined>) => {
-    setSearching(false);
+    onSearchingChange(false);
     setQuery("");
     onClose?.();
     if (to === "/integrations") return integrations.go([]);
     if (to === "/settings") return settings.go([]);
+    if (to === "/credits") return credits.go([]);
     void navigate({ to: to as never, search: search as never });
   };
 
@@ -172,9 +174,10 @@ export function SidebarNav({
   };
 
   const row = (item: NavItem) => {
-    // Integrações abre um pop-up por cima da página onde se está, em vez de mudar de página.
-    const modal = item.to === "/integrations";
-    const active = modal ? integrations.open : isActive(item);
+    // Integrações e Créditos abrem um pop-up por cima da página onde se está, em vez de mudar de página.
+    const modal =
+      item.to === "/integrations" ? integrations : item.to === "/credits" ? credits : null;
+    const active = modal ? modal.open : isActive(item);
     const props = {
       title: collapsed ? item.title : undefined,
       "aria-label": item.title,
@@ -207,7 +210,7 @@ export function SidebarNav({
         type="button"
         onClick={() => {
           onClose?.();
-          integrations.go([]);
+          modal.go([]);
         }}
         {...props}
       >
@@ -260,7 +263,7 @@ export function SidebarNav({
           <button
             type="button"
             className={iconButton}
-            onClick={() => setSearching(true)}
+            onClick={() => onSearchingChange(true)}
             title="Pesquisar (⌘K)"
             aria-label="Pesquisar"
           >
@@ -394,7 +397,7 @@ export function SidebarNav({
         </div>
       </div>
 
-      <CommandDialog open={searching} onOpenChange={setSearching}>
+      <CommandDialog open={searching} onOpenChange={onSearchingChange}>
         <CommandInput placeholder="Pesquisar webinars ou ir para…" value={query} onValueChange={setQuery} />
         <CommandList>
           <CommandEmpty>Sem resultados.</CommandEmpty>

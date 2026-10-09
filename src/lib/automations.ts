@@ -82,15 +82,13 @@ export const TRIGGER_LABEL = {
 } as const;
 export type TriggerEvent = keyof typeof TRIGGER_LABEL;
 
+/** Os gatilhos pelas três partes do lançamento (GLOSSARY): quem chega, o dia do evento e o depois (com o pagamento). */
 export const TRIGGER_GROUPS: { title: string; triggers: TriggerEvent[] }[] = [
-  { title: "Antes do webinar", triggers: ["webinar_registered"] },
+  { title: "Novas pessoas", triggers: ["webinar_registered"] },
+  { title: "No dia do evento", triggers: ["webinar_session_started", "webinar_attended", "offer_viewed", "offer_clicked"] },
   {
-    title: "No webinar",
-    triggers: ["webinar_session_started", "webinar_attended", "offer_viewed", "offer_clicked", "webinar_session_ended"],
-  },
-  {
-    title: "No pagamento",
-    triggers: ["checkout_started", "purchase_approved", "payment_failed", "checkout_abandoned", "purchase_refunded"],
+    title: "Depois do evento",
+    triggers: ["webinar_session_ended", "checkout_started", "checkout_abandoned", "payment_failed", "purchase_approved", "purchase_refunded"],
   },
 ];
 

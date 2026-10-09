@@ -191,7 +191,7 @@ function generatorSettings(rules: ChatRules, audience: number): AiSettings {
   const pace = chatPace(audience, rules.volume, rules.perMinute);
   return {
     ...defaultAiSettings,
-    variant: chatVariant(rules.countries),
+    variant: chatVariant(rules.countries, rules.launch),
     level: pace.perMinute <= 5 ? "low" : pace.perMinute >= 15 ? "high" : "medium",
     frequency: Math.max(1, Math.round(60 / pace.perMinute)),
     participants: pace.people,
@@ -296,7 +296,8 @@ function EditWebinar() {
       host_verified: webinar.host_verified,
       room_theme_system: webinar.room_theme_system,
       room_format: roomFormat(webinar.chat_settings),
-      live: liveSettings(webinar.chat_settings),
+      // Num webinar antigo, a contagem vem das colunas prelive_*: o editor mostra o que a sala faz.
+      live: liveSettings(webinar.chat_settings, webinar),
       entry_card_color: webinar.entry_card_color,
       entry_button_color: webinar.entry_button_color,
       offer_utm: webinar.offer_utm,
@@ -636,7 +637,7 @@ function EditWebinar() {
     const name = product.trim() || "a vaga";
     const { error: deleteError } = await supabase.from("simulated_purchase_events").delete().eq("webinar_id", webinarId);
     if (deleteError) throw deleteError;
-    const rows = demoSales(count, pitchSeconds, duration).map((s) => ({
+    const rows = demoSales(count, pitchSeconds, duration, chatRules.countries).map((s) => ({
       webinar_id: webinarId,
       organization_id: organizationId,
       buyer_name: s.buyer,
@@ -814,6 +815,7 @@ function EditWebinar() {
           cta_url: offerUrl(form.cta_url),
           cta_price_original: form.cta_price_original.trim(),
           cta_price_now: form.cta_price_now.trim(),
+          cta_image_url: form.cta_image_url.trim(),
           cta_countdown_seconds: Math.max(0, Number(form.cta_countdown_seconds) || 0),
           // Um só minuto do pitch: a oferta aparece nele e os segmentos e as métricas comparam com ele.
           cta_start_seconds: offer.start,
@@ -885,7 +887,7 @@ function EditWebinar() {
   /* ---------- Imagens ---------- */
 
   const [uploadingImage, setUploadingImage] = useState(false);
-  const uploadImage = async (file: File, field: "host_avatar_url" | "share_image_url") => {
+  const uploadImage = async (file: File, field: "host_avatar_url" | "share_image_url" | "cta_image_url") => {
     setUploadingImage(true);
     try {
       const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
@@ -1065,7 +1067,7 @@ function EditWebinar() {
       return;
     }
     if (chatRules.countries.length === 0) {
-      toast.error("Escolha primeiro de que países são as pessoas do chat, em «Quem está no chat».");
+      toast.error("Escolha primeiro as nacionalidades de quem escreve, em «Pessoas do chat».");
       return;
     }
     const ok = await save({ silent: true });
@@ -1233,10 +1235,12 @@ function EditWebinar() {
     await navigate({ to: "/webinars", search: { q: undefined } });
   };
 
-  // Quando a oferta abre com o vídeo a tocar, a sala salta para o separador dela.
+  // Quando a oferta abre com o vídeo a tocar, a sala salta para o separador dela. No Webinar do telemóvel
+  // ao alto o chat fica e a oferta sobe por cima dele, como na sala.
   const offerOpenNow = offerVisible && t >= (pitchSeconds ?? 0);
+  const phoneWebinar = device === "phone" && !landscape && form.room_format !== "live";
   useEffect(() => {
-    if (offerOpenNow && playing) setRoomTab((current) => (current === "support" ? current : "offer"));
+    if (offerOpenNow && playing && !phoneWebinar) setRoomTab((current) => (current === "support" ? current : "offer"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offerOpenNow]);
 
@@ -1329,7 +1333,7 @@ function EditWebinar() {
           : step === "automacoes"
             ? "whatsapp"
             : "room";
-  const defaultTab: RoomTab = step === "oferta" ? "offer" : step === "agente" ? "support" : "chat";
+  const defaultTab: RoomTab = step === "oferta" && !phoneWebinar ? "offer" : step === "agente" ? "support" : "chat";
   const tab = roomTab ?? defaultTab;
   const screenName = { entry: "Página de entrada", room: "Sala ao vivo", waiting: "Sala de espera", whatsapp: "WhatsApp" }[screen];
   const ScreenIcon = { entry: LogIn, room: Radio, waiting: CalendarDays, whatsapp: MessagesSquare }[screen];
@@ -1372,6 +1376,8 @@ function EditWebinar() {
       offers={offers}
       offerImageUrl={form.cta_image_url || undefined}
       offerClosed={offerClosed}
+      offerCloseAtZero={form.offer_countdown_end === "close"}
+      offerTimezone={form.timezone}
       agent={agentState}
       tab={tab}
       onTab={setRoomTab}
@@ -1544,7 +1550,7 @@ function EditWebinar() {
           <PublishPage issues={launchIssues} roomLink={roomLink} onResolve={setStep} onBack={() => setPublished(false)} />
         ) : (
           <div className="grid min-h-0 flex-1 lg:grid-cols-[340px_minmax(0,1fr)]">
-            <section className="flex min-h-0 min-w-0 flex-col bg-background lg:border-r">
+            <section data-editor-panel className="flex min-h-0 min-w-0 flex-col bg-background lg:border-r">
               {!wide ? (
                 <div className="shrink-0 border-b">
                   {phoneScreen && !full ? (
@@ -1750,12 +1756,13 @@ function EditWebinar() {
                     onExtras={setExtraOffers}
                     suggestedPitch={suggestedPitch}
                     clock={editorClock}
-                    onWatch={(seconds) => watchAt(seconds - 1, "offer")}
+                    onWatch={(seconds) => watchAt(seconds - 1, phoneWebinar ? "chat" : "offer")}
                     onAfter={() => {
                       setPlaying(false);
                       setRoomTab("offer");
                       seek(duration);
                     }}
+                    upload={{ uploading: uploadingImage, onFile: (file) => void uploadImage(file, "cta_image_url") }}
                   />
                 ) : step === "vendas" ? (
                   <StepVendas

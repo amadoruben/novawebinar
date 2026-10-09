@@ -17,12 +17,16 @@ import { useVideoShape, VideoPlayer } from "@/components/video-player";
 import {
   activeOffer,
   checkoutLink,
+  entryPalette,
   FOLLOW_NETWORKS,
   followAppLink,
   followMomentAt,
   followWebLink,
   isGroupLink,
   LIVE_DEFAULTS,
+  offerColor,
+  offerDeadlinePassed,
+  offerTimer,
   profileHandle,
   type FollowNetwork,
   type LiveSettings,
@@ -35,6 +39,7 @@ import {
   CaptionLine,
   ChatComposer,
   ChatLine,
+  ENTRY_DIM,
   EntryPlay,
   LIVE_COLUMN_BG,
   liveFrame,
@@ -71,6 +76,8 @@ import { GroupJoinDialog } from "@/components/room/group-join";
 import { cn, isHttpUrl } from "@/lib/utils";
 import { PreliveCountdown, unlockPreliveAudio } from "@/components/prelive-countdown";
 import { watchedStep } from "@/lib/participant-facts";
+import { chatEcho, placeOf, type ChatPerson } from "@/lib/chat-reactions";
+import type { RoomTeamMessage, TeamRole } from "@/lib/room-team";
 
 /**
  * O viewport das páginas da sala: ocupa o ecrã todo do iPhone (as zonas seguras tratam-se com
@@ -94,7 +101,10 @@ export type RoomProgressOptions = {
 
 type Mode = "live" | "replay";
 type Tab = "chat" | "support" | "offer";
-type SentMessage = { text: string; at: Date; failed?: boolean };
+type SentMessage = { id: string; text: string; at: Date; failed?: boolean };
+
+/** O selo de quem é da equipa, no chat. */
+const TEAM_BADGE: Record<TeamRole, string> = { equipa: "Equipa", apresentador: "Apresentador" };
 
 export type RoomWebinar = {
   id: string;
@@ -208,6 +218,19 @@ function purchaseColorClasses(value?: string | null) {
   }
 }
 
+/** Se o ecrã responde à media query; acompanha as mudanças (rodar o aparelho, redimensionar). */
+function useMedia(query: string) {
+  const [matches, setMatches] = useState(() => typeof window !== "undefined" && window.matchMedia(query).matches);
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const update = () => setMatches(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [query]);
+  return matches;
+}
+
 export function WebinarRoom({
   webinar,
   comments,
@@ -223,9 +246,10 @@ export function WebinarRoom({
   resumePeakSeconds,
   preliveSeconds = 0,
   preliveSound = true,
-  preliveMessage = "A transmissão começa já a seguir",
+  preliveMessage = "",
   preliveTemplate = null,
   preliveAppearance,
+  preliveColor,
   viewerName,
   organizationId,
   onSend,
@@ -245,10 +269,16 @@ export function WebinarRoom({
   prefill,
   format = "webinar",
   live = LIVE_DEFAULTS,
+  team = null,
+  teamMessages = [],
 }: {
   webinar: RoomWebinar;
   /** «live»: vídeo em ecrã inteiro no telemóvel, com o chat por cima; no computador, o vídeo e o chat ao lado. */
   format?: RoomFormat | undefined;
+  /** Quem entrou como equipa: os comentários chegam a todos com o selo e não há Suporte. */
+  team?: { name: string; role: TeamRole } | null | undefined;
+  /** Os comentários da equipa já confirmados pelo servidor. */
+  teamMessages?: readonly RoomTeamMessage[] | undefined;
   /** Definições do formato Live (orientação no computador, selo, redes, momentos do + Seguir, cor da oferta). */
   live?: LiveSettings | undefined;
   /** A aparência escolhida (do organizador ou desta pessoa); `theme` é o resultado. */
@@ -256,8 +286,11 @@ export function WebinarRoom({
   onAppearance?: ((appearance: Appearance) => void) | undefined;
   /** A fala do vídeo, para as legendas. */
   captions?: readonly { at: number; text: string }[];
-  /** As ofertas seguintes à principal, o prazo, o fecho no zero e a origem no link. */
-  offers?: { extra: readonly OfferSlot[]; closed: boolean; closeAtZero: boolean; utm: boolean } | undefined;
+  /**
+   * As ofertas seguintes à principal, o prazo da principal (`closed`), o fecho no zero e a origem no
+   * link. Cada oferta seguinte fecha no seu último dia, no fuso do webinar (`timezone`).
+   */
+  offers?: { extra: readonly OfferSlot[]; closed: boolean; closeAtZero: boolean; utm: boolean; timezone?: string | undefined } | undefined;
   /** Onde aparecem as compras e se as reais da Kambafy entram na sala. */
   sales?: { where: "chat" | "video" | "both"; real: boolean } | undefined;
   /** «off»: a sala não mostra quantas pessoas estão a ver. */
@@ -297,15 +330,18 @@ export function WebinarRoom({
   preliveTemplate?: string | null;
   /** Ajustes de aparência do modelo escolhido. */
   preliveAppearance?: unknown;
+  /** A cor da contagem (anel, blocos, barra). */
+  preliveColor?: string | null | undefined;
   viewerName: string;
   /** Workspace da sessão. Com ele a sala aparece na vista ao vivo. */
   organizationId?: string | null;
-  onSend: (body: string) => Promise<void>;
+  /** `id`: o da mensagem, que dá as reacções simuladas (e, na equipa, o mesmo em todas as salas). */
+  onSend: (body: string, id: string) => Promise<void>;
   /** Conversa privada com a equipa: o que o participante escreveu e as respostas do suporte. */
   supportMessages?: { id: string; body: string; sender_kind: string; created_at: string }[];
-  onCtaView?: () => void;
-  onCtaClick?: () => void;
-  onProgress?: (seconds: number, peakSeconds?: number, options?: RoomProgressOptions) => void;
+  onCtaView?: (() => void) | undefined;
+  onCtaClick?: (() => void) | undefined;
+  onProgress?: ((seconds: number, peakSeconds?: number, options?: RoomProgressOptions) => void) | undefined;
 }) {
   const [seconds, setSeconds] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -354,13 +390,11 @@ export function WebinarRoom({
   const [playerShape, setPlayerShape] = useState<LiveSettings["desk"] | null>(null);
   const probedShape = useVideoShape(liveLayout ? webinar.video_url : null, webinar.video_provider);
   const videoShape = playerShape ?? probedShape ?? live.desk;
-  const [wide, setWide] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches);
-  useEffect(() => {
-    const media = window.matchMedia("(min-width: 1024px)");
-    const update = () => setWide(media.matches);
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
+  const wide = useMedia("(min-width: 1024px)");
+  // Webinar no telemóvel ao alto: a oferta sobe por cima do chat (como no Live) em vez de trocar de separador.
+  const phoneTall = useMedia("(max-width: 767px) and (orientation: portrait)");
+  // O botão de entrar pequeno só no telemóvel (ao alto ou deitado); o tablet usa o do computador, como na pré-visualização.
+  const phoneSize = useMedia("(max-width: 767px), (max-height: 500px)");
   // No Live o Suporte, a oferta inteira e as redes abrem numa folha por cima da sala.
   const [sheet, setSheet] = useState<null | "support" | "offer" | "follow">(null);
   const [offerMin, setOfferMin] = useState(false);
@@ -704,12 +738,14 @@ export function WebinarRoom({
   // Webinar com o telemóvel deitado: o chat fica recolhido num botão para o vídeo ter o ecrã.
   const [sideOpen, setSideOpen] = useState(false);
   // Quando uma oferta abre, o separador dela salta para a frente (deitado, o chat abre-se para a mostrar).
+  // No Webinar do telemóvel ao alto o chat fica e a oferta sobe por cima dele, como no Live.
   useEffect(() => {
     if (currentOffer) setSideOpen(true);
-    if (currentOffer) setTab("offer");
-    else setTab((prev) => (prev === "offer" ? "chat" : prev));
-    // No Live, cada oferta nova abre como cartão; a folha da oferta fecha quando ela acaba.
-    setOfferMin(false);
+    if (currentOffer && !(phoneTall && !liveLayout)) setTab("offer");
+    if (!currentOffer) setTab((prev) => (prev === "offer" ? "chat" : prev));
+    // No Live, cada oferta nova abre como cartão; a folha da oferta fecha quando ela acaba. No Webinar
+    // num telemóvel baixo (iPhone SE, 8), abre já reduzida à barra: inteira, tapava o chat quase todo.
+    setOfferMin(!liveLayout && window.matchMedia("(max-width: 767px) and (orientation: portrait) and (max-height: 739px)").matches);
     if (!currentOffer) setSheet((prev) => (prev === "offer" ? null : prev));
   }, [currentOffer?.id]);
 
@@ -726,9 +762,12 @@ export function WebinarRoom({
   if (!currentOffer) offerWallStartRef.current = null;
   const offerElapsed = offerWallStartRef.current ? (now - offerWallStartRef.current.at) / 1000 : 0;
   const offerRemaining = Math.max(0, Math.round(countdownTotal - offerElapsed));
-  // O botão fecha no fim do prazo, ou quando o cronómetro chega a zero se assim foi escolhido.
-  const offerClosed =
-    Boolean(offers?.closed) || (Boolean(offers?.closeAtZero) && countdownTotal > 0 && offerRemaining === 0);
+  // O botão fecha no último dia (o da principal ou o de cada oferta seguinte), ou quando o cronómetro
+  // chega a zero se assim foi escolhido; com «O botão continua», no zero só o cronómetro sai.
+  const deadlinePassed =
+    currentOffer?.id === "main" ? Boolean(offers?.closed) : offerDeadlinePassed(currentOffer?.deadline, offers?.timezone ?? "UTC", now);
+  const timer = offerTimer(countdownTotal, offerRemaining, Boolean(offers?.closeAtZero), deadlinePassed);
+  const offerClosed = timer.closed;
 
   // Notificação de compra visível neste segundo, dentro da janela configurada.
   // Cada notificação tem o seu momento definido à mão, por isso não há janela
@@ -924,10 +963,10 @@ export function WebinarRoom({
   // Uma mensagem que não chegou ao servidor fica à vista, com a opção de repetir.
   const deliver = async (message: SentMessage) => {
     const mark = (failed: boolean) =>
-      setSent((prev) => prev.map((m) => (m.at === message.at ? { ...m, failed } : m)));
+      setSent((prev) => prev.map((m) => (m.id === message.id ? { ...m, failed } : m)));
     mark(false);
     try {
-      await onSend(message.text);
+      await onSend(message.text, message.id);
     } catch {
       mark(true);
     }
@@ -937,7 +976,9 @@ export function WebinarRoom({
     const body = text.trim();
     if (!body) return;
     setText("");
-    const message = { text: body, at: new Date() };
+    // O Safari anterior ao 15.4 não tem randomUUID: o id só precisa de ser único nesta sala.
+    const id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const message = { id, text: body, at: new Date() };
     setSent((prev) => [...prev, message]);
     await deliver(message);
   };
@@ -1173,8 +1214,8 @@ export function WebinarRoom({
               {/* A legenda e o botão de entrar ficam no próprio vídeo (com o vídeo ao alto, a legenda sobe acima do chat). */}
               {liveBox.place !== "fill" && !showPrelive && !needsAudioUnlock ? <CaptionLine text={caption} compact={!wide} /> : null}
               {needsAudioUnlock ? (
-                <div className="absolute inset-0 grid place-items-center">
-                  <EntryPlay look={live.entry} kicker={entryKicker} compact={!wide} />
+                <div className={cn("absolute inset-0 grid place-items-center", ENTRY_DIM)}>
+                  <EntryPlay look={live.entry} kicker={entryKicker} compact={phoneSize} />
                 </div>
               ) : null}
             </div>
@@ -1206,6 +1247,8 @@ export function WebinarRoom({
               soundEnabled={preliveSound}
               template={preliveTemplate}
               appearance={preliveAppearance}
+              color={preliveColor}
+              fill={liveLayout}
             />
           </div>
         )}
@@ -1231,15 +1274,15 @@ export function WebinarRoom({
       </div>
 
       {needsAudioUnlock && (
-        // Tocar em qualquer sítio começa a aula; o botão fica ao centro do vídeo, sem o tapar (no Live
-        // está dentro da moldura do vídeo, acima).
+        // Tocar em qualquer sítio começa a aula; o botão fica ao centro do vídeo, meio escurecido (no Live
+        // o botão e o escurecido estão dentro da moldura do vídeo, acima).
         <button
           type="button"
           onClick={enableSound}
           aria-label="Clique aqui para assistir"
-          className="absolute inset-0 z-40 grid place-items-center bg-black/20 transition-colors hover:bg-black/25"
+          className={cn("absolute inset-0 z-40 grid place-items-center", !liveLayout && ENTRY_DIM)}
         >
-          {liveLayout ? null : <EntryPlay look={live.entry} kicker={entryKicker} compact={!wide} />}
+          {liveLayout ? null : <EntryPlay look={live.entry} kicker={entryKicker} compact={phoneSize} />}
         </button>
       )}
     </div>
@@ -1270,7 +1313,7 @@ export function WebinarRoom({
       </div>
       <p className="text-sm text-room-subtle">Fique por aqui. Entramos no ar à hora marcada.</p>
     </div>
-  ) : finished && openAfter !== null ? (
+  ) : finished && openAfter !== null && !offerClosed ? (
     <div className={cn("flex flex-col items-center justify-center gap-3 px-6 text-center text-white", frame)}>
       <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">A aula terminou</p>
       <h2 className="text-2xl font-extrabold text-white sm:text-3xl">As inscrições continuam abertas</h2>
@@ -1300,7 +1343,7 @@ export function WebinarRoom({
       </h2>
       <p className="max-w-md text-sm text-white/80">
         A sessão ao vivo chegou ao fim.{" "}
-        {ctaVisible
+        {ctaVisible && !offerClosed
           ? liveLayout
             ? "A oferta continua disponível aqui em baixo."
             : "A oferta continua disponível no separador Oferta."
@@ -1378,9 +1421,64 @@ export function WebinarRoom({
       })];
   }, [proofSchedule, socialProof?.enabled, activePurchase, waiting, showChatSales, realPurchases]);
 
+  // As pessoas do chat simulado (todas as do guião, iguais para todos): são elas que reagem e respondem
+  // a quem escreve de verdade. A reacção sai do id da mensagem, por isso é a mesma em todas as salas.
+  // O sítio de cada uma («A ver de Luanda») serve para responder a «De onde estão a ver?».
+  const crowd = useMemo<ChatPerson[]>(() => {
+    const byName = new Map<string, ChatPerson>();
+    for (const c of comments) {
+      const person = byName.get(c.author_name) ?? { name: c.author_name, avatarUrl: c.avatar_url ?? null };
+      person.place ||= placeOf(c.message);
+      byName.set(c.author_name, person);
+    }
+    return [...byName.values()];
+  }, [comments]);
+  const echoes = useMemo(() => {
+    const out = new Map<string, ReturnType<typeof chatEcho>>();
+    if (mode !== "live") return out;
+    for (const m of sent) if (!m.failed) out.set(m.id, chatEcho({ id: m.id, text: m.text, author: viewerName, team: Boolean(team) }, crowd));
+    for (const m of teamMessages) out.set(m.id, chatEcho({ id: m.id, text: m.text, author: m.name, team: true }, crowd));
+    return out;
+  }, [mode, sent, teamMessages, crowd, viewerName, team]);
+
   /** Chat público por ordem cronológica real: o que eu escrevi fica no momento em que escrevi. */
   const chatThread = useMemo(() => {
-    const items = [
+    type Item = {
+      key: string;
+      author: string;
+      avatarUrl: string | null;
+      message: string;
+      at: Date;
+      mine: boolean;
+      purchase: boolean;
+      source: SentMessage | undefined;
+      /** O selo da equipa («Equipa», «Apresentador»). */
+      badge?: string | undefined;
+      /** A reacção do chat simulado («❤️ 3»), quando já chegou. */
+      reaction?: string | undefined;
+    };
+    // A reacção e as respostas simuladas entram no seu segundo, depois da mensagem real.
+    const echoOf = (id: string, at: Date, key: string) => {
+      const echo = echoes.get(id);
+      if (!echo) return { reaction: undefined, replies: [] as Item[] };
+      const due = (after: number) => now >= at.getTime() + after * 1000;
+      return {
+        reaction: echo.reaction && due(echo.reaction.after) ? `${echo.reaction.emoji} ${echo.reaction.count}` : undefined,
+        replies: echo.replies
+          .filter((r) => due(r.after))
+          .map((r, i) => ({
+            key: `${key}-r${i}`,
+            author: r.author,
+            avatarUrl: r.avatarUrl,
+            message: r.text,
+            at: new Date(at.getTime() + r.after * 1000),
+            mine: false,
+            purchase: false,
+            source: undefined,
+          })),
+      };
+    };
+    const items: Item[] = [
       ...visibleComments.map((c) => ({
         key: c.id,
         author: c.author_name,
@@ -1389,22 +1487,27 @@ export function WebinarRoom({
         at: commentArrival[c.id] ?? new Date(c.created_at ?? Date.now()),
         mine: false,
         purchase: false,
-        source: undefined as SentMessage | undefined,
+        source: undefined,
       })),
       ...purchaseFeed,
-      ...sent.map((m, index) => ({
-        key: `sent-${index}`,
-        author: viewerName || "Eu",
-        avatarUrl: null,
-        message: m.text,
-        at: m.at,
-        mine: true,
-        purchase: false,
-        source: m,
-      })),
+      ...sent.flatMap((m) => {
+        const echo = echoOf(m.id, m.at, `sent-${m.id}`);
+        return [
+          { key: `sent-${m.id}`, author: viewerName || "Eu", avatarUrl: null, message: m.text, at: m.at, mine: true, purchase: false, source: m, reaction: echo.reaction },
+          ...echo.replies,
+        ];
+      }),
+      ...teamMessages.flatMap((m) => {
+        const echo = echoOf(m.id, m.arrived, `team-${m.id}`);
+        const host = m.role === "apresentador" && webinar.host_avatar_url ? webinar.host_avatar_url : null;
+        return [
+          { key: `team-${m.id}`, author: m.name, avatarUrl: host, message: m.text, at: m.arrived, mine: false, purchase: false, source: undefined, badge: TEAM_BADGE[m.role], reaction: echo.reaction },
+          ...echo.replies,
+        ];
+      }),
     ];
     return items.sort((a, b) => a.at.getTime() - b.at.getTime());
-  }, [visibleComments, commentArrival, sent, viewerName, purchaseFeed]);
+  }, [visibleComments, commentArrival, sent, viewerName, purchaseFeed, teamMessages, echoes, now, webinar.host_avatar_url]);
 
   // As compras também entram no chat: a última fica à vista (também no chat por cima do vídeo).
   useEffect(() => {
@@ -1433,12 +1536,26 @@ export function WebinarRoom({
                 <SaleLine key={item.key} text={`${item.author} ${item.message}`} color={socialProof?.notification_color} />
               ) : item.mine ? (
                 <div key={item.key}>
-                  {/* O que a pessoa escreve só ela vê: não chega aos outros nem afecta o lançamento. */}
-                  <ChatLine author="Você" text={item.message} tone="mine" badge="Só você vê" big />
+                  {/* O que a pessoa escreve só ela vê: não chega aos outros nem afecta o lançamento. A equipa
+                      escreve para todos, com o seu selo. */}
+                  {team ? (
+                    <ChatLine author={viewerName} text={item.message} tone="team" badge={TEAM_BADGE[team.role]} reaction={item.reaction} big />
+                  ) : (
+                    <ChatLine author="Você" text={item.message} tone="mine" badge="Só você vê" reaction={item.reaction} big />
+                  )}
                   {item.source ? retryNote(item.source) : null}
                 </div>
               ) : (
-                <ChatLine key={item.key} author={item.author} text={item.message} avatarUrl={item.avatarUrl} big />
+                <ChatLine
+                  key={item.key}
+                  author={item.author}
+                  text={item.message}
+                  avatarUrl={item.avatarUrl}
+                  tone={item.badge ? "team" : "people"}
+                  badge={item.badge}
+                  reaction={item.reaction}
+                  big
+                />
               ),
             )
           )
@@ -1465,8 +1582,10 @@ export function WebinarRoom({
         buttonText={currentOffer.button || "Quero entrar"}
         onBuy={clickCta}
         countdownSeconds={offerRemaining}
-        showCountdown={countdownTotal > 0 && !inSheet}
+        showCountdown={timer.left !== null && !inSheet}
         compact={inSheet}
+        // Na folha (um pop-up), a forma compacta: cabe inteira, com o botão sempre à vista.
+        look={inSheet ? "compact" : live.offerLook}
         stickyBuy={inSheet}
         closed={offerClosed}
         group={isGroupLink(currentOffer.url)}
@@ -1484,32 +1603,49 @@ export function WebinarRoom({
 
   // Aviso durante a contagem de arranque: o vídeo ainda não entrou no ar e o
   // som precisa de um toque para ser desbloqueado.
+  // No Live do telemóvel fica por baixo da barra de cima (em baixo está o chat); no Webinar do telemóvel,
+  // pequeno e encostado ao fundo do vídeo, para não tapar o relógio.
+  const promptAtTop = liveLayout && !wide;
+  const promptSmall = !liveLayout && !wide;
   const soundPrompt =
     !soundOn && prelive ? (
       <button
         type="button"
         onClick={enableSound}
-        className="absolute inset-x-0 bottom-0 z-30 flex items-center justify-center px-4 pb-4 pt-16 text-white"
-        style={{ background: "linear-gradient(to top, rgba(0,0,0,0.55), transparent)" }}
+        className={cn(
+          "absolute inset-x-0 z-30 flex items-center justify-center px-4 text-white",
+          promptAtTop ? "top-[calc(env(safe-area-inset-top)+58px)]" : promptSmall ? "bottom-0 pb-2 pt-8" : "bottom-0 pb-4 pt-16",
+        )}
+        // Na cor da contagem, para o aviso fazer parte dela.
+        style={{
+          background: promptAtTop ? undefined : "linear-gradient(to top, rgba(0,0,0,0.55), transparent)",
+          ...(preliveColor ? { "--primary": offerColor(preliveColor), "--primary-foreground": entryPalette(null, offerColor(preliveColor)).buttonText } : null),
+        } as React.CSSProperties}
       >
-        <span className="pointer-events-none flex items-center gap-3 rounded-full bg-black/70 py-2.5 pl-3 pr-5 shadow-xl ring-1 ring-white/20 backdrop-blur">
-          <span className="relative flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <Volume2 className="size-4" />
+        <span
+          className={cn(
+            "pointer-events-none flex items-center rounded-full bg-black/70 shadow-xl ring-1 ring-white/20 backdrop-blur",
+            promptSmall ? "gap-2 py-1.5 pl-1.5 pr-4" : "gap-3 py-2.5 pl-3 pr-5",
+          )}
+        >
+          <span className={cn("relative flex items-center justify-center rounded-full bg-primary text-primary-foreground", promptSmall ? "size-7" : "size-9")}>
+            <Volume2 className={promptSmall ? "size-3.5" : "size-4"} />
             <span className="absolute inset-0 animate-ping rounded-full bg-primary/60" />
           </span>
-          <span className="flex flex-col items-start leading-tight">
-            <span className="text-[10px] font-black uppercase tracking-[0.22em] text-primary">
-              A começar em instantes
-            </span>
-            <span className="text-sm font-bold">Toque para ligar o som</span>
-          </span>
+          {/* Só a acção: a contagem por trás já diz que está a começar. */}
+          <span className={cn("font-bold leading-tight", promptSmall ? "text-[13px]" : "text-sm")}>Toque para ligar o som</span>
         </span>
       </button>
     ) : null;
 
+  // Com o cartão da oferta por cima do chat (Webinar no telemóvel ao alto), a mensagem fixada da oferta
+  // não aparece: o cartão já leva o botão, e as duas juntas tapavam o chat.
+  const phoneCard = !liveLayout && phoneTall && Boolean(currentOffer);
   const offerPinActive =
     tab === "chat" &&
+    !phoneCard &&
     ctaVisible &&
+    !offerClosed &&
     !pinDismissed &&
     (webinar.offer_pin_title?.trim() || webinar.offer_pin_message?.trim());
 
@@ -1583,6 +1719,33 @@ export function WebinarRoom({
     onBlur: () => roomRef.current?.classList.remove("live-room-shell--keyboard"),
   };
 
+  // A oferta aberta como cartão (Live, e Webinar no telemóvel ao alto), na forma escolhida no editor.
+  const cardOffer = currentOffer
+    ? {
+        product: currentOffer.product,
+        priceFrom: currentOffer.priceFrom,
+        priceNow: currentOffer.priceNow,
+        button: currentOffer.button || "Quero minha vaga",
+        countdown: timer.left,
+        closed: offerClosed,
+        image: currentOffer.id === "main" ? webinar.cta_image_url : null,
+        look: live.offerLook,
+        group: isGroupLink(currentOffer.url),
+      }
+    : null;
+  // Webinar no telemóvel ao alto: o cartão sobe por cima do chat; reduzido, fica uma barra. Tocar
+  // na barra (ou puxar o cartão para cima) abre o separador Oferta, com a oferta inteira.
+  const phoneOffer =
+    phoneCard && tab === "chat" && cardOffer ? (
+      <div className="shrink-0 px-3 pb-2.5">
+        {offerMin ? (
+          <LiveOfferSlim offer={cardOffer} onOpen={() => setTab("offer")} />
+        ) : (
+          <LiveOfferCard offer={cardOffer} onBuy={clickCta} onMinimize={() => setOfferMin(true)} onExpand={() => setTab("offer")} panel />
+        )}
+      </div>
+    ) : null;
+
   // No Live do telemóvel o chat já está por cima do vídeo: a folha só tem o Suporte e a Oferta.
   const sheetMode = liveLayout && !wide;
   const panel = (
@@ -1591,7 +1754,7 @@ export function WebinarRoom({
         {(
           [
             ...(sheetMode ? [] : [["chat", "Chat", MessagesSquare]]),
-            ["support", "Suporte", Headset],
+            ...(team ? [] : [["support", "Suporte", Headset]]),
             ...(ctaVisible ? [["offer", "Oferta", ShoppingCart]] : []),
           ] as [Tab, string, typeof MessagesSquare][]
         ).map(([value, label, Icon]) => (
@@ -1628,6 +1791,7 @@ export function WebinarRoom({
       </div>
       {chatPin}
       {tab === "offer" ? offerPanel() : feed}
+      {phoneOffer}
       {mode === "replay" && tab !== "offer" ? (
         <p className="border-t border-room-line p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-center text-xs text-room-subtle">
           Esta é uma gravação. O chat está fechado — vê as mensagens tal como aconteceram ao vivo.
@@ -1720,8 +1884,15 @@ export function WebinarRoom({
         item: item.purchase
           ? ({ key: item.key, kind: "sale", text: `${item.author} ${item.message}`, color: socialProof?.notification_color } as const)
           : item.mine
-            ? ({ key: item.key, kind: "mine", text: item.message, note: item.source ? retryNote(item.source) : null } as const)
-            : ({ key: item.key, kind: "msg", author: item.author, text: item.message } as const),
+            ? ({
+                key: item.key,
+                kind: "mine",
+                text: item.message,
+                note: item.source ? retryNote(item.source) : null,
+                reaction: item.reaction,
+                team: team ? { name: viewerName, badge: TEAM_BADGE[team.role] } : undefined,
+              } as const)
+            : ({ key: item.key, kind: "msg", author: item.author, text: item.message, badge: item.badge, reaction: item.reaction } as const),
       })),
       ...notices.map((at, i) => ({ at: at.getTime(), item: { key: `notice-${i}`, kind: "notice" } as const })),
     ]
@@ -1730,16 +1901,7 @@ export function WebinarRoom({
 
     // No Suporte do Live só entram as perguntas que tiveram resposta (e as respostas).
     const answered = supportThread.filter((m, i) => m.fromTeam || supportThread.slice(i + 1).some((n) => n.fromTeam));
-    const liveOffer = currentOffer
-      ? {
-          product: currentOffer.product,
-          priceFrom: currentOffer.priceFrom,
-          priceNow: currentOffer.priceNow,
-          button: currentOffer.button || "Quero minha vaga",
-          countdown: countdownTotal > 0 ? offerRemaining : null,
-          closed: offerClosed,
-        }
-      : null;
+    const liveOffer = cardOffer;
     const offerCardOpen = Boolean(liveOffer) && !offerMin && sheet !== "offer";
 
     const pin =
@@ -1789,7 +1951,7 @@ export function WebinarRoom({
             onSubmit={() => void sendMessage()}
             inputProps={composerInput}
             bag={liveOffer ? { blink: !offerCardOpen && sheet !== "offer", onClick: () => setSheet("offer") } : null}
-            support={{ unread: supportUnread, open: sheet === "support", onClick: () => setSheet(sheet === "support" ? null : "support") }}
+            support={team ? null : { unread: supportUnread, open: sheet === "support", onClick: () => setSheet(sheet === "support" ? null : "support") }}
             onHeart={sendHeart}
             reactions={hearts}
             panel={wide}
@@ -1802,7 +1964,7 @@ export function WebinarRoom({
       <>
         {sheet === "support" ? <LiveSupportSheet thread={answered.map((m) => ({ key: m.key, text: m.text, fromTeam: m.fromTeam }))} teamName={supportName} onClose={closeSheet} /> : null}
         {sheet === "offer" && currentOffer ? (
-          <LiveOfferSheet countdown={liveOffer?.countdown ?? null} onClose={closeSheet} onSupport={() => setSheet("support")}>
+          <LiveOfferSheet countdown={liveOffer?.countdown ?? null} closed={offerClosed} onClose={closeSheet} onSupport={team ? undefined : () => setSheet("support")}>
             {offerPanel(true)}
           </LiveOfferSheet>
         ) : null}

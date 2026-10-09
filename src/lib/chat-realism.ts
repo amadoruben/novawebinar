@@ -17,7 +17,7 @@ export type ChatAlunos = {
   on: boolean;
   /** O curso ou produto de que são alunos (por omissão, o da oferta). */
   product: string;
-  /** Quantas pessoas o dizem. */
+  /** Quantas pessoas o dizem (1 a MAX_ALUNOS). */
   count: number;
   /** «oferta»: depois de a oferta abrir; «aula»: ao longo da aula. */
   when: "oferta" | "aula";
@@ -30,17 +30,24 @@ export type ChatRules = {
   perMinute: number;
   /** Com emojis ou sem: escolhe quem apresenta, em qualquer tom. */
   emoji: boolean;
+  /** As nacionalidades de quem escreve: mudam os nomes e a forma de escrever. */
   countries: ChatCountryCode[];
+  /** O país do lançamento: de onde dizem que estão a ver. Sem ele, cada pessoa diz uma cidade do seu país. */
+  launch: ChatCountryCode | null;
   alunos: ChatAlunos;
   answersOn: boolean;
-  /** «2 a 3», «3 a 5» ou «5 a 8» pessoas respondem a cada pergunta. */
-  answers: 2 | 4 | 6;
+  /** Quantas pessoas respondem a cada pergunta do apresentador (1 a MAX_ANSWERS). */
+  answers: number;
   delay: boolean;
   mobile: boolean;
   late: boolean;
   talk: boolean;
   follow: boolean;
 };
+
+/** Até onde vão os números livres: alunos e respostas (lançamentos grandes). */
+export const MAX_ALUNOS = 100;
+export const MAX_ANSWERS = 30;
 
 export const DEFAULT_CHAT_RULES: ChatRules = {
   tone: "natural",
@@ -49,6 +56,7 @@ export const DEFAULT_CHAT_RULES: ChatRules = {
   emoji: true,
   // Não vem nenhum país escolhido: quem apresenta escolhe de onde são as pessoas do chat.
   countries: [],
+  launch: null,
   alunos: { on: true, product: "", count: 3, when: "oferta" },
   answersOn: true,
   answers: 4,
@@ -81,19 +89,21 @@ export function parseChatRules(raw: unknown): ChatRules {
         ? {
             on: Boolean((a as ChatAlunos).on),
             product: String((a as ChatAlunos).product ?? "").slice(0, 80),
-            count: Math.min(15, Math.max(1, Number((a as ChatAlunos).count) || 3)),
+            count: Math.min(MAX_ALUNOS, Math.max(1, Math.round(Number((a as ChatAlunos).count)) || 3)),
             when: (a as ChatAlunos).when === "aula" ? "aula" : "oferta",
           }
         : DEFAULT_CHAT_RULES.alunos;
   const bool = (key: keyof ChatRules) => (typeof r[key] === "boolean" ? (r[key] as boolean) : (DEFAULT_CHAT_RULES[key] as boolean));
   const tone = (["natural", "vendas", "formal"] as const).find((t) => t === r["tone"]) ?? "natural";
-  const answers = ([2, 4, 6] as const).find((n) => n === r["answers"]) ?? 4;
+  // As antigas gravavam 2, 4 ou 6 («2 a 3», «3 a 5», «5 a 8»): lêem-se como esse número de pessoas.
+  const answers = Math.min(MAX_ANSWERS, Math.max(1, Math.round(Number(r["answers"])) || 4));
   return {
     tone,
     volume,
     perMinute,
     emoji: bool("emoji"),
     countries,
+    launch: codes.find((c) => c === r["launch"]) ?? null,
     alunos,
     answersOn: bool("answersOn"),
     answers,
@@ -147,12 +157,52 @@ export function namePool(countries: readonly ChatCountryCode[]): readonly string
   return out;
 }
 
-const LATE: Record<ChatCountryCode, readonly string[]> = {
-  ao: ["Boa noite, cheguei agora", "Já começou? A ver de Luanda", "Entrei agora, o início fica gravado?"],
-  mz: ["Boa noite, cheguei agora", "Já começou? A ver de Maputo", "Entrei agora, vai ficar gravado?"],
-  br: ["Boa noite, cheguei agora", "Já começou? Assistindo de São Paulo", "Entrei agora, vai ter replay?"],
-  pt: ["Boa noite, cheguei agora", "Já começou? A ver do Porto", "Entrei agora, vai haver gravação?"],
+/**
+ * Quem compra nas compras de demonstração: o primeiro nome, das nacionalidades do chat. Em lançamentos grandes os
+ * nomes voltam: primeiro com a inicial de um apelido («Kátia M.»), depois com o apelido inteiro («Kátia Mateus»),
+ * para não se ver o mesmo nome a comprar duas vezes (nem o mesmo nome de dois países).
+ */
+export function buyerNames(countries: readonly ChatCountryCode[], count: number): string[] {
+  const list = countries.length ? countries : (["ao"] as const);
+  const longest = Math.max(...list.map((c) => FIRST[c].length));
+  const order: [ChatCountryCode, number][] = [];
+  for (let i = 0; i < longest; i += 1) for (const c of list) if (FIRST[c][i]) order.push([c, i]);
+  const out: string[] = [];
+  const used = new Set<string>();
+  for (let k = 0; out.length < count; k += 1) {
+    const [c, i] = order[k % order.length]!;
+    const round = Math.floor(k / order.length);
+    // Iniciais diferentes em cada volta; acabadas, os apelidos: o mesmo nome nunca sai igual.
+    const initials = [...new Set(LAST[c].map((last) => last[0]!))];
+    const name =
+      round === 0
+        ? FIRST[c][i]!
+        : round <= initials.length
+          ? `${FIRST[c][i]} ${initials[(i + round - 1) % initials.length]}.`
+          : `${FIRST[c][i]} ${LAST[c][(i + round - 1 - initials.length) % LAST[c].length]}`;
+    // ponytail: acima de nomes × (1 + iniciais + apelidos), mais de 690 por país, os nomes voltam.
+    if (used.has(name) && round <= initials.length + LAST[c].length) continue;
+    used.add(name);
+    out.push(name);
+  }
+  return out;
+}
+
+/** De onde diz que está a ver: a forma de dizer é da nacionalidade; a cidade, do país do lançamento. */
+export function placeLine(nationality: ChatCountryCode, launch: ChatCountryCode | null) {
+  const place = CHAT_COUNTRIES.find((c) => c.code === (launch ?? nationality))!.places[0]!;
+  return `${nationality === "br" ? "Assistindo" : "A ver"} ${place}`;
+}
+
+/** Quem chega atrasado: cumprimenta, diz de onde está a ver e pergunta pela gravação. */
+const LATE: Record<ChatCountryCode, readonly [string, string]> = {
+  ao: ["Boa noite, cheguei agora", "Entrei agora, o início fica gravado?"],
+  mz: ["Boa noite, cheguei agora", "Entrei agora, vai ficar gravado?"],
+  br: ["Boa noite, cheguei agora", "Entrei agora, vai ter replay?"],
+  pt: ["Boa noite, cheguei agora", "Entrei agora, vai haver gravação?"],
 };
+const lateLine = (nationality: ChatCountryCode, launch: ChatCountryCode | null, i: number) =>
+  i === 1 ? `Já começou? ${placeLine(nationality, launch)}` : LATE[nationality][i === 0 ? 0 : 1];
 const TALK = ["também acho", "verdade", "isso mesmo", "pensei o mesmo", "concordo"];
 const ALUNO = [
   "Já fiz {p} e recomendo muito",
@@ -163,8 +213,29 @@ const ALUNO = [
   "Comprei {p} no ano passado, valeu cada cêntimo",
   "Sou de {p} desde o início, é mesmo isto",
   "{p} foi o melhor investimento que fiz este ano",
+  "Estou em {p} e sinto a diferença todos os dias",
+  "Fiz {p} e hoje faço tudo com mais calma",
 ];
+/** Com muitos alunos, a mesma frase volta com outro começo: nenhuma se repete até MAX_ALUNOS. */
+const ALUNO_OPENER = ["", "Posso dizer: ", "Sinceramente, ", "Gente, ", "Pessoal, ", "Confirmo: ", "Por experiência: ", "Sem exagero, ", "Falo por mim: ", "Verdade seja dita, "];
+const alunoLine = (k: number, product: string) => {
+  const line = ALUNO[k % ALUNO.length]!;
+  const opener = ALUNO_OPENER[Math.floor(k / ALUNO.length) % ALUNO_OPENER.length]!;
+  // Depois do começo, a frase segue em minúscula (o nome do curso fica como está).
+  const body = opener && !line.startsWith("{p}") ? line.charAt(0).toLocaleLowerCase("pt") + line.slice(1) : line;
+  return opener + body.replace("{p}", product);
+};
 const ANSWERS = ["Sim!", "Sim, claríssimo", "Certo", "Faz todo o sentido", "Sim, percebi", "Siiim", "Claro", "Sim, continua", "Com certeza", "Está claro"];
+const ANSWER_TAIL = ["", " aqui também", " por aqui", " sem dúvida", " totalmente", " muito"];
+const ANSWER_OPENER = ["", "Eu: ", "Ah, ", "Ok, ", "Opa, "];
+/** 10 × 6 × 5 = 300 respostas diferentes no webinar todo (10 perguntas com MAX_ANSWERS cada). */
+const ANSWER_DISTINCT = ANSWERS.length * ANSWER_TAIL.length * ANSWER_OPENER.length;
+const answerLine = (i: number) => {
+  const opener = ANSWER_OPENER[Math.floor(i / (ANSWERS.length * ANSWER_TAIL.length)) % ANSWER_OPENER.length]!;
+  const line = ANSWERS[i % ANSWERS.length]! + ANSWER_TAIL[Math.floor(i / ANSWERS.length) % ANSWER_TAIL.length]!;
+  // Depois do começo, a frase segue em minúscula, como nos alunos.
+  return opener ? opener + line.charAt(0).toLocaleLowerCase("pt") + line.slice(1) : line;
+};
 /** Emojis que entram nas mensagens: só positivos. */
 const HAPPY = ["🔥", "👏", "🙌", "😍", "💯", "✨", "👍", "🙏", "❤️", "😮", "🚀", "💪"];
 
@@ -196,8 +267,8 @@ export function hostQuestions(sentences: readonly { at: number; text: string }[]
 }
 
 /** Os exemplos que o ecrã mostra para cada regra. */
-export function lateExample(countries: readonly ChatCountryCode[]) {
-  return LATE[countries[0] ?? "ao"][1]!;
+export function lateExample(countries: readonly ChatCountryCode[], launch: ChatCountryCode | null = null) {
+  return lateLine(countries[0] ?? launch ?? "ao", launch, 1);
 }
 export function alunoExample(product: string) {
   return ALUNO[0]!.replace("{p}", product.trim() || "a mentoria");
@@ -243,21 +314,23 @@ export function applyChatRealism<T extends ChatDraft>(
       const country = countries[i % countries.length]!;
       if (at < d) {
         const emo = i === 0 && withEmoji ? " 🙋" : "";
-        out.push({ at, author: "", message: LATE[country][i]! + emo, tag: "late" });
+        out.push({ at, author: "", message: lateLine(country, rules.launch, i) + emo, tag: "late" });
       }
     });
   }
 
   // 3. Respostas às perguntas do apresentador.
   if (rules.answersOn) {
-    const n = { 2: 3, 4: 4, 6: 6 }[rules.answers];
-    (ctx.questions ?? []).forEach((tq, q) => {
+    const questions = ctx.questions ?? [];
+    // Com mais de 10 perguntas, cada uma fica com a sua parte das 300 respostas: nenhuma fica sem resposta.
+    const n = Math.min(MAX_ANSWERS, Math.max(1, rules.answers), Math.max(1, Math.floor(ANSWER_DISTINCT / Math.max(1, questions.length))));
+    questions.forEach((tq, q) => {
       for (let j = 0; j < n; j += 1) {
         const emo = withEmoji && j === 1 ? " 🙌" : "";
         out.push({
           at: cap(tq + 3 + 2 * j + ((q + j) % 3)),
           author: "",
-          message: ANSWERS[(n * q + j) % ANSWERS.length]! + emo,
+          message: answerLine(n * q + j) + emo,
           tag: "answer",
         });
       }
@@ -269,12 +342,12 @@ export function applyChatRealism<T extends ChatDraft>(
     const product = rules.alunos.product.trim() || ctx.product?.trim() || "a mentoria";
     const pitch = ctx.pitchSeconds ?? d * 0.8;
     const [from, to] = rules.alunos.when === "oferta" ? [pitch + 25, Math.min(d - 5, pitch + 900)] : [d * 0.2, d * 0.95];
-    const n = Math.min(8, rules.alunos.count);
+    const n = Math.min(MAX_ALUNOS, rules.alunos.count);
     if (to > from) {
       for (let k = 0; k < n; k += 1) {
         const at = cap(from + ((k + 0.5) * (to - from)) / n);
         const emo = withEmoji && k % 2 === 0 ? " 🙌" : "";
-        out.push({ at, author: "", message: ALUNO[k % ALUNO.length]!.replace("{p}", product) + emo, tag: "aluno" });
+        out.push({ at, author: "", message: alunoLine(k, product) + emo, tag: "aluno" });
       }
     }
   }

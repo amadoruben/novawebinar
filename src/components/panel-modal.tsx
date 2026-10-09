@@ -1,7 +1,8 @@
 /**
  * Moldura dos pop-ups do painel (Integrações, Definições), como as definições da Manus:
  * 1092 × 590 com margem à volta, um só fundo, menu à esquerda separado por uma linha e o
- * conteúdo sempre com a mesma largura.
+ * conteúdo sempre com a mesma largura. No telemóvel e no tablet ao alto ocupa a altura
+ * toda, menos a margem, com o nome em cima e as secções em botões que quebram de linha.
  */
 import { ChevronLeft, ChevronRight, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
@@ -15,6 +16,7 @@ export function PanelDialog({
   onClose,
   sidebar,
   mobileNav,
+  mobileTitle,
   children,
 }: {
   title: string;
@@ -22,14 +24,16 @@ export function PanelDialog({
   onClose: () => void;
   /** Menu da esquerda (computador). */
   sidebar: ReactNode;
-  /** As mesmas entradas numa fila que desliza (telemóvel). */
+  /** As mesmas entradas, em botões que quebram de linha (telemóvel). */
   mobileNav: ReactNode;
+  /** O nome em cima no telemóvel (por omissão, o título). */
+  mobileTitle?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       {/* O X da base, um pouco maior e com área de toque redonda. */}
-      <DialogContent className="flex h-[min(590px,calc(100dvh-4rem))] w-[min(1092px,calc(100vw-2rem))] max-w-none gap-0 overflow-hidden bg-background p-0 sm:p-0 [&>button]:top-3 [&>button]:right-3 [&>button]:rounded-full [&>button]:p-1.5 [&>button]:opacity-80 [&>button]:hover:bg-[var(--hover-ghost)] [&>button>svg]:size-5">
+      <DialogContent className="flex h-[calc(100dvh-2rem)] w-[min(1092px,calc(100vw-2rem))] lg:h-[min(590px,calc(100dvh-4rem))] max-w-none gap-0 overflow-hidden bg-background p-0 sm:p-0 [&>button]:top-3 [&>button]:right-3 [&>button]:rounded-full [&>button]:p-1.5 [&>button]:opacity-80 [&>button]:hover:bg-[var(--hover-ghost)] [&>button>svg]:size-5">
         <DialogTitle className="sr-only">{title}</DialogTitle>
         <DialogDescription className="sr-only">{description}</DialogDescription>
 
@@ -37,10 +41,14 @@ export function PanelDialog({
           {sidebar}
         </aside>
 
-        <main className="scrollbar-thin min-w-0 flex-1 overflow-y-auto px-5 pt-14 pb-10 md:px-[52px] md:pt-12">
+        <main className="scrollbar-thin min-w-0 flex-1 overflow-y-auto px-5 pt-2 pb-10 md:px-[52px] md:pt-12">
+          {/* Telemóvel: o nome ao lado do X e todas as secções à vista, nada cortado. */}
+          <p className="mb-3 flex min-h-10 items-center pr-10 text-[17px] font-semibold tracking-[-0.02em] text-foreground md:hidden">
+            {mobileTitle ?? title}
+          </p>
           <nav
             aria-label={title}
-            className="-mx-5 mb-6 flex gap-1 overflow-x-auto px-5 pb-1 md:hidden"
+            className="mb-6 flex flex-wrap gap-1.5 md:hidden [&>button]:border [&>button]:border-hairline"
           >
             {mobileNav}
           </nav>

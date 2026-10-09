@@ -1,16 +1,24 @@
-import { Check, CirclePlay, Clock, Moon, Palette, Play, Plus, UserPlus, X } from "lucide-react";
+import { useEffect } from "react";
+import { Check, CirclePlay, Clock, Eye, EyeOff, Moon, Palette, Play, Plus, Timer, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { NETWORK_ICONS } from "@/components/room/live-parts";
+import { CountdownThumb } from "@/components/prelive-countdown";
+import { peekCountdown, useCountdownPeek } from "./room-preview";
 import { cn } from "@/lib/utils";
 import {
   clock,
+  COUNTDOWN_MINUTES,
+  COUNTDOWN_OFF,
+  COUNTDOWN_STYLES,
+  entryPalette,
   FOLLOW_NETWORKS,
   OFFER_COLOR_SUGGESTIONS,
   suggestFollowMoments,
   type FollowMoment,
   type EntryLook,
+  type RoomCountdown,
   type FollowNetwork,
   type LiveSettings,
 } from "@/lib/room-logic";
@@ -47,6 +55,15 @@ export function RoomOptions({
   const added = FOLLOW_NETWORKS.filter((n) => n.id in live.links).map((n) => n.id);
   const rows: readonly FollowNetwork[] = added.length ? added : ["instagram"];
   const missing = FOLLOW_NETWORKS.filter((n) => !rows.includes(n.id));
+  // A contagem: ao mexer no estilo, na cor ou nos minutos, a pré-visualização mostra-a no lugar do vídeo.
+  const countdown = live.countdown ?? COUNTDOWN_OFF;
+  const peek = useCountdownPeek();
+  const setCountdown = (patch: Partial<RoomCountdown>, show = true) => {
+    const next = { ...countdown, ...patch };
+    onLive({ countdown: next });
+    peekCountdown(next.on && show);
+  };
+  useEffect(() => () => peekCountdown(false), []);
   return (
     <>
       <Section icon={Moon} title="Aparência" help="aparencia">
@@ -101,7 +118,7 @@ export function RoomOptions({
                     on ? "ring-2 ring-foreground ring-offset-2" : "group-hover:ring-black/25",
                   )}
                 >
-                  <EntryThumb look={value} />
+                  <EntryThumb look={value} color={live.offerColor} />
                   {on ? (
                     <span className="absolute right-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-foreground text-background">
                       <Check className="size-3" />
@@ -116,11 +133,76 @@ export function RoomOptions({
       </Section>
 
       <Section icon={Palette} title="Cor do botão" help="corBotao">
-        <Swatches label="Botão e oferta" value={live.offerColor} onChange={(offerColor) => onLive({ offerColor })} options={OFFER_COLOR_SUGGESTIONS} />
+        <Swatches label="Botão de entrar e oferta" value={live.offerColor} onChange={(offerColor) => onLive({ offerColor })} options={OFFER_COLOR_SUGGESTIONS} />
         <p className="text-[12.5px] text-muted-foreground">
-          O botão da oferta e o cartão usam esta cor; o texto ajusta-se sozinho. «Ao vivo» fica sempre vermelho e o + Seguir no laranja da
-          marca.
+          O botão de entrar, o botão da oferta e o cartão usam esta cor; o texto ajusta-se sozinho. «Ao vivo» fica sempre vermelho.
         </p>
+      </Section>
+
+      <Section icon={Timer} title="Contagem antes de começar" help="contagem">
+        <div className="rounded-xl border bg-white p-3">
+          <SwitchRow
+            title="Mostrar a contagem"
+            description="A sala abre antes da hora, com o chat aberto e o relógio no lugar do vídeo."
+            checked={countdown.on}
+            onChange={(on) => setCountdown({ on })}
+          />
+        </div>
+        {countdown.on ? (
+          <>
+            <div className="grid grid-cols-2 gap-2.5" role="radiogroup" aria-label="Estilo da contagem">
+              {COUNTDOWN_STYLES.map(({ id, name }) => {
+                const on = countdown.style === id;
+                return (
+                  <button key={id} type="button" role="radio" aria-checked={on} onClick={() => setCountdown({ style: id })} className="group grid gap-2 text-left">
+                    <span
+                      className={cn(
+                        "relative block overflow-hidden rounded-xl ring-1 ring-black/10 transition",
+                        on ? "ring-2 ring-foreground ring-offset-2" : "group-hover:ring-black/25",
+                      )}
+                    >
+                      <CountdownThumb style={id} color={countdown.color} />
+                      {on ? (
+                        <span className="absolute right-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-foreground text-background">
+                          <Check className="size-3" />
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className={cn("text-[13px]", on ? "font-semibold" : "font-medium text-muted-foreground")}>{name}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <Swatches label="Cor da contagem" value={countdown.color} onChange={(color) => setCountdown({ color })} options={OFFER_COLOR_SUGGESTIONS} />
+            <div className="grid gap-1.5">
+              <span className="text-[13px] font-medium">A sala abre antes da hora</span>
+              <div className="grid grid-cols-5 gap-1.5" role="radiogroup" aria-label="Minutos antes da hora">
+                {COUNTDOWN_MINUTES.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    role="radio"
+                    aria-checked={countdown.minutes === m}
+                    onClick={() => setCountdown({ minutes: m })}
+                    className={cn(
+                      "h-10 min-w-0 whitespace-nowrap rounded-lg px-1 text-[13.5px] font-semibold tabular-nums transition",
+                      countdown.minutes === m ? "bg-foreground text-background" : "bg-chip hover:bg-[var(--ds-gray-alpha-300)]",
+                    )}
+                  >
+                    {m} min
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-xl border bg-white p-3">
+              <SwitchRow title="Música de fundo" checked={countdown.sound} onChange={(sound) => setCountdown({ sound }, false)} />
+            </div>
+            <Button variant="outline" size="sm" className="justify-self-start" onClick={() => peekCountdown(!peek)}>
+              {peek ? <EyeOff /> : <Eye />}
+              {peek ? "Voltar ao vídeo" : "Ver na sala"}
+            </Button>
+          </>
+        ) : null}
       </Section>
 
       <Section icon={UserPlus} title="Botão Seguir" help="seguir">
@@ -283,11 +365,11 @@ export function RoomOptions({
 }
 
 /** O botão de entrar em miniatura, ao centro de um vídeo: a pulsar, ou com a linha de informação. */
-export function EntryThumb({ look }: { look: EntryLook }) {
+export function EntryThumb({ look, color = "#E8440C" }: { look: EntryLook; color?: string }) {
   const dot = (size: string) => (
-    <span className={cn("relative grid shrink-0 place-items-center rounded-full bg-[#E8440C]", size)}>
-      <span className="absolute inset-0 animate-ping rounded-full bg-[#E8440C]/50 motion-reduce:animate-none" />
-      <Play className="relative size-[45%] translate-x-[0.5px] fill-white text-white" />
+    <span className={cn("relative grid shrink-0 place-items-center rounded-full", size)} style={{ background: color, color: entryPalette(null, color).buttonText }}>
+      <span className="absolute inset-0 animate-ping rounded-full opacity-50 motion-reduce:animate-none" style={{ background: color }} />
+      <Play className="relative size-[45%] translate-x-[0.5px] fill-current" />
     </span>
   );
   if (look === "pulse") return dot("size-8");

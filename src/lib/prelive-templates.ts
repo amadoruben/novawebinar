@@ -6,16 +6,8 @@
  * opções de aparência que o vendedor pode ajustar sem estragar o desenho.
  */
 
-export type PreliveTemplateId =
-  | "minimal"
-  | "premium"
-  | "dark"
-  | "glass"
-  | "split"
-  | "compact"
-  | "urgency"
-  | "editorial"
-  | "pulse";
+/** Os quatro estilos da contagem (os nomes no ecrã estão em `COUNTDOWN_STYLES`, room-logic). */
+export type PreliveTemplateId = "minimal" | "premium" | "dark" | "urgency";
 
 export type PreliveAppearance = {
   title: string;
@@ -37,7 +29,7 @@ export type PreliveTemplate = {
 
 const base: PreliveAppearance = {
   title: "",
-  subtitle: "Já pode falar no chat — estamos quase a entrar no ar.",
+  subtitle: "",
   showDays: false,
   showHours: false,
   showMinutes: true,
@@ -47,69 +39,35 @@ const base: PreliveAppearance = {
 };
 
 export const PRELIVE_TEMPLATES: PreliveTemplate[] = [
-  {
-    id: "minimal",
-    label: "Minimal",
-    description: "Anel de progresso com o relógio ao centro.",
-    preset: { ...base },
-  },
-  {
-    id: "premium",
-    label: "Premium",
-    description: "Blocos destacados com etiquetas por unidade.",
-    preset: { ...base, showHours: true, size: "lg" },
-  },
-  {
-    id: "dark",
-    label: "Dark",
-    description: "Fundo escuro sólido e números muito grandes.",
-    preset: { ...base, size: "lg" },
-  },
-  {
-    id: "glass",
-    label: "Glass",
-    description: "Cartão translúcido sobre o ambiente da sala.",
-    preset: { ...base, showHours: true },
-  },
-  {
-    id: "split",
-    label: "Split",
-    description: "Texto de um lado, contagem do outro.",
-    preset: { ...base, align: "left", showHours: true },
-  },
-  {
-    id: "compact",
-    label: "Compact",
-    description: "Barra discreta, ideal para ecrãs pequenos.",
-    preset: { ...base, size: "sm", subtitle: "" },
-  },
-  {
-    id: "urgency",
-    label: "Urgency",
-    description: "Sinal vivo e contagem em destaque.",
-    preset: { ...base, size: "lg", subtitle: "Não saia daqui — começamos já." },
-  },
-  {
-    id: "editorial",
-    label: "Editorial",
-    description: "Tipografia larga com linha fina de apoio.",
-    preset: { ...base, align: "left", size: "lg" },
-  },
-  {
-    id: "pulse",
-    label: "Pulso",
-    description: "Anel tracejado luminoso sobre fundo bordô.",
-    preset: { ...base, size: "lg", showMinutes: false, showSeconds: true },
-  },
+  { id: "minimal", label: "Anel", description: "Anel de progresso com o relógio ao centro.", preset: { ...base } },
+  { id: "premium", label: "Blocos", description: "Um bloco por unidade, com o nome por baixo.", preset: { ...base } },
+  { id: "dark", label: "Grande", description: "Números muito grandes, sem mais nada.", preset: { ...base, size: "lg" } },
+  { id: "urgency", label: "Barra", description: "Sinal vivo, contagem e barra de progresso.", preset: { ...base, size: "lg" } },
 ];
 
 export const DEFAULT_PRELIVE_TEMPLATE: PreliveTemplateId = "minimal";
 
+/** A frase que o editor antigo gravava por omissão: o estilo já diz o mesmo, por isso não aparece. */
+const OLD_DEFAULT_MESSAGE = "A transmissão começa já a seguir";
+
+/** A frase da contagem: só a que o organizador escreveu (webinars antigos); senão, nenhuma. */
+export function preliveTitle(stored: string | null | undefined) {
+  const text = stored?.trim() ?? "";
+  return text === OLD_DEFAULT_MESSAGE ? "" : text;
+}
+
+/** Os modelos que deixaram de existir abrem no estilo mais parecido. */
+const RETIRED: Record<string, PreliveTemplateId> = {
+  glass: "premium",
+  split: "premium",
+  editorial: "premium",
+  compact: "urgency",
+  pulse: "dark",
+};
+
 export function templateById(id: string | null | undefined): PreliveTemplate {
-  return (
-    PRELIVE_TEMPLATES.find((t) => t.id === id) ??
-    PRELIVE_TEMPLATES[0]!
-  );
+  const wanted = RETIRED[id ?? ""] ?? id;
+  return PRELIVE_TEMPLATES.find((t) => t.id === wanted) ?? PRELIVE_TEMPLATES[0]!;
 }
 
 /** Junta o que está guardado ao preset do modelo, sem nunca devolver campos em falta. */

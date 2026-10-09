@@ -11,9 +11,9 @@ Ao criar ou renomear um gatilho, um facto ou uma automação pronta, actualize e
 | `src_facebook`, `src_instagram`, `src_youtube` | Origem: plataforma e sítio (Meta Ads · Facebook, Meta Ads · Instagram, Google Ads · YouTube) | Nó `origin` do canvas, com `source` e `placement`. Só representação. | Feito |
 | `pg_landing` | Página de inscrição | Formulário de inscrição do webinar; página `inscricao` | Feito |
 | `pg_acesso` | Sala do webinar | `/w/<slug>` (variável `{{link}}`) | Feito |
-| `lk_redirect` | Grupo de WhatsApp, com o link de convite | Nó `group` do canvas (variável `{{link_grupo}}`) | Feito, sem rotação de grupos cheios |
-| `grp_1`, `grp_2`, `grp_3` | Disparos com destino «grupo» dentro das automações | `send.target = "group"` | Desenho feito; sem fornecedor de WhatsApp, nada sai para o grupo |
-| `ai_aquecimento` | Automações «Aquecimento» e «Lembretes» | Gatilho `webinar_registered` | Feito |
+| `lk_redirect` | Grupo de WhatsApp, com o link de convite | Nós `group` do canvas; `{{link_grupo}}` é o link do primeiro grupo que o tem | Feito, sem rotação de grupos cheios |
+| `grp_1`, `grp_2`, `grp_3` | Grupos de WhatsApp do fluxo (um ou vários, lado a lado no desenho). A mensagem nos grupos escolhe um ou vários: um disparo por grupo, cada um com o seu texto | Um nó `group` por grupo; cada disparo com `send.target = "group"` e `send.group` = nome do grupo no WhatsApp (o motor procura-o pelo nome). Mudar o nome do grupo no fluxo muda-o nas mensagens (`renameGroupIn`) | Feito. Até 6 disparos por mensagem (limite da base de dados); não há destino «todos os grupos» que acompanhe grupos novos |
+| `ai_aquecimento` | Automações «Aquecimento» e «Lembretes» do modelo (menu «Mensagens de aquecimento») | Gatilho `webinar_registered` | Feito |
 | `sala` | Momentos «Webinar ao vivo» e «Fim da sessão» | Gatilhos `webinar_session_started` e `webinar_session_ended` | Feito |
 | `cond_comprou`, `cond_nao_comprou` | Condição «Comprou?» | Facto `purchased`; gatilho `purchase_approved` | Feito |
 | `seq_nao_acessou` | Automação «Não acessou» | `webinar_session_ended` com `entered = false` e `purchased = false` | Feito |
@@ -53,9 +53,31 @@ Ao criar ou renomear um gatilho, um facto ou uma automação pronta, actualize e
 | A condição de cada envio é avaliada no momento do envio | `conditionsHold` e `guardsHold` correm antes de cada mensagem. Excepção: depois de a sessão terminar, o que a pessoa fez nela já não se volta a confirmar (`conditionsAtSend`), para a gravação não a tirar da automação. |
 | Um contato está numa única sequência por trilha | Garantido para quem não comprou, pelas condições exclusivas. Nas outras automações cada uma tem o seu gatilho. |
 
-## Automações prontas que o mapa não tem
+## O modelo (automações prontas)
+
+O fluxo nasce vazio: nenhuma automação é criada sozinha, nem ao criar o fluxo nem no editor do webinar. As automações do modelo (`baseWorkflow()`) entram com o botão «Usar modelo» (escolhem-se quais) ou uma a uma pelo menu das peças, arrumadas em `MODEL_GROUPS`:
+
+| Bloco no menu | Automações |
+|---|---|
+| Mensagens de aquecimento | «Aquecimento», «Lembretes», «Sessão começou» |
+| Mensagens de recuperação | «Não acessou», «Saiu antes do pitch», «Assistiu o pitch», «Clicou e não comprou», «Checkout abandonado», «Pagamento falhou» |
+| Depois da compra | «Pós-compra», «Reembolso» |
+
+Entram desligadas. As mensagens para o grupo saem para cada grupo do fluxo (`modelAutomations`); quando não cabem os 6 disparos de uma mensagem, os dos grupos passam para mensagens só deles, logo a seguir e sem espera («Estamos ao vivo · grupos»). Sem grupos, o modelo põe o «Grupo do lançamento» no fluxo. Uma automação do modelo que já está no fluxo (pelo nome) aparece como «Já no fluxo» no menu e vem desmarcada em «Usar modelo».
+
+Os fluxos criados antes de o fluxo nascer vazio trazem o modelo inteiro. «Começar vazio» (no topo das peças) arquiva de uma vez as automações do modelo desligadas, sem execuções e por mexer (`isModelAsIs`: nome, gatilho, condições e passos iguais aos do modelo, sem contar os nomes dos grupos); o aviso traz «Desfazer».
 
 Existem no produto e não têm nó no mapa: «Sessão começou», «Clicou e não comprou», «Checkout abandonado», «Pagamento falhou» e «Reembolso».
+
+## Gatilhos por parte do lançamento
+
+No menu, na escolha do «Quando», no desenho e no passo Automações do editor, os gatilhos arrumam-se nas três partes do lançamento (`TRIGGER_GROUPS`; GLOSSARY: «Parte do lançamento»). «Momento» continua a ser um dos cinco pontos da espinha. Os nomes dos gatilhos não mudaram.
+
+| Parte do lançamento | Gatilhos do motor |
+|---|---|
+| Novas pessoas | `webinar_registered` |
+| No dia do evento | `webinar_session_started`, `webinar_attended`, `offer_viewed`, `offer_clicked` |
+| Depois do evento | `webinar_session_ended`, `checkout_started`, `checkout_abandoned`, `payment_failed`, `purchase_approved`, `purchase_refunded` |
 
 ## Tempos das três automações de quem não comprou
 
