@@ -40,3 +40,10 @@ dist-ssr
 # Vercel (ligação local e build)
 .vercel
 .env*
+
+# Locais: notas e arnês de verificação, ferramentas de agentes, rotas e vídeos de teste
+/.scratch
+/.agents
+skills-lock.json
+/src/routes/dev-*
+/public/__teste*
