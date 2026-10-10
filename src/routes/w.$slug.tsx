@@ -167,7 +167,7 @@ export function PublicRoom({
   const saveHearts = useServerFn(recordRoomHearts);
 
   const [viewer, setViewer] = useState<Viewer | null>(null);
-  const [saveData] = useDataSaver();
+  const saveData = useDataSaver();
   // O que a pessoa escreve, campo a campo (pelo id do campo).
   const [values, setValues] = useState<Record<string, string>>(() => ({
     ...(prefill?.name ? { name: prefill.name } : {}),
@@ -813,7 +813,6 @@ export function PublicRoom({
       organizationId={asTeam ? null : webinar.organization_id}
       team={asTeam}
       teamMessages={teamChat.messages}
-      test={testMode}
       comments={comments}
       audienceMode={audience.mode}
       curve={audience.curve}

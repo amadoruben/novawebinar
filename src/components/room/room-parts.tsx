@@ -12,7 +12,6 @@ import {
   Monitor,
   MonitorPlay,
   Moon,
-  Pause,
   Play,
   SendHorizontal,
   Settings,
@@ -44,15 +43,8 @@ export function RoomPartsStyle() {
 
 export type Reaction = { id: string | number; offset: number; size?: number };
 import type { Appearance } from "@/lib/room-theme";
+import { CAPTION_CHARS, CAPTION_LINE, captionAt, captionLines, type SpokenLine } from "@/lib/room-captions";
 export type { Appearance };
-
-/** O tamanho das legendas, que cada pessoa escolhe no ⚙ («Normal» por omissão). */
-export type CaptionSize = "sm" | "md" | "lg";
-export const CAPTION_SIZES: readonly { id: CaptionSize; name: string }[] = [
-  { id: "sm", name: "Menor" },
-  { id: "md", name: "Normal" },
-  { id: "lg", name: "Maior" },
-];
 
 /**
  * O selo de verificado, como o do YouTube: um círculo cinzento com o visto da cor do fundo.
@@ -109,7 +101,7 @@ export function RoomTitle({
     .map((p) => p[0]?.toUpperCase())
     .join("");
   return (
-    <div className={compact ? "px-5 pb-1 pt-4" : "pt-5"}>
+    <div className={compact ? "px-4 pb-1 pt-4" : "pt-5"}>
       {!compact ? (
         <p className="text-[14.5px] font-bold uppercase tracking-[0.2em] text-primary">{kicker}</p>
       ) : null}
@@ -170,44 +162,41 @@ export function RoomTitle({
 const GLASS = "rounded-xl bg-[rgba(20,20,20,.74)] p-1.5 text-white shadow-[0_12px_40px_rgba(0,0,0,.45)] ring-1 ring-white/10 backdrop-blur-xl backdrop-saturate-150";
 
 /**
- * O botão ⚙ do vídeo: volume, legendas (e o tamanho delas), qualidade (automática, ou «Poupar dados») e
- * aparência. Sem velocidade nem avançar: a sessão parece sempre ao vivo. `inline` (Live): só o ícone,
- * sem fundo, e o menu abre para baixo dentro da própria sala, para nunca sair do ecrã (nem da moldura do
- * aparelho na pré-visualização).
+ * O botão ⚙ do vídeo: volume, legendas (ligar ou desligar), qualidade (sempre automática; poupar dados
+ * liga-se sozinho numa rede lenta) e aparência. Sem velocidade nem avançar: a sessão parece sempre ao
+ * vivo. `inline` (Live): só o ícone, sem fundo, e o menu abre para baixo dentro da própria sala, para
+ * nunca sair do ecrã (nem da moldura do aparelho na pré-visualização).
  */
 export function VideoSettings({
   volume,
   onVolume,
   captions,
   onCaptions,
-  captionSize = "md",
-  onCaptionSize,
   hasCaptions,
   appearance,
   onAppearance,
   compact,
   inline,
-  saveData,
-  onSaveData,
 }: {
   volume: number;
   onVolume: (volume: number) => void;
   captions: boolean;
   onCaptions: (on: boolean) => void;
-  captionSize?: CaptionSize | undefined;
-  onCaptionSize?: ((size: CaptionSize) => void) | undefined;
   hasCaptions: boolean;
   appearance: Appearance;
   onAppearance: (appearance: Appearance) => void;
   compact?: boolean | undefined;
   inline?: boolean | undefined;
-  /** «Poupar dados» (no máximo 360p, sem descarregar antes do toque); sem `onSaveData`, a qualidade só se mostra. */
-  saveData?: boolean | undefined;
-  onSaveData?: ((on: boolean) => void) | undefined;
 }) {
-  const [page, setPage] = useState<"main" | "appearance" | "captions" | "quality">("main");
+  const [page, setPage] = useState<"main" | "appearance" | "captions">("main");
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  // Na pré-visualização o aparelho está à escala: o menu abre dentro do ecrã dele, à mesma escala.
+  const [screen, setScreen] = useState<HTMLElement | null>(null);
+  const [side, setSide] = useState<"top" | "bottom">("top");
+  // A barra de estado do aparelho na pré-visualização (na sala, o navegador já a deixa de fora).
+  const [statusBar, setStatusBar] = useState(0);
   // Fora do menu, um toque ou o Esc fecham-no (o Popover faz isto sozinho; o menu na sala não).
   useEffect(() => {
     if (!inline || !open) return;
@@ -229,6 +218,7 @@ export function VideoSettings({
   const row = "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[14px] hover:bg-white/10";
   const trigger = (
     <button
+      ref={button}
       type="button"
       aria-label="Definições do vídeo"
       aria-expanded={inline ? open : undefined}
@@ -252,7 +242,6 @@ export function VideoSettings({
       <Settings className={cn(compact ? "size-[18px]" : "size-5", inline && "size-[22px] transition-transform", inline && open && "rotate-45")} />
     </button>
   );
-  const sizeName = CAPTION_SIZES.find((s) => s.id === captionSize)?.name ?? "Normal";
   const back = (label: string) => (
     <button type="button" onClick={() => setPage("main")} className={cn(row, "border-b border-white/10 pb-3")}>
       <ChevronLeft className="size-4" />
@@ -260,48 +249,18 @@ export function VideoSettings({
     </button>
   );
   const menu =
-    page === "quality" ? (
-      // Qualidade: a melhor para o ecrã e a rede, ou «Poupar dados» (para dados móveis caros).
-      <div className="grid gap-0.5">
-        {back("Qualidade")}
-        {(
-          [
-            [false, "Automática", "A melhor para o ecrã e a rede"],
-            [true, "Poupar dados", "Até 360p; o vídeo só descarrega depois de tocar"],
-          ] as const
-        ).map(([on, name, hint]) => (
-          <button key={name} type="button" onClick={() => onSaveData?.(on)} className={cn(row, "items-start")}>
-            <span className="flex-1">
-              <span className="block">{name}</span>
-              <span className="block text-[12.5px] leading-snug text-white/60">{hint}</span>
-            </span>
-            {Boolean(saveData) === on ? <Check className="mt-0.5 size-4" /> : null}
-          </button>
-        ))}
-      </div>
-    ) : page === "captions" ? (
-      // Legendas: desligadas ou num de três tamanhos (o tamanho só existe com quem o escolhe).
+    page === "captions" ? (
       <div className="grid gap-0.5">
         {back("Legendas")}
-        <button type="button" onClick={() => onCaptions(false)} className={row}>
-          <span className="flex-1">Desligadas</span>
-          {!captions ? <Check className="size-4" /> : null}
-        </button>
-        {CAPTION_SIZES.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => {
-              onCaptionSize?.(s.id);
-              onCaptions(true);
-            }}
-            className={row}
-          >
-            <span className="flex w-5 shrink-0 justify-center font-semibold" style={{ fontSize: { sm: 11, md: 14, lg: 17 }[s.id] }}>
-              A
-            </span>
-            <span className="flex-1">{s.name}</span>
-            {captions && captionSize === s.id ? <Check className="size-4" /> : null}
+        {(
+          [
+            [true, "Ligar"],
+            [false, "Desligar"],
+          ] as const
+        ).map(([on, label]) => (
+          <button key={label} type="button" onClick={() => onCaptions(on)} className={row}>
+            <span className="flex-1">{label}</span>
+            {captions === on ? <Check className="size-4" /> : null}
           </button>
         ))}
       </div>
@@ -331,24 +290,15 @@ export function VideoSettings({
           <button type="button" onClick={() => setPage("captions")} className={row}>
             <Captions className="size-[18px] shrink-0" />
             <span className="flex-1">Legendas</span>
-            <span className="text-[13px] text-white/65">{captions ? sizeName : "Desligadas"}</span>
+            <span className="text-[13px] text-white/65">{captions ? "Ligadas" : "Desligadas"}</span>
             <ChevronRight className="size-4 text-white/65" />
           </button>
         ) : null}
-        {onSaveData ? (
-          <button type="button" onClick={() => setPage("quality")} className={row}>
-            <MonitorPlay className="size-[18px] shrink-0" />
-            <span className="flex-1">Qualidade</span>
-            <span className="text-[13px] text-white/65">{saveData ? "Poupar dados" : "Automática"}</span>
-            <ChevronRight className="size-4 text-white/65" />
-          </button>
-        ) : (
-          <div className={cn(row, "cursor-default hover:bg-transparent")}>
-            <MonitorPlay className="size-[18px] shrink-0" />
-            <span className="flex-1">Qualidade</span>
-            <span className="text-[13px] text-white/65">Automática</span>
-          </div>
-        )}
+        <div className={cn(row, "cursor-default hover:bg-transparent")}>
+          <MonitorPlay className="size-[18px] shrink-0" />
+          <span className="flex-1">Qualidade</span>
+          <span className="text-[13px] text-white/65">Automática</span>
+        </div>
         <button type="button" onClick={() => setPage("appearance")} className={row}>
           <Moon className="size-[18px] shrink-0" />
           <span className="flex-1">Aparência</span>
@@ -388,49 +338,77 @@ export function VideoSettings({
     );
   }
   return (
-    <Popover onOpenChange={(next) => next && setPage("main")}>
+    <Popover
+      onOpenChange={(next) => {
+        if (!next) return;
+        setPage("main");
+        const found = button.current?.closest<HTMLElement>("[data-device-screen]") ?? null;
+        setScreen(found);
+        // Sem lugar para o menu por cima do ⚙ (telemóvel ao alto: o vídeo está no topo), abre por baixo.
+        // Escolhe-se ao abrir, para o menu não saltar de lado ao mudar de página. Na pré-visualização
+        // mede-se no ecrã do aparelho, sem a escala.
+        const area = found?.getBoundingClientRect();
+        const scale = found && area ? area.height / (found.offsetHeight || 1) : 1;
+        const bar = Number(found?.dataset["deviceScreen"]) || 0;
+        setStatusBar(bar);
+        const above = ((button.current?.getBoundingClientRect().top ?? 0) - (area?.top ?? 0)) / scale - bar;
+        setSide(above < 220 ? "bottom" : "top");
+      }}
+    >
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent side="top" align="end" className={cn(GLASS, "w-[272px] border-0")}>
+      {/* Sempre com 12 px de margem às bordas do ecrã. */}
+      <PopoverContent
+        side={side}
+        align="end"
+        collisionPadding={{ top: 12 + statusBar, right: 12, bottom: 12, left: 12 }}
+        {...(screen ? { container: screen, collisionBoundary: screen } : {})}
+        className={cn(GLASS, "w-[272px] max-w-[calc(100vw-24px)] border-0")}
+      >
         {menu}
       </PopoverContent>
     </Popover>
   );
 }
 
-/** A letra das legendas: no telemóvel (`compact`) e no ecrã grande, em cada tamanho. */
-const CAPTION_TEXT: Record<"compact" | "full", Record<CaptionSize, string>> = {
-  compact: { sm: "text-[10px]", md: "text-[11px]", lg: "text-[13.5px]" },
-  full: { sm: "text-[12px]", md: "text-[14px]", lg: "text-[18px]" },
-};
-
-/** A legenda da fala, um pouco acima do fundo do vídeo, como no cinema: curta, no máximo duas linhas. */
+/**
+ * A legenda da fala, um pouco acima do fundo do vídeo, como no cinema: em pedaços curtos (no telemóvel,
+ * no máximo duas linhas de ~32 caracteres), ao ritmo da fala (`captionAt`). Sem legendas, `lines` vazio.
+ */
 export function CaptionLine({
-  text,
+  lines,
+  t,
   compact,
-  size = "md",
   raised,
+  flow,
 }: {
-  text: string | null;
+  lines: readonly SpokenLine[];
+  /** O segundo do vídeo. */
+  t: number;
   compact?: boolean | undefined;
-  size?: CaptionSize | undefined;
   /** Um aviso de compra está em baixo, no vídeo: a legenda sobe por cima dele. */
   raised?: boolean | undefined;
+  /** No fluxo (dentro da prova social, com o chat oculto): logo acima das mensagens, sem as tapar. */
+  flow?: boolean | undefined;
 }) {
+  const size = compact ? "compact" : "full";
+  const text = captionAt(lines, t, CAPTION_CHARS[size]);
   if (!text) return null;
   return (
     <div
       className={cn(
-        "pointer-events-none absolute inset-x-0 z-[1] flex justify-center px-6",
-        raised ? (compact ? "bottom-[48px]" : "bottom-[72px]") : compact ? "bottom-[6%]" : "bottom-[7%]",
+        "pointer-events-none flex justify-center px-6",
+        flow
+          ? "pb-2"
+          : cn("absolute inset-x-0 z-[1]", raised ? (compact ? "bottom-[48px]" : "bottom-[72px]") : compact ? "bottom-[6%]" : "bottom-[7%]"),
       )}
     >
       <span
         className={cn(
-          "line-clamp-2 max-w-[78%] rounded bg-black/60 px-2 py-0.5 text-center font-medium leading-snug text-white [box-decoration-break:clone]",
-          CAPTION_TEXT[compact ? "compact" : "full"][size],
+          "max-w-[86%] whitespace-pre-line break-words rounded bg-black/60 px-2 py-0.5 text-center font-medium leading-snug text-white",
+          compact ? "text-[11px]" : "text-[14px]",
         )}
       >
-        {text}
+        {captionLines(text, CAPTION_LINE[size])}
       </span>
     </div>
   );
@@ -449,33 +427,26 @@ export const EMOJIS = ["😀", "😂", "😍", "🥰", "😮", "🤔", "👏", "
 export type RoomTabItem<T extends string> = { value: T; label: string; Icon: LucideIcon; extra?: ReactNode };
 
 /**
- * Os separadores do painel da sala (a sala e a pré-visualização do editor). `segmented` (telemóvel ao
- * alto): um controlo segmentado com respiro à volta, como no exemplo do dono; senão, a linha por baixo.
+ * Os separadores do painel da sala (a sala e a pré-visualização do editor): o nosso desenho, com o
+ * escolhido a laranja e sublinhado.
  */
 export function RoomTabs<T extends string>({
   items,
   active,
   onTab,
-  segmented,
   big,
   trailing,
 }: {
   items: readonly RoomTabItem<T>[];
   active: T;
   onTab: (value: T) => void;
-  segmented?: boolean | undefined;
   /** Letra e altura maiores (pré-visualização no computador). */
   big?: boolean | undefined;
   /** À direita dos separadores (ex.: o X que fecha o chat deitado). */
   trailing?: ReactNode;
 }) {
   return (
-    <div
-      className={cn(
-        "flex shrink-0 items-center",
-        segmented ? "mx-5 mb-1 mt-3 gap-1 rounded-xl bg-room-raised p-1" : "mx-3 gap-1 border-b border-room-line/60",
-      )}
-    >
+    <div className="mx-3 flex shrink-0 items-center gap-1 border-b border-room-line/60">
       {items.map(({ value, label, Icon, extra }) => {
         const on = value === active;
         return (
@@ -486,16 +457,14 @@ export function RoomTabs<T extends string>({
             aria-pressed={on}
             className={cn(
               "relative flex flex-1 items-center justify-center gap-2 font-semibold transition",
-              segmented ? "h-10 rounded-[9px] text-sm" : big ? "h-[54px] text-[15px]" : "h-12 text-sm",
+              big ? "h-[54px] text-[15px]" : "h-12 text-sm",
               on ? "text-primary" : "text-room-subtle hover:text-room-text",
-              // O segmento escolhido sobe da calha: branco no claro, um cinzento acima da calha no escuro.
-              segmented && on && "bg-room-line shadow-[0_1px_2px_rgb(0_0_0/0.12)] [.room-light_&]:bg-room-bg",
             )}
           >
             <Icon className="size-4" strokeWidth={1.9} />
             {label}
             {extra}
-            {on && !segmented ? <span className="absolute inset-x-5 -bottom-px h-[3px] rounded-full bg-primary" /> : null}
+            {on ? <span className="absolute inset-x-5 -bottom-px h-[3px] rounded-full bg-primary" /> : null}
           </button>
         );
       })}
@@ -530,7 +499,7 @@ export function ChatComposer({
   const heart = withReactions && onHeart && !ready;
   return (
     <form
-      className={cn("flex items-center gap-2 border-t border-room-line/60", compact ? "px-5 py-3" : "px-3 py-2.5")}
+      className={cn("flex items-center gap-2 border-t border-room-line/60 px-3", compact ? "py-3" : "py-2.5")}
       onSubmit={(event) => {
         event.preventDefault();
         if (ready) onSubmit();
@@ -1134,65 +1103,6 @@ export function SaleToast({
       <p className={cn("min-w-0 truncate", compact ? "text-[12.5px]" : "text-[14.5px]")}>
         <b className="font-bold">{name}</b> {text}
       </p>
-    </div>
-  );
-}
-
-/**
- * Sala de teste: quem testa recua, avança e põe em pausa o vídeo (só no vídeo próprio; as plataformas
- * embebidas não deixam). Nunca aparece a quem vê a sala a sério.
- */
-/** Os passos para avançar e recuar na sala de teste; tocar no passo troca para o seguinte. */
-export const TEST_STEPS = [1, 2, 3, 5] as const;
-
-export function TestControls({
-  seconds,
-  paused,
-  onSeek,
-  onToggle,
-  className,
-}: {
-  seconds: number;
-  paused: boolean;
-  onSeek: (delta: number) => void;
-  onToggle: () => void;
-  className?: string | undefined;
-}) {
-  // Recuar e avançar pelo passo escolhido (1, 2, 3 ou 5 s); cada toque soma outro passo.
-  const [step, setStep] = useState<(typeof TEST_STEPS)[number]>(5);
-  const nextStep = TEST_STEPS[(TEST_STEPS.indexOf(step) + 1) % TEST_STEPS.length]!;
-  const jump = "h-8 rounded-full px-2 text-[12px] font-bold tabular-nums transition hover:bg-white/15 active:scale-95";
-  return (
-    <div
-      role="group"
-      aria-label="Controlos da sala de teste"
-      className={cn("z-30 flex items-center gap-0.5 rounded-full bg-black/70 p-1 text-white ring-1 ring-white/15 backdrop-blur", className)}
-    >
-      <button type="button" onClick={() => onSeek(-60)} aria-label="Recuar 1 minuto" className={jump}>
-        −1m
-      </button>
-      <button type="button" onClick={() => onSeek(-step)} aria-label={`Recuar ${step} s`} className={jump}>
-        −{step}s
-      </button>
-      <button type="button" onClick={onToggle} aria-label={paused ? "Continuar" : "Pausar"} className="grid size-8 place-items-center rounded-full bg-white text-black transition active:scale-95">
-        {paused ? <Play className="size-3.5 translate-x-px" fill="currentColor" /> : <Pause className="size-3.5" fill="currentColor" />}
-      </button>
-      <button type="button" onClick={() => onSeek(step)} aria-label={`Avançar ${step} s`} className={jump}>
-        +{step}s
-      </button>
-      <button type="button" onClick={() => onSeek(60)} aria-label="Avançar 1 minuto" className={jump}>
-        +1m
-      </button>
-      <button
-        type="button"
-        onClick={() => setStep(nextStep)}
-        aria-label={`Passo de ${step} s; tocar para ${nextStep} s`}
-        title="Mudar o passo (1, 2, 3 ou 5 s)"
-        className="ml-0.5 h-6 rounded-full px-2 text-[11px] font-semibold tabular-nums text-white/85 ring-1 ring-white/30 transition hover:bg-white/15 active:scale-95"
-      >
-        passo {step}s
-      </button>
-      <span className="pl-1.5 pr-2 font-mono text-[12px] tabular-nums text-white/80">{clock(seconds)}</span>
     </div>
   );
 }

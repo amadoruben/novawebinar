@@ -310,14 +310,17 @@ export function VideoPlayer({
         }
         const context = canvas.getContext("2d");
         if (context) {
-          if (theme === "light") {
-            context.fillStyle = "#ffffff";
+          // À volta de um vídeo que não enche a moldura, preto (nunca branco, também no tema claro).
+          if (fit === "contain") {
+            context.fillStyle = "#000";
             context.fillRect(0, 0, pixelWidth, pixelHeight);
-          } else if (fit === "contain") {
-            context.clearRect(0, 0, pixelWidth, pixelHeight);
           }
           if (video.videoWidth > 0 && video.videoHeight > 0) {
-            const scale = (fit === "contain" ? Math.min : Math.max)(pixelWidth / video.videoWidth, pixelHeight / video.videoHeight);
+            const sx = pixelWidth / video.videoWidth;
+            const sy = pixelHeight / video.videoHeight;
+            // Formas quase iguais (16:9 numa moldura 16:9 arredondada ao píxel): enche, para não ficar uma
+            // risca de fundo à volta do vídeo. Só uma forma mesmo diferente fica inteira, com margem.
+            const scale = fit === "contain" && Math.abs(sx / sy - 1) > 0.02 ? Math.min(sx, sy) : Math.max(sx, sy);
             const drawWidth = video.videoWidth * scale;
             const drawHeight = video.videoHeight * scale;
             context.drawImage(
@@ -335,7 +338,7 @@ export function VideoPlayer({
     };
     frame = window.requestAnimationFrame(paint);
     return () => window.cancelAnimationFrame(frame);
-  }, [controls, theme, fit]);
+  }, [controls, fit]);
 
 
   useEffect(() => {
@@ -397,20 +400,6 @@ export function VideoPlayer({
     // Sem `autoPlay`: o toque que liga o som não pode voltar a carregar o vídeo (o iPhone perdia o som).
   }, [isHls, playbackUrl, valid]);
 
-  // Ligar ou desligar «Poupar dados» a meio: muda o tecto e o que se guarda à frente, sem recarregar.
-  useEffect(() => {
-    const hls = hlsRef.current;
-    if (!hls) return;
-    // Ligar o tecto pelo tamanho mede o leitor e escreve o seu tecto; desligá-lo apaga o tecto: a ordem conta.
-    if (saveData) {
-      hls.capLevelToPlayerSize = false;
-      hls.autoLevelCapping = levelCap(hls.levels);
-    } else {
-      hls.autoLevelCapping = -1;
-      hls.capLevelToPlayerSize = true;
-    }
-    hls.config.maxBufferLength = saveData ? 10 : 30;
-  }, [saveData]);
 
 
   const cls = cn(frameClass, className);

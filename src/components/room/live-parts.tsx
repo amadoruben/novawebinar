@@ -213,6 +213,7 @@ export function LiveTopBar({
   status,
   viewers,
   extra,
+  slim,
 }: {
   host: LiveHost;
   follow: { label: string; onClick: () => void } | null;
@@ -221,6 +222,8 @@ export function LiveTopBar({
   viewers: number | null;
   /** À direita de «Ao vivo», na mesma linha (o ⚙ do vídeo). */
   extra?: ReactNode;
+  /** Moldura estreita (vídeo ao alto num ecrã deitado): sem o nome nem quantos vêem, para caber no vídeo. */
+  slim?: boolean | undefined;
 }) {
   // Uma só linha, tudo centrado na vertical: a foto e o nome à esquerda; «Ao vivo», as pessoas e o ⚙ à direita.
   return (
@@ -229,20 +232,22 @@ export function LiveTopBar({
         <button type="button" onClick={onHost} disabled={!onHost} aria-label={`Ver as redes de ${host.name}`} className="shrink-0 rounded-full">
           <Avatar host={host} size={36} />
         </button>
-        <button
-          type="button"
-          onClick={onHost}
-          disabled={!onHost}
-          className="flex min-w-0 items-center gap-[5px] text-[15px] font-[600] leading-tight [text-shadow:0_1px_3px_rgba(0,0,0,.45)]"
-        >
-          <span className="truncate">{host.name}</span>
-          {host.verified && host.name ? <HostBadge /> : null}
-        </button>
-        {follow ? <FollowButton label={follow.label} onClick={follow.onClick} /> : null}
+        {slim ? null : (
+          <button
+            type="button"
+            onClick={onHost}
+            disabled={!onHost}
+            className="flex min-w-0 items-center gap-[5px] text-[15px] font-[600] leading-tight [text-shadow:0_1px_3px_rgba(0,0,0,.45)]"
+          >
+            <span className="truncate">{host.name}</span>
+            {host.verified && host.name ? <HostBadge /> : null}
+          </button>
+        )}
+        {follow && !slim ? <FollowButton label={follow.label} onClick={follow.onClick} /> : null}
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         {status ? <LiveBadge label={status.label} tone={status.tone} /> : null}
-        {viewers !== null ? <LiveViewers count={viewers} /> : null}
+        {viewers !== null && !slim ? <LiveViewers count={viewers} /> : null}
         {extra ? <div className="ml-0.5 flex items-center gap-1.5">{extra}</div> : null}
       </div>
     </div>
@@ -589,14 +594,17 @@ export function LiveOfferCard({
   );
 }
 
-/** A oferta minimizada: uma barra com o nome, os preços, o desconto e o tempo. Abre a oferta inteira. */
+/**
+ * A oferta minimizada: uma barra com o nome, os preços, o desconto e o tempo. Tocar (a seta para cima)
+ * volta a abrir o cartão no mesmo sítio; a oferta inteira abre no botão da oferta que pisca.
+ */
 export function LiveOfferSlim({ offer, onOpen }: { offer: LiveOffer; onOpen: () => void }) {
   const off = priceDiscount(offer.priceFrom, offer.priceNow);
   return (
     <button
       type="button"
       onClick={onOpen}
-      aria-label="Ver a oferta"
+      aria-label="Abrir o cartão da oferta"
       style={(offerColorVars(offer.colors) ?? undefined) as CSSProperties | undefined}
       className="lv-up mt-3 flex h-[52px] w-full items-center gap-2.5 rounded-[14px] bg-[linear-gradient(100deg,var(--of-mid),var(--of))] pl-2 pr-2.5 text-left text-white"
     >
@@ -621,6 +629,50 @@ export function LiveOfferSlim({ offer, onOpen }: { offer: LiveOffer; onOpen: () 
       ) : null}
       <ChevronUp className="size-[18px] shrink-0" strokeWidth={2.4} />
     </button>
+  );
+}
+
+/**
+ * O chat oculto (deitado e no computador, Webinar e Live): saem o painel e a caixa de escrever, mas a
+ * prova social fica por cima do vídeo — as últimas mensagens (poucas linhas, em baixo), os corações a
+ * subir e, quando há, a oferta (`offer`: o cartão ou a barra). Vai dentro da moldura do vídeo.
+ */
+export function LiveProof({
+  items,
+  offer,
+  toast,
+  caption,
+  onNotice,
+  onHeart,
+  reactions,
+}: {
+  items: readonly LiveFeedItem[];
+  offer: ReactNode;
+  /** O aviso de compra, logo acima das mensagens (o canto de baixo fica para elas). */
+  toast?: ReactNode;
+  /** A legenda (`CaptionLine` com `flow`), ao centro, por cima de tudo isto: nunca tapa as mensagens. */
+  caption?: ReactNode;
+  onNotice?: (() => void) | undefined;
+  onHeart: () => void;
+  reactions: readonly Reaction[];
+}) {
+  return (
+    // Nunca sobe até à barra de cima: sem espaço (a legenda e o cartão da oferta), as mensagens encolhem.
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex max-h-[calc(100%-56px)] flex-col bg-[linear-gradient(0deg,rgba(0,0,0,.55),rgba(0,0,0,.2)_60%,transparent)] px-3 pb-3 pt-10 text-white">
+      {caption}
+      <div className="flex min-h-0 gap-2">
+        <div className="pointer-events-auto flex w-[min(340px,64%)] min-w-0 flex-col justify-end">
+          {toast}
+          {/* Só as últimas três linhas, para não tapar o vídeo. */}
+          <LiveFeed items={items.slice(-8)} onNotice={onNotice} className="max-h-[86px] justify-end overflow-hidden pr-0" />
+          {offer}
+        </div>
+        {/* O coração logo ao lado (o canto de baixo à direita é do ⚙ no Webinar). */}
+        <span className="pointer-events-auto self-end">
+          <LiveHeartButton onHeart={onHeart} reactions={reactions} />
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -665,14 +717,12 @@ export function LiveComposer({
   onHeart,
   reactions,
   panel,
-  className,
   big,
 }: {
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
   inputProps?: React.InputHTMLAttributes<HTMLInputElement> | undefined;
-  className?: string | undefined;
   /** Tablet: a caixa e a letra maiores. */
   big?: boolean | undefined;
   bag: { blink: boolean; onClick: () => void } | null;
@@ -687,7 +737,7 @@ export function LiveComposer({
   const ink = panel ? "text-room-text" : "text-white";
   return (
     <form
-      className={cn("mt-2.5 flex items-center gap-1", className)}
+      className="mt-2.5 flex items-center gap-1"
       onSubmit={(event) => {
         event.preventDefault();
         if (value.trim()) onSubmit();

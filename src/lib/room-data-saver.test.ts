@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dataSaverDefault, levelCap, slowConnection } from "./room-data-saver";
+import { levelCap, slowConnection } from "./room-data-saver";
 
 describe("poupar dados", () => {
   it("liga-se com a poupança do telemóvel ou numa rede 2G/3G", () => {
@@ -8,12 +8,6 @@ describe("poupar dados", () => {
     expect(slowConnection({ effectiveType: "slow-2g" })).toBe(true);
     expect(slowConnection({ effectiveType: "4g" })).toBe(false);
     expect(slowConnection(undefined)).toBe(false);
-  });
-
-  it("a escolha da pessoa manda sobre a rede", () => {
-    expect(dataSaverDefault("0", { effectiveType: "2g" })).toBe(false);
-    expect(dataSaverDefault("1", { effectiveType: "4g" })).toBe(true);
-    expect(dataSaverDefault(null, { effectiveType: "3g" })).toBe(true);
   });
 
   it("no HLS fica a qualidade mais alta até 360p", () => {
