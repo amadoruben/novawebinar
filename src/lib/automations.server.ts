@@ -12,6 +12,7 @@ import type { Database, Json } from "@/integrations/supabase/types";
 import { AUTOMATION_EVENT, type Condition, type RunFacts } from "@/lib/automations";
 import { deliverOutgoing } from "@/lib/integrations.server";
 import { publicAppUrl } from "@/lib/app-url.server";
+import { checkoutLink } from "@/lib/room-logic";
 import { safeZone } from "@/lib/schedule";
 import { sendWhatsapp } from "@/lib/whatsapp.server";
 import {
@@ -44,6 +45,29 @@ const APP_URL = publicAppUrl();
 
 type Run = Database["public"]["Tables"]["automation_runs"]["Row"];
 type Outcome = { ok: boolean; transient: boolean; result: Json; error: string | null };
+
+/**
+ * O link da sala com quem é a pessoa (?nome=&email=, como a sala lê): quem o abre noutro
+ * aparelho entra sem se inscrever de novo. O mesmo link vai no email, no WhatsApp e no webhook.
+ */
+function roomLink(base: string, contact: { name: string | null; email: string | null }) {
+  const who = new URLSearchParams();
+  if (contact.name) who.set("nome", contact.name);
+  if (contact.email) who.set("email", contact.email);
+  const query = who.toString();
+  return query ? `${base}${base.includes("?") ? "&" : "?"}${query}` : base;
+}
+
+/** O mesmo link sem a pessoa: para o grupo, onde todos o abrem. */
+function sharedLink(url: string | null) {
+  if (!url) return url;
+  const [base, search = ""] = url.split("?") as [string, string?];
+  const rest = new URLSearchParams(search);
+  rest.delete("nome");
+  rest.delete("email");
+  const query = rest.toString();
+  return query ? `${base}?${query}` : base;
+}
 
 /** Uma leitura falhada é uma falha passageira, nunca "não existe". */
 function must<T>(result: { data: T; error: { message: string } | null }, what: string): T {
@@ -81,11 +105,11 @@ async function payloadFor(run: Run) {
   const org = run.organization_id;
   const [automation, contact, webinar, session, event] = await Promise.all([
     supabaseAdmin.from("automations").select("id, name, trigger_event, workflow_id").eq("id", run.automation_id).eq("organization_id", org).maybeSingle(),
-    supabaseAdmin.from("contacts").select("id, name, email, phone").eq("id", run.contact_id).eq("organization_id", org).maybeSingle(),
+    supabaseAdmin.from("contacts").select("id, name, email, phone, first_source, first_campaign").eq("id", run.contact_id).eq("organization_id", org).maybeSingle(),
     run.webinar_id
       ? supabaseAdmin
           .from("webinars")
-          .select("id, public_title, internal_name, slug, timezone, cta_url, cta_price_now, replay_enabled")
+          .select("id, public_title, internal_name, slug, timezone, cta_url, cta_price_now, offer_utm, replay_enabled")
           .eq("id", run.webinar_id)
           .eq("organization_id", org)
           .maybeSingle()
@@ -115,13 +139,15 @@ async function payloadFor(run: Run) {
     // Nos gatilhos de pagamento: o pagamento que mudou de estado.
     purchase: purchaseOf(ev?.data),
     webinar: w ? { id: w.id, title: w.public_title || w.internal_name, timezone: w.timezone } : null,
-    offer: w?.cta_url ? { url: w.cta_url, price: w.cta_price_now || null } : null,
+    // O link tal como está; `utm` diz se o organizador quer a origem nele (o botão da sala respeita o mesmo).
+    offer: w?.cta_url ? { url: w.cta_url, price: w.cta_price_now || null, utm: w.offer_utm !== false } : null,
     group_url: groupInvite(readCanvas(workflow?.canvas)),
-    room_url: w ? `${APP_URL}/w/${w.slug}` : null,
+    room_url: w ? roomLink(`${APP_URL}/w/${w.slug}`, c) : null,
     // O replay público é a sala com ?replay=1; /replay/<id> é a pré-visualização da equipa.
-    replay_url: w?.replay_enabled ? `${APP_URL}/w/${w.slug}?replay=1` : null,
+    replay_url: w?.replay_enabled ? roomLink(`${APP_URL}/w/${w.slug}?replay=1`, c) : null,
     session: s ? { id: s.id, starts_at: s.starts_at, ends_at: s.ends_at } : null,
-    contact: { id: c.id, name: c.name, email: c.email, phone: c.phone },
+    // first_source/first_campaign: o anúncio que trouxe a pessoa (primeiro toque, 0046).
+    contact: { id: c.id, name: c.name, email: c.email, phone: c.phone, first_source: c.first_source, first_campaign: c.first_campaign },
     facts: run.facts,
   };
 }
@@ -260,6 +286,24 @@ async function executeAction(
     link_replay: data.replay_url ?? "",
     produto: typeof data.purchase?.product === "string" ? data.purchase.product : "",
   };
+  /**
+   * As variáveis deste disparo. Para o grupo, o link da sala sem a pessoa (todos o abrem). O link
+   * da oferta leva a origem como o botão da sala (checkoutLink): o anúncio que trouxe a pessoa
+   * (nunca no grupo) e o canal por onde clicou (utm_content=email-00m00s / whatsapp-00m00s).
+   * O webhook recebe o link tal como está (data.offer.url): quem o recebe compõe a sua mensagem.
+   * ponytail: o SMS sai com o link tal como está até OfferPlace (room-logic.ts) o prever.
+   */
+  const varsFor = (send: Send) => {
+    const v = { ...vars };
+    const group = send.target === "group";
+    if (group) Object.assign(v, { link: sharedLink(data.room_url), link_replay: sharedLink(data.replay_url) ?? "" });
+    const url = data.offer?.url;
+    if (url && data.offer?.utm !== false && (send.channel === "email" || send.channel === "whatsapp")) {
+      const who = group ? {} : { source: data.contact.first_source, campaign: data.contact.first_campaign };
+      v.link_oferta = checkoutLink(url, { ...who, place: send.channel, seconds: 0 });
+    }
+    return v;
+  };
   const entry: LogEntry = { node: node.id, kind: "action", at: new Date().toISOString(), outcome: "", sends: [] };
   if (node.sends.length === 0) {
     entry.outcome = "Sem envios configurados";
@@ -277,6 +321,7 @@ async function executeAction(
       entry.outcome = `Mensagem por configurar (falta ${missing.join(", ")})`;
       return { ok: false, transient: false, result: null, error: entry.outcome, entry };
     }
+    const sendVars = varsFor(send);
     const to =
       send.target === "group"
         ? (send.group ?? null)
@@ -316,7 +361,7 @@ async function executeAction(
       const delivery = await sendWhatsapp(
         run.organization_id,
         send.target === "group" ? { group: send.group ?? "" } : { phone: data.contact.phone },
-        renderMessage(send.message, vars),
+        renderMessage(send.message, sendVars),
       );
       entry.sends!.push({
         channel: "whatsapp",
@@ -350,7 +395,7 @@ async function executeAction(
     // Conta de teste: fica a mensagem que teria saído, para se ver na execução.
     (entry as LogEntry & { preview?: unknown[] }).preview = [
       ...(((entry as LogEntry & { preview?: unknown[] }).preview ?? []) as unknown[]),
-      { channel: send.channel, subject: renderMessage(send.subject, vars) || null, message: renderMessage(send.message, vars) },
+      { channel: send.channel, subject: renderMessage(send.subject, sendVars) || null, message: renderMessage(send.message, sendVars) },
     ];
   }
   entry.outcome = isTest ? "Enviada (simulado: nada saiu da plataforma)" : "Enviada";

@@ -571,7 +571,8 @@ export function LiveOfferCard({
         <div style={paint} className="lv-sheet mt-1 overflow-hidden rounded-2xl bg-room-surface p-3 text-room-text shadow-[0_18px_40px_rgba(0,0,0,.45)] ring-1 ring-room-line">
           {/* O produto num quadrado grande (a imagem, ou o saco na cor da oferta), com o nome ao lado. */}
           <div className="flex gap-3">
-            <span className="relative shrink-0">
+            {/* Numa coluna estreita (`@container` da prova social ao lado do vídeo ao alto), sem a imagem. */}
+            <span className="relative shrink-0 @max-[260px]:hidden">
               <OfferThumb imageUrl={offer.image} className="size-24 rounded-[14px]" />
               {off ? (
                 <em className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-px text-[11.5px] font-extrabold not-italic text-white">{off}</em>
@@ -645,6 +646,8 @@ export function LiveProof({
   onNotice,
   onHeart,
   reactions,
+  comment,
+  panel,
 }: {
   items: readonly LiveFeedItem[];
   offer: ReactNode;
@@ -653,24 +656,41 @@ export function LiveProof({
   /** A legenda (`CaptionLine` com `flow`), ao centro, por cima de tudo isto: nunca tapa as mensagens. */
   caption?: ReactNode;
   onNotice?: (() => void) | undefined;
-  onHeart: () => void;
+  /** Sem ele, o coração fica fora da prova (Webinar com o vídeo ao alto deitado: no canto de baixo à direita). */
+  onHeart?: (() => void) | undefined;
   reactions: readonly Reaction[];
+  /** Webinar: o botão de voltar a comentar, junto do coração no canto de baixo à direita (o coração à direita). */
+  comment?: ReactNode;
+  /**
+   * No fundo da sala, ao lado do vídeo (Webinar com o vídeo ao alto e o aparelho deitado): nas cores do tema,
+   * sem o escurecido, a toda a largura; estreita, a oferta deixa a imagem (`@container`).
+   */
+  panel?: boolean | undefined;
 }) {
   return (
     // Nunca sobe até à barra de cima: sem espaço (a legenda e o cartão da oferta), as mensagens encolhem.
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex max-h-[calc(100%-56px)] flex-col bg-[linear-gradient(0deg,rgba(0,0,0,.55),rgba(0,0,0,.2)_60%,transparent)] px-3 pb-3 pt-10 text-white">
+    <div
+      className={cn(
+        "pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col px-3 pb-3",
+        // Ao lado do vídeo não há barra de cima: a prova pode subir até ao topo.
+        panel ? "max-h-full pt-3 text-room-text" : "max-h-[calc(100%-56px)] bg-[linear-gradient(0deg,rgba(0,0,0,.55),rgba(0,0,0,.2)_60%,transparent)] pt-10 text-white",
+      )}
+    >
       {caption}
       <div className="flex min-h-0 gap-2">
-        <div className="pointer-events-auto flex w-[min(340px,64%)] min-w-0 flex-col justify-end">
+        <div className={cn("pointer-events-auto flex min-w-0 flex-col justify-end", panel ? "@container flex-1" : "w-[min(340px,64%)]")}>
           {toast}
           {/* Só as últimas três linhas, para não tapar o vídeo. */}
-          <LiveFeed items={items.slice(-8)} onNotice={onNotice} className="max-h-[86px] justify-end overflow-hidden pr-0" />
+          <LiveFeed items={items.slice(-8)} onNotice={onNotice} panel={panel} className="max-h-[86px] justify-end overflow-hidden pr-0" />
           {offer}
         </div>
-        {/* O coração logo ao lado (o canto de baixo à direita é do ⚙ no Webinar). */}
-        <span className="pointer-events-auto self-end">
-          <LiveHeartButton onHeart={onHeart} reactions={reactions} />
-        </span>
+        {/* O coração logo ao lado; no Webinar, com o botão de comentar, os dois no canto de baixo à direita. */}
+        {onHeart ? (
+          <span className={cn("pointer-events-auto flex items-center gap-2 self-end", comment ? "ml-auto" : null)}>
+            {comment}
+            <LiveHeartButton onHeart={onHeart} reactions={reactions} panel={panel} />
+          </span>
+        ) : null}
       </div>
     </div>
   );

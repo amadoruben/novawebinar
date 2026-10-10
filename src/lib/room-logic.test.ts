@@ -263,6 +263,13 @@ describe("opções da sala", () => {
     expect(liveSettings({ live: { header: "não" } }).header).toBe(true);
   });
 
+  it("a sala de espera: sem vídeo e com a contagem por omissão; um id estragado não passa", () => {
+    const id = "6f1c2a7e-1b2c-4d5e-8f90-123456789abc";
+    expect(liveSettings(null).waiting).toEqual({ video: null, countdown: true });
+    expect(liveSettings({ live: { waiting: { video: id, countdown: false } } }).waiting).toEqual({ video: id, countdown: false });
+    expect(liveSettings({ live: { waiting: { video: "x'; drop", countdown: "não" } } }).waiting).toEqual({ video: null, countdown: true });
+  });
+
   it("o lugar do vídeo depende só da forma do ficheiro e do aparelho", () => {
     expect(liveVideoPlace("vertical", "phone")).toBe("fill");
     expect(liveVideoPlace("vertical", "desk")).toBe("column");

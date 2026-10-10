@@ -82,7 +82,7 @@ beforeEach(() => {
     "rpc.claim_automation_runs": { data: [RUN], error: null },
     automations: { data: { id: "auto-1", name: "Recuperação" }, error: null },
     contacts: { data: { id: "contact-1", name: "Ana", email: "ana@exemplo.com", phone: null }, error: null },
-    webinars: { data: { id: "web-1", public_title: "Aula", internal_name: "aula" }, error: null },
+    webinars: { data: { id: "web-1", public_title: "Aula", internal_name: "aula", slug: "aula" }, error: null },
     webinar_sessions: { data: { id: "session-1", starts_at: "2026-09-28T19:00:00Z", ends_at: "2026-09-28T20:00:00Z" }, error: null },
     integrations: { data: HOOK, error: null },
     // A reserva continua nesta passagem; advance/finish mudam a linha reservada.
@@ -120,6 +120,9 @@ describe("executar uma automação pronta", () => {
     expect(sent.data.automation).toEqual({ id: "auto-1", name: "Recuperação" });
     expect(sent.data.session.id).toBe("session-1");
     expect(sent.data.facts).toEqual(RUN.facts);
+    // O link da sala identifica a pessoa, como nas mensagens; sem replay ligado não há link do replay.
+    expect(sent.data.room_url).toMatch(/\/w\/aula\?nome=Ana&email=ana%40exemplo\.com$/);
+    expect(sent.data.replay_url).toBeNull();
     expect(finishes()).toEqual([
       expect.objectContaining({ _run_id: "run-1", _ok: true, _transient: false, _error: null }),
     ]);
@@ -399,6 +402,12 @@ describe("WhatsApp não oficial (WAHA)", () => {
     expect((step["_log"] as { sends: unknown[] }[])[0]!.sends).toEqual([
       { channel: "whatsapp", target: "contact", to: "92…789", status: "delivered", http_status: 200, error: null },
     ]);
+  });
+
+  it("{{link}} no WhatsApp: o mesmo link da sala, só com o que o contacto tem (aqui sem email)", async () => {
+    oneSend({ target: "contact", message: "Entre: {{link}}" });
+    await runDueAutomations();
+    expect(call(0).body.text).toMatch(/^Entre: \S*\/w\/aula\?nome=Ana\+Silva$/);
   });
 
   it("em grupo: encontra o grupo pelo nome entre os grupos do número ligado", async () => {
@@ -693,7 +702,62 @@ describe("horas de silêncio, links e sessão que mudou", () => {
     };
     await runDueAutomations();
     const log = advances()[0]!["_log"] as { preview?: { message: string }[] }[];
-    expect(log[0]!.preview![0]!.message).toBe("https://pay.exemplo.com/1 · 97 € · https://chat.whatsapp.com/abc");
+    // Sem anúncio conhecido, a origem é a plataforma; o canal fica em utm_content.
+    expect(log[0]!.preview![0]!.message).toBe(
+      "https://pay.exemplo.com/1?utm_source=convertewebinar&utm_medium=webinar&utm_content=email-00m00s · 97 € · https://chat.whatsapp.com/abc",
+    );
+  });
+
+  it("{{link_oferta}} leva o anúncio que trouxe a pessoa e o canal por onde clicou; o webhook recebe o link tal como está", async () => {
+    at("2026-07-10T12:00:00Z");
+    flow([
+      { channel: "email", target: "contact", subject: "Oferta", message: "{{link_oferta}}" },
+      { channel: "whatsapp", target: "contact", message: "{{link_oferta}}" },
+      { channel: "webhook", target: "webhook" },
+      // No grupo, nem a pessoa no link da sala nem o anúncio dela na oferta: todos abrem o mesmo link.
+      { channel: "whatsapp", target: "group", group: "VIP", message: "{{link}} {{link_replay}} {{link_oferta}}" },
+    ]);
+    answers["contacts"] = {
+      data: { id: "contact-1", name: "Ana", email: "ana@exemplo.com", phone: "923456789", first_source: "facebook", first_campaign: "lancamento" },
+      error: null,
+    };
+    answers["webinars"] = {
+      data: { id: "web-1", public_title: "Aula", internal_name: "aula", slug: "aula", cta_url: "https://pay.exemplo.com/1?x=1", cta_price_now: "97 €", replay_enabled: true },
+      error: null,
+    };
+    await runDueAutomations();
+    const log = advances()[0]!["_log"] as { preview?: { message: string }[] }[];
+    expect(log[0]!.preview!.map((p) => p.message)).toEqual([
+      "https://pay.exemplo.com/1?x=1&utm_source=facebook&utm_medium=webinar&utm_campaign=lancamento&utm_content=email-00m00s",
+      "https://pay.exemplo.com/1?x=1&utm_source=facebook&utm_medium=webinar&utm_campaign=lancamento&utm_content=whatsapp-00m00s",
+      expect.stringMatching(
+        /^\S*\/w\/aula \S*\/w\/aula\?replay=1 https:\/\/pay\.exemplo\.com\/1\?x=1&utm_source=convertewebinar&utm_medium=webinar&utm_content=whatsapp-00m00s$/,
+      ),
+    ]);
+    const sent = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
+    expect(sent.data.offer).toEqual({ url: "https://pay.exemplo.com/1?x=1", price: "97 €", utm: true });
+  });
+
+  it("oferta sem UTM no webinar (como no botão da sala): o link sai tal como está", async () => {
+    at("2026-07-10T12:00:00Z");
+    flow([{ channel: "email", target: "contact", subject: "Oferta", message: "{{link_oferta}}" }]);
+    answers["webinars"] = { data: { id: "web-1", public_title: "Aula", internal_name: "aula", slug: "aula", cta_url: "https://pay.exemplo.com/1", offer_utm: false }, error: null };
+    await runDueAutomations();
+    const log = advances()[0]!["_log"] as { preview?: { message: string }[] }[];
+    expect(log[0]!.preview![0]!.message).toBe("https://pay.exemplo.com/1");
+  });
+
+  it("{{link}} e {{link_replay}} levam o nome e o email (codificados), sem partir o ?replay=1", async () => {
+    at("2026-07-10T12:00:00Z");
+    flow([{ channel: "email", target: "contact", subject: "Sala", message: "{{link}} · {{link_replay}}" }]);
+    answers["contacts"] = { data: { id: "contact-1", name: "Ana Silva", email: "ana+x@exemplo.com", phone: null }, error: null };
+    answers["webinars"] = { data: { id: "web-1", public_title: "Aula", internal_name: "aula", slug: "aula", replay_enabled: true }, error: null };
+    await runDueAutomations();
+    const log = advances()[0]!["_log"] as { preview?: { message: string }[] }[];
+    expect(log[0]!.preview![0]!.message.split(" · ")).toEqual([
+      expect.stringMatching(/\/w\/aula\?nome=Ana\+Silva&email=ana%2Bx%40exemplo\.com$/),
+      expect.stringMatching(/\/w\/aula\?replay=1&nome=Ana\+Silva&email=ana%2Bx%40exemplo\.com$/),
+    ]);
   });
 
   it("link da oferta em falta: a mensagem não sai e diz o que falta configurar", async () => {

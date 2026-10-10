@@ -95,6 +95,16 @@ describe("sala pública com a base de dados em baixo", () => {
     expect(second?.webinar.video_url).toBe(first?.webinar.video_url);
   });
 
+  it("o vídeo de fundo da espera vem assinado; sem sala de espera ou sem vídeo na Biblioteca, null", async () => {
+    const live = { live: { waiting: { video: "6f1c2a7e-1b2c-4d5e-8f90-123456789abc" } } };
+    answers["webinars.select"] = { data: { ...WEBINAR, waiting_room_enabled: true, chat_settings: live }, error: null };
+    expect((await loadPublicRoom("sessao"))?.webinar.waiting_video).toBeNull();
+    answers["video_sources.select"] = { data: { storage_path: "org/fundo.mp4", source_url: null, provider: "upload" }, error: null };
+    expect((await loadPublicRoom("sessao"))?.webinar.waiting_video).toEqual({ url: expect.stringMatching(/^https:\/\/cdn\/org\/fundo\.mp4/), provider: "upload" });
+    answers["webinars.select"] = { data: { ...WEBINAR, waiting_room_enabled: false, chat_settings: live }, error: null };
+    expect((await loadPublicRoom("sessao"))?.webinar.waiting_video).toBeNull();
+  });
+
   it("o convite do grupo do fluxo vem com a sala; sem grupo, null", async () => {
     expect((await loadPublicRoom("sessao"))?.webinar.group_url).toBeNull();
     answers["automation_workflows.select"] = {

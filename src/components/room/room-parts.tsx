@@ -2,8 +2,10 @@ import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode 
 import {
   Captions,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Clock,
   Headset,
   Heart,
@@ -12,6 +14,7 @@ import {
   Monitor,
   MonitorPlay,
   Moon,
+  Pin,
   Play,
   SendHorizontal,
   Settings,
@@ -23,6 +26,7 @@ import {
   Volume1,
   Volume2,
   VolumeX,
+  X,
   Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -81,6 +85,7 @@ export function RoomTitle({
   highlight,
   follow,
   onHost,
+  foldable,
 }: {
   kicker: string;
   title: string;
@@ -91,7 +96,10 @@ export function RoomTitle({
   follow?: ReactNode;
   /** Tocar na foto ou no nome abre as redes de quem apresenta. */
   onHost?: (() => void) | undefined;
+  /** Telemóvel: a seta recolhe o bloco numa só linha (o título com «…»); começa aberto. */
+  foldable?: boolean | undefined;
 }) {
+  const [folded, setFolded] = useState(false);
   const hl = (key: string) =>
     highlight === key ? "outline outline-2 outline-offset-4 outline-[#E8440C] shadow-[0_0_0_10px_rgba(232,68,12,.25)]" : "";
   const initials = host.name
@@ -100,26 +108,46 @@ export function RoomTitle({
     .slice(0, 2)
     .map((p) => p[0]?.toUpperCase())
     .join("");
+  const heading = title ? (
+    <h1
+      className={cn(
+        "font-extrabold tracking-tight text-room-text",
+        compact ? cn("text-[18px] leading-snug", folded ? "truncate" : "mb-2.5 line-clamp-2") : "mt-1.5 text-[32px] leading-tight",
+        foldable && "min-w-0 flex-1",
+        hl("title"),
+      )}
+    >
+      {title}
+    </h1>
+  ) : null;
   return (
-    <div className={compact ? "px-4 pb-1 pt-4" : "pt-5"}>
+    <div className={compact ? cn("px-4 pt-4", folded ? "pb-3" : "pb-1") : "pt-5"}>
       {!compact ? (
         <p className="text-[14.5px] font-bold uppercase tracking-[0.2em] text-primary">{kicker}</p>
       ) : null}
-      {title ? (
-        <h1
-          className={cn(
-            "font-extrabold tracking-tight text-room-text",
-            compact ? "mb-2.5 line-clamp-2 text-[18px] leading-snug" : "mt-1.5 text-[32px] leading-tight",
-            hl("title"),
-          )}
-        >
-          {title}
-        </h1>
+      {heading && foldable ? (
+        <div className={cn("flex gap-2", folded ? "items-center" : "items-start")}>
+          {heading}
+          {/* Recolhido, a linha de quem apresenta sai; o + Seguir (só nos momentos escolhidos) fica ao lado da seta. */}
+          {folded ? follow : null}
+          <button
+            type="button"
+            onClick={() => setFolded((f) => !f)}
+            aria-expanded={!folded}
+            aria-label={folded ? "Mostrar o título e quem apresenta" : "Recolher o título"}
+            title={folded ? "Mostrar" : "Recolher"}
+            className={cn("-mr-1.5 grid size-8 shrink-0 place-items-center rounded-full text-room-subtle transition hover:text-room-text", !folded && "-mt-0.5")}
+          >
+            {folded ? <ChevronDown className="size-5" /> : <ChevronUp className="size-5" />}
+          </button>
+        </div>
+      ) : heading ? (
+        heading
       ) : (
         // Ainda sem título: um traço no lugar dele, para a sala se ir construindo com o que se preenche.
         <span aria-hidden className={cn("block w-3/5 rounded-md bg-room-raised", compact ? "mb-2.5 h-5" : "mt-2.5 h-8", hl("title"))} />
       )}
-      {host.name ? (
+      {host.name && !folded ? (
         <div className={cn("flex items-center", compact ? "gap-2.5" : "mt-4 gap-3.5", hl("host"))}>
           {/* O + Seguir fica logo a seguir ao nome, como no Instagram e no YouTube, e não no outro lado do ecrã. */}
           <button type="button" onClick={onHost} disabled={!onHost} className="flex min-w-0 items-center gap-[inherit] text-left">
@@ -758,6 +786,25 @@ export function ChatLine({
         <span className={onVideo ? "text-white/90" : "text-room-text/88"}>{text}</span>
         {reaction ? <ReactionPill text={reaction} onVideo={onVideo} /> : null}
       </p>
+    </div>
+  );
+}
+
+/**
+ * A mensagem fixada no chat do Webinar (a da etapa Chat do editor), igual na sala e na pré-visualização.
+ * O X tira-a até a pessoa sair da sala.
+ */
+export function ChatPin({ title, message, onClose, className }: { title: string; message?: string | null | undefined; onClose: () => void; className?: string | undefined }) {
+  return (
+    <div className={cn("mx-3 mt-3 flex shrink-0 items-center gap-2.5 rounded-xl bg-room-raised py-3 pl-3.5 pr-2 text-sm text-room-text", className)}>
+      <Pin className="size-4 shrink-0 text-primary" />
+      <span className={cn("min-w-0 flex-1", !message && "truncate")}>
+        {title}
+        {message ? <span className="text-room-subtle"> {message}</span> : null}
+      </span>
+      <button type="button" onClick={onClose} aria-label="Fechar" className="grid size-6 shrink-0 place-items-center rounded-md text-room-subtle transition hover:text-room-text">
+        <X className="size-4" />
+      </button>
     </div>
   );
 }

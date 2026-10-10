@@ -1,12 +1,16 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { CalendarDays, ChevronDown, Clock, Eye, Film, Play, Repeat, Video } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PaneHeader, PanelDialog, PanelNavButton, PanelNavGroup, PanelTitle } from "@/components/panel-modal";
 import { EntryBadge, entryCardColor, entryLiveLabel } from "@/components/room/entry-screen";
+import { VideoThumb } from "@/components/video-thumb";
 import type { EntryField } from "@/lib/entry-fields";
-import { entryPalette } from "@/lib/room-logic";
+import { entryPalette, type WaitingRoom } from "@/lib/room-logic";
 import { cn } from "@/lib/utils";
-import { Field, Section, Seg, SwitchRow } from "../ui";
+import { Field, Note, Section, Seg, SwitchRow } from "../ui";
 import type { EditorForm, FocusProps, SetForm } from "../form";
+import { LibraryGrid, type VideoSourceLite } from "./video";
 
 export type ScheduleKind = "single" | "repeat" | "jit" | "ondemand";
 
@@ -108,9 +112,14 @@ export function StepAgenda({
   ended,
   theme,
   fields,
+  library,
+  providerLabel,
 }: {
   form: EditorForm;
   set: SetForm;
+  /** A Biblioteca, para o vídeo de fundo da sala de espera. */
+  library: readonly VideoSourceLite[];
+  providerLabel: (provider: string) => string;
   focus: FocusProps;
   kind: ScheduleKind;
   onKind: (kind: ScheduleKind) => void;
@@ -369,6 +378,7 @@ export function StepAgenda({
               checked={form.waiting_room_enabled}
               onChange={(waiting_room_enabled) => set({ waiting_room_enabled })}
             />
+            {form.waiting_room_enabled ? <WaitingOptions form={form} set={set} library={library} providerLabel={providerLabel} /> : null}
             <SwitchRow
               icon={Film}
               title="Vídeo sincronizado"
@@ -387,5 +397,98 @@ export function StepAgenda({
         />
       </Section>
     </>
+  );
+}
+
+/**
+ * A sala de espera: um vídeo da Biblioteca ao fundo (ou nenhum), escolhido no mesmo pop-up do vídeo da
+ * aula, e a contagem por cima. Fica em `chat_settings.live.waiting`.
+ */
+function WaitingOptions({
+  form,
+  set,
+  library,
+  providerLabel,
+}: {
+  form: EditorForm;
+  set: SetForm;
+  library: readonly VideoSourceLite[];
+  providerLabel: (provider: string) => string;
+}) {
+  const [picking, setPicking] = useState(false);
+  const waiting = form.live.waiting;
+  const setWaiting = (patch: Partial<WaitingRoom>) => set({ live: { ...form.live, waiting: { ...waiting, ...patch } } });
+  const chosen = library.find((v) => v.id === waiting.video) ?? null;
+  const nav = <PanelNavButton icon={Film} label="Da Biblioteca" active onClick={() => {}} />;
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-3 rounded-xl border bg-white p-3">
+      <div className="flex items-center gap-2">
+        <b className="min-w-0 flex-1 text-sm font-medium">Vídeo de fundo</b>
+        {chosen ? (
+          <Button variant="ghost" size="sm" onClick={() => setWaiting({ video: null })}>
+            Tirar
+          </Button>
+        ) : null}
+        <Button variant="outline" size="sm" onClick={() => setPicking(true)}>
+          {chosen ? "Trocar" : "Escolher"}
+        </Button>
+      </div>
+      <div className="-mt-1 flex items-center gap-2.5">
+        {chosen ? (
+          <VideoThumb
+            name={chosen.name}
+            thumbnailUrl={chosen.thumbnail_url}
+            sourceUrl={chosen.source_url}
+            overlay={false}
+            className="w-[60px] shrink-0 rounded-md"
+          />
+        ) : null}
+        <span className="min-w-0 flex-1 text-[12.5px] leading-snug text-muted-foreground">
+          {chosen ? (
+            <>
+              <span className="block truncate font-medium text-foreground">{chosen.name}</span>
+              Sem som e em ciclo; quem quiser liga o som.
+            </>
+          ) : (
+            "Nenhum: fica o fundo da sala."
+          )}
+        </span>
+      </div>
+      <SwitchRow
+        title="Mostrar contagem"
+        description={chosen ? "O relógio até à hora, por cima do vídeo." : "O relógio até à hora."}
+        checked={waiting.countdown}
+        onChange={(countdown) => setWaiting({ countdown })}
+      />
+      {picking ? (
+        <PanelDialog
+          title="Vídeo de fundo"
+          description="Um vídeo da Biblioteca para o fundo da sala de espera."
+          onClose={() => setPicking(false)}
+          sidebar={
+            <>
+              <PanelTitle>Vídeo de fundo</PanelTitle>
+              <PanelNavGroup>{nav}</PanelNavGroup>
+            </>
+          }
+          mobileNav={nav}
+        >
+          <PaneHeader title="Da Biblioteca" subtitle="Toca sem som e em ciclo atrás da contagem; quem quiser liga o som." />
+          {library.length === 0 ? (
+            <Note icon={Film}>A Biblioteca ainda está vazia. Carregue um vídeo na etapa Vídeo.</Note>
+          ) : (
+            <LibraryGrid
+              library={library}
+              current={waiting.video}
+              providerLabel={providerLabel}
+              onPick={(video) => {
+                setWaiting({ video });
+                setPicking(false);
+              }}
+            />
+          )}
+        </PanelDialog>
+      ) : null}
+    </div>
   );
 }

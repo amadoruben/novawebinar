@@ -60,6 +60,27 @@ async function signedVideoUrl(path: string): Promise<string | null> {
   return data.signedUrl;
 }
 
+/**
+ * O vídeo de fundo da sala de espera (um vídeo da Biblioteca do mesmo workspace), assinado como o da aula.
+ * Nunca rejeita: sem ele (ou com a leitura falhada), a espera fica só com a contagem.
+ */
+async function waitingVideo(organizationId: string, id: string | null) {
+  if (!id) return null;
+  const { data } = await supabaseAdmin
+    .from("video_sources")
+    .select("source_url, provider, storage_path")
+    .eq("id", id)
+    .eq("organization_id", organizationId)
+    .maybeSingle()
+    .then(
+      (r) => r,
+      () => ({ data: null }),
+    );
+  if (!data) return null;
+  const url = (data.storage_path ? await signedVideoUrl(data.storage_path) : null) ?? data.source_url;
+  return url ? { url, provider: data.provider } : null;
+}
+
 export async function loadPublicRoom(slug: string) {
   const { data: webinar, error: webinarError } = await supabaseAdmin
     .from("webinars")
@@ -74,8 +95,9 @@ export async function loadPublicRoom(slug: string) {
   if (!webinar) return null;
 
   const source = webinar.video_sources;
+  const live = liveSettings(webinar.chat_settings);
   // A assinatura do vídeo e o convite do grupo correm ao lado das seis leituras, em vez de esperar por elas.
-  const [parts, signedVideo, groupUrl] = await Promise.all([Promise.all([
+  const [parts, signedVideo, groupUrl, waitingBg] = await Promise.all([Promise.all([
     // Um webinar longo passa dos 1000 comentários; cortados, o chat calava-se a meio.
     fetchAll((from, to) =>
       supabaseAdmin
@@ -122,7 +144,8 @@ export async function loadPublicRoom(slug: string) {
       .maybeSingle(),
   ]), source?.storage_path ? signedVideoUrl(source.storage_path) : null,
     // Nunca rejeita: sem grupo no fluxo (ou com a leitura falhada) vem null e o botão não aparece.
-    flowGroupInvite(webinar.organization_id, webinar.id)]);
+    flowGroupInvite(webinar.organization_id, webinar.id),
+    waitingVideo(webinar.organization_id, webinar.waiting_room_enabled ? live.waiting.video : null)]);
   // Uma sala sem comentários ou sem oferta por causa de uma leitura falhada
   // substituiria a sala boa de quem já está a assistir.
   if (parts.some((part) => part.error)) throw new Error(UNAVAILABLE);
@@ -181,7 +204,9 @@ export async function loadPublicRoom(slug: string) {
       room_theme: webinar.room_theme === "light" ? "light" : "dark",
       room_theme_system: webinar.room_theme_system,
       room_format: roomFormat(webinar.chat_settings),
-      live: liveSettings(webinar.chat_settings),
+      live,
+      /** O vídeo de fundo da sala de espera, já assinado; null sem vídeo. */
+      waiting_video: waitingBg,
       host_verified: webinar.host_verified,
       entry_fields: webinar.entry_fields,
       entry_card_color: webinar.entry_card_color,

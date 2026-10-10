@@ -96,6 +96,7 @@ import {
 import { formatSessionStart, lifecycleLabel, sessionWindow, webinarLifecycle } from "@/lib/schedule";
 import { toStorageOffsets } from "@/lib/temporal/placement";
 import { cn, offerUrl } from "@/lib/utils";
+import { writeRoomDraft } from "@/lib/room-draft";
 import {
   MAX_VIDEO_BYTES,
   VIDEO_BUCKET,
@@ -843,7 +844,7 @@ function EditWebinar() {
           host_role: form.host_role.trim(),
           host_avatar_url: form.host_avatar_url.trim(),
           host_verified: form.host_verified,
-          chat_pin_title: form.chat_pin_title.trim() || "Participe no chat!",
+          chat_pin_title: form.chat_pin_title.trim(),
           slug: slugify(form.slug || form.public_title || form.internal_name),
           scheduled_at: scheduleKind === "ondemand" ? null : isoFromLocalInput(form.scheduled_at, form.timezone),
           status: statusOnSave(webinar, derivedStatus),
@@ -1314,6 +1315,68 @@ function EditWebinar() {
   const shapeUrl = selectedVideo?.source_url && /^https?:\/\//i.test(selectedVideo.source_url) ? selectedVideo.source_url : null;
   const videoShape: LiveSettings["desk"] = useVideoShape(shapeUrl, selectedVideo?.provider) ?? form.live.desk;
 
+  // Sala de teste (👁): o que se está a mudar chega logo à sala de teste aberta noutro separador, mesmo sem
+  // guardar (neste browser; nada vai para a base). Só os campos que mudam a sala, arranjados como no guardar.
+  useEffect(() => {
+    if (!webinar || savedSnapshot === null) return;
+    const timer = window.setTimeout(() => {
+      const offer = offerTiming(form);
+      const whatsapp = entryFields.find((f) => f.kind === "whatsapp");
+      const url = selectedVideo?.source_url && /^https?:\/\//i.test(selectedVideo.source_url) ? selectedVideo.source_url : null;
+      // O vídeo só quando foi trocado: o guardado chega à sala com o endereço assinado pelo servidor.
+      const videoChanged = form.video_source_id !== (webinar.video_source_id ?? "none") && (url || !selectedVideo);
+      writeRoomDraft(webinarId, {
+        public_title: form.public_title.trim(),
+        description: form.description.trim(),
+        host_name: form.host_name.trim(),
+        host_role: form.host_role.trim(),
+        host_avatar_url: form.host_avatar_url.trim(),
+        host_verified: form.host_verified,
+        chat_pin_title: form.chat_pin_title.trim(),
+        room_theme: form.room_theme,
+        room_theme_system: form.room_theme_system,
+        room_format: form.room_format,
+        live: form.live,
+        cta_text: form.cta_text.trim() || null,
+        cta_url: offerUrl(form.cta_url),
+        cta_price_original: form.cta_price_original.trim(),
+        cta_price_now: form.cta_price_now.trim(),
+        cta_image_url: form.cta_image_url.trim(),
+        cta_countdown_seconds: Math.max(0, Number(form.cta_countdown_seconds) || 0),
+        cta_start_seconds: offer.start,
+        cta_end_seconds: offer.end,
+        extra_offers: extraOffers.map((o) => ({ ...o, url: offerUrl(o.url) ?? "" })),
+        offer_deadline: form.offer_deadline || null,
+        offer_countdown_end: form.offer_countdown_end,
+        offer_utm: form.offer_utm,
+        sales_show_real: form.sales_show_real,
+        sales_where: form.sales_where,
+        registration_button_text: form.registration_button_text.trim() || "Entrar na sala",
+        registration_progress_enabled: form.registration_progress_enabled,
+        registration_progress_value: Math.min(100, Math.max(0, Number(form.registration_progress_value) || 0)),
+        registration_badge_text: form.registration_badge_text.trim().slice(0, 40),
+        entry_fields: entryFields,
+        registration_collect_phone: Boolean(whatsapp),
+        registration_require_phone: Boolean(whatsapp?.required),
+        entry_card_color: form.entry_card_color,
+        entry_button_color: form.entry_button_color,
+        ...(videoChanged
+          ? { video_url: url, video_provider: selectedVideo?.provider ?? null, duration_seconds: selectedVideo?.duration_seconds ?? 0 }
+          : {}),
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [form, entryFields, extraOffers, selectedVideo, webinar, savedSnapshot, webinarId]);
+  // Ao fechar o editor o rascunho sai: a sala de teste volta ao que está guardado.
+  useEffect(() => {
+    const clear = () => writeRoomDraft(webinarId, null);
+    window.addEventListener("pagehide", clear);
+    return () => {
+      window.removeEventListener("pagehide", clear);
+      clear();
+    };
+  }, [webinarId]);
+
   /* ---------- Desenho ---------- */
 
   if (loading)
@@ -1487,7 +1550,7 @@ function EditWebinar() {
       title={form.public_title}
       host={{ name: form.host_name, role: form.host_role, avatarUrl: form.host_avatar_url, verified: form.host_verified }}
       viewers={viewers}
-      pin={form.chat_pin_title}
+      pin={form.chat_pin_title.trim()}
       comments={comments.map((c) => ({ id: c.id, at: c.offset_seconds, author: c.author_name, message: c.message }))}
       sales={shownSales}
       salesWhere={form.sales_where}
@@ -1535,6 +1598,7 @@ function EditWebinar() {
   );
   const waitingStart = nextWindow.startMs && nextWindow.startMs > Date.now() ? nextWindow.startMs : Date.now() + 26 * 3600_000;
   const waitingCountdown = roomCountdown(form.live.countdown, webinar);
+  const waitingVideo = videoSources.find((v) => v.id === form.live.waiting.video);
   const screenBody =
     screen === "room" ? (
       room
@@ -1553,6 +1617,8 @@ function EditWebinar() {
           color={waitingCountdown.color}
           onZero={NOOP}
           highlight={focusKey === "date"}
+          video={waitingVideo?.source_url ? { url: waitingVideo.source_url, provider: waitingVideo.provider } : null}
+          showCountdown={form.live.waiting.countdown}
         />
       </div>
     ) : (
@@ -1997,6 +2063,8 @@ function EditWebinar() {
                     ended={sessionEnded}
                     theme={previewTheme}
                     fields={entryFields}
+                    library={videoSources}
+                    providerLabel={(p) => providerLabels[p as Provider] ?? p}
                   />
                 )}
               </div>

@@ -21,7 +21,7 @@ import {
   type EscalationResult,
 } from "@/lib/support/cases.server";
 import { handoffMessage, HANDOFF_DEFAULT } from "@/lib/support/routing";
-import { classifyCase, looksLikeRequest } from "@/lib/support/classify";
+import { classifyCase, looksLikeRequest, type CaseClassification } from "@/lib/support/classify";
 import { contextFacts } from "@/lib/support/context";
 import { loadContactContext } from "@/lib/support/context.server";
 import { INTENTS } from "@/lib/support/model";
@@ -58,6 +58,63 @@ export type AgentDecision = {
 };
 
 type Row = Record<string, any>;
+
+/** Os dois motivos do passo Agente («Passa à equipa quando»), tal como o editor os grava em escalation.reasons. */
+export const PASS_UNKNOWN = "Pergunta não coberta pela base de conhecimento";
+export const PASS_PERSON = "Participante pediu uma pessoa da equipa";
+
+/**
+ * Se um motivo do passo Agente passa à equipa: só o que está marcado. Sem lista gravada (agente em
+ * que nunca se mexeu nos motivos) passa tudo, como sempre passou.
+ */
+export function passesToTeam(agent: Row | null | undefined, reason: string) {
+  const reasons = (agent?.["escalation"] as { reasons?: unknown } | null | undefined)?.reasons;
+  return !Array.isArray(reasons) || reasons.includes(reason);
+}
+
+/**
+ * O que acontece à resposta do modelo: sai sozinha, fica como sugestão, ignora-se ou passa à equipa
+ * (abre um caso). As regras da organização («sempre uma pessoa») passam sempre; o resto só se o
+ * motivo estiver marcado no passo Agente: um pedido de pessoa com «Pedem uma pessoa», não saber ou
+ * não ter certeza com «Não sabe responder». Com o motivo desligado, a resposta segue a autonomia
+ * (sai, ou fica como sugestão para a equipa) e, sem resposta, não acontece nada.
+ */
+export function agentOutcome(input: {
+  agent: Row;
+  decision: Pick<AgentDecision, "decision" | "answer" | "confidence" | "escalationReason" | "classification">;
+  classified: Pick<CaseClassification, "alwaysHuman" | "defaultReason" | "intent">;
+}) {
+  const { agent, decision, classified } = input;
+  const mode = String(agent["mode"]);
+  const hasAnswer = decision.answer.length > 0;
+  const confident = decision.confidence >= Number(agent["confidence_threshold"] ?? 0.75) && hasAnswer;
+  const personAsked = classified.intent === "human_request" || decision.classification === "HUMAN_REQUEST";
+  // A regra da organização manda; só no pedido de pessoa com «Pedem uma pessoa» desligado manda o passo Agente.
+  const alwaysHuman = classified.alwaysHuman && !(classified.intent === "human_request" && !passesToTeam(agent, PASS_PERSON));
+  const passes = alwaysHuman || passesToTeam(agent, personAsked ? PASS_PERSON : PASS_UNKNOWN);
+  // Motivo desligado: a resposta, se existir, segue como se o modelo tivesse decidido responder.
+  const wantsAnswer = decision.decision === "RESPOND" || (!passes && hasAnswer);
+  const autoSend = !alwaysHuman && wantsAnswer && (mode === "automatico" ? true : mode === "hibrido" ? confident : false);
+  // Copiloto: a equipa aprova cada resposta; não é um caso, é uma sugestão à espera. O que não passa à equipa fica igual.
+  const suggestionOnly = !alwaysHuman && !autoSend && wantsAnswer && hasAnswer && (mode === "copiloto" || !passes);
+  const ignore = !alwaysHuman && (decision.decision === "IGNORE" || (!passes && !hasAnswer));
+  const toCase = !autoSend && !suggestionOnly && !ignore;
+  const escalationReason = toCase
+    ? (decision.escalationReason ??
+      (alwaysHuman ? classified.defaultReason : wantsAnswer ? "Baixa confiança" : "Pergunta não coberta"))
+    : null;
+  // A decisão como se grava e se mostra: a do modelo, ou o que ficou dela quando o motivo não passa.
+  const effective: AgentDecision["decision"] = toCase
+    ? "ESCALATE"
+    : passes
+      ? decision.decision
+      : ignore
+        ? "IGNORE"
+        : autoSend
+          ? "RESPOND"
+          : "SUGGEST_TO_TEAM";
+  return { autoSend, suggestionOnly, ignore, toCase, escalationReason, decision: effective };
+}
 
 function clock(ms: number) {
   const total = Math.max(0, Math.round(ms / 1000));
@@ -339,7 +396,13 @@ export async function decideAgentReply(input: {
     `Podes: ${allowed.join("; ") || "nada"}.`,
     `Não podes: ${blocked.join("; ") || "nada"}.`,
     agent["never_say"] ? `Nunca digas: ${String(agent["never_say"])}` : "",
-    "Se a informação não existir no conhecimento, decide ESCALATE em vez de responder.",
+    // Os motivos do passo Agente: o que não está marcado não passa à equipa, e o modelo fica a saber.
+    passesToTeam(agent, PASS_UNKNOWN)
+      ? "Se a informação não existir no conhecimento, decide ESCALATE em vez de responder."
+      : "Se a informação não existir no conhecimento, diz que não a tens, sem inventar, e continua a ajudar: não decidas ESCALATE por isso.",
+    passesToTeam(agent, PASS_PERSON)
+      ? ""
+      : "Se o participante pedir para falar com uma pessoa da equipa, não passes a conversa por isso: diz que és um assistente e continua a ajudar.",
     "confidence vai de 0 a 1. sourceIds são os identificadores do conhecimento que usaste. escalationReason fica vazio quando não passas a conversa à equipa.",
     "summary: uma ou duas frases para a equipa sobre o que a pessoa quer. recommendedAction: o que a equipa deve fazer a seguir.",
   ]
@@ -546,14 +609,16 @@ export async function handleParticipantMessage(input: {
   }
 
   // 3. Pedidos que a organização decidiu que são sempre de uma pessoa
-  // (reembolso, reclamação, pedido de humano…) nem passam pelo modelo.
+  // (reembolso, reclamação, pedido de humano…) nem passam pelo modelo. Excepção: o pedido de pessoa
+  // com «Pedem uma pessoa» desligado no passo Agente segue para o agente, que continua a ajudar.
   const rules = classifyCase({
     text: input.text,
     rules: team.rules,
     isCustomer: loaded.context.isCustomer,
     fallbackDepartmentId: null,
   });
-  if (rules.alwaysHuman) {
+  const personOff = rules.intent === "human_request" && agentOn && !passesToTeam(agent, PASS_PERSON);
+  if (rules.alwaysHuman && !personOff) {
     return handedOff(rules.defaultReason, agentOn ? "ai" : "system", "Regra de encaminhamento da organização");
   }
 
@@ -630,32 +695,13 @@ export async function handleParticipantMessage(input: {
     fallbackDepartmentId: null,
   });
 
-  const threshold = Number(agent["confidence_threshold"] ?? 0.75);
-  const mode = String(agent["mode"]);
-  const confident = decision.confidence >= threshold && decision.answer.length > 0;
-  const wantsAnswer = decision.decision === "RESPOND";
-  const autoSend =
-    !classified.alwaysHuman &&
-    wantsAnswer &&
-    (mode === "automatico" ? true : mode === "hibrido" ? confident : false);
-  // Copiloto: a equipa aprova cada resposta; não é um caso, é uma sugestão à espera.
-  const suggestionOnly =
-    !classified.alwaysHuman && !autoSend && wantsAnswer && mode === "copiloto" && decision.answer.length > 0;
-  const ignore = !classified.alwaysHuman && decision.decision === "IGNORE";
-  const toCase = !autoSend && !suggestionOnly && !ignore;
-
-  const escalationReason = toCase
-    ? (decision.escalationReason ??
-      (classified.alwaysHuman
-        ? classified.defaultReason
-        : wantsAnswer
-          ? "Baixa confiança"
-          : "Pergunta não coberta"))
-    : null;
+  // Sai, fica como sugestão, ignora-se ou passa à equipa: pela autonomia e pelos motivos do passo Agente.
+  const outcome = agentOutcome({ agent, decision, classified });
+  const { autoSend, ignore, toCase, escalationReason } = outcome;
 
   const messageId = await record({
     classification: decision.classification,
-    decision: toCase ? "ESCALATE" : decision.decision,
+    decision: outcome.decision,
     answer: decision.answer,
     confidence: decision.confidence,
     sources: decision.sources,
@@ -721,7 +767,7 @@ export async function handleParticipantMessage(input: {
   return {
     agentId: agent["id"],
     classification: decision.classification,
-    decision: toCase || caseId ? "ESCALATE" : decision.decision,
+    decision: caseId ? "ESCALATE" : outcome.decision,
     answer: decision.answer,
     confidence: decision.confidence,
     sources: decision.sources,

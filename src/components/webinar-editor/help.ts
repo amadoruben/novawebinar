@@ -496,7 +496,7 @@ export const HELP = {
     title: "Sessão",
     what: "A espera antes da hora, o vídeo a acompanhar o relógio e o replay depois.",
     steps: [
-      "«Sala de espera»: contagem até à hora.",
+      "«Sala de espera»: contagem até à hora; pode pôr um vídeo da Biblioteca ao fundo (sem som até a pessoa o ligar) e tirar a contagem.",
       "«Vídeo sincronizado»: quem chega às 20:05 vê a partir do minuto 5.",
       "«Replay»: quem faltou vê o mesmo vídeo depois.",
     ],

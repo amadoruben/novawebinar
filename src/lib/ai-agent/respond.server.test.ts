@@ -45,7 +45,7 @@ vi.mock("@/integrations/supabase/client.server", () => {
   return { supabaseAdmin: { from: (table: string) => query(table) } };
 });
 
-const { buildAgentContext, loadAgentBundle } = await import("./respond.server");
+const { agentOutcome, buildAgentContext, loadAgentBundle, PASS_PERSON, PASS_UNKNOWN } = await import("./respond.server");
 
 beforeEach(() => {
   own = null;
@@ -102,5 +102,77 @@ describe("conhecimento deste webinar", () => {
     expect(await ids()).toEqual(["K"]);
     own = { ...own, personality: { sources: { notas: false, faqs: false, oferta: false, pagina: false } } };
     expect(await ids()).toEqual([]);
+  });
+});
+
+describe("passa à equipa quando (os motivos do passo Agente)", () => {
+  type Decision = Parameters<typeof agentOutcome>[0]["decision"];
+  const model = (over: Partial<Decision> = {}): Decision => ({
+    decision: "ESCALATE",
+    answer: "",
+    confidence: 0.3,
+    escalationReason: null,
+    classification: "QUESTION",
+    ...over,
+  });
+  const question = { alwaysHuman: false, defaultReason: "Precisa de uma pessoa da equipa", intent: "information" as const };
+  // A regra da organização de origem: o pedido de pessoa é sempre de uma pessoa.
+  const person = { alwaysHuman: true, defaultReason: "O cliente pediu uma pessoa da equipa", intent: "human_request" as const };
+  const agent = (reasons?: string[], mode = "hibrido") => ({ mode, confidence_threshold: 0.75, escalation: reasons ? { reasons } : {} });
+
+  it("sem lista gravada, ou com os dois marcados, passa como sempre", () => {
+    for (const a of [agent(), agent([PASS_UNKNOWN, PASS_PERSON])]) {
+      expect(agentOutcome({ agent: a, decision: model({ decision: "RESPOND", answer: "Sim.", confidence: 0.4 }), classified: question })).toMatchObject({
+        toCase: true,
+        escalationReason: "Baixa confiança",
+        decision: "ESCALATE",
+      });
+      expect(agentOutcome({ agent: a, decision: model(), classified: question })).toMatchObject({ toCase: true, escalationReason: "Pergunta não coberta" });
+      expect(agentOutcome({ agent: a, decision: model({ classification: "HUMAN_REQUEST" }), classified: person })).toMatchObject({
+        toCase: true,
+        escalationReason: "O cliente pediu uma pessoa da equipa",
+      });
+      expect(agentOutcome({ agent: a, decision: model({ decision: "RESPOND", answer: "Sim.", confidence: 0.9 }), classified: question })).toMatchObject({ autoSend: true, toCase: false });
+    }
+  });
+
+  it("«Não sabe responder» desligado: sem certeza fica como sugestão, sem resposta não acontece nada; o pedido de pessoa continua a passar", () => {
+    const a = agent([PASS_PERSON]);
+    expect(agentOutcome({ agent: a, decision: model({ decision: "RESPOND", answer: "Sim.", confidence: 0.4 }), classified: question })).toMatchObject({
+      toCase: false,
+      autoSend: false,
+      suggestionOnly: true,
+      escalationReason: null,
+      decision: "SUGGEST_TO_TEAM",
+    });
+    expect(agentOutcome({ agent: a, decision: model(), classified: question })).toMatchObject({ toCase: false, ignore: true, decision: "IGNORE" });
+    // No Automático, o que o modelo escreveu em vez de passar sai como resposta.
+    expect(agentOutcome({ agent: agent([PASS_PERSON], "automatico"), decision: model({ answer: "Não tenho essa informação." }), classified: question })).toMatchObject({
+      autoSend: true,
+      toCase: false,
+      decision: "RESPOND",
+    });
+    expect(agentOutcome({ agent: a, decision: model({ classification: "HUMAN_REQUEST" }), classified: person })).toMatchObject({ toCase: true });
+  });
+
+  it("«Pedem uma pessoa» desligado: o pedido de pessoa não abre caso, mesmo com a regra da organização; o resto passa", () => {
+    const a = agent([PASS_UNKNOWN]);
+    expect(agentOutcome({ agent: agent([PASS_UNKNOWN], "automatico"), decision: model({ answer: "Sou um assistente; posso ajudar.", confidence: 0.9 }), classified: person })).toMatchObject({
+      autoSend: true,
+      toCase: false,
+    });
+    expect(agentOutcome({ agent: a, decision: model(), classified: person })).toMatchObject({ toCase: false, ignore: true });
+    // Só pela classificação do modelo, sem a regra: também é um pedido de pessoa.
+    expect(agentOutcome({ agent: a, decision: model({ classification: "HUMAN_REQUEST" }), classified: question })).toMatchObject({ toCase: false });
+    expect(agentOutcome({ agent: a, decision: model(), classified: question })).toMatchObject({ toCase: true, escalationReason: "Pergunta não coberta" });
+  });
+
+  it("as outras regras da organização (sempre uma pessoa) passam sempre, com os motivos todos desligados", () => {
+    const refund = { alwaysHuman: true, defaultReason: "Reembolso", intent: "refund" as const };
+    expect(agentOutcome({ agent: agent([]), decision: model({ decision: "RESPOND", answer: "Sim.", confidence: 0.9 }), classified: refund })).toMatchObject({
+      toCase: true,
+      autoSend: false,
+      escalationReason: "Reembolso",
+    });
   });
 });

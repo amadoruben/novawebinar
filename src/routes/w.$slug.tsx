@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { formatSessionStart } from "@/lib/schedule";
@@ -21,6 +21,7 @@ import { recordRoomHearts } from "@/lib/room-reactions.functions";
 import { getViewerState } from "@/lib/room-viewer.functions";
 import { viewerPlan, type ViewerPlan } from "@/lib/room-return";
 import { useDataSaver } from "@/lib/room-data-saver";
+import { applyRoomDraft, useRoomDraft } from "@/lib/room-draft";
 import { TeamEntry, TeamNotice } from "@/components/room/team-entry";
 import { WaitingScreen } from "@/components/room/waiting-screen";
 import { preliveTitle } from "@/lib/prelive-templates";
@@ -212,7 +213,7 @@ export function PublicRoom({
     [source],
   );
 
-  const { data, isLoading, isError } = useQuery({
+  const { data: loaded, isLoading, isError } = useQuery({
     queryKey: ["public-room", slug],
     queryFn: () => fetchRoom({ data: { slug } }),
     // Enquanto ninguém entrou na sala, revemos a sessão de minuto a minuto:
@@ -224,6 +225,13 @@ export function PublicRoom({
     // A sala veio no HTML (loader): não se volta a pedir logo a seguir a abrir a página.
     staleTime: 60_000,
   });
+  // Sala de teste: por cima do que está guardado, o que o organizador está a mudar no editor (mesmo sem
+  // guardar), ao vivo. A sala pública nunca lê o rascunho.
+  const draft = useRoomDraft(testMode ? loaded?.webinar.id : null);
+  const data = useMemo(
+    () => (loaded && draft ? { ...loaded, webinar: applyRoomDraft(loaded.webinar, draft) } : loaded),
+    [loaded, draft],
+  );
 
   // Aparência: a programada no editor, ou a que a pessoa escolheu no ⚙ do vídeo (uma por sala, neste
   // browser). Na sala de teste experimenta-se sem guardar, para nunca mudar a sala a sério.
@@ -603,6 +611,8 @@ export function PublicRoom({
         style={countdown.style}
         color={countdown.color}
         onZero={() => setWaiting(false)}
+        video={webinar.waiting_video}
+        showCountdown={webinar.live.waiting.countdown}
       />
     );
 
@@ -767,17 +777,17 @@ export function PublicRoom({
   }
 
   // Sala de teste: entra sempre, a qualquer hora — sem sala de espera, sem
-  // contagem de prelive e sem depender da hora marcada. O vídeo arranca de
-  // imediato (retoma onde parou, se já tiver visto) e todo o conteúdo segue o
-  // relógio do vídeo, como num replay ao vivo.
+  // contagem de prelive e sem depender da hora marcada. O vídeo arranca sempre
+  // do início (nunca retoma onde ficou: quem viu até ao fim abria em «Transmissão
+  // terminou») e todo o conteúdo segue o relógio do vídeo, como num replay ao vivo.
   // Quem regressa segue a sua sessão (`plan`); no replay depois da sessão, retoma onde ficou (neste aparelho,
   // ou até onde viu noutro).
   const roomStartsAt =
     testMode || plan.kind === "replay" ? null : plan.kind === "session" ? new Date(plan.startMs).toISOString() : webinar.session_start;
   const syncWithStart = testMode || plan.kind === "replay" ? false : webinar.sync_video_with_start;
   const effectivePreliveSeconds = testMode || plan.kind === "replay" ? 0 : preliveSeconds;
-  const resumeAt = plan.kind === "replay" ? (resumeSeconds ?? plan.resumeSeconds) : resumeSeconds;
-  const resumePeak = plan.kind === "replay" ? Math.max(resumePeakSeconds ?? 0, plan.resumeSeconds) : resumePeakSeconds;
+  const resumeAt = testMode ? null : plan.kind === "replay" ? (resumeSeconds ?? plan.resumeSeconds) : resumeSeconds;
+  const resumePeak = testMode ? null : plan.kind === "replay" ? Math.max(resumePeakSeconds ?? 0, plan.resumeSeconds) : resumePeakSeconds;
 
 
 
@@ -807,6 +817,8 @@ export function PublicRoom({
         phone: values["whatsapp"] ? `${phoneCountry.dial} ${values["whatsapp"]}` : "",
       }}
       mode={effectiveMode}
+      // Só na sala de teste: a barra para avançar, recuar e pausar o vídeo (ver a sala do início ao fim).
+      testControls={testMode}
       startsAt={roomStartsAt}
       viewerName={asTeam?.name ?? viewer?.name ?? ""}
       // A equipa não entra na presença: não conta na Vista ao vivo.

@@ -84,8 +84,6 @@ function FormCard({ form, webinarTitle }: { form: RegistrationForm; webinarTitle
         page_name: draft.page_name?.trim() || null,
         page_url: draft.page_url?.trim() || null,
         allowed_origins: draft.allowed_origins.map((o) => o.trim()).filter(Boolean),
-        ask_phone: draft.ask_phone,
-        require_phone: draft.require_phone,
         consent_text: draft.consent_text?.trim() || null,
         success_message: draft.success_message?.trim() || null,
         redirect_url: draft.redirect_url?.trim() || null,
@@ -155,15 +153,11 @@ function FormCard({ form, webinarTitle }: { form: RegistrationForm; webinarTitle
           </div>
         </fieldset>
         <fieldset className="space-y-3">
-          <legend className="mb-1 text-sm font-semibold">Campos e confirmação</legend>
-          <div className="flex flex-wrap gap-4 text-sm">
-            <label className="flex items-center gap-2">
-              <Switch checked={draft.ask_phone} onCheckedChange={(ask_phone) => setDraft({ ...draft, ask_phone })} /> Pedir WhatsApp
-            </label>
-            <label className="flex items-center gap-2">
-              <Switch checked={draft.require_phone} onCheckedChange={(require_phone) => setDraft({ ...draft, require_phone, ask_phone: require_phone || draft.ask_phone })} /> WhatsApp obrigatório
-            </label>
-          </div>
+          <legend className="mb-1 text-sm font-semibold">Confirmação</legend>
+          <p className="text-xs text-muted-foreground">
+            Os campos pedidos (nome, e-mail, WhatsApp e os extra) são os da etapa Página do editor do webinar: os mesmos na sala,
+            no formulário embed e na API.
+          </p>
           <div className="space-y-1.5">
             <Label htmlFor={`ct-${form.id}`}>Texto de consentimento (com texto, passa a ser obrigatório e fica gravado)</Label>
             <Input id={`ct-${form.id}`} value={draft.consent_text ?? ""} placeholder="Aceito receber comunicações sobre este webinar." onChange={(e) => setDraft({ ...draft, consent_text: e.target.value })} />

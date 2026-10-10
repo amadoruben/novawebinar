@@ -130,12 +130,19 @@ export function LaptopFrame({
   );
 }
 
+/**
+ * O ecrã que tem preto por baixo da barra de estado marca-se com `data-status-dark` (a sala: a parte de cima
+ * é sempre preta, em qualquer tema); aí o relógio, a rede e a bateria ficam brancos, como no telemóvel.
+ */
+const STATUS_ON_BLACK = "group-has-[[data-status-dark]]/screen:text-white";
+
 export function IosStatus({ dark }: { dark?: boolean | undefined }) {
   return (
     <div
       className={cn(
         "absolute inset-x-0 top-0 z-[8] flex h-[54px] items-center justify-between pb-0 pl-[52px] pr-[30px] pt-2 text-[17px] font-semibold",
         dark ? "text-black" : "text-white",
+        STATUS_ON_BLACK,
       )}
       style={{ fontFamily: '-apple-system, "SF Pro Text", "Helvetica Neue", sans-serif' }}
     >
@@ -189,7 +196,7 @@ export function PhoneFrame({
         <i className="absolute right-0 top-[214px] h-[100px] w-1 rounded-sm bg-gradient-to-r from-[#A7A298] to-[#D9D5CD]" />
         <div className="relative h-[878px] w-[419px] rounded-[70px] bg-[#0A0A0B] p-[13px] shadow-[0_0_0_2px_#D9D5CD,0_0_0_3.5px_#A7A298,0_40px_70px_-20px_rgba(0,0,0,.45)]">
           {/* `data-device-screen`: o ecrã onde os menus da sala abrem; o valor é a altura da barra de estado. */}
-          <div data-device-screen={SCREENS.phone.top} className="relative h-[852px] w-[393px] overflow-hidden rounded-[57px] bg-black">
+          <div data-device-screen={SCREENS.phone.top} className="group/screen relative h-[852px] w-[393px] overflow-hidden rounded-[57px] bg-black">
             <div className="absolute left-1/2 top-6 z-[9] h-9 w-[124px] -translate-x-1/2 rounded-[20px] bg-black" />
             <IosStatus dark={light} />
             {children}
@@ -231,9 +238,13 @@ export function TabletFrame({
             landscape ? "left-[7px] top-1/2 -translate-y-1/2" : "left-1/2 top-[7px] -translate-x-1/2",
           )}
         />
-        <div data-device-screen={SCREENS.tablet.top} className="relative overflow-hidden rounded-[32px] bg-black" style={{ width: w - 40, height: h - 40 }}>
+        <div data-device-screen={SCREENS.tablet.top} className="group/screen relative overflow-hidden rounded-[32px] bg-black" style={{ width: w - 40, height: h - 40 }}>
           <div
-            className={cn("absolute inset-x-0 top-0 z-[8] flex h-8 items-center justify-between px-6 text-[14px] font-semibold", light ? "text-black" : "text-white")}
+            className={cn(
+              "absolute inset-x-0 top-0 z-[8] flex h-8 items-center justify-between px-6 text-[14px] font-semibold",
+              light ? "text-black" : "text-white",
+              STATUS_ON_BLACK,
+            )}
             style={{ fontFamily: '-apple-system, "SF Pro Text", "Helvetica Neue", sans-serif' }}
           >
             <span>9:41</span>

@@ -19,3 +19,5 @@ node_modules
 # Rotas de verificação visual (dev-*): nunca vão para produção. O build regenera o
 # routeTree.gen.ts sem elas (o TanStack gera-o ao arrancar o Vite).
 /src/routes/dev-*
+# Vídeos de teste do arnês (public/__teste*.mp4): nunca vão para produção.
+/public/__teste*

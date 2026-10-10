@@ -298,7 +298,23 @@ export type LiveSettings = {
   header: boolean;
   /** O temporizador da aula: a percentagem por cima do vídeo, só nos minutos escolhidos. */
   timer: RoomTimer;
+  /** A sala de espera: o vídeo de fundo e se a contagem aparece por cima. */
+  waiting: WaitingRoom;
 };
+
+/**
+ * A sala de espera (antes de a sala abrir): um vídeo da Biblioteca ao fundo (o id em `video_sources`;
+ * null, nenhum), sem som até a pessoa o ligar, e a contagem por cima se `countdown` estiver ligado.
+ */
+export type WaitingRoom = { video: string | null; countdown: boolean };
+export const WAITING_DEFAULT: WaitingRoom = { video: null, countdown: true };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function parseWaiting(raw: unknown): WaitingRoom {
+  const r = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  const video = r["video"];
+  return { video: typeof video === "string" && UUID.test(video) ? video : null, countdown: r["countdown"] !== false };
+}
 
 /**
  * O temporizador da aula: entre «de» e «a» (segundos do vídeo), a sala mostra quanto da aula já
@@ -442,6 +458,7 @@ export const LIVE_DEFAULTS: LiveSettings = {
   countdown: null,
   header: true,
   timer: TIMER_OFF,
+  waiting: WAITING_DEFAULT,
 };
 
 export const FOLLOW_NETWORKS: readonly { id: FollowNetwork; name: string; example: string; android: string }[] = [
@@ -497,6 +514,7 @@ export function liveSettings(chatSettings: unknown, legacy?: LegacyCountdown): L
     countdown: parseCountdown(r["countdown"]) ?? countdownFromLegacy(legacy),
     header: r["header"] !== false,
     timer: parseTimer(r["timer"]),
+    waiting: parseWaiting(r["waiting"]),
   };
 }
 

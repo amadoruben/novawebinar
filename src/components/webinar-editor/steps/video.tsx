@@ -463,6 +463,55 @@ const SOURCES: { key: Source; icon: LucideIcon; title: string; text: string }[] 
   { key: "link", icon: Link2, title: "Por link", text: "Um ficheiro MP4 ou uma lista HLS" },
 ];
 
+/** Os vídeos da Biblioteca, com a capa e a duração; o escolhido leva «Em uso». Serve o vídeo da aula e o da espera. */
+export function LibraryGrid({
+  library,
+  current,
+  providerLabel,
+  onPick,
+}: {
+  library: readonly VideoSourceLite[];
+  current: string | null;
+  providerLabel: (provider: string) => string;
+  onPick: (id: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {library.map((v) => {
+        const on = current === v.id;
+        return (
+          <button
+            key={v.id}
+            type="button"
+            onClick={() => onPick(v.id)}
+            className={cn(
+              "group grid content-start overflow-hidden rounded-xl border border-hairline bg-white text-left transition hover:shadow-[var(--shadow-raised)]",
+              on && "ring-2 ring-foreground",
+            )}
+          >
+            <span className="relative">
+              <VideoThumb name={v.name} thumbnailUrl={v.thumbnail_url} sourceUrl={v.source_url} overlay={false} />
+              <span className="absolute bottom-1.5 right-1.5 rounded bg-black/80 px-1.5 py-px font-mono text-[11px] font-medium tabular-nums text-white">
+                {clock(v.duration_seconds)}
+              </span>
+              {on ? (
+                <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-foreground px-2 py-0.5 text-[11px] font-medium text-background">
+                  <Check className="size-3" />
+                  Em uso
+                </span>
+              ) : null}
+            </span>
+            <span className="grid gap-0.5 px-3 py-2.5">
+              <b className="line-clamp-2 text-[13px] font-medium leading-snug">{v.name}</b>
+              <span className="text-[12px] text-muted-foreground">{providerLabel(v.provider)}</span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** O pop-up «Carregar vídeo», com a moldura das Integrações: o menu à esquerda e o conteúdo à direita. */
 function SourceDialog({
   onClose,
@@ -596,39 +645,7 @@ function SourceDialog({
         {library.length === 0 ? (
           <Note icon={Film}>A Biblioteca ainda está vazia. Carregue o primeiro vídeo do computador ou de uma plataforma.</Note>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {library.map((v) => {
-              const on = current === v.id;
-              return (
-                <button
-                  key={v.id}
-                  type="button"
-                  onClick={() => onPick(v.id)}
-                  className={cn(
-                    "group grid content-start overflow-hidden rounded-xl border border-hairline bg-white text-left transition hover:shadow-[var(--shadow-raised)]",
-                    on && "ring-2 ring-foreground",
-                  )}
-                >
-                  <span className="relative">
-                    <VideoThumb name={v.name} thumbnailUrl={v.thumbnail_url} sourceUrl={v.source_url} overlay={false} />
-                    <span className="absolute bottom-1.5 right-1.5 rounded bg-black/80 px-1.5 py-px font-mono text-[11px] font-medium tabular-nums text-white">
-                      {clock(v.duration_seconds)}
-                    </span>
-                    {on ? (
-                      <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-foreground px-2 py-0.5 text-[11px] font-medium text-background">
-                        <Check className="size-3" />
-                        Em uso
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="grid gap-0.5 px-3 py-2.5">
-                    <b className="line-clamp-2 text-[13px] font-medium leading-snug">{v.name}</b>
-                    <span className="text-[12px] text-muted-foreground">{providerLabel(v.provider)}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <LibraryGrid library={library} current={current} providerLabel={providerLabel} onPick={onPick} />
         )}
       </>
     );
