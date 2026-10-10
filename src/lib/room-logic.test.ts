@@ -263,6 +263,13 @@ describe("opções da sala", () => {
     expect(liveSettings({ live: { header: "não" } }).header).toBe(true);
   });
 
+  it("o botão de ecrã inteiro aparece por omissão; só desligado à mão sai", () => {
+    expect(liveSettings(null).fullscreenButton).toBe(true);
+    expect(liveSettings({ live: {} }).fullscreenButton).toBe(true);
+    expect(liveSettings({ live: { fullscreenButton: false } }).fullscreenButton).toBe(false);
+    expect(liveSettings({ live: { fullscreenButton: "não" } }).fullscreenButton).toBe(true);
+  });
+
   it("a sala de espera: sem vídeo e com a contagem por omissão; um id estragado não passa", () => {
     const id = "6f1c2a7e-1b2c-4d5e-8f90-123456789abc";
     expect(liveSettings(null).waiting).toEqual({ video: null, countdown: true });

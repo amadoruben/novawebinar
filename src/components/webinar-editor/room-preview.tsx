@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { flushSync } from "react-dom";
 import { Headset, MessagesSquare, Play, RotateCcwSquare, ShoppingCart, X } from "lucide-react";
 import { VideoPlayer } from "@/components/video-player";
 import { PreliveCountdown } from "@/components/prelive-countdown";
@@ -56,6 +57,7 @@ import {
   ChatToggle,
   ENTRY_DIM,
   EntryPlay,
+  FullscreenButton,
   LIVE_COLUMN_BG,
   LIVE_CONTAIN,
   liveFrame,
@@ -68,6 +70,7 @@ import {
   SaleLine,
   SaleToast,
   SupportNotice,
+  TurnHint,
   VideoSettings,
   type Appearance,
   type Reaction,
@@ -429,7 +432,24 @@ function WebinarPreview(props: RoomPreviewProps) {
   useEffect(() => {
     if (props.tab !== "chat") setSide(true);
   }, [props.tab]);
-  useEffect(() => setProofMin(false), [shown?.id]);
+  // Como na sala: no telemóvel deitado (vídeo horizontal) a oferta chega como barra; a seta abre o cartão.
+  useEffect(() => setProofMin(landscape && props.videoShape !== "vertical"), [shown?.id, landscape, props.videoShape]);
+  // Como na sala: o botão de comentar mostra a coluna do chat e põe logo o foco na caixa de escrever.
+  const roomBox = useRef<HTMLDivElement>(null);
+  const openChatToWrite = () => {
+    flushSync(() => {
+      setSide(true);
+      if (props.tab === "offer") props.onTab("chat");
+    });
+    roomBox.current?.querySelector<HTMLInputElement>("form input")?.focus();
+  };
+  // O ecrã inteiro (telemóvel ao alto, vídeo horizontal, opção ligada): aqui o toque só mostra a dica de virar.
+  const [turnHint, setTurnHint] = useState(false);
+  useEffect(() => {
+    if (!turnHint) return;
+    const timer = window.setTimeout(() => setTurnHint(false), 2500);
+    return () => window.clearTimeout(timer);
+  }, [turnHint]);
   // Vídeo ao alto com o telemóvel deitado: o vídeo não roda (fica ao alto, com a altura toda) e não há
   // chat; as mensagens, os corações e a oferta ficam ao lado do vídeo, como com o chat oculto.
   const vertical = landscape && props.videoShape === "vertical";
@@ -443,6 +463,7 @@ function WebinarPreview(props: RoomPreviewProps) {
   }, [openId]);
   // Em pausa com o botão de entrar à frente, a sala ainda não mostra o ⚙ (só depois do toque).
   const entering = showsEntry(props) && !props.playing && Boolean(props.video.url);
+  const fullscreenShown = (props.device === "phone" || props.device === "tablet") && live.fullscreenButton !== false && props.videoShape !== "vertical";
   const followButton = (big: boolean) => (social.follow ? <FollowButton big={big} label={social.follow.label} onClick={social.follow.onClick} /> : null);
   // Como na sala: o aviso de compra no canto de baixo do vídeo (`SALE_TOAST_SPOT`); a legenda sobe por cima dele.
   // Com o chat oculto, vai por cima das mensagens; aí, com as compras também no chat, a linha do chat já é o aviso.
@@ -467,7 +488,7 @@ function WebinarPreview(props: RoomPreviewProps) {
         onHeart={vertical ? undefined : props.onHeart}
         reactions={props.reactions}
         // O botão de voltar a comentar junto do coração, no canto de baixo à direita (como na sala).
-        comment={vertical ? null : <ChatToggle open={false} onToggle={() => setSide(true)} alert={Boolean(shown)} />}
+        comment={vertical ? null : <ChatToggle open={false} onToggle={openChatToWrite} alert={Boolean(shown)} />}
         // Ao lado do vídeo ao alto, no fundo da sala: nas cores do tema, sem o escurecido.
         panel={vertical}
         offer={
@@ -517,7 +538,7 @@ function WebinarPreview(props: RoomPreviewProps) {
         />
       ) : (
         <div className="absolute inset-0 grid content-center gap-3 bg-[radial-gradient(120%_90%_at_85%_10%,rgba(232,68,12,.2),transparent_55%),linear-gradient(160deg,#22262e,#111316)] px-[8%] text-white">
-          <p className={cn("font-bold uppercase tracking-[0.16em] text-[#F28E63]", phone ? "text-[10px]" : "text-[15px]")}>
+          <p className={cn("font-bold uppercase tracking-[0.16em] text-[#F28E63]", phone ? "text-[12px]" : "text-[15px]")}>
             Sem vídeo
           </p>
           <p className={cn("max-w-[640px] font-extrabold leading-[1.1] tracking-tight", phone ? "text-[20px]" : "text-[44px]")}>
@@ -525,8 +546,8 @@ function WebinarPreview(props: RoomPreviewProps) {
           </p>
         </div>
       )}
-      {/* Como na sala: no canto de cima, a 12 px, por cima de tudo (também do véu da entrada e da prova). */}
-      <div className="pointer-events-none absolute left-3 top-3 z-[41] flex items-center gap-[5px]">
+      {/* Como na sala: no canto de cima, a 12 px (dentro da zona segura), por cima de tudo (também do véu da entrada e da prova). */}
+      <div className="pointer-events-none absolute left-[calc(var(--safe-l,0px)+12px)] top-3 z-[41] flex items-center gap-[5px]">
         {/* Como na sala: no fim, «Terminou» a cinzento e sem o número. */}
         <LiveBadge {...(videoEnded ? { label: "Terminou", tone: "muted" as const } : {})} />
         {props.viewers !== null && !videoEnded ? (
@@ -535,8 +556,10 @@ function WebinarPreview(props: RoomPreviewProps) {
           </span>
         ) : null}
       </div>
-      {/* Com o vídeo ao alto deitado, a prova fica ao lado do vídeo (com o aviso de compra). */}
-      {vertical ? null : proof ?? saleToast}
+      {/* Com o vídeo ao alto deitado, a prova fica ao lado do vídeo (com o aviso de compra). Dentro das zonas seguras. */}
+      {vertical ? null : (
+        <div className="pointer-events-none absolute inset-y-0 left-[var(--safe-l,0px)] right-[var(--safe-r,0px)] z-20">{proof ?? saleToast}</div>
+      )}
       {props.captionsOn && !proof ? <CaptionLine lines={props.speech} t={props.t} compact={phone} raised={Boolean(lastSale)} /> : null}
       {videoEnded ? (
         <EndScreen
@@ -568,13 +591,16 @@ function WebinarPreview(props: RoomPreviewProps) {
           seconds={props.t}
           compact={phone}
           bar="absolute inset-x-0 bottom-0"
-          chip={cn("absolute right-3 top-3", hidden && !vertical && "right-16")}
+          chip={cn("absolute top-3", hidden && !vertical ? "right-[calc(var(--safe-r,0px)+64px)]" : "right-[calc(var(--safe-r,0px)+12px)]")}
         />
       ) : null}
       {peek ? <PeekCountdown live={live} /> : null}
+      {turnHint ? <TurnHint /> : null}
       {/* Com as mensagens por cima do vídeo, o canto de baixo à direita é do botão de comentar e do coração:
-          o ⚙ sobe para o canto de cima. Como na sala, o mesmo ⚙ em todos os aparelhos. */}
-      <div className={cn("absolute right-3", hidden && !vertical ? "top-3" : "bottom-3", (entering || videoEnded) && "hidden")}>
+          o ⚙ sobe para o canto de cima. Como na sala, o mesmo ⚙ em todos os aparelhos; no telemóvel ao alto com o
+          vídeo horizontal, o ecrã inteiro à esquerda dele (aqui só mostra a dica de virar, como no iPhone). */}
+      <div className={cn("absolute right-[calc(var(--safe-r,0px)+12px)] flex items-center gap-1", hidden && !vertical ? "top-3" : "bottom-3", (entering || videoEnded) && "hidden")}>
+        {fullscreenShown ? <FullscreenButton on={false} onToggle={() => setTurnHint(true)} /> : null}
         <VideoSettings
           volume={props.volume}
           onVolume={props.onVolume}
@@ -636,19 +662,27 @@ function WebinarPreview(props: RoomPreviewProps) {
     );
   }
   if (landscape) {
-    // Deitado, como na sala (e como no Twitch): o vídeo inteiro à esquerda e o chat do outro lado, numa
-    // coluna que não o tapa. À volta do vídeo, o fundo do chat (só a borda os separa); nada fica por baixo
-    // da ilha da câmara nem colado às bordas: 59 px de cada lado, as zonas seguras do iPhone deitado.
+    // Deitado, como na sala (e como no Twitch): o vídeo à esquerda e o chat do outro lado, numa coluna que não o
+    // tapa (300 px + a zona segura). O vídeo vai até à borda do ecrã (por baixo da ilha da câmara) e até à coluna;
+    // à volta dele, o fundo do chat (só a borda os separa). O que fica por cima do vídeo respeita as zonas seguras
+    // do iPhone deitado (59 px), menos a folga do vídeo ao centro (`--safe-l/r`, cq = esta área).
     return (
-      <div className={cn(roomClass, "relative")} style={style}>
+      <div ref={roomBox} className={cn(roomClass, "relative")} style={style}>
         <RoomPartsStyle />
         <LiveStyle />
-        <div className={cn("grid min-w-0 flex-1 place-items-center bg-room-bg [container-type:size]", side ? "pl-[59px]" : "px-[59px]")}>
-          <div className="w-[min(100cqw,177.78cqh)]">{videoCard}</div>
+        <div className="grid min-w-0 flex-1 place-items-center bg-room-bg [container-type:size]">
+          <div
+            className={cn(
+              "w-[min(100cqw,177.78cqh)] [--safe-l:max(0px,calc(59px_-_(100cqw_-_min(100cqw,177.78cqh))_/_2))]",
+              !side && "[--safe-r:max(0px,calc(59px_-_(100cqw_-_min(100cqw,177.78cqh))_/_2))]",
+            )}
+          >
+            {videoCard}
+          </div>
         </div>
         {side ? (
-          <div className="relative flex w-[379px] shrink-0 flex-col border-l border-room-line/60 bg-room-bg pr-[59px]">
-            <Panel {...props} tab={tab} shown={shown} open={open} hl={hl} phone={phone} afterVideo={afterVideo} notice={live.notify && props.agent.on} onClose={() => setSide(false)} />
+          <div className="relative flex w-[359px] shrink-0 flex-col border-l border-room-line/60 bg-room-bg pr-[59px]">
+            <Panel {...props} tab={tab} shown={shown} open={open} hl={hl} phone={phone} tight afterVideo={afterVideo} notice={live.notify && props.agent.on} onClose={() => setSide(false)} />
             {social.sheet}
           </div>
         ) : null}
@@ -659,7 +693,7 @@ function WebinarPreview(props: RoomPreviewProps) {
   return (
     // A barra de estado (relógio, rede, bateria) é sempre preta na sala, em qualquer tema, como no telemóvel:
     // o vídeo fica logo por baixo. O tema muda o resto (título, chat e fundo).
-    <div className={roomClass} style={style} data-status-dark>
+    <div ref={roomBox} className={roomClass} style={style} data-status-dark>
       <RoomPartsStyle />
       <LiveStyle />
       {tablet || tabletWide ? <div aria-hidden className="absolute inset-x-0 top-0 bg-black" style={{ height: SCREENS.tablet.top }} /> : null}
@@ -927,7 +961,7 @@ function LivePreview(props: RoomPreviewProps) {
         </div>
       ) : (
         <div className="absolute inset-0 grid content-center gap-2 bg-[radial-gradient(120%_90%_at_85%_10%,rgba(232,68,12,.25),transparent_55%),linear-gradient(160deg,#22262e,#111316)] px-[10%] text-white">
-          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#F28E63]">Sem vídeo</p>
+          <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#F28E63]">Sem vídeo</p>
           <p className="text-[22px] font-extrabold leading-[1.1] tracking-tight">Escolha o vídeo na etapa Vídeo</p>
         </div>
       )}
@@ -1138,9 +1172,12 @@ function Panel({
   sheet,
   notice,
   onClose,
+  tight,
   ...props
 }: RoomPreviewProps & {
   phone: boolean;
+  /** Telemóvel deitado: a coluna compacta da sala (separadores, mensagem fixada e caixa mais baixos). */
+  tight?: boolean | undefined;
   tab: RoomTab;
   shown: OfferSlot | null;
   open: OfferSlot | null;
@@ -1183,6 +1220,7 @@ function Panel({
     >
       <RoomTabs
         big={!phone}
+        tight={tight}
         active={tab}
         onTab={props.onTab}
         items={tabs.map(([value, label, Icon]) => ({ value, label, Icon, extra: value === "offer" && tab !== "offer" ? <PulseDot /> : null }))}
@@ -1225,9 +1263,15 @@ function Panel({
         </div>
       ) : (
         <>
-          {tab === "chat" && props.pin && !pinClosed ? <ChatPin title={props.pin} onClose={() => setPinClosed(true)} className={hl("pin")} /> : null}
+          {tab === "chat" && props.pin && !pinClosed ? <ChatPin title={props.pin} onClose={() => setPinClosed(true)} className={hl("pin")} tight={tight} /> : null}
           {/* As mensagens mais antigas desvanecem em cima, em vez de ficarem cortadas a meio. */}
-          <div className={cn("flex min-h-0 flex-1 flex-col justify-end gap-3.5 overflow-hidden p-4 [mask-image:linear-gradient(transparent,#000_28px)]", props.device === "phone" && "pt-5")}>
+          <div
+            className={cn(
+              "flex min-h-0 flex-1 flex-col justify-end overflow-hidden [mask-image:linear-gradient(transparent,#000_28px)]",
+              tight ? "gap-2 px-3 py-2" : "gap-3.5 p-4",
+              props.device === "phone" && "pt-5",
+            )}
+          >
             {tab === "chat" ? (
               chatItems.length === 0 && !notice ? (
                 <p className="m-auto text-center text-sm text-room-subtle">As mensagens aparecem ao longo do vídeo.</p>
@@ -1238,10 +1282,10 @@ function Panel({
                   item.kind === "sale" ? (
                     <SaleLine key={item.key} text={`${item.s.buyer} comprou ${item.s.product}`} color={props.saleColor} />
                   ) : item.kind === "mine" ? (
-                    <ChatLine key={item.key} author="Você" text={item.m.text} badge="Só você vê" tone="mine" reaction={item.reaction} big />
+                    <ChatLine key={item.key} author="Você" text={item.m.text} badge="Só você vê" tone="mine" reaction={item.reaction} big tight={tight} />
                   ) : (
                     <div key={item.key} className={cn(props.highlight === `comment:${item.c.id}` && "-mx-2 rounded-lg bg-primary/15 px-2 py-1")}>
-                      <ChatLine author={item.c.author} text={item.c.message} tone={item.c.agent ? "agent" : "people"} big />
+                      <ChatLine author={item.c.author} text={item.c.message} tone={item.c.agent ? "agent" : "people"} big tight={tight} />
                     </div>
                   ),
                   ),
@@ -1270,6 +1314,7 @@ function Panel({
           ) : null}
           <ChatComposer
             compact={phone}
+            tight={tight}
             value={text}
             onChange={setText}
             onSubmit={() => {

@@ -146,7 +146,8 @@ export function StepAgente({
   const mode: Mode = agent.mode === "copiloto" || agent.mode === "automatico" ? agent.mode : "hibrido";
   const level = LEVELS.find((l) => l.mode === mode)!;
   const perms = agent.permissions ?? {};
-  const reasons = agent.escalation?.reasons ?? [];
+  // Como o motor (passesToTeam): sem lista gravada, os dois motivos contam como ligados.
+  const reasons = Array.isArray(agent.escalation?.reasons) ? agent.escalation.reasons : [UNKNOWN, PERSON];
   const toggleReason = (reason: string) => {
     const next = reasons.includes(reason) ? reasons.filter((r) => r !== reason) : [...reasons, reason];
     void patch({ escalation: { ...(agent.escalation ?? {}), reasons: next } });

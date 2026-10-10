@@ -9,13 +9,16 @@ import {
   Clock,
   Headset,
   Heart,
+  Maximize2,
   MessageSquareOff,
   MessagesSquare,
+  Minimize2,
   Monitor,
   MonitorPlay,
   Moon,
   Pin,
   Play,
+  RotateCcwSquare,
   SendHorizontal,
   Settings,
   ShoppingBag,
@@ -121,7 +124,11 @@ export function RoomTitle({
     </h1>
   ) : null;
   return (
-    <div className={compact ? cn("px-4 pt-4", folded ? "pb-3" : "pb-1") : "pt-5"}>
+    // Recolhível: tocar na zona vazia do bloco também recolhe ou abre (o nome abre as redes; o + Seguir e a seta fazem o seu).
+    <div
+      className={compact ? cn("px-4 pt-4", folded ? "pb-3" : "pb-1") : "pt-5"}
+      onClick={foldable ? (event) => !(event.target as HTMLElement).closest("button, a") && setFolded((f) => !f) : undefined}
+    >
       {!compact ? (
         <p className="text-[14.5px] font-bold uppercase tracking-[0.2em] text-primary">{kicker}</p>
       ) : null}
@@ -433,7 +440,7 @@ export function CaptionLine({
       <span
         className={cn(
           "max-w-[86%] whitespace-pre-line break-words rounded bg-black/60 px-2 py-0.5 text-center font-medium leading-snug text-white",
-          compact ? "text-[11px]" : "text-[14px]",
+          compact ? "text-[12px]" : "text-[14px]",
         )}
       >
         {captionLines(text, CAPTION_LINE[size])}
@@ -446,11 +453,6 @@ export function CaptionLine({
 
 export const EMOJIS = ["😀", "😂", "😍", "🥰", "😮", "🤔", "👏", "🙌", "👍", "💪", "🔥", "💯", "❤️", "🎉", "🙏", "✅", "😅", "🤩", "😢", "👀", "💡", "🚀", "⭐", "🇦🇴", "🇧🇷", "🇵🇹"];
 
-/**
- * A caixa de escrever do formato Webinar, como no WhatsApp: o campo com os emojis e, ao lado, um só
- * botão redondo. Vazio, é o coração das reacções; ao escrever, passa a enviar, cheio na cor do botão.
- * No Suporte (sem reacções) o enviar fica sempre lá.
- */
 /** Um separador do painel da sala (Chat, Suporte, Oferta); `extra` = o ponto ou o número ao lado do nome. */
 export type RoomTabItem<T extends string> = { value: T; label: string; Icon: LucideIcon; extra?: ReactNode };
 
@@ -463,6 +465,7 @@ export function RoomTabs<T extends string>({
   active,
   onTab,
   big,
+  tight,
   trailing,
 }: {
   items: readonly RoomTabItem<T>[];
@@ -470,6 +473,8 @@ export function RoomTabs<T extends string>({
   onTab: (value: T) => void;
   /** Letra e altura maiores (pré-visualização no computador). */
   big?: boolean | undefined;
+  /** Telemóvel deitado: mais baixos, para caberem mais mensagens na coluna do chat. */
+  tight?: boolean | undefined;
   /** À direita dos separadores (ex.: o X que fecha o chat deitado). */
   trailing?: ReactNode;
 }) {
@@ -485,7 +490,7 @@ export function RoomTabs<T extends string>({
             aria-pressed={on}
             className={cn(
               "relative flex flex-1 items-center justify-center gap-2 font-semibold transition",
-              big ? "h-[54px] text-[15px]" : "h-12 text-sm",
+              big ? "h-[54px] text-[15px]" : tight ? "h-9 text-sm" : "h-12 text-sm",
               on ? "text-primary" : "text-room-subtle hover:text-room-text",
             )}
           >
@@ -501,6 +506,11 @@ export function RoomTabs<T extends string>({
   );
 }
 
+/**
+ * A caixa de escrever do formato Webinar: o campo com os emojis e, ao lado, o coração das reacções (sempre lá,
+ * no Chat). Ao escrever, aparece dentro do campo, junto aos emojis, um enviar discreto (sem fundo); a tecla
+ * «Enviar» do teclado também envia. No Suporte (sem reacções) não há coração.
+ */
 export function ChatComposer({
   value,
   onChange,
@@ -510,6 +520,7 @@ export function ChatComposer({
   onHeart,
   reactions,
   compact,
+  tight,
   inputProps,
 }: {
   value: string;
@@ -520,14 +531,15 @@ export function ChatComposer({
   onHeart?: (() => void) | undefined;
   reactions?: readonly Reaction[] | undefined;
   compact?: boolean | undefined;
+  /** Telemóvel deitado: a linha mais baixa (~44 px), para caberem mais mensagens. */
+  tight?: boolean | undefined;
   inputProps?: React.InputHTMLAttributes<HTMLInputElement> | undefined;
 }) {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const ready = Boolean(value.trim());
-  const heart = withReactions && onHeart && !ready;
   return (
     <form
-      className={cn("flex items-center gap-2 border-t border-room-line/60 px-3", compact ? "py-3" : "py-2.5")}
+      className={cn("flex items-center gap-2 border-t border-room-line/60 px-3", tight ? "py-1" : compact ? "py-3" : "py-2.5")}
       onSubmit={(event) => {
         event.preventDefault();
         if (ready) onSubmit();
@@ -536,7 +548,7 @@ export function ChatComposer({
       <div
         className={cn(
           "flex min-w-0 flex-1 items-center gap-0.5 rounded-full bg-room-raised pl-4 pr-1 ring-1 ring-inset ring-transparent transition focus-within:ring-room-line",
-          compact ? "h-11" : "h-12",
+          tight ? "h-9" : compact ? "h-11" : "h-12",
         )}
       >
         <input
@@ -574,29 +586,25 @@ export function ChatComposer({
             </div>
           </PopoverContent>
         </Popover>
+        {ready ? (
+          <button
+            type="submit"
+            aria-label="Enviar"
+            title="Enviar"
+            className="grid size-9 shrink-0 place-items-center rounded-full text-room-subtle transition hover:text-room-text active:scale-95"
+          >
+            <SendHorizontal className="size-5 translate-x-px" strokeWidth={2} />
+          </button>
+        ) : null}
       </div>
-      {heart ? (
+      {withReactions && onHeart ? (
         <HeartButton
           onHeart={onHeart}
           reactions={reactions ?? []}
-          className={cn("grid shrink-0 place-items-center rounded-full text-room-text transition active:scale-90", compact ? "size-11" : "size-12")}
-          iconClassName="size-[26px] [stroke-width:1.8]"
+          className={cn("grid shrink-0 place-items-center rounded-full text-room-text transition active:scale-90", tight ? "size-9" : compact ? "size-11" : "size-12")}
+          iconClassName={cn(tight ? "size-6" : "size-[26px]", "[stroke-width:1.75]")}
         />
-      ) : (
-        <button
-          type="submit"
-          aria-label="Comentar"
-          title="Comentar"
-          disabled={!ready}
-          className={cn(
-            "grid shrink-0 place-items-center rounded-full transition active:scale-95",
-            compact ? "size-11" : "size-12",
-            ready ? "bg-[var(--of,#E8440C)] text-[var(--of-on,#fff)]" : "bg-room-raised text-room-subtle",
-          )}
-        >
-          <SendHorizontal className="size-5 translate-x-px" strokeWidth={2.1} />
-        </button>
-      )}
+      ) : null}
     </form>
   );
 }
@@ -709,11 +717,14 @@ export function ChatLine({
   badge,
   reaction,
   big,
+  tight,
   onVideo,
 }: {
   author: string;
   text: string;
   avatarUrl?: string | null | undefined;
+  /** Telemóvel deitado: letra 14/18 e avatar de 24 px, para caberem mais mensagens na coluna. */
+  tight?: boolean | undefined;
   /** «team»: alguém da equipa, com o nome e o selo na cor do botão. */
   tone?: "people" | "mine" | "agent" | "team" | undefined;
   badge?: string | undefined;
@@ -732,14 +743,14 @@ export function ChatLine({
       .map((p) => p[0]?.toUpperCase())
       .join("") || "?";
   return (
-    <div className="flex items-start gap-2.5">
+    <div className={cn("flex items-start", tight ? "gap-2" : "gap-2.5")}>
       {avatarUrl ? (
-        <img src={avatarUrl} alt="" className={cn("shrink-0 rounded-full object-cover", big ? "size-8" : "size-7")} />
+        <img src={avatarUrl} alt="" className={cn("shrink-0 rounded-full object-cover", tight ? "size-6" : big ? "size-8" : "size-7")} />
       ) : (
         <span
           className={cn(
             "grid shrink-0 place-items-center rounded-full font-bold",
-            big ? "size-8 text-[11.5px]" : "size-7 text-[10.5px]",
+            tight ? "size-6 text-[12px] tracking-tight" : big ? "size-8 text-[12px]" : "size-7 text-[12px] tracking-tight",
             tone === "agent"
               ? "bg-primary text-white"
               : tone === "team"
@@ -754,9 +765,9 @@ export function ChatLine({
       )}
       <p
         className={cn(
-          "min-w-0 break-words leading-[1.45]",
+          "min-w-0 break-words",
           onVideo ? "text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.6)]" : "text-room-text",
-          big ? "pt-0.5 text-[16px]" : onVideo ? "pt-0.5 text-[15px]" : "pt-0.5 text-[14.5px]",
+          tight ? "pt-[3px] text-[14px] leading-[18px]" : big ? "pt-0.5 text-[16px] leading-[1.45]" : onVideo ? "pt-0.5 text-[15px] leading-[1.45]" : "pt-0.5 text-[14.5px] leading-[1.45]",
         )}
       >
         <span
@@ -771,7 +782,8 @@ export function ChatLine({
         {badge ? (
           <span
             className={cn(
-              "mr-2 rounded px-1.5 py-px align-[1px] text-[11px] [text-shadow:none]",
+              "mr-2 rounded px-1.5 py-px align-[1px] [text-shadow:none]",
+              "text-[12px] leading-none",
               tone === "team"
                 ? "bg-[var(--of,#E8440C)] font-bold text-[var(--of-on,#fff)]"
                 : onVideo
@@ -794,11 +806,30 @@ export function ChatLine({
  * A mensagem fixada no chat do Webinar (a da etapa Chat do editor), igual na sala e na pré-visualização.
  * O X tira-a até a pessoa sair da sala.
  */
-export function ChatPin({ title, message, onClose, className }: { title: string; message?: string | null | undefined; onClose: () => void; className?: string | undefined }) {
+export function ChatPin({
+  title,
+  message,
+  onClose,
+  className,
+  tight,
+}: {
+  title: string;
+  message?: string | null | undefined;
+  onClose: () => void;
+  className?: string | undefined;
+  /** Telemóvel deitado: numa só linha (~30 px). */
+  tight?: boolean | undefined;
+}) {
   return (
-    <div className={cn("mx-3 mt-3 flex shrink-0 items-center gap-2.5 rounded-xl bg-room-raised py-3 pl-3.5 pr-2 text-sm text-room-text", className)}>
+    <div
+      className={cn(
+        "mx-3 flex shrink-0 items-center gap-2.5 rounded-xl bg-room-raised pl-3.5 pr-2 text-sm text-room-text",
+        tight ? "mt-2 py-1" : "mt-3 py-3",
+        className,
+      )}
+    >
       <Pin className="size-4 shrink-0 text-primary" />
-      <span className={cn("min-w-0 flex-1", !message && "truncate")}>
+      <span className={cn("min-w-0 flex-1", (!message || tight) && "truncate")}>
         {title}
         {message ? <span className="text-room-subtle"> {message}</span> : null}
       </span>
@@ -821,7 +852,7 @@ export function SupportNotice({ onOpen, big }: { onOpen: () => void; big?: boole
       </span>
       <p className={cn("min-w-0 pt-0.5 leading-[1.45] text-room-text", big ? "text-[16px]" : "text-[14.5px]")}>
         <span className="mr-2 font-semibold text-room-subtle">Suporte</span>
-        <span className="mr-2 rounded bg-room-raised px-1.5 py-px align-[1px] text-[11px] font-medium text-room-subtle">Só você vê</span>
+        <span className="mr-2 rounded bg-room-raised px-1.5 py-px align-[1px] text-[12px] font-medium leading-none text-room-subtle">Só você vê</span>
         @Você, já respondemos à sua dúvida. <u className="font-semibold underline-offset-[3px]">Ver resposta</u>
       </p>
     </button>
@@ -858,14 +889,14 @@ export function CountdownBlocks({ seconds, compact }: { seconds: number; compact
           {d}
         </b>
       ))}
-      <em className="absolute inset-x-0 bottom-0 text-center text-[10.5px] font-semibold not-italic uppercase tracking-[0.12em] text-room-subtle">
+      <em className="absolute inset-x-0 bottom-0 text-center text-[12px] font-semibold not-italic uppercase tracking-[0.12em] text-room-subtle">
         {label}
       </em>
     </span>
   );
   return (
     <div className="grid justify-items-center gap-2 rounded-[14px] bg-[color-mix(in_srgb,var(--of,#E8440C)_10%,transparent)] px-3 pb-3 pt-3.5 ring-1 ring-[color-mix(in_srgb,var(--of,#E8440C)_25%,transparent)]">
-      <small className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--of-ink,#E8440C)]">A oferta termina em</small>
+      <small className="text-[12px] font-bold uppercase tracking-[0.18em] text-[var(--of-ink,#E8440C)]">A oferta termina em</small>
       <div className="flex items-start gap-1.5">
         {group(mm, "min")}
         <i className={cn("font-extrabold not-italic text-room-subtle", compact ? "text-2xl leading-[44px]" : "text-[30px] leading-[52px]")}>
@@ -1003,7 +1034,7 @@ export function OfferCard({
         <div className="overflow-hidden rounded-2xl bg-[color-mix(in_srgb,var(--room-surface)_78%,transparent)] ring-1 ring-room-line">
           <div className={cn("flex items-center gap-3 bg-[linear-gradient(110deg,var(--of-dark)_0%,var(--of-mid)_52%,var(--of)_100%)] px-4 pb-4 pt-3.5 text-white", hl("product"))}>
             <div className="grid min-w-0 flex-1 gap-1">
-              <span className="text-[10.5px] font-extrabold uppercase tracking-[0.2em] text-white/85">{closed ? "Inscrições encerradas" : "Inscrições abertas"}</span>
+              <span className="text-[12px] font-extrabold uppercase tracking-[0.16em] text-white/85">{closed ? "Inscrições encerradas" : "Inscrições abertas"}</span>
               {productName ? <span className="line-clamp-3 break-words text-[22px] font-extrabold leading-tight tracking-[-0.01em]">{productName}</span> : name}
             </div>
             {imageUrl ? <OfferThumb imageUrl={imageUrl} className="size-16 rounded-xl ring-1 ring-white/20" /> : null}
@@ -1191,6 +1222,37 @@ export function ChatToggle({
   );
 }
 
+/**
+ * O ecrã inteiro do Webinar (telemóvel ao alto, vídeo horizontal), como no YouTube: duas setas em diagonal,
+ * brancas com sombra, sem círculo, à esquerda do ⚙. Em ecrã inteiro, as setas para dentro (sair).
+ */
+export function FullscreenButton({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  const Icon = on ? Minimize2 : Maximize2;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={on ? "Sair do ecrã inteiro" : "Ver em ecrã inteiro"}
+      title={on ? "Sair do ecrã inteiro" : "Ecrã inteiro"}
+      className="grid size-10 shrink-0 place-items-center text-white drop-shadow-[0_1px_3px_rgba(0,0,0,.6)] transition hover:opacity-80 active:scale-95"
+    >
+      <Icon className="size-[22px]" strokeWidth={2} />
+    </button>
+  );
+}
+
+/** Sem ecrã inteiro no navegador (iPhone): a dica, 2,5 s por cima do vídeo, para virar o telemóvel. */
+export function TurnHint() {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-[35] grid place-items-center px-4">
+      <p className="flex items-center gap-2 rounded-full bg-black/65 px-3.5 py-2 text-[13px] font-medium text-white backdrop-blur animate-in fade-in duration-200">
+        <RotateCcwSquare className="size-[18px] shrink-0" strokeWidth={1.75} />
+        Vire o telemóvel para ver em ecrã inteiro
+      </p>
+    </div>
+  );
+}
+
 /** O ponto que pulsa no separador Oferta enquanto não está aberto. */
 export function PulseDot() {
   return <span aria-hidden className="cw-dot size-[7px] rounded-full bg-[#E8440C]" />;
@@ -1260,7 +1322,7 @@ export function EntryPlay({ look, kicker, compact }: { look: EntryLook; kicker: 
       </span>
       {big ? null : (
         <span className="leading-tight">
-          <small className={cn("block font-bold uppercase tracking-[0.16em] text-white/75", compact ? "text-[10.5px]" : "text-[12px]")}>{kicker}</small>
+          <small className={cn("block font-bold uppercase tracking-[0.16em] text-white/75", "text-[12px]")}>{kicker}</small>
           <b className={cn("block font-semibold", compact ? "text-[16px]" : "text-[18.5px]")}>Assistir agora</b>
         </span>
       )}

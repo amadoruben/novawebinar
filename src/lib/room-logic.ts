@@ -296,6 +296,8 @@ export type LiveSettings = {
   countdown: RoomCountdown | null;
   /** Webinar: o título e quem apresenta por cima do chat. Desligado, ficam o vídeo, o chat, o Suporte e a oferta. */
   header: boolean;
+  /** Webinar, telemóvel ao alto com vídeo horizontal: o botão de ecrã inteiro (ver deitado), por cima do vídeo. */
+  fullscreenButton: boolean;
   /** O temporizador da aula: a percentagem por cima do vídeo, só nos minutos escolhidos. */
   timer: RoomTimer;
   /** A sala de espera: o vídeo de fundo e se a contagem aparece por cima. */
@@ -457,6 +459,7 @@ export const LIVE_DEFAULTS: LiveSettings = {
   offerColors: {},
   countdown: null,
   header: true,
+  fullscreenButton: true,
   timer: TIMER_OFF,
   waiting: WAITING_DEFAULT,
 };
@@ -513,6 +516,7 @@ export function liveSettings(chatSettings: unknown, legacy?: LegacyCountdown): L
     offerColors: parseOfferColors(r["offerColors"]),
     countdown: parseCountdown(r["countdown"]) ?? countdownFromLegacy(legacy),
     header: r["header"] !== false,
+    fullscreenButton: r["fullscreenButton"] !== false,
     timer: parseTimer(r["timer"]),
     waiting: parseWaiting(r["waiting"]),
   };

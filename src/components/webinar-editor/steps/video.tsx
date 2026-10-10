@@ -204,6 +204,16 @@ export function StepVideo({
             />
           </div>
         ) : null}
+        {format === "webinar" ? (
+          <div className="rounded-xl border bg-white p-3">
+            <SwitchRow
+              title="Botão de ecrã inteiro"
+              description="No telemóvel, com vídeo horizontal: um botão para ver deitado, em ecrã inteiro."
+              checked={live.fullscreenButton}
+              onChange={(fullscreenButton) => onLive({ fullscreenButton })}
+            />
+          </div>
+        ) : null}
       </Section>
       <RoomOptions live={live} onLive={onLive} appearance={appearance} onAppearance={onAppearance} clock={c} transcript={transcript} />
 

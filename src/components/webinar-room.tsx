@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   Headset,
   MessagesSquare,
@@ -41,6 +42,7 @@ import {
   ChatLine,
   ENTRY_DIM,
   EntryPlay,
+  FullscreenButton,
   LIVE_COLUMN_BG,
   liveFrame,
   OfferCard,
@@ -52,6 +54,7 @@ import {
   SaleLine,
   SaleToast,
   SupportNotice,
+  TurnHint,
   VideoSettings,
   type Appearance,
 } from "@/components/room/room-parts";
@@ -318,6 +321,8 @@ export function WebinarRoom({
   const roomRef = useRef<HTMLElement>(null);
   // Teclado aberto no telemóvel (a caixa de escrever com o foco).
   const [typing, setTyping] = useState(false);
+  // Sem caixa (separador Oferta, replay) não se escreve: se ela saiu com o foco (o Firefox não avisa), não fica preso.
+  const typingNow = typing && tab !== "offer" && mode !== "replay";
   const feedRef = useRef<HTMLDivElement>(null);
   const keyboardFrameRef = useRef<number | null>(null);
   const { hearts, sendHeart: shareHeart } = useHearts(webinar.id);
@@ -366,10 +371,16 @@ export function WebinarRoom({
   const portrait = useMedia("(orientation: portrait)");
   // Aparelho de toque (telemóvel, tablet): só nestes há aviso de rodar e chat maior no tablet.
   const coarse = useMedia("(pointer: coarse)");
+  // Telemóvel deitado (o `phone-land` do CSS): a coluna do chat compacta, para caberem mais mensagens.
+  const phoneLand = useMedia("(orientation: landscape) and (max-width: 1023px) and (max-height: 540px)");
   // No Webinar a forma só decide o telemóvel deitado com o vídeo ao alto (`turnUp`); sem ela, deitado. Por isso a
   // sonda (um <video> só de metadados) só corre quando essa forma pode contar, e nunca com poupar dados; depois do
   // toque em «Assistir agora» vale a forma lida do próprio leitor (`playerShape`).
-  const probedShape = useVideoShape(liveLayout || (coarse && !wide && !portrait && !saveData) ? webinar.video_url : null, webinar.video_provider);
+  // Ao alto também corre quando o botão de ecrã inteiro pode aparecer (só com vídeo horizontal lido).
+  const probedShape = useVideoShape(
+    liveLayout || (coarse && !wide && !saveData && (!portrait || live.fullscreenButton !== false)) ? webinar.video_url : null,
+    webinar.video_provider,
+  );
   const videoShape = playerShape ?? probedShape ?? (liveLayout ? live.desk : "horizontal");
   const liveStack = liveLayout && !wide && portrait && videoShape !== "vertical";
   // Tablet (ao alto, ou deitado com toque): o chat do Live com letra e caixa maiores, para ler à distância.
@@ -388,6 +399,9 @@ export function WebinarRoom({
   // No Live o Suporte, a oferta inteira e as redes abrem numa folha por cima da sala.
   const [sheet, setSheet] = useState<null | "support" | "offer" | "follow">(null);
   const [offerMin, setOfferMin] = useState(false);
+  // Webinar no telemóvel deitado com o chat oculto: a oferta chega como barra (o cartão inteiro tapava as mensagens
+  // num ecrã baixo); a seta abre o cartão daquela oferta.
+  const [landCardFor, setLandCardFor] = useState<string | null>(null);
   const [tapped, setTapped] = useState<Partial<Record<FollowNetwork, boolean>>>({});
   // Quem já seguiu (tocou numa rede e fechou) deixa de ver o + Seguir neste webinar.
   const followKey = `cw:seguiu:${webinar.id}`;
@@ -979,7 +993,7 @@ export function WebinarRoom({
       <button
         type="button"
         onClick={() => void deliver(message)}
-        className="text-[11px] font-semibold text-destructive underline underline-offset-2"
+        className="text-[12px] font-semibold text-destructive underline underline-offset-2"
       >
         Não enviada. Tentar de novo
       </button>
@@ -999,7 +1013,7 @@ export function WebinarRoom({
   // O «Ao vivo» e quantos vêem ficam sempre no canto do vídeo: também por cima do véu da entrada (z-40),
   // com o teclado aberto e com o chat oculto. Não apanha toques.
   const overlay = (
-    <div className="pointer-events-none absolute inset-x-3 top-3 z-[41] flex items-start justify-between gap-2">
+    <div className="pointer-events-none absolute left-[calc(var(--safe-l,0px)+12px)] right-[calc(var(--safe-r,0px)+12px)] top-3 z-[41] flex items-start justify-between gap-2">
       {/* Selo da referência: vermelho só para AO VIVO; replay a azul; resto neutro. */}
       <span className="flex items-center gap-[5px]">
         {prelive ? null : (
@@ -1112,10 +1126,83 @@ export function WebinarRoom({
     if (next > 0 && !soundOn) enableSound();
   };
   const entryKicker = mode === "replay" ? "Replay da aula" : "Aula ao vivo";
+
+  // Ecrã inteiro (Webinar, telemóvel ao alto com o vídeo horizontal, se o organizador o deixou ligado): no Android a
+  // sala inteira passa a ecrã inteiro e roda para deitado; no iPhone (sem ecrã inteiro para a página) uma dica
+  // de 2,5 s para virar o telemóvel. Em ecrã inteiro o botão fica (para sair), também deitado.
+  const [fullscreen, setFullscreen] = useState(false);
+  const [turnHint, setTurnHint] = useState(false);
+  // Em ecrã inteiro o vídeo enche o ecrã (como no YouTube): a coluna do chat esconde-se e ficam por cima os
+  // comentários, o coração e o botão de comentar, que a volta a abrir. Ao sair, o chat volta como estava.
+  const chatBeforeFullscreenRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    const onChange = () => {
+      const on = roomRef.current !== null && document.fullscreenElement === roomRef.current;
+      setFullscreen(on);
+      if (on) {
+        setChatOpen((open) => {
+          chatBeforeFullscreenRef.current = open;
+          return false;
+        });
+      } else if (chatBeforeFullscreenRef.current !== null) {
+        setChatOpen(chatBeforeFullscreenRef.current);
+        chatBeforeFullscreenRef.current = null;
+      }
+      if (!on) {
+        try {
+          screen.orientation?.unlock?.();
+        } catch {
+          // Sem bloqueio de rotação no navegador: nada a desfazer.
+        }
+      }
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  useEffect(() => {
+    if (!turnHint) return;
+    const timer = window.setTimeout(() => setTurnHint(false), 2500);
+    return () => window.clearTimeout(timer);
+  }, [turnHint]);
+  const toggleFullscreen = () => {
+    const room = roomRef.current;
+    if (!room) return;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => undefined);
+      return;
+    }
+    if (!document.fullscreenEnabled || typeof room.requestFullscreen !== "function") {
+      setTurnHint(true);
+      return;
+    }
+    room
+      .requestFullscreen()
+      .then(async () => {
+        try {
+          await (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.("landscape");
+        } catch {
+          // O navegador não deixa bloquear a rotação: fica a rotação natural.
+        }
+      })
+      .catch(() => setTurnHint(true));
+  };
+  // Em ecrã inteiro o botão de sair fica sempre (deitado o ecrã pode passar de 1024 px, ou a forma mudar ao ler-se).
+  // Fora dele, só ao alto e só com a forma lida do vídeo: sem leitura (Bunny, Panda, rede lenta) não aparece.
+  const fullscreenShown =
+    !liveLayout &&
+    live.fullscreenButton !== false &&
+    !waiting &&
+    !finished &&
+    !typingNow &&
+    (fullscreen || (coarse && !wide && portrait && (playerShape ?? probedShape) === "horizontal"));
+
   // Com o chat oculto, o canto de baixo à direita é do botão de comentar e do coração: o ⚙ sobe ao de cima.
+  // O ⚙ e o ecrã inteiro ficam dentro das zonas seguras (`--safe-r`: o vídeo deitado vai até à borda do ecrã).
   const videoControls = videoNode ? (
     <div className="pointer-events-none absolute inset-0 z-30">
-      <div className={cn("pointer-events-auto absolute right-3", chatHidden && !turnUp ? "top-3" : "bottom-3")}>
+      {turnHint ? <TurnHint /> : null}
+      <div className={cn("pointer-events-auto absolute right-[calc(var(--safe-r,0px)+12px)] flex items-center gap-1", chatHidden && !turnUp ? "top-3" : "bottom-3")}>
+        {fullscreenShown ? <FullscreenButton on={fullscreen} onToggle={toggleFullscreen} /> : null}
         <VideoSettings
           volume={soundOn ? volume : 0}
           onVolume={changeVolume}
@@ -1227,7 +1314,7 @@ export function WebinarRoom({
             videoRef={liveVideoRef}
             marks={offerList.map((offer) => offer.start)}
             // Live com o vídeo ao alto a encher o ecrã (a moldura passa as bordas e o chat ocupa o fundo): no palco, em cima.
-            className={liveLayout && (wide || !portrait || liveStack) ? liveBoxClass : "absolute inset-0"}
+            className={liveLayout && (wide || !portrait || liveStack) ? liveBoxClass : "absolute inset-y-0 left-[var(--safe-l,0px)] right-[var(--safe-r,0px)]"}
             // Em cima também com o chat oculto: as mensagens, o coração e a oferta ocupam o fundo do vídeo.
             top={chatHidden || (liveLayout && !wide && portrait && !liveStack)}
           />
@@ -1551,8 +1638,17 @@ export function WebinarRoom({
   // O chat começa em baixo e cresce para cima, como no YouTube: a mensagem mais recente fica
   // sempre junto da caixa de escrever.
   const feed = (
-    <div ref={feedRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-4 py-4 max-md:portrait:pt-5">
-      <div className="mt-auto grid gap-3.5">
+    // Num telemóvel muito baixo com o teclado aberto o painel fica só com a caixa (`@container`, 69 px): a lista sai,
+    // senão o espaço dela empurrava a caixa para baixo do teclado.
+    <div
+      ref={feedRef}
+      className={cn(
+        // As mais antigas desvanecem em cima (como na pré-visualização): nenhuma fica cortada a meio debaixo da fixada.
+        "flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain max-md:portrait:pt-5 [mask-image:linear-gradient(transparent,#000_28px)] [@container(max-height:110px)]:hidden",
+        phoneLand ? "px-3 py-2" : "px-4 py-4",
+      )}
+    >
+      <div className={cn("mt-auto grid", phoneLand ? "gap-2" : "gap-3.5")}>
         {tab === "chat" ? (
           chatThread.length === 0 ? (
             <p className="py-6 text-center text-[13.5px] text-room-subtle">As mensagens aparecem aqui.</p>
@@ -1569,9 +1665,9 @@ export function WebinarRoom({
                   {/* O que a pessoa escreve só ela vê: não chega aos outros nem afecta o lançamento. A equipa
                       escreve para todos, com o seu selo. */}
                   {team ? (
-                    <ChatLine author={viewerName} text={item.message} tone="team" badge={TEAM_BADGE[team.role]} reaction={item.reaction} big />
+                    <ChatLine author={viewerName} text={item.message} tone="team" badge={TEAM_BADGE[team.role]} reaction={item.reaction} big tight={phoneLand} />
                   ) : (
-                    <ChatLine author="Você" text={item.message} tone="mine" badge="Só você vê" reaction={item.reaction} big />
+                    <ChatLine author="Você" text={item.message} tone="mine" badge="Só você vê" reaction={item.reaction} big tight={phoneLand} />
                   )}
                   {item.source ? retryNote(item.source) : null}
                 </div>
@@ -1585,6 +1681,7 @@ export function WebinarRoom({
                   badge={item.badge}
                   reaction={item.reaction}
                   big
+                  tight={phoneLand}
                 />
               ),
             )
@@ -1685,7 +1782,7 @@ export function WebinarRoom({
   const chatPin =
     tab === "chat" && !pinDismissed ? (
       offerPinActive ? (
-        <div className="mx-4 mt-4 flex items-center justify-between gap-3 rounded-md bg-primary/10 px-3.5 py-2.5 ring-1 ring-primary/30">
+        <div className={cn("mx-4 flex items-center justify-between gap-3 rounded-md bg-primary/10 px-3.5 ring-1 ring-primary/30", phoneLand ? "mt-2 py-1" : "mt-4 py-2.5")}>
           <div className="flex min-w-0 items-center gap-2">
             <Pin className="size-3.5 shrink-0 text-primary" />
             <p className="truncate text-sm font-semibold text-room-text">
@@ -1714,7 +1811,7 @@ export function WebinarRoom({
       ) : webinar.chat_pin_title ? (
         // A mensagem fixada da etapa Chat do editor (o título; a mensagem longa só vem de dados antigos). O campo
         // vazio no editor é «sem mensagem fixada»: nada entra no lugar dela.
-        <ChatPin title={webinar.chat_pin_title} message={webinar.chat_pin_message} onClose={() => setPinDismissed(true)} />
+        <ChatPin title={webinar.chat_pin_title} message={webinar.chat_pin_message} onClose={() => setPinDismissed(true)} tight={phoneLand} />
       ) : null
     ) : null;
 
@@ -1722,6 +1819,10 @@ export function WebinarRoom({
   // o vídeo fica igual, no mesmo sítio; só a lista do chat encolhe. No Webinar, enquanto se escreve, recolhem o
   // título, os separadores e a mensagem fixada, e a oferta passa à barra (continua à vista), para a caixa de
   // escrever ficar logo acima do teclado. Ao fechar o teclado tudo volta ao sítio.
+  const feedToEnd = () =>
+    window.setTimeout(() => {
+      for (const node of [feedRef.current, liveFeedRef.current]) if (node) node.scrollTop = node.scrollHeight;
+    }, 180);
   const composerInput: React.InputHTMLAttributes<HTMLInputElement> = {
     onFocus: () => {
       const viewport = window.visualViewport;
@@ -1733,13 +1834,13 @@ export function WebinarRoom({
         room.style.setProperty("--room-visible-top", `${Math.round(viewport.offsetTop)}px`);
         window.scrollTo({ top: 0, behavior: "instant" });
       }
-      window.setTimeout(() => {
-        for (const node of [feedRef.current, liveFeedRef.current]) if (node) node.scrollTop = node.scrollHeight;
-      }, 180);
+      feedToEnd();
     },
     onBlur: () => {
       setTyping(false);
       roomRef.current?.classList.remove("live-room-shell--keyboard");
+      // Num ecrã baixo a lista saiu enquanto se escrevia (e o que chegou não a fez descer): volta no fim.
+      feedToEnd();
     },
   };
 
@@ -1763,10 +1864,11 @@ export function WebinarRoom({
   // ou ao puxar o cartão para cima.
   // Com o teclado aberto, a barra (o cartão inteiro empurrava a caixa de escrever para baixo do teclado); num
   // telemóvel muito baixo, nem a barra cabe: sai enquanto se escreve, para a caixa nunca ficar tapada.
+  // Deitado, enquanto se escreve, os separadores saem (e com eles o da Oferta): a barra fica na coluna.
   const phoneOffer =
-    phoneCard && tab === "chat" && cardOffer ? (
+    (phoneCard || (!liveLayout && phoneLand && typingNow)) && tab === "chat" && cardOffer ? (
       <div className="shrink-0 px-3 pb-2.5 [@container(max-height:150px)]:hidden">
-        {offerMin || typing ? (
+        {offerMin || typingNow ? (
           <LiveOfferSlim offer={cardOffer} onOpen={() => setOfferMin(false)} />
         ) : (
           <LiveOfferCard offer={cardOffer} onBuy={clickCta} onMinimize={() => setOfferMin(true)} onExpand={() => setTab("offer")} panel />
@@ -1778,7 +1880,8 @@ export function WebinarRoom({
   const sheetMode = liveLayout && !wide;
   const panel = (
     <div className="room-panel flex min-h-0 flex-1 flex-col bg-room-bg text-room-text [container-type:size] md:portrait:rounded-2xl md:portrait:ring-1 md:portrait:ring-inset md:portrait:ring-room-line/60 lg:rounded-2xl lg:ring-1 lg:ring-inset lg:ring-room-line/60">
-      {typing ? null : <RoomTabs
+      {typingNow ? null : <RoomTabs
+        tight={phoneLand}
         active={tab}
         onTab={setTab}
         items={[
@@ -1788,7 +1891,7 @@ export function WebinarRoom({
             label: "Suporte",
             Icon: Headset,
             extra: supportUnread > 0 ? (
-              <span className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-primary px-1 text-[11px] font-bold leading-none text-primary-foreground">
+              <span className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-primary px-1 text-[12px] font-bold leading-none text-primary-foreground">
                 {supportUnread}
               </span>
             ) : null,
@@ -1808,7 +1911,7 @@ export function WebinarRoom({
           </button>
         }
       />}
-      {typing ? null : chatPin}
+      {typingNow ? null : chatPin}
       {tab === "offer" ? offerPanel() : feed}
       {phoneOffer}
       {mode === "replay" && tab !== "offer" ? (
@@ -1825,6 +1928,7 @@ export function WebinarRoom({
             onSubmit={() => void sendMessage()}
             placeholder={tab === "support" ? "Escreva à equipa…" : "Escreva no chat…"}
             compact={phoneSize}
+            tight={phoneLand}
             withReactions={tab === "chat"}
             onHeart={sendHeart}
             reactions={reactions}
@@ -1918,6 +2022,16 @@ export function WebinarRoom({
     .sort((a, b) => a.at - b.at)
     .map((x) => x.item);
 
+  // O botão de comentar (chat oculto, Webinar): a coluna do chat volta e a caixa de escrever fica logo com o foco.
+  // `flushSync` mostra a coluna dentro do próprio toque: só assim o iPhone deixa abrir o teclado.
+  const openChatToWrite = () => {
+    flushSync(() => {
+      setChatOpen(true);
+      if (tab === "offer") setTab("chat");
+    });
+    roomRef.current?.querySelector<HTMLInputElement>("aside form input")?.focus();
+  };
+
   // Chat oculto: a prova social por cima do vídeo (o gatilho da manada nunca sai do ecrã). Abrir a oferta
   // inteira volta a mostrar o chat, onde ela está (separador no Webinar, folha no Live).
   const proof = chatHidden ? (
@@ -1934,13 +2048,19 @@ export function WebinarRoom({
       onHeart={turnUp ? undefined : sendHeart}
       reactions={reactions}
       // Webinar: o botão de voltar ao chat junto do coração (deitado com o vídeo ao alto não há chat: roda-se).
-      comment={liveLayout || turnUp ? null : <ChatToggle open={false} onToggle={() => setChatOpen(true)} alert={ctaVisible || supportUnread > 0} />}
+      comment={liveLayout || turnUp ? null : <ChatToggle open={false} onToggle={openChatToWrite} alert={ctaVisible || supportUnread > 0} />}
       panel={turnUp}
       offer={
         // Antes do toque de entrar a oferta espera: o cartão tapava parte do «Assistir agora».
         cardOffer && !needsAudioUnlock ? (
-          offerMin ? (
-            <LiveOfferSlim offer={cardOffer} onOpen={() => setOfferMin(false)} />
+          offerMin || (!liveLayout && phoneLand && !turnUp && landCardFor !== currentOffer?.id) ? (
+            <LiveOfferSlim
+              offer={cardOffer}
+              onOpen={() => {
+                setOfferMin(false);
+                setLandCardFor(currentOffer?.id ?? null);
+              }}
+            />
           ) : (
             <LiveOfferCard
               offer={cardOffer}
@@ -2254,11 +2374,13 @@ export function WebinarRoom({
         <section
           className={cn(
             // Deitado, à volta do vídeo o mesmo fundo do chat (claro: branco nos dois); só a borda do chat os separa.
-            "relative flex min-w-0 shrink-0 flex-col max-lg:landscape:flex-1 max-lg:landscape:justify-center max-lg:landscape:bg-room-bg max-lg:landscape:pl-[env(safe-area-inset-left)] phone-land:items-center phone-land:[container-type:size]",
+            // O vídeo deitado vai até à borda do ecrã (por baixo da ilha da câmara, como o YouTube a encher) e até à coluna
+            // do chat; o que fica por cima dele (AO VIVO, ⚙, mensagens, oferta) respeita as zonas seguras (`--safe-l/r`).
+            "relative flex min-w-0 shrink-0 flex-col max-lg:landscape:flex-1 max-lg:landscape:justify-center max-lg:landscape:bg-room-bg phone-land:items-center phone-land:[container-type:size]",
             // Teclado aberto deitado: esta coluna fica com a altura do ecrã (o teclado passa por cima), para o vídeo
             // não encolher nem sair do sítio; só a coluna do chat acompanha a parte visível.
             "group-[.live-room-shell--keyboard]/room:max-lg:landscape:h-dvh",
-            turnUp ? "items-center pr-[env(safe-area-inset-right)] [container-type:size]" : !chatOpen && "phone-land:pr-[env(safe-area-inset-right)]",
+            turnUp && "items-center pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] [container-type:size]",
             // Chat oculto no computador: o vídeo cresce até caber na altura do ecrã, ao centro.
             !chatOpen && "lg:w-full lg:max-w-[calc((100dvh-11rem)*16/9)] lg:justify-self-center",
           )}
@@ -2268,7 +2390,13 @@ export function WebinarRoom({
               // No telemóvel ao alto o vídeo vai de ponta a ponta, sem borda, como no YouTube.
               "room-panel relative md:ring-1 md:ring-room-line md:portrait:overflow-hidden md:portrait:rounded-2xl max-lg:landscape:ring-0 lg:overflow-hidden lg:rounded-2xl",
               // O vídeo ao alto num ecrã deitado: a altura toda, na sua forma, ao centro.
-              turnUp ? "h-[100cqh] w-[56.25cqh]" : "phone-land:w-[min(100cqw,177.78cqh)]",
+              turnUp
+                ? "h-[100cqh] w-[56.25cqh]"
+                : // As zonas seguras só contam onde o vídeo chega à borda do ecrã: menos a folga dele ao centro (cq = a secção).
+                  cn(
+                    "phone-land:w-[min(100cqw,177.78cqh)] phone-land:[--safe-l:max(0px,calc(env(safe-area-inset-left)_-_(100cqw_-_min(100cqw,177.78cqh))_/_2))]",
+                    chatHidden && "phone-land:[--safe-r:max(0px,calc(env(safe-area-inset-right)_-_(100cqw_-_min(100cqw,177.78cqh))_/_2))]",
+                  ),
               theme === "light" ? "bg-room-surface" : "bg-black md:shadow-[0_30px_80px_-20px_rgb(0_0_0/0.8)]",
             )}
           >
@@ -2277,12 +2405,17 @@ export function WebinarRoom({
             {lessonTimer({
               bar: "absolute inset-x-0 bottom-0 z-10",
               // No canto de cima à direita (com o chat oculto, à esquerda do ⚙).
-              chip: cn("absolute right-3 top-3 z-10", chatHidden && !turnUp && "right-16"),
+              chip: cn("absolute top-3 z-10", chatHidden && !turnUp ? "right-[calc(var(--safe-r,0px)+64px)]" : "right-[calc(var(--safe-r,0px)+12px)]"),
             })}
             {soundPrompt}
             {/* Com o chat oculto, o aviso vai por cima das mensagens (`proof`), com o botão de voltar ao chat
-                junto do coração, no canto de baixo à direita. Com o vídeo ao alto deitado, a prova fica ao lado. */}
-            {turnUp ? null : chatHidden ? proof : purchaseToast}
+                junto do coração, no canto de baixo à direita. Com o vídeo ao alto deitado, a prova fica ao lado.
+                Dentro das zonas seguras: o vídeo deitado vai até à borda do ecrã. */}
+            {turnUp ? null : (
+              <div className="pointer-events-none absolute inset-y-0 left-[var(--safe-l,0px)] right-[var(--safe-r,0px)] z-20">
+                {chatHidden ? proof : purchaseToast}
+              </div>
+            )}
           </div>
           {turnUp ? (
             <>
@@ -2330,7 +2463,8 @@ export function WebinarRoom({
         </section>
         <aside
           className={cn(
-            "relative flex min-h-0 flex-1 flex-col overflow-hidden md:portrait:rounded-2xl max-lg:landscape:w-[calc(min(320px,40vw)+env(safe-area-inset-right))] max-lg:landscape:flex-none max-lg:landscape:border-l max-lg:landscape:border-room-line/60 phone-land:bg-room-bg phone-land:pr-[env(safe-area-inset-right)] lg:sticky lg:top-6 lg:h-[calc(100dvh-3rem)] lg:rounded-2xl",
+            // Deitado, 300 px (mais a zona segura): o vídeo 16:9 enche a altura no iPhone com as barras do Safari (852×283).
+            "relative flex min-h-0 flex-1 flex-col overflow-hidden md:portrait:rounded-2xl max-lg:landscape:w-[calc(min(300px,40vw)+env(safe-area-inset-right))] max-lg:landscape:flex-none max-lg:landscape:border-l max-lg:landscape:border-room-line/60 phone-land:bg-room-bg phone-land:pr-[env(safe-area-inset-right)] lg:sticky lg:top-6 lg:h-[calc(100dvh-3rem)] lg:rounded-2xl",
             // Com o teclado aberto, nunca menos do que a caixa de escrever (69 px: borda + 12 + 44 + 12), para ela não sair do ecrã.
             "group-[.live-room-shell--keyboard]/room:portrait:min-h-[69px]",
             !chatOpen && "max-lg:landscape:hidden lg:hidden",

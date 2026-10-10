@@ -613,6 +613,7 @@ export function PublicRoom({
         onZero={() => setWaiting(false)}
         video={webinar.waiting_video}
         showCountdown={webinar.live.waiting.countdown}
+        groupUrl={(webinar as { group_url?: string | null }).group_url}
       />
     );
 

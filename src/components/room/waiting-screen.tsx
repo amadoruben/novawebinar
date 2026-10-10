@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useDataSaver } from "@/lib/room-data-saver";
 import { PreliveCountdown } from "@/components/prelive-countdown";
 import { VideoPlayer } from "@/components/video-player";
+import whatsappIcon from "@/assets/local/whatsapp-icon.webp";
 
 const NOOP = () => {};
 
@@ -26,6 +27,7 @@ export function WaitingScreen({
   highlight,
   video,
   showCountdown = true,
+  groupUrl,
 }: {
   title: string;
   /** A hora da sessão. */
@@ -43,6 +45,8 @@ export function WaitingScreen({
   video?: { url: string; provider?: string | null | undefined } | null | undefined;
   /** A contagem por cima; desligada, ficam o título e a hora. */
   showCountdown?: boolean | undefined;
+  /** O convite do grupo de WhatsApp do fluxo; com ele, o mesmo botão da contagem dentro da sala. */
+  groupUrl?: string | null | undefined;
 }) {
   const [now, setNow] = useState(() => Date.now());
   const saveData = useDataSaver();
@@ -76,8 +80,9 @@ export function WaitingScreen({
   return (
     // `@container`: as letras medem o ecrã da sala (na pré-visualização do editor, o ecrã do aparelho, não a janela).
     // Com o vídeo de fundo, a parte de cima fica escura: na pré-visualização, o relógio do aparelho fica branco.
+    // Contentor de tamanho (não só de largura): num ecrã baixo (telemóvel deitado) tudo cabe na altura, sem scroll.
     <main
-      className={cn("room-ambient @container relative flex min-h-dvh items-center justify-center overflow-hidden px-4 py-10", themeClass)}
+      className={cn("room-ambient relative flex h-dvh min-h-dvh items-center justify-center overflow-hidden px-4 py-4 [container-type:size]", themeClass)}
       data-status-dark={bg ? "" : undefined}
     >
       {bg ? (
@@ -101,7 +106,7 @@ export function WaitingScreen({
         </>
       ) : null}
       <div className={cn("relative w-full max-w-2xl text-center", bg ? "text-white" : "text-room-text")}>
-        <h1 className="text-2xl font-black leading-tight @min-[640px]:text-3xl">{title}</h1>
+        <h1 className="text-2xl font-black leading-tight @min-[640px]:text-3xl [@container(max-height:500px)]:text-xl">{title}</h1>
         <p className={cn("mt-2 text-sm", bg ? "text-white/75" : "text-room-subtle")}>
           <span
             className={
@@ -116,7 +121,9 @@ export function WaitingScreen({
         {showCountdown ? (
           <div
             className={cn(
-              "mt-6 overflow-hidden rounded-2xl shadow-2xl ring-1",
+              "mx-auto mt-6 overflow-hidden rounded-2xl shadow-2xl ring-1 [@container(max-height:500px)]:mt-3",
+              // O cartão é 16:9: a largura sai da altura que sobra depois do título, da hora (e do botão do grupo).
+              groupUrl ? "max-w-[calc((100cqh-8.5rem)*16/9)]" : "max-w-[calc((100cqh-5rem)*16/9)]",
               // Por cima do vídeo, o fundo do relógio fica meio transparente: vê-se o vídeo por trás. O `!` passa
               // à frente do `.prelive-dark` do styles.css (fora das camadas do Tailwind).
               bg ? "ring-white/15 [&_.prelive-dark]:[--room-bg:rgb(0_0_0/0.4)]! [&_.prelive-dark]:backdrop-blur-sm" : "ring-room-line",
@@ -133,6 +140,17 @@ export function WaitingScreen({
               appearance={{ subtitle: "", showDays: remaining >= 86400, showHours: remaining >= 3600 }}
             />
           </div>
+        ) : null}
+        {groupUrl ? (
+          <a
+            href={groupUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-[#25D366] px-5 text-[15px] font-semibold text-[#0B141A] shadow-[0_6px_18px_rgba(37,211,102,.25)] transition hover:brightness-95 active:scale-[.98] [@container(max-height:500px)]:mt-3"
+          >
+            <img src={whatsappIcon} alt="" className="size-5" />
+            Entrar no grupo de WhatsApp
+          </a>
         ) : null}
       </div>
       {bg ? (
